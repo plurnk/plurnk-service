@@ -205,7 +205,7 @@ FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: worker_parent_id
 -- A worker's parent (worker:// spawn / fork set parent_worker_id, {§lifecycle-terms}). NULL = a root worker.
--- Used at drain-exit to wake a parent that parked awaiting this child ({§worker-loop-lifecycle} topology join).
+-- {§worker-lifecycle-child-wake}: direct parent of a terminal task's worker.
 SELECT parent_worker_id FROM workers WHERE id = $worker_id;
 
 -- PREP: worker_lineage_contains

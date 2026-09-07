@@ -3,6 +3,17 @@ import assert from "node:assert/strict";
 import conformanceKit from "@plurnk/plurnk-contracts/conformance/agui-v1.json" with { type: "json" };
 import { Validator } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS } from "./AguiSurface.ts";
+import { streamConclusion } from "../test/notification-fixture.ts";
+
+test("{§agui-discovery-contract}: stream conclusions admit pending wakes, not predicted loop execution", () => {
+    const schema = AGUI_NOTIFICATIONS["stream/concluded"].payloadSchema;
+    const conclusion = streamConclusion({ wakeAction: "wake-pending" });
+    assert.deepEqual(Validator.assertJsonSchemaInstance("pending wake", schema, conclusion), conclusion);
+    assert.throws(
+        () => Validator.assertJsonSchemaInstance("predicted resume", schema, streamConclusion({ wakeAction: "resumed-loop", wakeLoopId: 42 })),
+        /does not satisfy its JSON Schema/,
+    );
+});
 
 test("{§agui-discovery-contract}: the AG-UI-owned executable surface is complete and schema-valid", () => {
     assert.equal(Object.keys(AGUI_BUILTIN_ACTIONS).length, 25);

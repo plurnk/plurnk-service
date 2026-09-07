@@ -240,8 +240,7 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         result: OPERATION_RESULT,
         scheme: NONEMPTY,
         summary: string(),
-        wakeAction: { enum: ["skipped-aborted", "skipped-cancelled", "resumed-loop", "no-op-active-loop", "no-loop"] },
-        wakeLoopId: POSITIVE,
+        wakeAction: { enum: ["skipped-aborted", "skipped-cancelled", "wake-pending", "no-op-active-loop", "no-loop"] },
         ...streamCoordinate,
     }, ["entryId", "workerId", "target", "subscriptionId", "result", "scheme", "summary", "wakeAction"])),
     "workspace/branch-batch": notification(object({

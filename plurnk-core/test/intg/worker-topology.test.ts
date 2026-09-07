@@ -66,6 +66,85 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     });
 });
 
+test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent while another task stays parked", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse("### SEND0 (WAIT) <60,0>\nFirst task waits."),
+        makeMockResponse("### SEND0 (WAIT) <60,0>\nSecond task waits."),
+        makeMockResponse("### SEND0 (WAIT) <60,0>\nParent awaits results."),
+        makeMockResponse("### SEND0 (TERM)\nFirst task result: 42."),
+        makeMockResponse("### SEND0 (WAIT) <60,0>\nFirst result observed; second task remains."),
+    ] });
+    try {
+        await withDaemon(provider, async (db, daemon) => {
+            const { workspaceId } = await daemon.createWorkspace({ name: "partial-child-result" });
+            const parentId = await daemon.ensureModelWorker(workspaceId);
+            const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
+            try {
+                const common = {
+                    workspaceId, workerId: childId,
+                    providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
+                    reasoningPolicy: "adaptive" as const, systemPrompt: "test system",
+                };
+                const childTasks = await Promise.all([
+                    daemon.inject({ ...common, prompt: "First child task." }),
+                    daemon.inject({ ...common, prompt: "Second child task." }),
+                ]);
+                const ids = new Set(childTasks.map(({ loopId }) => loopId));
+                await waitForDb(
+                    async () => (await db.test_loop_queue_by_worker.all<{ id: number; status: number }>({ worker_id: childId }))
+                        .filter(({ id }) => ids.has(id)),
+                    (tasks) => tasks.length === 2 && tasks.every(({ status }) => status === 202),
+                );
+                const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Observe each child result." });
+                await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: parent.loopId }), (row) => row?.status === 202);
+                const delivery = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Complete the first task." });
+                assert.equal(delivery.loopId, childTasks[0]?.loopId);
+                await waitForDb(async () => provider.received.length, (count) => count === 5);
+                const latest = provider.received.at(-1)!;
+                assert.match(JSON.stringify(latest), /First task result: 42/, "the resumed parent sees the completed task's deliverable");
+                const tasks = await db.test_loop_queue_by_worker.all<{ id: number; status: number }>({ worker_id: childId });
+                assert.deepEqual(tasks.filter(({ id }) => ids.has(id)).map(({ status }) => status), [200, 202],
+                    "observing one completion neither finishes nor wakes the other child task");
+                const parentTasks = await db.test_loop_queue_by_worker.all<{ id: number; prompt: string }>({ worker_id: parentId });
+                assert.deepEqual(parentTasks.filter(({ prompt }) => prompt === "Observe each child result.").map(({ id }) => id), [parent.loopId],
+                    "the parent resumes its original task without a synthetic message");
+            } finally { await daemon.cancelWorker({ workspaceId, workerId: parentId }); }
+        });
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
+
+test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its waiting parent without a live child drain", async () => {
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse("### SEND0 (WAIT) <60,0>\nChild waits."),
+        makeMockResponse("### SEND0 (WAIT) <60,0>\nParent awaits child."),
+        makeMockResponse("### SEND0 (TERM)\nChild cancellation observed."),
+    ] });
+    await withDaemon(provider, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "cancel-parked-child" });
+        const parentId = await daemon.ensureModelWorker(workspaceId);
+        const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
+        try {
+            const child = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Wait for instructions." });
+            await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: child.loopId }), (row) => row?.status === 202);
+            const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Observe the child outcome." });
+            await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: parent.loopId }), (row) => row?.status === 202);
+            await daemon.cancelWorker({ workspaceId, workerId: childId });
+            const completed = await waitForDb(
+                () => db.test_get_loop_status.get<{ status: number }>({ id: parent.loopId }),
+                (row) => row?.status === 200,
+            );
+            assert.equal(completed?.status, 200);
+            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: child.loopId }))?.status, 499);
+            assert.equal(provider.received.length, 3, "only the live parent resumes on cancellation evidence");
+        } finally { await daemon.cancelWorker({ workspaceId, workerId: parentId }); }
+    });
+});
+
 test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("### WORK0 (worker://stream-child)\nrun the empty failing stream and report its outcome\n\n### SEND0 (WAIT)\nwaiting on stream-child", 10),

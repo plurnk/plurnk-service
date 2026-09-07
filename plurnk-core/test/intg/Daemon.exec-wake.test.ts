@@ -1,11 +1,4 @@
-// Wake-on-completion daemon decision tree ({§worker-lifecycle-wake-liveness}). When an exec
-// spawn concludes (a stream-status transition to terminal), DrainSupervisor.handleWakeWorker picks one of:
-//   - "no-op-active-loop" — the worker has a live drain; the conclusion folds into its next turn
-//   - "resumed-loop" — the worker is parked at a slept (202) loop; that SAME loop resumes in place
-//   - "skipped-aborted" — result.status=499 (deliberate cancel) — no resume
-//
-// These exercise the daemon end-to-end through real WS calls with a
-// Mock provider. Mock emissions use the EXEC op per plurnk.md.
+// {§worker-lifecycle-wake-liveness}, {§notifications-stream-concluded}.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,6 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_helpers.ts";
 
@@ -60,6 +54,52 @@ test("{§worker-lifecycle-wake-liveness}: cancelling one stream wakes its still-
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200, { timeoutMs: 1500 });
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled worker scope");
         } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
+    });
+});
+
+test("{§notifications-stream-concluded}: a pending completion wake is not reported as an executed resume", async (t) => {
+    const release = Promise.withResolvers<void>();
+    const settled = Promise.withResolvers<void>();
+    const settle = DrainSupervisor.prototype.settleCompletionWake;
+    t.mock.method(DrainSupervisor.prototype, "settleCompletionWake", async function (
+        this: DrainSupervisor, ...args: Parameters<typeof settle>
+    ) {
+        await release.promise;
+        try { await settle.apply(this, args); }
+        finally { settled.resolve(); }
+    });
+    const provider = new Mock({ contextWindow: 65536, responses: [
+        mockResponse("### EXEC0\nsleep 30\n### SEND0 (WAIT) <60,0>\nWait for the command."),
+        mockResponse("### SEND0 (TERM)\nA cancelled task must not reach this turn."),
+    ] });
+    await withDaemon(provider, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        const conclusions = subscribeNotifications(ws, "stream/concluded");
+        const { workspaceId } = await daemon.createWorkspace({ name: "pending-wake-publication" });
+        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const lifecycle = new LoopLifecycle(db);
+        try {
+            const attached = await rpcCall(ws, 1, "workspace.attach", { workspaceId });
+            assert.equal((attached.result as { id: number }).id, workspaceId);
+            const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Await the command.", policy: { proposals: "accept" } });
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+            const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
+            assert.equal(subscriptions.length, 1);
+            await daemon.engine.cancelSubscription(subscriptions[0]!.id);
+            const events = await waitFor(() => conclusions() as Array<{ wakeAction: string }>, (values) => values.length > 0);
+            assert.equal(events[0]?.wakeAction, "wake-pending", "stream completion is published before wake eligibility settles");
+            assert.equal(Object.hasOwn(events[0]!, "wakeLoopId"), false, "no singular future recipient is predicted");
+            assert.equal(await lifecycle.status(accepted.loopId), 202, "publication cannot claim execution while the task is parked");
+            await daemon.cancelWorker({ workspaceId, workerId });
+            release.resolve();
+            await settled.promise;
+            assert.equal(await lifecycle.status(accepted.loopId), 499, "cancellation won before settlement");
+            assert.equal(provider.received.length, 1, "the pending event never resurrects cancelled work");
+        } finally {
+            await daemon.cancelWorker({ workspaceId, workerId });
+            release.resolve();
+            ws.close();
+        }
     });
 });
 
@@ -296,15 +336,15 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             await waitFor(
                 () => terminatedEvents() as Array<{ loopId: number; result: { status: number } }>,
                 (ts) => {
-                    const wake = (concludedEvents() as Array<{ scheme: string; wakeLoopId?: number }>).find((c) => c.scheme === "sh");
-                    return wake?.wakeLoopId !== undefined && ts.some((t) => t.loopId === wake.wakeLoopId && t.result.status === 200);
+                    const wake = (concludedEvents() as Array<{ scheme: string }>).find((c) => c.scheme === "sh");
+                    return wake !== undefined && ts.some((t) => t.loopId === parkedLoop && t.result.status === 200);
                 },
                 { timeoutMs: 6000 },
             );
 
             const concluded = concludedEvents() as Array<{
                 scheme: string; target: string; result: { status: number; problem?: { type: string } }; summary: string;
-                wakeAction: string; wakeLoopId?: number;
+                wakeAction: string;
                 loop_seq?: number; turn_seq?: number; sequence?: number;
             }>;
             assert.ok(concluded.length >= 1, `expected >=1 stream/concluded event, got ${concluded.length}`);
@@ -314,9 +354,8 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
             assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+\/EXEC completed \(exit 0\)/,
                 "summary references the stream's item address <runtime>:///<loop>/<turn>/<seq>/EXEC");
-            assert.equal(wake.wakeAction, "resumed-loop", "the daemon resumed the slept loop in place");
-            // The resume-in-place lock: the woken loop IS the parked loop, not a new one.
-            assert.equal(wake.wakeLoopId, parkedLoop, "the SAME slept loop resumed — no fresh loop opened");
+            assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
+            assert.equal(Object.hasOwn(wake, "wakeLoopId"), false);
 
             const seg = wake.target.replace(/^sh:\/\/\//, "").split("/");  // [loop, turn, seq]
             assert.equal(wake.loop_seq, Number(seg[0]), "stream/concluded carries loop_seq as a field matching the URI");
@@ -432,6 +471,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-streaming" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+            const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
 
             const startedAt = Date.now();
             const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", policy: { proposals: "accept" } });
@@ -453,7 +493,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             );
 
             const concluded = concludedEvents() as Array<{
-                scheme: string; result: { status: number }; summary: string; wakeAction: string; wakeLoopId?: number;
+                scheme: string; result: { status: number }; summary: string; wakeAction: string;
             }>;
             const wake = concluded.find((c) => c.scheme === "sh" && c.result.status === 200);
             assert.ok(wake, "exec stream concluded");
@@ -461,8 +501,13 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             // whatever happened to be in the channel when loop ended.
             assert.match(wake.summary, /stdout=10 bytes/,
                 `summary should report the full final stdout=10 bytes ("5\\n4\\n3\\n2\\n1\\n"); got ${wake.summary}`);
-            assert.equal(wake.wakeAction, "resumed-loop", "the slept loop resumed in place");
-            assert.equal(wake.wakeLoopId, parkedLoop, "the SAME slept loop resumed — no fresh loop");
+            assert.equal(wake.wakeAction, "wake-pending");
+            const terminated = await waitFor(
+                () => terminatedEvents() as Array<{ loopId: number; result: { status: number } }>,
+                (events) => events.some(({ loopId }) => loopId === parkedLoop),
+            );
+            assert.equal(terminated.find(({ loopId }) => loopId === parkedLoop)?.result.status, 200,
+                "the original task's terminal event, not the stream's prediction, proves same-loop resumption");
         } finally { ws.close(); }
     });
 });

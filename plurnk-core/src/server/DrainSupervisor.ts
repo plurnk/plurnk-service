@@ -121,7 +121,6 @@ export default class DrainSupervisor {
     // The handle is the drain identity. Start/exit compare by reference so an
     // exiting drain cannot clobber a successor that raced in.
     readonly #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
-    readonly #drainExitTasks = new Set<Promise<void>>();
     readonly #wakeTasks = new Set<Promise<void>>();
     readonly #wakeFailures: unknown[] = [];
     // One cancellation scope spans a worker's loops and streams. It outlives
@@ -200,7 +199,6 @@ export default class DrainSupervisor {
         for (;;) {
             const pending = [
                 ...[...this.#activeDrains.values()].map(({ promise }) => promise),
-                ...this.#drainExitTasks,
                 ...this.#wakeTasks,
             ];
             if (pending.length === 0) break;
@@ -409,7 +407,7 @@ export default class DrainSupervisor {
                         this.#loopAttributions(loopRow.id),
                         this.#lifecycle.turnIds(loopRow.id),
                     ]);
-                    this.#emit(workspaceId, "loop/terminated", {
+                    this.#publishTermination(workspaceId, {
                         workerId,
                         loopId: loopRow.id,
                         result: result.result,
@@ -478,7 +476,7 @@ export default class DrainSupervisor {
                             this.#loopAttributions(currentLoopId),
                         ]);
                         if (cancelled !== null) {
-                            this.#emit(workspaceId, "loop/terminated", {
+                            this.#publishTermination(workspaceId, {
                                 workerId,
                                 loopId: currentLoopId,
                                 result: cancelled,
@@ -552,7 +550,7 @@ export default class DrainSupervisor {
                             this.#loopUsage(currentLoopId),
                             this.#loopAttributions(currentLoopId),
                         ]);
-                        this.#emit(workspaceId, "loop/terminated", {
+                        this.#publishTermination(workspaceId, {
                             workerId,
                             loopId: currentLoopId,
                             result: settled,
@@ -580,19 +578,6 @@ export default class DrainSupervisor {
 
         handle.promise = drainPromise;
         this.#activeDrains.set(workerId, handle);
-        // Topology join ({§worker-loop-lifecycle}): when this drain exits having CONCLUDED the worker, wake its parent
-        // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
-        // final state; speculative (#onDrainExit no-ops unless the worker concluded AND the parent is parked).
-        const drainExitTask = drainPromise.then(
-            () => this.#onDrainExit(workspaceId, workerId, systemPrompt),
-            () => this.#onDrainExit(workspaceId, workerId, systemPrompt),
-        );
-        this.#drainExitTasks.add(drainExitTask);
-        void drainExitTask.catch((err: unknown) => {
-            console.error(`parent wake after worker ${workerId} settlement failed:`, err);
-        }).finally(() => {
-            this.#drainExitTasks.delete(drainExitTask);
-        });
         // Swallow unhandled rejections (drain aborts with no awaiter); the
         // error already surfaced via firstLoopPromise or was logged inside.
         drainPromise.catch(() => {});
@@ -667,7 +652,7 @@ export default class DrainSupervisor {
                 this.#loopUsage(loopId),
                 this.#loopAttributions(loopId),
             ]);
-            this.#emit(row.workspace_id, "loop/terminated", {
+            this.#publishTermination(row.workspace_id, {
                 workerId: targetWorkerId,
                 loopId,
                 result,
@@ -747,12 +732,9 @@ export default class DrainSupervisor {
 
         const systemPrompt = await this.#readSystemPrompt();
 
-        // A slept (202) loop means the worker parked via SEND signal 202 → resume it in place: re-queue
-        // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
-        // FIRST: the slept status is the worker's true disposition regardless of a draining
-        // sibling mid-teardown (the ensureDrain lock serializes the re-claim). No fresh loop,
-        // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
-        // the manifest. {§worker-lifecycle-wake-liveness}.
+        // {§notifications-stream-concluded}: publish the terminal stream fact
+        // before settlement. Rechecked wait identities, not this event, decide
+        // whether any loop actually resumes.
         const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
         if (slept !== undefined) {
             // {§worker-optimistic-settlement} — publish this conclusion now,
@@ -764,7 +746,7 @@ export default class DrainSupervisor {
                 systemPrompt,
             );
             this.#emit(workspaceId, "stream/concluded", {
-                ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
+                ...conclusion, wakeAction: "wake-pending",
             });
             await settlement;
             return;
@@ -989,20 +971,15 @@ export default class DrainSupervisor {
         }
     }
 
-    /** A worker's drain exited. If the worker truly CONCLUDED — no 202-blocked loop, no open stream — then
-     *  wake its PARENT in place if the parent is blocked on the join (the structured-concurrency join — a
-     *  child finishing is the wake edge for a parent that waited on it, {§worker-lifecycle-child-wake}). A worker
-     *  blocked at 202, or still holding a stream, is NOT concluded — its own wake edges drive it, not this.
-     *  The parent reads the child's deliverable from its own log (the {§worker-scheme-collect} delta) on
-     *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
-    async #onDrainExit(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
-        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
-        if (slept !== undefined) return; // parked at 202 — not concluded, the worker is still alive
-        const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
-            .filter(({ id }) => !this.#isDetachedSubscription(id)); // {§exec-timeout} — `<-1>` is nobody's obligation
-        if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
+    #publishTermination(workspaceId: number, event: DrainLoopResult & { workerId: number }): void {
+        this.#emit(workspaceId, "loop/terminated", event);
+        this.#trackWake(this.#notifyParentCompletion(workspaceId, event.workerId));
+    }
+
+    // {§worker-lifecycle-child-wake}: completion belongs to a task, not drain teardown.
+    async #notifyParentCompletion(workspaceId: number, workerId: number): Promise<void> {
         const parent = await this.#db.worker_parent_id.get<{ parent_worker_id: number | null }>({ worker_id: workerId });
-        if (parent?.parent_worker_id == null) return; // a root worker — nobody to wake
-        await this.settleCompletionWake(workspaceId, parent.parent_worker_id, systemPrompt);
+        if (parent?.parent_worker_id == null) return;
+        await this.settleCompletionWake(workspaceId, parent.parent_worker_id, await this.#readSystemPrompt());
     }
 }

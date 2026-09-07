@@ -53,11 +53,12 @@ A wake ends that wait. Submit another WAIT to wait again. Waking retains the
 task's prompts and turn allowance; NEXT continues immediately, TERM concludes,
 and FAIL abandons the task. An untimed WAIT with no remaining work concludes.
 
-A child's conclusion reaches its parent automatically as a log `SEND` from
+Each child task's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
 failure preserves its status and Problem. `### READ0 (worker://capital-checker)`
 collects the same result explicitly. While the child is running it returns
 `425`; submitting NEXT then waits for delivery rather than polling.
+A result does not imply that every task in that worker has finished.
 
 **Concluding with live workers.** `### SEND0 (TERM)` is refused (`409`) while you hold a live worker or
 open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
