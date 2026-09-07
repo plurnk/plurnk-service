@@ -69,13 +69,39 @@ RETURNING id;
 SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM workers WHERE id = $id;
 
 -- PREP: worker_generation_policy_update
+-- {§worker-model-selection}: test liveness in the policy write, not before it.
 UPDATE workers
 SET model_route_id = $model_route_id,
     spawn_model_route_id = $spawn_model_route_id,
     reasoning_policy = $reasoning_policy,
     version = version + 1
 WHERE id = $id
+  AND (
+      model_route_id IS NULL
+      OR (model_route_id IS $model_route_id
+       AND spawn_model_route_id IS $spawn_model_route_id
+       AND reasoning_policy IS $reasoning_policy)
+      OR NOT EXISTS (
+          SELECT 1 FROM loops
+          WHERE worker_id = workers.id AND status IN (100, 102, 202)
+      )
+  )
 RETURNING id;
+
+-- PREP: worker_generation_policy_selectable
+-- Avoid provider setup for a disallowed change; the write rechecks after setup.
+SELECT id FROM workers
+WHERE id = $id
+  AND (
+      model_route_id IS NULL
+      OR (model_route_id IS $model_route_id
+       AND spawn_model_route_id IS $spawn_model_route_id
+       AND reasoning_policy IS $reasoning_policy)
+      OR NOT EXISTS (
+          SELECT 1 FROM loops
+          WHERE worker_id = workers.id AND status IN (100, 102, 202)
+      )
+  );
 
 -- PREP: envelope_list_workspace_prompts
 -- {§methods-workspace-prompts}: nonempty model-root loop seeds, newest-first;

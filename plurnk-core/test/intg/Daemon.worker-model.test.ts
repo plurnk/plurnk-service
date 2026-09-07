@@ -4,9 +4,12 @@ import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-prov
 import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
+import WorkerModelResolver from "../../src/server/WorkerModelResolver.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, makeMockResponse, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
 
 const declaredProviderEnv = new Map<string, string | undefined>();
 test.afterEach(() => {
@@ -610,6 +613,103 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         if (second !== undefined) await second.stop();
         await db.close();
     }
+});
+
+for (const selection of ["model", "spawn model", "reasoning", "prompt model", "prompt spawn model"] as const) {
+    test(`{§worker-lifecycle-live}: queued work blocks ${selection} changes until cancellation`, async (t) => {
+        const spec = declaredProvider("queued", "queued-model");
+        const replacement = declaredProvider("replacement", "replacement-model");
+        const mock = new Mock({
+            contextWindow: 16_384,
+            responses: [makeMockResponse("### SEND0 (TERM)\nnew work complete")],
+        });
+        ProviderInstantiate.registerInstance(mock, spec);
+        ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
+        ProviderInstantiate.registerInstance(mock, replacement);
+
+        await withDaemon(null, async (db, daemon) => {
+            const workspace = await daemon.createWorkspace({ name: `queued-${crypto.randomUUID()}`, projectRoot: null });
+            const identity = { workspaceId: workspace.workspaceId, workerId: await daemon.ensureModelWorker(workspace.workspaceId) };
+            await daemon.setWorkerModel({ ...identity, selector: spec.alias });
+            const before = await daemon.readWorkerModel(identity);
+            const select = () => {
+                if (selection === "prompt model") return daemon.runLoop({ ...identity, prompt: "change model", selector: replacement.alias });
+                if (selection === "prompt spawn model") return daemon.runLoop({ ...identity, prompt: "change spawn model", childSelector: replacement.alias });
+                if (selection === "model") return daemon.setWorkerModel({ ...identity, selector: replacement.alias });
+                if (selection === "spawn model") return daemon.setWorkerSpawnModel({ ...identity, selector: replacement.alias });
+                return daemon.setWorkerReasoning({ ...identity, policy: "high" });
+            };
+
+            // Hold the real admitted queue before its consumer starts.
+            const drain = t.mock.method(DrainSupervisor.prototype, "ensureDrain", async () => null);
+            const queued = await daemon.runLoop({ ...identity, prompt: "accepted work" });
+            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 100 });
+            await daemon.setWorkerModel({ ...identity, selector: spec.alias });
+            await daemon.setWorkerSpawnModel({ ...identity, selector: null });
+            await daemon.setWorkerReasoning({ ...identity, policy: "adaptive" });
+            assert.deepEqual(await daemon.readWorkerModel(identity), before, "reasserting the same settings remains legal");
+            await assert.rejects(select(), (error: unknown) => error instanceof OperationFailureError
+                && error.result.status === 409
+                && error.result.problem?.type === "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
+            assert.deepEqual(await daemon.readWorkerModel(identity), before, "a refused selection changes no generation settings");
+            assert.equal(mock.remaining, 1, "queued work needs no provider call to establish liveness");
+
+            await daemon.cancelWorker({ ...identity, reason: "cancel queued task" });
+            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 499 });
+            if (selection === "prompt model") await daemon.setWorkerModel({ ...identity, selector: replacement.alias });
+            else if (selection === "prompt spawn model") await daemon.setWorkerSpawnModel({ ...identity, selector: replacement.alias });
+            else await select();
+            const after = await daemon.readWorkerModel(identity);
+            if (selection === "model" || selection === "prompt model") assert.equal(after.model?.alias, replacement.alias);
+            else if (selection === "spawn model" || selection === "prompt spawn model") assert.equal(after.spawnModel?.alias, replacement.alias);
+            else assert.equal(after.model?.reasoningPolicy, "high");
+
+            drain.mock.restore();
+            const fresh = await daemon.runLoop({ ...identity, prompt: "new independent work" });
+            await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: fresh.loopId }), (row) => row?.status === 200);
+            assert.equal(mock.remaining, 0, "new work runs after cancellation and explicit reselection");
+            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 499 }, "cancelled work is not revived");
+        });
+    });
+}
+
+test("{§worker-model-selection}: work admitted during provider validation prevents a late policy change", async (t) => {
+    const spec = declaredProvider("selection-race", "selection-race-model");
+    const mock = new Mock({ contextWindow: 16_384, responses: [] });
+    ProviderInstantiate.registerInstance(mock, spec);
+    ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
+    await withDaemon(null, async (db, daemon) => {
+        const workspace = await daemon.createWorkspace({ name: `selection-race-${crypto.randomUUID()}`, projectRoot: null });
+        const identity = { workspaceId: workspace.workspaceId, workerId: await daemon.ensureModelWorker(workspace.workspaceId) };
+        await daemon.setWorkerModel({ ...identity, selector: spec.alias });
+        const before = await daemon.readWorkerModel(identity);
+        const validating = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const validate = WorkerModelResolver.prototype.supportedPolicies;
+        t.mock.method(WorkerModelResolver.prototype, "supportedPolicies", async function (
+            this: WorkerModelResolver,
+            policy: Parameters<WorkerModelResolver["supportedPolicies"]>[0],
+        ) {
+            if (policy.reasoning_policy === "high") {
+                validating.resolve();
+                await release.promise;
+            }
+            return validate.call(this, policy);
+        });
+        t.mock.method(DrainSupervisor.prototype, "ensureDrain", async () => null);
+        const refused = assert.rejects(daemon.setWorkerReasoning({ ...identity, policy: "high" }),
+            (error: unknown) => error instanceof OperationFailureError
+                && error.result.status === 409
+                && error.result.problem?.type === "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
+        await validating.promise;
+        try {
+            const queued = await daemon.runLoop({ ...identity, prompt: "admitted during selection" });
+            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 100 });
+        } finally { release.resolve(); }
+        await refused;
+        assert.deepEqual(await daemon.readWorkerModel(identity), before, "the atomic write leaves the admitted policy intact");
+        await daemon.cancelWorker(identity);
+    });
 });
 
 test("{§worker-model-selection}: a selection while the worker holds a parked loop is a precise 409", async () => {

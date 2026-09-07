@@ -143,16 +143,18 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
                 // A repeated client call naming a DIFFERENT provider must not mutate a
                 // parked loop. Mid-loop hot-swap is not an implicit side effect of prompt
                 // injection; the caller must conclude/cancel and open a new loop.
+                const before = await db.test_workers_with_model.all({});
                 const conflict = await rpcCall(ws, 3, "loop.run", {
                     prompt: "silently change this parked loop to the boot model",
                     selector: "mocktest",
                     policy: { proposals: "accept" },
                 });
                 const problem = rpcProblem(conflict);
-                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/provider/loop-provider-conflict");
+                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
                 assert.equal(problem.selectedAlias, "wakeb");
                 assert.equal(problem.requestedAlias, "mocktest");
-                assert.match(problem.recovery ?? "", /Cancel or conclude/);
+                assert.match(problem.recovery ?? "", /Conclude or cancel/);
+                assert.deepEqual(await db.test_workers_with_model.all({}), before, "a rejected prompt selector cannot rewrite worker settings");
 
                 await writeFile(releasePath, "");
                 await waitFor(

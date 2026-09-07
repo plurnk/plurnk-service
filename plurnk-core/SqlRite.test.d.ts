@@ -223,6 +223,7 @@ export class SqlRiteSync {
 	worker_settings_update: SqlRiteSyncPreparedStatements;
 	worker_generation_policy_read: SqlRiteSyncPreparedStatements;
 	worker_generation_policy_update: SqlRiteSyncPreparedStatements;
+	worker_generation_policy_selectable: SqlRiteSyncPreparedStatements;
 	envelope_list_workspace_prompts: SqlRiteSyncPreparedStatements;
 	envelope_insert_client_loop: SqlRiteSyncPreparedStatements;
 	envelope_close_client_loop: SqlRiteSyncPreparedStatements;
@@ -744,6 +745,7 @@ export default class SqlRite {
 	worker_settings_update: SqlRitePreparedStatements;
 	worker_generation_policy_read: SqlRitePreparedStatements;
 	worker_generation_policy_update: SqlRitePreparedStatements;
+	worker_generation_policy_selectable: SqlRitePreparedStatements;
 	envelope_list_workspace_prompts: SqlRitePreparedStatements;
 	envelope_insert_client_loop: SqlRitePreparedStatements;
 	envelope_close_client_loop: SqlRitePreparedStatements;

@@ -22,6 +22,51 @@ export default class WorkerModelResolver {
         this.#provider = provider;
     }
 
+    async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly ReasoningPolicy[]> {
+        const params = { id: workerId, ...policy };
+        if (await this.#db.worker_generation_policy_selectable.get(params) === undefined) {
+            return this.#refuseGenerationChange(workerId, policy);
+        }
+        const supportedPolicies = await this.supportedPolicies(policy);
+        if (await this.#db.worker_generation_policy_update.get(params) === undefined) {
+            return this.#refuseGenerationChange(workerId, policy);
+        }
+        return supportedPolicies;
+    }
+
+    async supportedPolicies(policy: WorkerGenerationPolicyRow): Promise<readonly ReasoningPolicy[]> {
+        let supportedPolicies: readonly ReasoningPolicy[] | undefined;
+        for (const routeId of [policy.model_route_id, policy.spawn_model_route_id]) {
+            if (routeId === null) continue;
+            const spec = await specForRoute(this.#db, routeId);
+            if (spec === null) throw new Error(`model route ${routeId} is missing`);
+            const provider = await this.providerForPolicy(spec, policy.reasoning_policy ?? undefined);
+            supportedPolicies = supportedPolicies === undefined
+                ? provider.supportedReasoningPolicies
+                : supportedPolicies.filter((candidate) => provider.supportedReasoningPolicies.includes(candidate));
+        }
+        return supportedPolicies ?? [];
+    }
+
+    async #refuseGenerationChange(workerId: number, requested: WorkerGenerationPolicyRow): Promise<never> {
+        const selected = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
+        if (selected === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
+        const selectedModel = await specForRoute(this.#db, selected.model_route_id);
+        const requestedModel = await specForRoute(this.#db, requested.model_route_id);
+        throw daemonFailure(
+            "daemon:worker", "worker-loop-active", 409,
+            `Worker ${workerId} has unfinished tasks; its model and reasoning settings cannot change yet.`,
+            {
+                workerId,
+                ...(selectedModel?.alias === undefined ? {} : { selectedAlias: selectedModel.alias }),
+                ...(requestedModel?.alias === undefined ? {} : { requestedAlias: requestedModel.alias }),
+                stage: "model-selection",
+                recovery: "Conclude or cancel its unfinished tasks before changing these settings.",
+                retryable: false,
+            },
+        );
+    }
+
     // {§worker-model-selection} — a model worker owns one durable model. An explicit
     // selector persists onto the worker; an omitted selector resolves the worker's
     // durable model, seeded once from the daemon default. A deliberately modelless
@@ -33,20 +78,11 @@ export default class WorkerModelResolver {
         const worker = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         if (selector !== undefined) {
-            const spec = await this.#resolveLoopProvider(
-                selector,
-                worker.reasoning_policy ?? undefined,
-            );
+            const spec = this.#resolveLoopProvider(selector);
             if (spec === null) return null;
             const reasoningPolicy = worker.reasoning_policy
                 ?? ProviderInstantiate.configuredReasoningPolicy(spec);
-            if (worker.spawn_model_route_id !== null) {
-                const spawnSpec = await specForRoute(this.#db, worker.spawn_model_route_id);
-                if (spawnSpec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
-                await this.providerForPolicy(spawnSpec, reasoningPolicy);
-            }
-            await this.#db.worker_generation_policy_update.run({
-                id: workerId,
+            await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
                 reasoning_policy: reasoningPolicy });
@@ -65,14 +101,7 @@ export default class WorkerModelResolver {
         const spec = resolveActiveRoute();
         if (spec !== null) {
             const reasoningPolicy = ProviderInstantiate.configuredReasoningPolicy(spec);
-            await this.providerForPolicy(spec, reasoningPolicy);
-            if (worker.spawn_model_route_id !== null) {
-                const spawnSpec = await specForRoute(this.#db, worker.spawn_model_route_id);
-                if (spawnSpec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
-                await this.providerForPolicy(spawnSpec, reasoningPolicy);
-            }
-            await this.#db.worker_generation_policy_update.run({
-                id: workerId,
+            await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
                 reasoning_policy: reasoningPolicy });
@@ -92,12 +121,8 @@ export default class WorkerModelResolver {
         if (childSelector !== undefined) {
             const spec = childSelector === null
                 ? null
-                : await this.#resolveLoopProvider(
-                    childSelector,
-                    worker.reasoning_policy ?? undefined,
-                );
-            await this.#db.worker_generation_policy_update.run({
-                id: workerId,
+                : this.#resolveLoopProvider(childSelector);
+            await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
                 reasoning_policy: worker.reasoning_policy });
@@ -113,13 +138,9 @@ export default class WorkerModelResolver {
         }
         const configured = process.env.PLURNK_MODEL_CHILD;
         if (configured === undefined || configured.length === 0) return null;
-        const spec = await this.#resolveLoopProvider(
-            configured,
-            worker.reasoning_policy ?? undefined,
-        );
+        const spec = this.#resolveLoopProvider(configured);
         if (spec !== null) {
-            await this.#db.worker_generation_policy_update.run({
-                id: workerId,
+            await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: await routeForSpec(this.#db, spec),
                 reasoning_policy: worker.reasoning_policy });
@@ -183,13 +204,8 @@ export default class WorkerModelResolver {
     }
 
 
-    // {§methods-loop-run-model} — resolve one alias-or-route selector to a cached
-    // Provider; absent uses the boot default. An unknown alias or malformed exact
-    // route throws legibly rather than silently running the wrong model.
-    async #resolveLoopProvider(
-        selector: string | undefined,
-        reasoningPolicy?: ReasoningPolicy,
-    ): Promise<ProviderSpec | null> {
+    // {§methods-loop-run-model}: resolve identity without provider setup.
+    #resolveLoopProvider(selector: string | undefined): ProviderSpec | null {
         const requested = resolveLoopRoute(selector, parseAliasesFromEnv());
         if (requested === null && this.#provider === null) return null;
         const spec = requested ?? resolveActiveRoute();
@@ -202,7 +218,6 @@ export default class WorkerModelResolver {
                 { stage: "provider-selection", retryable: false },
             );
         }
-        await this.providerForPolicy(spec, reasoningPolicy);
         return spec;
     }
 
