@@ -879,13 +879,13 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
     } finally { await db.close(); }
 });
 
-test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; every named authority refuses model writes (403)", async () => {
+for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "parent" : "unrelated worker"} reads a named entry without gaining write access`, async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
         const workspaceId = await insertWorkspace(db, `worker-store-${crypto.randomUUID()}`);
         const meId = await insertWorker(db, workspaceId, null, "me");
-        const childId = await insertWorker(db, workspaceId, meId, "child"); // me's child: me may read down into it
+        const childId = await insertWorker(db, workspaceId, related ? meId : null, "author");
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
@@ -898,12 +898,12 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
         const stored = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", authority: "", pathname: "/note.md" });
         if (stored === undefined) throw new Error("entry must be keyed (owner=child, /note.md) — the owner is the column, never the pathname");
 
-        // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down).
-        const readCross = await engine.dispatch({ statement: readOf(workerEntry("child", "note.md")), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
-        assert.equal(readCross.status, 200, "an ancestor's named READ reaches the child's space");
+        const readCross = await engine.dispatch({ statement: readOf(workerEntry("author", "note.md")), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.equal(readCross.status, 200, "a named READ reaches another worker's entry without ancestry");
+        assert.equal(readCross.content, "scratch");
 
-        // {§worker-write-scoping} — the ancestor still can't WRITE into it: named spaces are read-only.
-        const writeCross = await engine.dispatch({ statement: editStmt(workerEntry("child", "note.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
+        // {§worker-write-scoping} applies independently to the destination.
+        const writeCross = await engine.dispatch({ statement: editStmt(workerEntry("author", "note.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(writeCross.status, 403, "a named space takes no model writes — write to the commons or your own ~");
     } finally { await db.close(); }
 });

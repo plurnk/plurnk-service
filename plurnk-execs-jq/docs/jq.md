@@ -9,12 +9,12 @@ The system `jq` as a runtime: the **body is the jq program**, the **`(target)` i
 ### EXEC0 [jq] (data.json)
 .users[].name
 
-### EXEC0 [jq] (search:///1/2/3#results)
-.[] | .title
+### EXEC0 [jq] (sqlite:///1/2/3/EXEC#results)
+.[] | .name
 ```
 
 The first form has no input and uses `-n`. The second filters a file. The third
-filters the result stream at the emitted search address.
+filters the result stream at the emitted SQLite address.
 
 An empty body defaults to `.` (identity). Results land on `#results` as
 `application/jsonl`—one compact value per line—under the emitted `jq://`
@@ -24,7 +24,7 @@ address.
 
 - **No stdin.** The op grammar has no pipe; `jq`'s read-stdin default maps to `-n` (null input) when no target is given, so an inline program constructs its own input. A file target matches `jq program file` exactly.
 - **Compact output is forced (`-c`).** `jq`'s pretty-print default would break the channel's JSONL contract; presentation belongs to the consumer's mimetype pipeline, not the filter.
-- **No flag surface.** The body is the program only — `--arg`, `-r`, `-s` and friends are not passable. What flags do is expressible in-language (`-r` → the value is unquoted when READ as text; `--arg` → bind in the program; `-s` → `[inputs]` has no stdin to slurp, pass a file). One surface, no argv parsing.
+- **No flag surface.** The body is a jq program, not CLI arguments; options such as `--arg`, `-r`, and `-s` are not accepted here.
 
 `jq` reads the ambient environment (`env`, `$ENV`) per its own contract — the consumer's scoped env is honored when provided.
 

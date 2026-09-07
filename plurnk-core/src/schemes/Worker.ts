@@ -115,7 +115,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         if (authority === null) return null;
         const pathname = Worker.#entryPath(target);
         // The authority-only form addresses the Worker actor, not its private
-        // entries. Bind its principal without applying entry-read ancestry;
+        // entries. Bind its principal without resolving an entry;
         // each control operation owns its own visibility and authorization.
         if (pathname === "") {
             if (authority === "") {
@@ -432,7 +432,7 @@ export default class Worker extends CoreSchemeAdapterBase {
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     // FIND draws from the resolved principal's space alone: worker:///** the commons,
-    // worker://~/** your own, worker://<name>/** a named space (ancestry-gated like READ).
+    // worker://~/** your own, worker://<name>/** a named space (workspace-readable like READ).
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);

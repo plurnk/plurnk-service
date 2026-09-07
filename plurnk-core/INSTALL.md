@@ -58,6 +58,7 @@ the owning declaration specifies its meaning.
 | Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
 | MCPs, skills, agents | Worker Functionality: list, discover, add, enable, disable, remove. Children inherit their parent's effective selection. |
 | External capabilities | Service policy is a ceiling; workspace, Worker, and loop layers can narrow it. Hiding a doc does not grant or revoke authority. |
+| Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
 | File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
 | User-facing behavior | Operating policy; use configuration for runtime controls. |
 
@@ -67,6 +68,11 @@ The defaults catalog groups the remaining settings by their owning subsystem:
 permissions, loop limits, residency, execution, context, indexing, MCP, A2A,
 hooks, HTTP, and content handling. Search the catalog for that subsystem instead
 of relying on a second list of knobs here.
+
+For file-access questions, inspect the generated
+[members reference](worker://~/_plurnk/plurnk/members.md) alongside the file
+creation/membership defaults. Client controls inspect effective capabilities;
+a model cannot widen their ceiling by changing its policy prose.
 
 ## Skills
 

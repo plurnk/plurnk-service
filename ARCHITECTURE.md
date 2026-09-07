@@ -34,6 +34,7 @@ flowchart LR
     contracts["plurnk-contracts<br/>language + shared wire"] --> core
     packet["plurnk-plurnkdown<br/>packet projection"] --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
+    skills["plurnk-agent-skills<br/>standard skill resource trees"] --> core
     providers["Provider family"] --> core
     capabilities["Scheme / executor / mimetype families"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
@@ -57,6 +58,7 @@ document does not restate their teaching.
 | Optional GBNF sentence validator                          | `@plurnk/gbnf`                                               | [`gbnf/SPEC.md`](./gbnf/SPEC.md)                                                                               |
 | Model-packet Markdown projection                          | `@plurnk/plurnk-plurnkdown`                                  | [`plurnk-plurnkdown/SPEC.md`](./plurnk-plurnkdown/SPEC.md)                                                     |
 | Discovery, trust predicate, teaching bytes                | `@plurnk/plurnk-meta`                                        | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md)                                                                 |
+| Agent Skills documents and resource trees                 | `@plurnk/plurnk-agent-skills`                                | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md)                                               |
 | Provider adaptation and model selection                   | `@plurnk/plurnk-providers`, aliases, model-data package      | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md) |
 | Addressable capability framework                          | `@plurnk/plurnk-schemes` and installed scheme packages       | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md)                                                           |
 | Executable capability framework                           | `@plurnk/plurnk-execs` and installed executor packages       | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |

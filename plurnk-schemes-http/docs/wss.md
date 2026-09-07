@@ -5,19 +5,19 @@
 Maintain persistent, bidirectional WebSocket connections as addressable entries.
 
 Use WebSocket for a persistent, bidirectional connection. `wss` is a
-stateful scheme, not an HTTP content type: READ claims a workspace address and
+stateful scheme, not an HTTP content type: READ claims a worker-owned address and
 owns its socket until terminal settlement, while EDIT, SEND, and KILL address
 that owner.
 
 | Operation                                      | Effect                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `### READ0 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
-| A second READ of the same address              | Return `409` until the existing owner's terminal cleanup releases the claim             |
+| A second READ of the same address              | Read the retained representation; reuse the existing owner without reconnecting         |
 | `### EDIT0 (wss://host/path)` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
 | `### SEND0 (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
 | `### KILL0 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
 
-| Owner state  | Meaning                                              | EDIT or SEND with signal `200`                   |
+| Owner state  | Meaning                                              | EDIT or directed SEND                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |
 | `claimed`    | Address reserved while entry/subscription setup runs | `409`; no second ownership path is created       |
 | `connecting` | Native socket exists but has not emitted `open`      | `409`; wait for the active stream event          |
@@ -31,13 +31,20 @@ or KILL the live owner. A close before acquisition is a direct `502` connection
 failure. After acquisition, close, cancellation, and failure settle the retained
 subscription without rewriting the initial READ.
 
-EDIT and SEND share the same outbound-frame behavior. Operation phase order is
-the only scheduling distinction: SEND can follow READ in one turn, while EDIT
-runs before READ and therefore requires a connection opened by an earlier turn.
+EDIT and directed SEND share the same outbound-frame behavior. Both can follow
+the opening READ in one turn: operations execute in authored order. Only the
+turn's disposition SEND is deferred until the other operations have run.
+
+```example
+### READ0 (wss://api.example.com/feed)
+### EDIT0 (wss://api.example.com/feed)
+{"type":"subscribe","channel":"updates"}
+```
 
 Connection identity includes the owning worker, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket
-identity; `messages` is the only current channel.
+identity; `messages` is the only current channel. An unavailable channel returns
+`404 channel-not-found`, listing available channels without replacing the socket.
 
 | Current transport boundary | Behavior                                                                |
 | -------------------------- | ----------------------------------------------------------------------- |

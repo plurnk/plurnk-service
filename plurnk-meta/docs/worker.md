@@ -4,27 +4,32 @@
 
 Coordinate workers and manage shared or private workspace entries.
 
-Workers inhabit one workspace. `worker://<name>` addresses a named worker; `worker://~` is the
-current-worker control sigil; `worker://~/path` addresses your private entries; `worker:///path`
-addresses the shared commons.
-`### WORK0 (worker://<name>)` with a task body spawns a fresh worker with an empty log.
-`### FORK0 (worker://<name>)` branches your current history. `### SEND0 (worker://<name>)`
-with a message body wakes and messages a worker; `### KILL0 (worker://<name>)` ends one.
-Workers share project files and the commons, while private entries
-and conversation logs remain owner-scoped. A worker is born from WORK/FORK, never EDIT —
-`### EDIT0 (worker://<name>)` on the bare worker is rejected.
+Workers inhabit one workspace. The authority selects a worker; a path selects
+an entry rather than controlling that worker.
 
-**The path is the discriminator.** `worker://<name>` with no path addresses a literal worker name
-for WORK, FORK, SEND, READ, or KILL; `worker://~` addresses the caller for SEND or KILL.
-The control form is exact: a trailing slash, userinfo, port, query, fragment, or `{metadata}` modifier
-is invalid rather than ignored.
-`worker://<name>/path` addresses an ancestry-visible named entry; `### EDIT0 (worker://~/todo.md)`
-with a body writes your own private entry.
+| Address | Meaning | Model access |
+| --- | --- | --- |
+| `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
+| `worker://~` | Current worker | SEND or KILL. |
+| `worker://~/notes.md` | Your own entry | Read and write. |
+| `worker://reviewer/notes.md` | Named worker's entry | Any worker in the workspace can READ; named spaces are read-only. |
+| `worker:///notes.md` | Shared commons entry | Read and write. |
 
-**WORK to delegate, FORK to branch.** For fan-out, WORK a distinct-named worker per job. Each gets
-a fresh task. FORK only to carry *your own* context down an alternate path.
+Workers share project files and the commons. Own-space entries have separate
+ownership, not secrecy from other workers in the workspace; conversation logs
+remain owner-scoped. `_plurnk/` entries are generated and read-only even in your
+own space. EDIT creates or changes an entry, never a worker.
 
-**Loop: spawn once → park → collect on wake.** Spawn and park with:
+Control addresses contain only scheme and authority: no trailing slash,
+userinfo, port, query, fragment, or `{metadata}` modifier.
+
+**WORK to delegate, FORK to branch.** WORK starts a fresh log with your task
+prompt; FORK copies your history and own-space entries, then diverges. Both
+share the project filesystem. Give simultaneous jobs distinct names; use SEND
+to give an existing worker a follow-up task.
+
+**Continue or wait.** You can keep doing useful work with `### SEND0 (NEXT)`
+while children run. Use WAIT when you need their results before proceeding:
 
 ```example
 ### WORK0 (worker://capital-checker)
@@ -34,13 +39,14 @@ Find the capital of France from a primary source
 Awaiting capital-checker.
 ```
 
-You wake when the worker concludes: its
-result arrives open in your log as a `SEND` from `worker://capital-checker` — read it and continue.
-Or pull it with `### READ0 (worker://capital-checker)`; it returns the result, or `425` while running. Spawn
-each worker exactly once. Fan-out uses distinct names, followed by one park. Each conclusion wakes
-you with its delta.
+A child's conclusion reaches its parent automatically as a log `SEND` from
+`worker://capital-checker`, waking a waiting parent. Success includes the body;
+failure preserves its status and Problem. `### READ0 (worker://capital-checker)`
+collects the same result explicitly. While the child is running it returns
+`425`; submitting NEXT then waits for delivery rather than polling.
 
 **Concluding with live workers.** `### SEND0 (TERM)` is refused (`409`) while you hold a live worker or
-open stream. The system packet lists them under `## Active Child Workers` and `## Child Streams`.
+open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
 Either `### SEND0 (WAIT)` to await them or `### KILL0 (worker://<name>)` the ones you no longer need.
-A same-turn KILL followed by `### SEND0 (TERM)` concludes cleanly.
+KILL settles before the turn's disposition; other live work or unobserved
+results can still prevent TERM.

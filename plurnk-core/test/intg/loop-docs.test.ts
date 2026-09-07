@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -96,28 +97,34 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
     }
 });
 
-test("{§exec-executor-slot}: materialized jq documentation selects jq for every executable example", async (t) => {
+for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed ${runtime} examples and fenced README programs preserve executor/target ownership`, async (t) => {
     const executors = await testExecutors();
-    if (!executors.availableRuntimes().includes("jq")) return t.skip("jq is not installed");
+    if (!executors.availableRuntimes().includes(runtime)) return t.skip(`${runtime} is not installed`);
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(executors);
-        const workspaceId = await insertWorkspace(db, "jq-doc-invocations");
+        const workspaceId = await insertWorkspace(db, `${runtime}-doc-invocations`);
         const workerId = await insertWorker(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId, workerId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/_plurnk/plurnk/jq.md", scheme: "worker", name: "body",
+            pathname: `/_plurnk/plurnk/${runtime}.md`, scheme: "worker", name: "body",
         });
         assert.ok(doc, "the installed executor's documentation reaches the worker");
-        const examples = [...doc.content.matchAll(/^```example\n([\s\S]*?)\n```/gm)];
-        assert.ok(examples.length > 0, "the document has executable examples");
+        const readme = await readFile(new URL("README.md", import.meta.resolve(`@plurnk/plurnk-execs-${runtime}/package.json`)), "utf8");
+        const examples = [doc.content, readme].flatMap((content) => [...content.matchAll(/^```example\n([\s\S]*?)\n```/gm)]);
+        assert.ok(examples.length > 0, `${runtime} has executable examples`);
         const execs = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN0\n[]\n${source}\n### SEND0 (NEXT)\nReview the results.`))
             .filter((statement) => statement.op === "EXEC");
         assert.ok(execs.length > 0);
-        assert.ok(execs.every(({ executor }) => executor === "jq"), "jq is the executor, never the input target");
-        assert.ok(execs.some(({ target }) => target === null), "construction without input remains demonstrated");
-        assert.ok(execs.some(({ target }) => target?.raw === "data.json"), "file input remains demonstrated");
+        assert.ok(execs.every(({ executor }) => executor === runtime), `${runtime} is the executor, never the input target`);
+        assert.ok(execs.some(({ target }) => target === null), `${runtime} demonstrates the no-target form`);
+        assert.ok(execs.some(({ target }) => target?.kind === "local"), `${runtime} demonstrates a data file target`);
+        const runtimeSources = execs.flatMap(({ target }) => target?.kind === "url" && executors.availableRuntimes().includes(target.scheme) ? [target] : []);
+        if (runtime === "jq") assert.ok(runtimeSources.length > 0, "jq demonstrates filtering another runtime's output");
+        for (const target of runtimeSources) {
+            assert.match(target.pathname, /^\/\d+\/\d+\/\d+\/EXEC$/, `${runtime} uses a complete executor stream address`);
+        }
     } finally { await db.close(); }
 });
 

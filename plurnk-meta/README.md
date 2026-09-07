@@ -12,9 +12,7 @@ The plurnk metaproject layer, published — what the family shares that no singl
 - `Meta.packageDirs(nodeModulesDir)` — scope-agnostic, symlink-aware enumeration across Node's ancestor resolution chain as `{ dir, name }` candidates; the nearest package name wins. Ordering and filtering are the caller's policy.
 - `Meta.nearestNodeModules(fromDir)` — walk up to the nearest `node_modules` holding the ecosystem (witness: `@plurnk` scope); `null` when absent.
 
-**The teaching corpus**: authored policy, a compact Recap, and built-in scheme sources resolved from this installed package. Meta owns the source bytes and membership; core owns admission and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
-
-**Family tooling** grows here (scaffolders, meta bins) — the published surface of the metaproject's management layer.
+**The teaching corpus**: authored policy, an optional Recap, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
 [`DOGFOOD.md`](./DOGFOOD.md) defines the whole-product, outside-client acceptance gate for daily-driver and release readiness.
 

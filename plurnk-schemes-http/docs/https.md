@@ -95,6 +95,8 @@ Scope never suppresses acquisition or refresh. The HTTP producer cannot see the
 fragment or text coordinates; after preparation, the fragment (or `body` by
 default) selects a durable channel and core applies the range. Cold and warm
 forms therefore have identical selection and scope semantics.
+An unavailable channel returns `404 channel-not-found` with the available
+channels; it does not mean that the containing URL is missing.
 
 Request headers are ordered `{Key: value}` metadata blocks after the complete
 target, one header per block:

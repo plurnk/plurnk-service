@@ -47,7 +47,14 @@ and request flow.
 - Git
 - a configured local or remote model endpoint for live runs
 
-## Recommended web setup
+## Configuration
+
+See the [configuration guide](./plurnk-core/INSTALL.md) for installation,
+environment precedence, and Worker settings. `plurnk-service config defaults`
+prints every installed package's authoritative settings. The enabled `plurnk`
+skill exposes the same guide and catalog to the model on demand.
+
+## Web retrieval
 
 PLURNK owns no web search runtime. Discovery is an ordinary MCP concern: attach
 any search-capable MCP server (Brave Search's official
@@ -111,11 +118,11 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for hooks, test tiers, and maintenance.
 
 This repository is an npm workspace monorepo. Each workspace publishes under
 its own package contract; the root owns orchestration, one lockfile, and the
-cross-package gates. The complete package-to-SPEC map lives in
+cross-package gates. The package-ownership map lives in
 [ARCHITECTURE.md](./ARCHITECTURE.md#package-ownership).
 
-[`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the freshly
-reviewed model-facing canon. Its owning
+[`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
+model-facing canon. Its owning
 [`SPEC.md`](./plurnk-contracts/SPEC.md) distinguishes that narrow teaching from
 the tolerant parser and runtime-neutral wire contracts.
 
