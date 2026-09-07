@@ -346,12 +346,13 @@ export default class AstBuilder {
 
     static #buildBare(ctx: BareStatementContext): BareStatement {
         const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "BARE",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_BARE().getText(), "BARE"),
             annotation: AstBuilder.#annotationOf(ctx),
-            target: null,
-            metadata: null,
+            target: slots.target,
+            metadata: slots.metadata,
             lineMarker: null,
             body: AstBuilder.#requiredBodyTextOf(ctx),
             position,

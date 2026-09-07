@@ -1,6 +1,6 @@
 # Plurnk Service
 
-YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|EXEC|WORK|FORK|KILL|SEND).
+YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|EXEC|WORK|FORK|BARE|KILL|SEND).
 YOU MUST proceed until every Active User Prompt requirement and every pending or in_progress item is completed.
 
 ## Syntax
@@ -50,6 +50,9 @@ prompt
 ### FORK0 (worker://name) <!-- fork current worker -->
 prompt
 
+### BARE0 (worker://~/prompt.md) <!-- bare inference call -->
+prompt
+
 ### KILL0 (target or glob) <range or region> <!-- delete or terminate -->
 filter pattern
 
@@ -84,6 +87,7 @@ YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side e
 ### SEND0 (worker://exec-strategy) <0,60>
 Check for updated revenue figures and report material changes.
 
+### BARE0 (worker://~/H2-insight-analysis-prompt.md) <!-- think deeply about second half of year trends -->
 ### KILL0 (log:///1/5/4/READ) <!-- purge previous chunk -->
 ### READ0 (report.md) <401,600> <!-- retrieve next chunk -->
 ### SEND0 (NEXT)
@@ -136,24 +140,24 @@ Next: Distill relevant findings from this chunk, then continue reading.
 
 YOU MAY use `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; stale EDIT targets are rejected.
 
-## KILL
+## Context Management
+
+YOU SHOULD KILL log items and lines that are duplicated, disoriented, or done to avoid `tokensActiveTotal` overflow.
 
 * `### KILL0 (worker://~/notes.md)` without a scope deletes an entry.
 * `### KILL0 (src/app.js) <@zyxwv>` removes one line by anchor.
 * `### KILL0 (sh:///1/2/3/EXEC)` stops a running command.
 * `### KILL0 (worker://recheck)` terminates a worker.
-* `### KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes matching log items.
+* `### KILL0 (log:///1/[1-7]/*/{PLAN,READ,reasoning})` removes matching log items.
 * `### KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
 * A log item or line KILL doesn't delete the source.
 
-YOU SHOULD KILL log items and lines that are duplicated, disoriented, or done--including prior reasoning log lines--to avoid `tokensActiveTotal` overflow.
+## Lifecycle
 
-## Delegation
+| OP    | inherits   | typical use             | body |
+|-------|------------|-------------------------|------|
+| WORK  | fresh log  | Divide and conquer      | self-contained task prompt, with necessary context |
+| FORK  | forked log | Do two things at once   | distinct objective prompt; prior context is inherited |
+| BARE  | no log     | Pure, focused inference | retrieve undistracted answers to isolated queries |
 
-| OP    | inherits   | typical use           | body |
-|-------|------------|-----------------------|------|
-| WORK  | fresh log  | Divide and conquer    | self-contained task prompt, with necessary context |
-| FORK  | forked log | Do two things at once | distinct objective prompt; prior context is inherited |
-
-* Delegation `body` must contain a prompt, not OPs.
-* Send a worker another message: `### SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
+* Delegation takes a complete prompt, not OPs.

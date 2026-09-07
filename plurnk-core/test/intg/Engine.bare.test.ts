@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { Mock, ProviderError, chatMessageText, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { ChatMessage, InputModality, Provider, ProviderRequestAccounting, ProviderResponse } from "@plurnk/plurnk-providers";
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCapacity } from "./_helpers.ts";
@@ -165,14 +166,183 @@ class CancellingBareWitness implements Provider {
     }
 }
 
-const setup = async () => {
+const setup = async (schemes = new SchemeRegistry()) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `bare-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "ask isolated questions");
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const engine = new Engine({ db, schemes });
     return { db, workspaceId, workerId, loopId, engine };
 };
+
+test("{§bare-inference}: resource prompts bypass line and size preview caps after preceding edits, with an optional inline tail", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const prompt = [...Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}`), `Long finding: ${"α".repeat(8_000)} end`].join("\n");
+        const child = new BareWitness(2);
+        const result = await engine.runTurn({
+            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                `### EDIT0 (worker://~/prompt.md)\n${prompt}`,
+                "### BARE0 (worker://~/prompt.md)",
+                "### BARE0 (worker://~/prompt.md)\nCompare these findings.",
+                "### SEND0 (NEXT)",
+            ].join("\n"))] }),
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(child.calls.map(({ messages }) => messages), [
+            [{ role: "user", content: prompt }],
+            [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
+        ]);
+        assert.equal(child.maxActive, 2);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "EDIT", "BARE", "BARE", "SEND"], "source reads do not mint extra log receipts");
+    } finally { await db.close(); }
+});
+
+test("{§bare-inference}: missing resources preserve the source error without calling the provider or discarding a successful sibling", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const child = new BareWitness(1);
+        const result = await engine.runTurn({
+            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "### BARE0 (worker://~/missing.md)\nDo not infer from this tail alone.",
+                "### BARE0\nsurvivor",
+                "### SEND0 (NEXT)",
+            ].join("\n"))] }),
+        });
+        assert.deepEqual(child.completions, ["survivor"]);
+        const rows = (await db.test_log_entries_by_turn.all<{ op: string; rx: string; model_call_id: number | null }>({ turn_id: result.turnId })).filter(({ op }) => op === "BARE");
+        assert.equal(rows.length, 2);
+        const failure = JSON.parse(rows[0]!.rx);
+        assert.equal(failure.status, 404);
+        assert.match(failure.problem.type, /\/entry-not-found$/);
+        assert.equal(rows[0]!.model_call_id, null);
+        assert.notEqual(rows[1]!.model_call_id, null);
+        const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
+        assert.equal(calls.filter(({ kind }) => kind === "bare").length, 1);
+    } finally { await db.close(); }
+});
+
+test("{§bare-inference}: cancellation during source preparation leaves no unstarted inference calls open", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancel prompt acquisition");
+    const schemes = new SchemeRegistry();
+    schemes.register("interrupted-prompt", {
+        manifest: {
+            name: "interrupted-prompt", channels: { body: "text/plain" }, defaultChannel: "body",
+            category: "data", entryOwner: "commons", inherit: "none", writableBy: ["model"],
+            volatile: false, modelVisible: true,
+        },
+        async prepareRepresentation() {
+            controller.abort(cancellation);
+            throw cancellation;
+        },
+    } satisfies SchemeHandler);
+    const { db, workspaceId, workerId, loopId, engine } = await setup(schemes);
+    try {
+        const child = new BareWitness(2);
+        await assert.rejects(engine.runTurn({
+            workspaceId, workerId, loopId, messages: [], childProvider: child, signal: controller.signal,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "### BARE0\nfirst prompt",
+                "### BARE0 (interrupted-prompt:///question.md)",
+                "### BARE0\nlast prompt",
+                "### SEND0 (NEXT)",
+            ].join("\n"))] }),
+        }), (error: unknown) => error === cancellation);
+        assert.equal(child.calls.length, 0);
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
+        assert.ok(turn);
+        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: turn.id });
+        assert.deepEqual(calls.filter(({ kind }) => kind === "bare"), [], "unstarted inference must not remain active after cancellation");
+    } finally {
+        await schemes.close();
+        await db.close();
+    }
+});
+
+for (const [denied, target] of [
+    [{ operation: "BARE" }, ""],
+    [{ operation: "BARE" }, " (worker://~/prompt.md)"],
+    [{ scheme: "worker", access: "observe" }, " (worker://~/prompt.md)"],
+] as const) {
+    test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
+        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        try {
+            await db.engine_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ capabilities: { deny: [denied] }, proposals: "review" }) });
+            const child = new BareWitness(1);
+            const result = await engine.runTurn({
+                workspaceId, workerId, loopId, messages: [], childProvider: child,
+                provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                    "### EDIT0 (worker://~/prompt.md)\nsecret prompt",
+                    `### BARE0${target}\ninline prompt`,
+                    "### SEND0 (NEXT)",
+                ].join("\n"))] }),
+            });
+            assert.equal(child.calls.length, 0);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
+            const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
+            assert.equal(calls.filter(({ kind }) => kind === "bare").length, 0);
+        } finally { await db.close(); }
+    });
+}
+
+test("{§bare-inference}: a log prompt uses only retained source lines", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const first = await engine.runTurn({
+            workspaceId, workerId, loopId, messages: [],
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "### EDIT0 (worker://~/source.md)\nfirst\nsuperseded\nlast",
+                "### READ0 (worker://~/source.md) <1,-1>",
+                "### SEND0 (NEXT)",
+            ].join("\n"))] }),
+        });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number }>({ turn_id: first.turnId });
+        const source = rows.find(({ op }) => op === "READ");
+        assert.ok(source);
+        const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
+        assert.ok(turn);
+        const address = `log:///1/${turn.sequence}/${source.sequence}/READ`;
+        const child = new BareWitness(1);
+        const second = await engine.runTurn({
+            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                `### KILL0 (${address}) <2>`,
+                `### BARE0 (${address})`,
+                "### SEND0 (NEXT)",
+            ].join("\n"))] }),
+        });
+        assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
+        assert.deepEqual(child.calls.map(({ messages }) => messages), [[{ role: "user", content: "first\nlast" }]]);
+    } finally { await db.close(); }
+});
+
+for (const [target, status, problem] of [
+    ["worker://~/prompt.md#missing", 404, "channel-not-found"],
+    ["unregistered://prompt", 501, "scheme-not-found"],
+    [null, 422, "bare-prompt-empty"],
+] as const) {
+    test(`{§bare-inference}: ${target ?? "empty input"} produces ${problem} without inference`, async () => {
+        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        try {
+            const child = new BareWitness(1);
+            const result = await engine.runTurn({
+                workspaceId, workerId, loopId, messages: [], childProvider: child,
+                provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                    "### EDIT0 (worker://~/prompt.md)\nsource prompt",
+                    `### BARE0${target === null ? "" : ` (${target})`}`,
+                    "### SEND0 (NEXT)",
+                ].join("\n"))] }),
+            });
+            const [bare] = result.outcomes.filter(({ op }) => op === "BARE");
+            assert.equal(bare?.status, status);
+            assert.ok(bare?.problemType?.endsWith(`/${problem}`));
+            assert.equal(child.calls.length, 0);
+        } finally { await db.close(); }
+    });
+}
 
 test("{§bare-inference}: an intervening operation separates concurrent BARE groups", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
@@ -374,3 +544,36 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
         await db.close();
     }
 });
+
+for (const label of ["NEXT", "WAIT", "TERM"] as const) {
+    test(`{§bare-inference} {§op-execution-order}: BARE after ${label} settles before disposition and remains unseen retrieval`, async () => {
+        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        try {
+            const child = new BareWitness(1);
+            const result = await engine.runTurn({
+                provider: new Mock({
+                    contextWindow: 32_768,
+                    responses: [mainResponse(`### SEND0 (${label})\nObserve the answer.\n### BARE0\nquestion`)],
+                }),
+                childProvider: child,
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [],
+            });
+            assert.equal(result.status, 102, "the result needs a next packet, not a parked or completed loop");
+            assert.deepEqual(child.completions, ["question"]);
+            assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "BARE", "SEND"]);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
+                { op: "BARE", status: 200, problemType: null },
+            ]);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "SEND"), [
+                label === "TERM"
+                    ? { op: "SEND", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }
+                    : { op: "SEND", status: 102, problemType: null },
+            ]);
+        } finally {
+            await db.close();
+        }
+    });
+}

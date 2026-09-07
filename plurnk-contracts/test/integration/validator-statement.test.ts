@@ -86,14 +86,16 @@ test("PlurnkStatement: EXEC with executor and code body", () => {
 });
 
 // {§bare-statement}
-test("PlurnkStatement: BARE requires a prompt", () => {
+test("PlurnkStatement: BARE carries inline or resource prompt input, but no scope", () => {
     const parsed = validateRoundTrip("### BARE0\nWhat is the capital of Germany?");
     assert.equal(parsed!.valid, true, JSON.stringify(parsed!.errors));
 
     const missing = baseFields("BARE");
     assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt" }).valid, true);
-    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", target: { kind: "local", raw: "." } }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", target: { kind: "local", raw: "prompt.md" } }).valid, true);
+    const resource = validateRoundTrip("### BARE0 (worker://~/prompt.md)");
+    assert.equal(resource!.valid, true, JSON.stringify(resource!.errors));
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
 });
 

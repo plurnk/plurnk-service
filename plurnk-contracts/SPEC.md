@@ -450,7 +450,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | COPY | required source and destination              | optional region after each path | empty                          |
 | MOVE | required source and destination              | optional region after each path | empty                          |
 | EXEC | optional `[executor]`, optional program path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
-| BARE | none                                         | none                            | required prompt                |
+| BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | required fresh `worker://name`               | none                            | required prompt                |
 | FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
@@ -543,11 +543,13 @@ four-coordinate region ending after the final code point of `endLine`.
 Producers never emit that form. Other arities and decimal text coordinates are
 runtime 416 failures.
 
-§bare-statement **BARE requests one isolated model inference.** Its required
-body is the complete prompt: no
-target, scope, persistent worker identity, or output-language statement shape
-is represented in the AST. Runtime provider selection, batching, accounting,
-and observation timing belong to the consuming service.
+§bare-statement **BARE requests one isolated model inference.** Its optional
+path names a prompt resource; its body supplies inline prompt text. At least
+one must supply nonempty text at execution. With both, the complete resource
+text precedes the body, separated by two newlines. The target's scheme owns any
+metadata modifier. No scope, persistent worker identity, or output-language
+shape is represented. Provider selection, source admission, batching,
+accounting, and observation timing belong to the consuming service.
 
 §read-find-normalization An authored READ with a nonempty matcher body or a
 target path classified as a glob normalizes during AST construction to one
@@ -1355,11 +1357,6 @@ diagnostics are:
   OP heading instead of returning the generic slot list (after whitespace it is
   already the inline body, {§heading-inline-body}). Slash-led regex and XPath are
   excluded because `/` can be target data.
-- §bare-target-redirect **A `(target)` on BARE.** BARE takes no `(path)`; a model that
-  writes its prompt, or the prompt's address, into a parenthesized slot (`### BARE0
-  (What day is it?)`, `### BARE0 (prompt:///1/1)`) is told that the prompt is the body
-  line beneath the heading, with the heading's own opener, instead of the generic
-  slot list. Two operator sessions on 2026-08-26 produced exactly these shapes.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor

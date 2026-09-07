@@ -544,7 +544,7 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-target: null
+target: (ParsedPath | null)
 lineMarker: null
 body: string
 position: Position

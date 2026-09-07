@@ -174,22 +174,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return COMBINED_ANCHOR_LINE_DIAGNOSTIC;
     }
 
-    // {§bare-target-redirect} A `(` on a BARE heading is the prompt written as a slot; BARE
-    // takes none, so the same receipt names the body line.
-    static #targetSlotMessage(recognizer: Parser, tok: Token | null): string | null {
-        if (tok?.type !== plurnkParser.LPAREN) return null;
-        const stream = recognizer.tokenStream;
-        for (let i = tok.tokenIndex - 1; i >= 0; i -= 1) {
-            const prior = stream.get(i);
-            if (prior.line !== tok.line) return null;
-            if (prior.type === plurnkParser.OPEN_BARE) {
-                const opener = prior.text ?? "### BARE0";
-                return `unexpected \`(\` after BARE - BARE takes no \`(path)\`; the prompt is the body: \`${opener}\` then the prompt on the line below`;
-            }
-        }
-        return null;
-    }
-
     // {§send-label} — a label beside a recipient on one SEND heading: the label ends the turn
     // and names no recipient.
     static #labelRecipientMessage(recognizer: Parser, tok: Token | null): string | null {
@@ -272,11 +256,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             recognizer.notifyErrorListeners(targeted, e.offendingToken, e);
             return;
         }
-        const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, e.offendingToken);
-        if (destination !== null) {
-            recognizer.notifyErrorListeners(destination, e.offendingToken, e);
-            return;
-        }
         const labelled = PlurnkErrorStrategy.#labelRecipientMessage(recognizer, e.offendingToken);
         if (labelled !== null) {
             recognizer.notifyErrorListeners(labelled, e.offendingToken, e);
@@ -327,11 +306,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const targeted = PlurnkErrorStrategy.#targetedMessage(tok);
         if (targeted !== null) {
             recognizer.notifyErrorListeners(targeted, tok, null);
-            return;
-        }
-        const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, tok);
-        if (destination !== null) {
-            recognizer.notifyErrorListeners(destination, tok, null);
             return;
         }
         const labelled = PlurnkErrorStrategy.#labelRecipientMessage(recognizer, tok);

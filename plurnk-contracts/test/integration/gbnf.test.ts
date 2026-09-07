@@ -521,7 +521,8 @@ test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and 
     assert.equal(derives("statement", mid("EXEC", " <60,5> [node] (./)", "npm test")), false);
     assert.equal(derives("statement", mid("EXEC", " [node] (./) <@aZ09b>", "npm test")), false, "EXEC scopes are minutes, never anchors");
     assert.equal(derives("statement", mid("BARE", "", "prompt")), true);
-    assert.equal(derives("statement", mid("BARE", " (worker://child)", "prompt")), false);
+    assert.equal(derives("statement", mid("BARE", " (worker://~/prompt.md)", "prompt")), true);
+    assert.equal(derives("statement", mid("BARE", " (worker://~/prompt.md)")), true);
     assert.equal(derives("statement", mid("BARE", " <1>", "prompt")), false);
     assert.equal(derives("statement", mid("BARE")), false);
     assert.equal(derives("statement", mid("WORK", " (worker://child)", "implement it")), true);

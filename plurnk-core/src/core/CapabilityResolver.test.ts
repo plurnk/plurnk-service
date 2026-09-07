@@ -73,6 +73,10 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         { source: "### SEND0 (TERM)\ndone", expected: [] },
         { source: "### EXEC0\ngit status --short", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: "### BARE0\nWhat is 2 + 2?", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
+        { source: "### BARE0 (worker://~/prompt.md)", expected: [
+            { operation: "BARE", access: "execute", traits: [] },
+            { operation: "BARE", scheme: "worker", access: "observe", traits: [] },
+        ] },
         { source: "### WORK0 (worker://child)\nInvestigate.", expected: [{ operation: "WORK", scheme: "worker", access: "control", traits: [] }] },
         { source: "### FORK0 (worker://child)\nInvestigate.", expected: [{ operation: "FORK", scheme: "worker", access: "control", traits: [] }] },
         { source: "### KILL0 (README.md)", expected: [{ operation: "KILL", scheme: "file", access: "mutate", traits: [] }] },

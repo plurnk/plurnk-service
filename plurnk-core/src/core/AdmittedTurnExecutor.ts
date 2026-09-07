@@ -229,6 +229,9 @@ export default class AdmittedTurnExecutor {
                             }
                             const batch = await this.#bareBatch.runBareBatch({
                                 statements: bareStatements,
+                                preparePrompt: (statement) => this.#dispatcher.prepareBarePrompt({
+                                    statement, workspaceId, workerId, loopId, turnId, origin,
+                                }),
                                 provider: bare.provider,
                                 turnId,
                                 workspaceId,

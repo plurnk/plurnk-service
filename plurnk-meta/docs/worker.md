@@ -2,7 +2,7 @@
 
 ## Summary
 
-Coordinate workers and manage shared or private workspace entries.
+Coordinate workers, request isolated BARE inference, and manage workspace entries.
 
 Workers inhabit one workspace. The authority selects a worker; a path selects
 an entry rather than controlling that worker.
@@ -44,6 +44,24 @@ ticks coalesce without a backlog. Each occurrence uses the original instruction
 and policy with fresh task limits. Success permits the next occurrence; FAIL or
 an engine failure ends the recurrence. KILL cancels current and future tasks.
 Queued future tasks remain live worker obligations, visible with their due times.
+
+## BARE inference
+
+BARE makes one isolated call to the child model, not a persistent worker.
+It receives no parent history or tools. Give it a prompt resource, an inline
+prompt, or both; resource text precedes an inline body with a blank line between.
+
+```example
+### BARE0 (worker://~/question.md)
+### BARE0
+What is the capital of Germany?
+```
+
+The resource supplies its complete current READ text, not a preview. Neither
+prompt form is truncated to fit; provider capacity still applies. A failed
+source read returns its error without making an inference call.
+Consecutive BARE calls run concurrently and settle before the turn continues.
+Their answers are ordinary BARE receipts, visible after `### SEND0 (NEXT)`.
 
 ## Lifecycle
 

@@ -249,7 +249,7 @@ type EngineTurnResult = {
 
 export type BareBatchResult = {
     readonly statement: BareStatement;
-    readonly modelCallId: number;
+    readonly modelCallId: number | null;
     readonly result: DispatchResult;
 };
 

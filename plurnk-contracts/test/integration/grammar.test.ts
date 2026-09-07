@@ -254,19 +254,25 @@ test("COPY and MOVE require exactly two singular path operands", () => {
     assert.equal(readErrors[0]?.error.message, "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading");
 });
 
-test("a `(target)` on BARE names the body as the prompt", () => {
-    const expected = "unexpected `(` after BARE - BARE takes no `(path)`; the prompt is the body: `### BARE0` then the prompt on the line below";
-    for (const slots of [" (What day is it?)", " (prompt:///1/1) <!-- Calculate 1+1 -->"]) {
-        const result = PlurnkParser.parseStatements(section("BARE", slots, "1 + 1 = 2"));
-        assert.equal(result.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"), false, slots);
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.ok(errors.length >= 1, slots);
-        assert.equal(errors[0]?.error.source, "parser", slots);
-        assert.equal(errors[0]?.error.message, expected, slots);
+test("{§bare-statement} BARE accepts a prompt resource, inline input, or both", () => {
+    for (const body of [undefined, "Compare the conclusions."]) {
+        const statement = oneStatement(section("BARE", " (worker://~/prompt.md) <!-- isolated review -->", body));
+        if (statement.op !== "BARE") assert.fail("expected BARE");
+        assert.equal(statement.target?.raw, "worker://~/prompt.md");
+        assert.equal(statement.body, body ?? "");
+        assert.equal(statement.annotation, "isolated review");
+        assert.equal(statement.lineMarker, null);
     }
-    // A fence does not hide a heading ({§delimiter-discipline}); the same receipt reaches it.
-    const fenced = PlurnkParser.parseStatements(sections(section("SEND", " (NEXT)", "```plaintext\n### BARE0 (What day is it?)\n```")));
-    assert.ok(fenced.items.some((item) => item.kind === "error" && item.error.message === expected), "the fenced BARE heading gets the same receipt");
+    const inline = oneStatement(section("BARE", "", "What is the capital of Germany?"));
+    if (inline.op !== "BARE") assert.fail("expected BARE");
+    assert.equal(inline.target, null);
+    const metadata = oneStatement(section("BARE", ' (https://example.test/prompt) {"Accept":"text/plain"}'));
+    if (metadata.op !== "BARE") assert.fail("expected BARE");
+    assert.deepEqual(metadata.metadata, ['"Accept":"text/plain"']);
+
+    // {§delimiter-discipline}: body fences do not hide active-suffix headings.
+    const fenced = PlurnkParser.parseStatements(sections(section("SEND", " (NEXT)", "```plaintext\n### BARE0 (prompt:///1/1)\n```")));
+    assert.ok(fenced.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"));
 });
 
 test("resource-selection admission leaves angle brackets elsewhere in URLs untouched", () => {

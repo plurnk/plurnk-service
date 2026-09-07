@@ -154,7 +154,9 @@ export const buildModel = (): GModel => {
         opt(ref("exec-program")),
         opt(line[0]),
     ], "section-body");
-    requiredBodySection(model, "bare", [lit("### BARE0")]);
+    requiredBodySection(model, "bare-inline", [lit("### BARE0")]);
+    optionalBodySection(model, "bare-resource", [lit("### BARE0"), target[0]], "section-body");
+    model.set("bare", [[ref("bare-inline")], [ref("bare-resource")]]);
     requiredBodySection(model, "work", [lit("### WORK0"), target[0]]);
     requiredBodySection(model, "fork", [lit("### FORK0"), target[0]]);
     // {§kill-scope} — a KILL names its target, may scope lines of a log body or an entry, and

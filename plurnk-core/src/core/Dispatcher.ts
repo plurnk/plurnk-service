@@ -1109,12 +1109,43 @@ export default class Dispatcher {
         return { status: 200 };
     }
 
-    // {§bare-inference} Provider work is prepared concurrently by Engine; the
-    // dispatcher owns only the ordinary operation-result commit and notification.
+    // {§bare-inference} Reuse exact READ projection without its log/presentation layer.
+    async prepareBarePrompt(
+        context: Pick<DispatchContext, "workspaceId" | "workerId" | "functionalityWorkerId" | "loopId" | "turnId" | "origin"> & { statement: BareStatement },
+    ): Promise<{ prompt: string } | { result: DispatchResult }> {
+        const { statement } = context;
+        const ctx = this.#buildSchemeCtx(context);
+        const denial = await this.#checkCapabilities(statement, ctx.workspaceId, ctx.loopId, ctx.functionalityWorkerId);
+        if (denial !== null) return { result: denial };
+        let resource = "";
+        if (statement.target !== null) {
+            const read: ReadStatement = {
+                ...statement,
+                op: "READ",
+                body: null,
+                lineMarker: { marks: [1, -1] },
+            };
+            const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
+            if (result.status !== 200 && result.status !== 204) return { result };
+            if (typeof result.content === "string") resource = result.content;
+            else if (result.content !== null) {
+                throw new InvalidOperationResultError("BARE source READ returned non-text content.");
+            }
+        }
+        const prompt = [resource, statement.body].filter((part) => part !== "").join("\n\n");
+        if (prompt.trim() === "") {
+            return { result: Dispatcher.#failure(
+                "bare-prompt-empty", 422, "BARE has no prompt text.", {}, { retryable: false },
+            ) };
+        }
+        return { prompt };
+    }
+
+    // {§bare-inference} Provider work runs concurrently; receipts commit in authored order.
     async recordBareResult(
         context: Omit<DispatchContext, "statement"> & { statement: BareStatement },
         result: DispatchResult,
-        modelCallId: number,
+        modelCallId: number | null,
     ): Promise<DispatchResult> {
         Results.assert(result);
         const logEntryId = await this.#logWriter.writeLog({

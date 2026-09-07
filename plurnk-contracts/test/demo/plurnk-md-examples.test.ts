@@ -5,11 +5,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { PlurnkParser } from "../../src/index.ts";
+import { PlurnkParser, PLURNK_OPS } from "../../src/index.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
-const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
+const operations = PLURNK_OPS;
 // ```example fences carry the turn specimens ({§packet-operation-fences});
 // other fences (mermaid) are excluded, and everything outside a fence is prose.
 const specimens: string[] = [];
@@ -45,7 +45,7 @@ const placeholderSignal = /\[[^\]]*\s[^\]]*\]/;
 const inlineHeadings = [...proseAndInline.matchAll(/`([^`\n]+)`/g)]
     .map((match) => match[1])
     .filter((example) => headingExample.test(example) && !placeholderSignal.test(example));
-const completeTurns = specimens.filter((body) => /^## SEND[A-Za-z0-9_]+ \[(?:102|200|202|300|499)\]/m.test(body));
+const completeTurns = specimens.filter((body) => /^### SEND[A-Za-z0-9_]+ \((?:NEXT|WAIT|TERM|FAIL)\)/m.test(body));
 
 test("inline operation headings in plurnk.md parse as one clean statement", () => {
     assert.ok(inlineHeadings.length > 0, "plurnk.md contains no inline operation headings");
@@ -72,28 +72,14 @@ test("any complete plurnk.md turn specimens parse cleanly", () => {
     }
 });
 
-// Operator ruling 2026-08-29 (#430): taught nowhere, parsed everywhere — BARE stays in the grammar and engine.
-const UNTAUGHT_OPERATIONS = new Set(["BARE"]);
-
 test("plurnk.md retains broad language coverage without pinning prose", () => {
     assert.ok(
         /^## PLAN([A-Za-z0-9_]+)(?: .*)?\n[\s\S]*?^### OP\1(?: |$)/m.test(plurnkMd),
         "the syntax sketch teaches `## PLAN` and same-delimiter `### OP` headings",
     );
-    // Every operation is taught as a heading in the per-OP signature sketch (`## PLAN0`, `### FIND0 …`),
-    // except the ops the operator has withdrawn from the teaching while their plumbing stays (#430).
+    // Every operation is taught as a heading in the per-OP signature sketch.
     for (const operation of operations) {
-        if (UNTAUGHT_OPERATIONS.has(operation)) {
-            assert.doesNotMatch(plurnkMd, new RegExp(`\\b${operation}\\b`), `${operation} is withdrawn from the teaching`);
-            continue;
-        }
         assert.match(plurnkMd, new RegExp(`^#{2,3} ${operation}0\\b`, "m"), `operation signature is missing ${operation}`);
-    }
-    // The withdrawn ops keep their plumbing: the grammar still accepts them (#430).
-    for (const operation of UNTAUGHT_OPERATIONS) {
-        const parsed = PlurnkParser.parse(`## PLAN0\n[]\n### ${operation}0\nprompt\n\n### SEND0 (NEXT)\nnext`);
-        assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], `${operation} still parses`);
-        assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === operation), `${operation} still dispatches`);
     }
     assert.ok(completeTurns.every((body) => /^## PLAN0(?: |\n)/.test(body)), "every turn specimen opens with the `## PLAN0` heading");
 });

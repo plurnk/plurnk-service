@@ -1,4 +1,3 @@
-// The bare batch: an operations-only turn with no provider exchange. Split out of TurnRunner.
 import type { BareStatement } from "@plurnk/plurnk-contracts";
 import { type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
@@ -30,6 +29,7 @@ export default class BareBatchRunner {
 
     async runBareBatch({
         statements,
+        preparePrompt,
         provider,
         turnId,
         workspaceId,
@@ -40,6 +40,7 @@ export default class BareBatchRunner {
         signal,
     }: {
         statements: readonly BareStatement[];
+        preparePrompt: (statement: BareStatement) => Promise<{ prompt: string } | { result: SchemeResult }>;
         provider: Provider;
         turnId: number;
         workspaceId: number;
@@ -49,13 +50,26 @@ export default class BareBatchRunner {
         turnSequence: number;
         signal: AbortSignal | undefined;
     }): Promise<BareBatchResult[]> {
+        const inputs: Array<{ statement: BareStatement } & ({ prompt: string } | { result: SchemeResult })> = [];
+        for (const statement of statements) {
+            signal?.throwIfAborted();
+            inputs.push({ statement, ...await preparePrompt(statement) });
+        }
+        signal?.throwIfAborted();
         const prepared: Array<{
             statement: BareStatement;
+        } & ({ result: SchemeResult } | {
+            prompt: string;
             modelCall: ModelCall;
             attributions: string[];
             providerWorkerId: string;
-        }> = [];
-        for (const statement of statements) {
+        })> = [];
+        for (const input of inputs) {
+            if ("result" in input) {
+                prepared.push(input);
+                continue;
+            }
+            const { statement, prompt } = input;
             const providerWorkerId = randomUUID();
             const attributionContext: PluginAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
@@ -72,18 +86,21 @@ export default class BareBatchRunner {
                 attributions,
                 model: provider.model,
             });
-            prepared.push({ statement, modelCall, attributions, providerWorkerId });
+            prepared.push({ statement, prompt, modelCall, attributions, providerWorkerId });
         }
 
-        const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions, providerWorkerId }) => {
+        const settlements = await Promise.allSettled(prepared.map(async (item) => {
+            if ("result" in item) return { ...item, modelCallId: null };
+            const { statement, prompt, modelCall, attributions, providerWorkerId } = item;
             try {
+                signal?.throwIfAborted();
                 const response = await observed(
                     GEN_AI_REQUEST_SPAN,
                     { model: provider.model, attempt: 1, kind: "bare" },
                     async (span) => {
                         try {
                             const generated = await provider.generate({
-                                messages: [{ role: "user", content: statement.body }],
+                                messages: [{ role: "user", content: prompt }],
                                 workerId: providerWorkerId,
                                 primaryWorkerId,
                                 signal,
@@ -146,8 +163,5 @@ export default class BareBatchRunner {
         signal?.throwIfAborted();
         return settlements.map((settlement) => (settlement as PromiseFulfilledResult<BareBatchResult>).value);
     }
-
-    // {§attribution} — reporting derives from exact provider-request evidence;
-    // malformed durable tags fail here instead of being silently filtered.
 
 }

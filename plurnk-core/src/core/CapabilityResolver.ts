@@ -78,7 +78,10 @@ export default class CapabilityResolver {
             case "FORK":
                 return demands(describe(statement.op, "control", statement.target));
             case "BARE":
-                return [{ operation: "BARE", access: "execute", traits: [] }];
+                return demands(
+                    { operation: "BARE", access: "execute", traits: [] },
+                    describe("BARE", "observe", statement.target),
+                );
             case "KILL": {
                 const scheme = schemeNameOf(statement.target);
                 if (scheme === "log") return [];

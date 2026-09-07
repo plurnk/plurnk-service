@@ -91,7 +91,7 @@ moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
 sendStatement : OPEN_SEND SEND_LABEL lineMarker? opAnnotation? statementEnd ;
 midSend : OPEN_SEND (targetWithMetadata lineMarker?)? opAnnotation? statementEnd ;
 execStatement : OPEN_EXEC EXECUTOR? execModifiers? EXECUTOR? opAnnotation? statementEnd ;
-bareStatement : OPEN_BARE opAnnotation? statementEnd ;
+bareStatement : OPEN_BARE targetWithMetadata? opAnnotation? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
 forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;
 // KILL takes a scope ({§kill-scope}): lines of a log body or of an entry.
