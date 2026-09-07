@@ -1,5 +1,5 @@
-// {§methods-loop-run-open-paths} {§overflow-turn}: a client-attached report
-// performs a real READ too large for the input capacity, before model inference.
+// {§methods-loop-run-open-paths} {§overflow-turn}: individually bounded attachment
+// READs jointly exceed input capacity before model inference.
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,9 +13,12 @@ import { initializeDemoRepository } from "./_git.ts";
 export const seedOverflowFixture = async () => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-overflow-recovery-"));
     const answer = "CEDAR-HARBOR-27";
-    const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${answer}.\n`;
+    const telemetry = `Telemetry: ${"sample nominal; ".repeat(150)}\n`;
+    const content = `${telemetry}Recovery site: ${answer}.\n`;
+    const otherPaths = Array.from({ length: 15 }, (_, index) => `telemetry-${index + 1}.txt`);
     try {
         await writeFile(join(workspace, "incident.txt"), content);
+        await Promise.all(otherPaths.map((path) => writeFile(join(workspace, path), telemetry)));
         initializeDemoRepository(workspace, "incident report");
     } catch (error) {
         await rm(workspace, { recursive: true, force: true });
@@ -26,7 +29,7 @@ export const seedOverflowFixture = async () => {
         answer,
         content,
         prompt: "Which recovery site is recorded in the attached incident report?",
-        openPaths: ["incident.txt"],
+        openPaths: ["incident.txt", ...otherPaths],
         cleanup: () => rm(workspace, { recursive: true, force: true }),
     };
 };

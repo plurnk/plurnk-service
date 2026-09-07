@@ -5,7 +5,7 @@ import { measureFloor } from "./_floor-probe.ts";
 import { assertOverflowEvidence, seedOverflowFixture } from "./_overflow.ts";
 
 
-test("demo: recover from an oversized attached report and retrieve its recovery site", async (t) => {
+test("demo: recover from attachments exceeding the budget and retrieve the recovery site", async (t) => {
     const fixture = await seedOverflowFixture();
     try {
         const floor = await measureFloor({ signal: t.signal, label: "overflow-recovery", projectRoot: fixture.workspace, prompt: fixture.prompt });

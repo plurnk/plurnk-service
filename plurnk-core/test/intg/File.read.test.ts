@@ -340,7 +340,10 @@ test("File.read: long content round-trips", async () => {
         await addMember(ctx, "big.txt");
         const result = await readFileScheme(readStmt(urlPath("file", "/big.txt")), ctx);
         assert.equal(result.status, 200);
-        assert.equal(result.content?.length, big.length);
+        assert.equal(result.content, big.slice(0, 2560), "markerless READ bounds the long line");
+        const complete = await readFileScheme({ ...readStmt(urlPath("file", "/big.txt")), lineMarker: { marks: [1, -1] } }, ctx);
+        assert.equal(complete.status, 200);
+        assert.equal(complete.content, big, "the explicitly requested full content round-trips unchanged");
     });
 });
 

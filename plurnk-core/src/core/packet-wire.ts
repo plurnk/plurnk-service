@@ -17,6 +17,7 @@ import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
+import BodyPreview from "../content/body-preview.ts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -31,20 +32,6 @@ const editReceiptRevisionChars = (): number => {
         throw new Error(`PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS must be a safe integer from 1 through 64, got ${JSON.stringify(raw)}`);
     }
     return value;
-};
-
-const previewBounds = (): { lines: number; chars: number } => {
-    const rawLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
-    const rawChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
-    const lines = Number(rawLines);
-    const chars = Number(rawChars);
-    if (!Number.isSafeInteger(lines) || lines < 1) {
-        throw new Error(`PLURNK_SERVICE_PREVIEW_LINES must be a positive safe integer, got ${JSON.stringify(rawLines)}`);
-    }
-    if (!Number.isSafeInteger(chars) || chars < 1) {
-        throw new Error(`PLURNK_SERVICE_PREVIEW_CHARS must be a positive safe integer, got ${JSON.stringify(rawChars)}`);
-    }
-    return { lines, chars };
 };
 
 // {§packet-stored-shape} — sections arrive from both the in-memory request and
@@ -442,40 +429,14 @@ export default class PacketWire {
         return `log:///${coordinate}/${leaf}`;
     }
 
-    static #offsetAfterCharacters(text: string, count: number): number {
-        let offset = 0;
-        let consumed = 0;
-        while (offset < text.length && consumed < count) {
-            if (text.startsWith("\r\n", offset)) {
-                offset += 2;
-            } else {
-                const codePoint = text.codePointAt(offset);
-                if (codePoint === undefined) break;
-                offset += String.fromCodePoint(codePoint).length;
-            }
-            consumed++;
-        }
-        return offset;
-    }
-
     // One preview function for every bounded model-facing projection. Lines
     // protect ordinary documents and Unicode characters protect a single-line
     // bomb. Once a physical line is complete, a character cut retreats to that
     // line boundary rather than exposing a partial coordinate prefix.
     static #preview(text: string): { text: string; cut: boolean; chunk: string | null } {
-        const { lines: maxLines, chars: maxChars } = previewBounds();
         const coordinates = new TextCoordinates(text);
         const physicalLines = coordinates.logicalLines();
-        const lineEnd = physicalLines.length > maxLines
-            ? physicalLines[maxLines - 1]!.end
-            : text.length;
-        const characterEnd = PacketWire.#offsetAfterCharacters(text, maxChars);
-        let end = Math.min(lineEnd, characterEnd);
-        if (characterEnd < text.length && characterEnd <= lineEnd) {
-            const completeLine = physicalLines.findLast((line) =>
-                line.separator.length > 0 && line.end <= characterEnd);
-            if (completeLine !== undefined) end = completeLine.end;
-        }
+        const { end } = BodyPreview.select(text);
         const cut = end < text.length;
         return {
             text: text.slice(0, end),

@@ -188,6 +188,7 @@ export default class TurnMaterialization {
                 mimetype: page.mimetype,
                 ...(page.startLine === undefined || page.startLine === null ? {} : { startLine: page.startLine }),
                 ...(page.range === undefined ? {} : { range: page.range }),
+                ...(page.range !== undefined || page.region === undefined ? {} : { region: page.region }),
             });
             if (result.problem !== undefined) {
                 const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({

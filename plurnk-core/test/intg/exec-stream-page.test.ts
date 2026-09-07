@@ -101,3 +101,49 @@ test("an active stream reaches the model only as a Child Streams pointer with it
         }
     }));
 });
+
+for (const specimen of [
+    {
+        name: "long JSON records",
+        content: Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) })).join("\n"),
+        preview: JSON.stringify({ index: 0, text: "x".repeat(1900) }),
+        range: { unit: "line", total: 10, requested: [1, 1], returned: [1, 1] },
+        region: undefined,
+    },
+    {
+        name: "a long Unicode line",
+        content: "😀".repeat(3000),
+        preview: "😀".repeat(2560),
+        range: undefined,
+        region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2561 },
+    },
+]) test(`{§exec-stream-page}: automatic ${specimen.name} shares the character bound; explicit READ retains the full stream`, async () => {
+    const { content } = specimen;
+    const provider = new Mock({ contextWindow: 100_000, responses: [
+        makeMockResponse(`### EXEC0 [node]\nprocess.stdout.write(${JSON.stringify(content)});\n### SEND0 (WAIT)\nwaiting`, 10),
+        makeMockResponse("### READ0 (node:///1/2/3/EXEC#stdout) <1,-1>\n### SEND0 (NEXT)\nRead the full result.", 10),
+        makeMockResponse("### SEND0 (TERM)\ndone", 10),
+    ] });
+    await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "long-stream-preview" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the result.", policy: { proposals: "accept" } });
+            assert.equal(finalStatus, 200);
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! }))!.packet);
+            const delivery = logEntries(packet).find((row) => row.terminal === true && String(row.stream).endsWith("#stdout"));
+            assert.ok(delivery, "the model receives the automatic terminal observation");
+            assert.deepEqual(delivery.range, specimen.range);
+            assert.deepEqual(delivery.region, specimen.region);
+            assert.equal(String(delivery.body).trimStart(), `1:${specimen.preview}\n`, "the packet contains exactly the selected line or Unicode region");
+            const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
+            const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "READ" && JSON.parse(row.rx).content === specimen.preview);
+            assert.ok(automatic, "the bounded result is stored before rendering, not cut from a complete READ afterward");
+            const rows = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
+            const explicit = rows.find((row) => row.origin === "model" && row.op === "READ");
+            assert.equal(JSON.parse(explicit?.rx ?? "null")?.content, content, "the full source remains available on deliberate READ");
+        } finally {
+            ws.close();
+        }
+    }));
+});

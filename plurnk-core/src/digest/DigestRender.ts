@@ -115,12 +115,12 @@ export default class DigestRender {
     static #renderGroupedOpLine(row: LogRow): string {
         const attrs = DigestRender.parseJson(row.attrs, {}) as { kind?: unknown };
         const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
-        const actionlessKind = row.op === null
-            ? LogBody.actionlessKind({ op: row.op, attrs })
-            : null;
+        const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"
             ? "emission attempt"
-            : actionlessKind ?? row.op ?? "actionless row";
+            : actionlessKind === "turnOps"
+                ? "turnOps"
+                : row.op ?? `unrecognized actionless row (kind=${JSON.stringify(actionlessKind) ?? "absent"})`;
         return DigestRender.#renderOpLine(row, materialized ? "materialized entry" : label);
     }
 
@@ -420,7 +420,7 @@ export default class DigestRender {
     static #turnOpsSource(m: DigestModel, turn: TurnRow): string | null {
         const rows = (m.logEntriesByTurn.get(turn.id) ?? []).filter((row) =>
             row.op === null
-            && LogBody.actionlessKind({ op: row.op, attrs: row.attrs }) === "turnOps");
+            && (DigestRender.parseJson(row.attrs, {}) as { kind?: unknown }).kind === "turnOps");
         if (rows.length > 1) {
             throw new TypeError(`digest: turn ${turn.id} has ${rows.length} turnOps rows; expected at most one`);
         }

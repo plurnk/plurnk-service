@@ -57,6 +57,7 @@ export class SqlRiteSync {
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_null_authority(params?: Record<string, unknown>): SqlRiteResult;
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): SqlRiteResult;
+	test_make_historical_actionless_rows(params?: Record<string, unknown>): SqlRiteResult;
 	test_workers_insert_default_values(params?: Record<string, unknown>): SqlRiteResult;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
@@ -566,6 +567,7 @@ export default class SqlRite {
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_null_authority(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): Promise<SqlRiteResult>;
+	test_make_historical_actionless_rows(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workers_insert_default_values(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;

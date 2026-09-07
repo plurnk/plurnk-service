@@ -1,8 +1,42 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { assertOverflowEvidence, seedOverflowFixture } from "../demo/_overflow.ts";
+
+test("{§methods-loop-run-open-paths}: one oversized attachment is previewed without forcing overflow", async () => {
+    const fixture = await seedOverflowFixture();
+    const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
+    const provider = new Mock({ contextWindow: 20_000, responses: [
+        makeMockResponse("### READ0 (incident.txt) <2>\n### SEND0 (NEXT)\nInspect the recovery site."),
+        makeMockResponse(`### SEND0 (TERM)\n${fixture.answer}`),
+    ] });
+    try {
+        await writeFile(join(fixture.workspace, "incident.txt"), content);
+        await withDaemon(provider, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "bounded-attachment", projectRoot: fixture.workspace });
+                const result = await runLoopToTerminal(ws, 2, {
+                    prompt: fixture.prompt, openPaths: ["incident.txt"], policy: { proposals: "accept" },
+                });
+                assert.equal(result.finalStatus, 200);
+                const turns = await db.test_list_turns_in_loop.all<{ kind: string }>({ loop_id: result.loopId });
+                assert.equal(turns.filter(({ kind }) => kind === "overflow").length, 0);
+                const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string; pathname: string; rx: string }>({ loop_id: result.loopId });
+                const attachment = rows.find((row) => row.origin === "_plurnk" && row.op === "READ" && row.pathname === "incident.txt");
+                assert.ok(attachment);
+                const preview = JSON.parse(attachment.rx);
+                assert.equal(preview.content, content.slice(0, 2560));
+                assert.deepEqual(preview.region, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2561 });
+                assert.equal(await readFile(join(fixture.workspace, "incident.txt"), "utf8"), content);
+                assert.equal(provider.remaining, 0);
+            } finally { ws.close(); }
+        });
+    } finally { await fixture.cleanup(); }
+});
 
 for (const retire of [false, true]) test(`the recovery demo preserves overflow evidence with the attachment receipt ${retire ? "retired" : "active"}`, async () => {
     const fixture = await seedOverflowFixture();

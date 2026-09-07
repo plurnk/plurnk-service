@@ -1603,7 +1603,7 @@ selection or fan-out path.
   failed command's stdout and stderr stay readable.
 - §read-selection-projection READ applies `lineMarker` as text coordinates to one
   exact target under {§read-exact-target}. Markerless READ synthesizes
-  `<1,16>`; `<1,-1>` explicitly selects all text. Successful positional reads
+  the shared bounded preview ({§body-projection}); `<1,-1>` explicitly selects all text. Successful positional reads
   carry the compact requested/returned extent and available total
   ({§range-extent}). Anchors resolve under {§line-anchors} before selection. An
   invalid text region is 416.
@@ -2208,7 +2208,7 @@ two states and no others:
 | state | what the model receives |
 |---|---|
 | active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
-| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born visible, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/EXEC` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
+| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/EXEC` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
 `PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;
@@ -2232,6 +2232,10 @@ scoped READ (`### READ0 (<runtime>:///<coord>#<channel>) <L,M>`), and the extent
 tells the model the total. Only the active user prompt and the generated project
 instructions are delivered without this bound; the model receives more than a page
 only by asking.
+
+The first page uses both shared preview bounds in {§body-projection}; long
+records stop at the last complete line that fits, or at an exact Unicode region
+when even the first line exceeds the character bound. Explicit READ scopes stay exact.
 
 The durable per-subscription, per-channel cursor records the size last reported
 to the model — by the Child Streams pointer while active, by the terminal
@@ -2605,8 +2609,8 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`                  | `5000` | First recovery delay (ms); doubles per failure, capped at twelve times itself ({§provider-recovery}). |
 | `PLURNK_SERVICE_MAX_STRIKES`                                | `3` | Consecutive admitted-turn strike threshold ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
-| `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
-| `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Maximum Unicode code points in an ordinary bounded log-body projection, with CRLF treated as one indivisible separator; independently contains single-line bodies ({§body-projection}). |
+| `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in automatic text previews and markerless READs ({§body-projection}). |
+| `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Independent Unicode code-point bound on the same previews, with CRLF treated as one indivisible separator ({§body-projection}). |
 | `PLURNK_SERVICE_PROMPT_PROJECTION`                          | `25%` | Aggregate curation-weight share of the provider-derived input capacity available to automatic prompt-body projection ({§prompt-projection}); alias-scoped overrides are supported. |
 | `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing line anchor ({§line-anchors}). |
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`                 | `2` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
@@ -3912,6 +3916,12 @@ evidence when a downstream standard cannot represent the complete list.
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | metadata only; no coordinate lines or `tokensBody` |
 
+Markerless text READs select their page with the same line/character bound as
+ordinary previews, before result storage and packet rendering. Explicit scopes
+remain exact. Automatic stream delivery uses that markerless selector too;
+its range or region describes the selected content and the complete stream
+remains addressable. This selection is not a second rendering-time cut.
+
 READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. PLAN is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Actionless source artifacts, SEND/WORK/FORK bodies, EXEC commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. `### READ0 (log:///<coordinate>/<OP>)` applies its default or explicit text range to the canonical body; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `### FIND0 (log:///...)` and search match that same full body. A scoped KILL hides the ordinary projection without changing its bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry — written before any turn of its loop executes, so the initialization COPY ({§worker-initialization-entry}) archives a real source — then published to its first model turn as one actionless lowercase `prompt` log row; that row, not the entry, records publication. No synthetic EDIT or READ operation is invented. The row is born visible and obeys {§body-projection}. The **Active User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable after its log row's body is suppressed or its active projection is retired.
@@ -4016,6 +4026,9 @@ retain distinct contracts and lifetimes.
 §digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 
 §digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, tags, and structured `attrs`; every exact log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result; and every ordered physical provider request. KILLed `turnOps` still produce their chronological `assistant.md` artifacts because curation cannot rewrite what a producer submitted. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
+
+Unrecognized actionless log rows are retained and labelled as such, not
+interpreted as executable turnOps or allowed to prevent the remaining digest.
 
 §digest-executor-evidence **A red command is work, not a defect.** Engine-materialized
 completion rows for a failed command carry the executor's problem identity

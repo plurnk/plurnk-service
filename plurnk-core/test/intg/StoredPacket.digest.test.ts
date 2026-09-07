@@ -13,6 +13,49 @@ import StoredPacket from "../../src/core/StoredPacket.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 import { urlPath } from "./_dsl.ts";
 
+test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence without hiding turn programs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-unknown-source-digest-"));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const db = await openMigrated(dbPath);
+    const source = "## PLAN0\n[]\n### SEND0 (TERM)\ndone";
+    try {
+        const workspaceId = await insertWorkspace(db, "unknown-source");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "inspect history");
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        for (const [index, kind] of ["reasoning", "unknown", "turnOps"].entries()) {
+            await db.engine_insert_log_entry.get({
+                worker_id: workerId, loop_id: loopId, turn_id: turn.id, sequence: index + 1,
+                origin: "model", source: null, model_call_id: null,
+                op: null, delimiter: "",
+                scheme: null, username: null, password: null, hostname: null, port: null,
+                pathname: null, query: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/vnd.plurnk",
+                rx: JSON.stringify({ content: kind === "turnOps" ? source : "retained evidence", mimetype: "text/vnd.plurnk" }),
+                mimetype_rx: "application/json", status_rx: 200, weight: 1,
+                state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "turnOps" }),
+                initial_folded: "[]",
+            });
+        }
+        await Turn.complete(db, turn.id, 200);
+        await db.test_make_historical_actionless_rows();
+    } finally {
+        await db.close();
+    }
+    try {
+        Digest.run({ dbPath, digestDir });
+        assert.equal(await readFile(join(digestDir, "packet000.assistant.md"), "utf8"), source);
+        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+        assert.equal(json.log_entries.length, 3, "no source row is discarded or rewritten");
+        const report = await readFile(join(digestDir, "digest.md"), "utf8");
+        assert.match(report, /unrecognized actionless row.*reasoning/);
+        assert.match(report, /unrecognized actionless row.*unknown/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
 test("{§log-history-projection}: digest retains KILLed turn programs as chronological artifacts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-killed-turn-artifact-"));
     const dbPath = join(dir, "plurnk.db");
