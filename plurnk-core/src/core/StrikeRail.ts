@@ -1,20 +1,10 @@
 import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { Db } from "./Db.ts";
 
-// Operation outcome statuses that do not accumulate strikes. Exploratory misses are
-// not failures: probing a path that doesn't exist (404), a line
-// range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
-// works — striking them prices caution into the motions we most want (range-reads ARE
-// the surgical behavior under budget pressure). One simple set, evenly applied.
-// 409 is SOFT here because Engine accounts for a refused final disposition
-// through steerStruck ({§engine-rails}). Counting that raw status as well would
-// double-count one ruling; other 409 outcomes remain soft. The cycle detector
-// remains an independent backstop. EXEC outcomes are soft independently of
-// status: executor errors remain evidence, not PLURNK contract violations — and so
-// is the same evidence wherever it surfaces: a failed command's completion READ
-// ({§exec-stream}) or the model's own READ of that stream carries an `executor/*`
-// problem identity and never strikes (#425 F1). Structural violations do strike,
-// by ruling: six in a row is a degenerated run at the weak end of competence.
+// {§engine-rails}: discovery misses are soft. Refused dispositions strike via
+// steerStruck, never by counting their raw 409 a second time. Executor evidence
+// is soft wherever it surfaces, including a completion READ ({§exec-stream}).
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
 
@@ -23,6 +13,8 @@ export type StrikeOutcome = {
     readonly status: number;
     readonly problemType?: string | null;
 };
+
+type RailState = { strike_streak: number; cycle_history: string; cycle_wait_revision: number };
 
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
@@ -82,37 +74,46 @@ export default class StrikeRail {
         return { detected: false };
     }
 
-    // {§engine-rails} strike state per loop. `streak` resets on a clean turn;
-    // `history` holds consecutive turn fingerprints for cycle detection.
-    #state = new Map<number, { streak: number; history: string[] }>();
+    readonly #db: Db;
 
-    // The loop's CURRENT strike streak — the same figure the 500-threshold compares. Rides
-    // generate({strikes}) as first-party outbound metadata (Plurnk-Strikes,
-    // {§strikes-first-party-metadata}): the hosted
-    // router's escalation signal. NEVER model-facing ({§engine-rails} — a surfaced count is a
-    // metric to game); the packet does not carry it.
-    streak(loopId: number): number {
-        return this.#state.get(loopId)?.streak ?? 0;
+    constructor(db: Db) {
+        this.#db = db;
+    }
+
+    async #state(loopId: number): Promise<RailState> {
+        const state = await this.#db.strike_rail_state.get<RailState>({ loop_id: loopId });
+        if (state === undefined) throw new Error(`strike rail loop ${loopId} not found`);
+        return state;
+    }
+
+    // {§strikes-first-party-metadata}: provider metadata, never a model-facing counter.
+    async streak(loopId: number): Promise<number> {
+        return (await this.#state(loopId)).strike_streak;
     }
 
     // Per-turn strike accounting, run by runLoop after every admitted turn.
     // {§engine-rails} owns the complete source list and threshold semantics.
-    assess(loopId: number, turn: {
+    async assess(loopId: number, turn: {
+        waitRevision: number;
         fingerprint: string;
         outcomes: ReadonlyArray<StrikeOutcome>;
         steerStruck: boolean;
         minCycles: number;
         maxCyclePeriod: number;
         maxStrikes: number;
-    }): { cycleDetected: boolean; thresholdCrossed: boolean } {
+    }): Promise<{ cycleDetected: boolean; thresholdCrossed: boolean }> {
         // {§engine-rails}: cycle detection. Push this turn's fingerprint to
         // history and scan for repetition patterns. Detection is intentionally
         // not a model-facing notice; it is private engine accounting.
-        const state = this.#state.get(loopId) ?? { streak: 0, history: [] };
-        state.history.push(turn.fingerprint);
+        const state = await this.#state(loopId);
+        // The ending turn remains in its opening wait revision. A real park
+        // closes that window even if a wake already reclaimed the same drain.
+        const history: string[] = state.cycle_wait_revision === turn.waitRevision
+            ? JSON.parse(state.cycle_history) : [];
+        history.push(turn.fingerprint);
         const window = turn.minCycles * turn.maxCyclePeriod;
-        if (state.history.length > window) state.history.splice(0, state.history.length - window);
-        const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);
+        if (history.length > window) history.splice(0, history.length - window);
+        const cycle = StrikeRail.detectCycle(history, turn.minCycles, turn.maxCyclePeriod);
         const recordedFailed = turn.outcomes.some(
             (outcome) => outcome.op !== "EXEC"
                 && outcome.status >= 400
@@ -120,18 +121,14 @@ export default class StrikeRail {
                 && !isExecutorEvidence(outcome),
         );
         const struck = recordedFailed || turn.steerStruck || cycle.detected;
-        let thresholdCrossed = false;
-        if (struck) {
-            state.streak++;
-            if (state.streak >= turn.maxStrikes) thresholdCrossed = true;
-        } else {
-            state.streak = 0;
-        }
-        this.#state.set(loopId, state);
-        return { cycleDetected: cycle.detected, thresholdCrossed };
-    }
-
-    delete(loopId: number): void {
-        this.#state.delete(loopId);
+        const streak = struck ? state.strike_streak + 1 : 0;
+        const saved = await this.#db.strike_rail_assess.run({
+            loop_id: loopId,
+            streak,
+            history: JSON.stringify(history),
+            wait_revision: turn.waitRevision,
+        });
+        if (saved.changes !== 1) throw new Error(`strike rail loop ${loopId} disappeared during assessment`);
+        return { cycleDetected: cycle.detected, thresholdCrossed: struck && streak >= turn.maxStrikes };
     }
 }

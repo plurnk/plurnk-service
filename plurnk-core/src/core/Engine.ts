@@ -300,7 +300,7 @@ export default class Engine {
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopSignals.get(loopId);
         this.#notices = new NoticeChannel({ notify: noticeNotify });
         this.#problems = new ProblemLog(db, this.#weighContent);
-        this.#strikes = new StrikeRail();
+        this.#strikes = new StrikeRail(db);
         this.#packets = new PacketBuilder({
             db,
             schemes,

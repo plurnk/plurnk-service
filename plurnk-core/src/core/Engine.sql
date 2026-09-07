@@ -1,7 +1,7 @@
 -- Engine SQL. SPEC {§arch} (architecture), {§scheme} (op dispatch + log).
 
 -- PREP: engine_loop_status
-SELECT status FROM loops WHERE id = $loop_id;
+SELECT status, wait_revision FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_has_live_child
 -- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",

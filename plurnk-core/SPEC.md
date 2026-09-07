@@ -193,6 +193,24 @@ in the table are shown. The current streak may ride first-party provider
 metadata ({§strikes-first-party-metadata}), which does not make it
 model-facing.
 
+§loop-rail-continuity Rail state belongs to the durable loop, not its execution
+segment. The strike streak and bounded cycle history survive driver cleanup and
+restart; curation of log evidence cannot alter them.
+
+| Boundary | Strike streak | Cycle history |
+|---|---|---|
+| Assessed turn with a violation | Increment once. | Include its exact activity. |
+| Clean assessed turn | Reset to zero. | Include its exact activity. |
+| Actual park, including an immediate wake/reclaim in the same drain | Preserve the assessed streak. | Close the window; the next turn starts a new one. |
+| Recoverable provider outage | No assessment; preserve the streak. | Preserve until an actual park. |
+| New loop | Start at zero. | Start empty. |
+
+The turn belongs to the wait revision under which it began. A rejected WAIT or
+one resolved without parking does not close a window. Periodic observations
+separated by actual waits are not an uninterrupted cycle; cumulative turn and
+execution allowances remain independent bounds. A committed terminal result
+cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine}).
+
 | Term                         | Meaning |
 |------------------------------|---|
 | **verdict**                  | The end-of-turn ruling computed inline in `Engine.runLoop` from the strike rail and independent loop terminals. No filter chain. |

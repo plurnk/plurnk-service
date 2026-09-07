@@ -262,6 +262,10 @@ CREATE TABLE IF NOT EXISTS loops (
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
     -- {§worker-wait-timing}: epoch milliseconds; NULL polling inherits streams.
     wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (wait_revision >= 0),
+    -- {§loop-rail-continuity}: one loop-owned streak and bounded repetition window.
+    strike_streak INTEGER NOT NULL DEFAULT 0 CHECK (strike_streak >= 0),
+    cycle_history TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(cycle_history) AND json_type(cycle_history) = 'array'),
+    cycle_wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (cycle_wait_revision >= 0 AND cycle_wait_revision <= wait_revision),
     observed_wake_revision INTEGER NOT NULL DEFAULT 0 CHECK (observed_wake_revision >= 0),
     wait_deadline_at INTEGER,
     wait_poll_interval INTEGER CHECK (wait_poll_interval IS NULL OR wait_poll_interval >= 0),

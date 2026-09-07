@@ -1263,7 +1263,7 @@ export default class TurnRunner {
             railResponseGrammar = railConstraint?.response;
             railAllowWithheld = railConstraint?.allowWithheld ?? false;
             const attemptLimit = readEmissionAttempts();
-            const strikeStreak = this.#strikes.streak(loopId);
+            const strikeStreak = await this.#strikes.streak(loopId);
             // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
             // for, successes and failed calls alike, so the completion notice carries
             // the exact settled wire spend.

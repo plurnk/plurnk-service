@@ -39,6 +39,14 @@ const DEFAULT_MAX_STRIKES = 3;
 // {§operator-config-loop-timeout}
 const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
 
+type TerminalReason = "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout";
+type LoopResult = {
+    turnIds: number[];
+    result: SchemeResult;
+    hitMaxTurns: boolean;
+    reason: TerminalReason | "provider_unavailable" | "external" | null;
+};
+
 export default class LoopDriver {
     readonly #loopSignals: Map<number, AbortSignal>;
     readonly #db: Db;
@@ -91,7 +99,7 @@ export default class LoopDriver {
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "provider_unavailable" | "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "external" | null }> {
+    }): Promise<LoopResult> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -104,8 +112,15 @@ export default class LoopDriver {
         const executionSignal = signal === undefined ? loopAbort.signal : AbortSignal.any([signal, loopAbort.signal]);
         this.#loopSignals.set(loopId, executionSignal);
         const timedOut = (): boolean => executionSignal.aborted && executionSignal.reason === LOOP_TIMEOUT_REASON;
-        const ruleTimeout = async (): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "loop_timeout" | "external" }> => {
-            const failure = Results.failure(
+        const ruleTerminal = async (failure: SchemeResult, reason: TerminalReason): Promise<LoopResult> => {
+            const finished = await this.#lifecycle.finish(loopId, failure);
+            const result = finished ?? await this.#lifecycle.result(loopId);
+            if (result === null) throw new Error(`loop ${loopId} has no result after ${reason} settlement`);
+            cleanup("forceful", reason);
+            return { turnIds, result, hitMaxTurns: finished !== null && reason === "max_turns", reason: finished === null ? "external" : reason };
+        };
+        const ruleTimeout = (): Promise<LoopResult> => ruleTerminal(
+            Results.failure(
                 "engine:rails",
                 "loop-timeout",
                 504,
@@ -115,13 +130,9 @@ export default class LoopDriver {
                     turns: modelTurnCount,
                     stage: "loop",
                     retryable: false },
-            );
-            const finished = await this.#lifecycle.finish(loopId, failure);
-            const result = finished ?? await this.#lifecycle.result(loopId);
-            if (result === null) throw new Error(`loop ${loopId} has no result after timeout settlement`);
-            cleanup("forceful", "loop_timeout");
-            return { turnIds, result, hitMaxTurns: false, reason: finished === null ? "external" : "loop_timeout" };
-        };
+            ),
+            "loop_timeout",
+        );
 
         // WAIT preserves asynchronous work for this same task's continuation.
         // Actual termination and exceptional exits reap the execution scope.
@@ -133,13 +144,12 @@ export default class LoopDriver {
                 loopAbort.abort(reason ?? "loop_forceful_termination");
             }
             this.#loopSignals.delete(loopId);
-            this.#strikes.delete(loopId);
             this.#notices.delete(loopId);
         };
 
         try {
             while (true) {
-                const row = await this.#db.engine_loop_status.get<{ status: number }>({ loop_id: loopId });
+                const row = await this.#db.engine_loop_status.get<{ status: number; wait_revision: number }>({ loop_id: loopId });
                 if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
                 if (row.status === 100) {
                     // NOT a terminal — a wake re-queued this loop while its own live drain was
@@ -186,10 +196,7 @@ export default class LoopDriver {
                             stage: "loop",
                             retryable: false },
                     );
-                    const result = await this.#lifecycle.finish(loopId, failure);
-                    if (result === null) throw new Error(`loop ${loopId} became terminal before max-turn settlement`);
-                    cleanup("forceful", "max_turns");
-                    return { turnIds, result, hitMaxTurns: true, reason: "max_turns" };
+                    return await ruleTerminal(failure, "max_turns");
                 }
 
                 const execHandler = this.#schemes.get("exec") as { hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
@@ -216,7 +223,7 @@ export default class LoopDriver {
                             const t = await this.#runTurn({
                                 provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal: executionSignal, onDispatch, onSettled,
                                 turnNumber: modelTurnCount + 1, maxTurns,
-                                allowUnobservedRetrievalCompletion: this.#strikes.streak(loopId) + 1 >= maxStrikes,
+                                allowUnobservedRetrievalCompletion: await this.#strikes.streak(loopId) + 1 >= maxStrikes,
                                 invalidEmissionRecoveryEntryId });
                             span.setAttribute("turn.id", t.turnId);
                             span.setAttribute("turn.producer", t.producer);
@@ -233,10 +240,7 @@ export default class LoopDriver {
                 // model attempt and never enters emission or strike accounting.
                 if (turn.kind === "overflow") {
                     if (turn.curationFailure !== undefined) {
-                        const result = await this.#lifecycle.finish(loopId, turn.curationFailure);
-                        if (result === null) throw new Error(`loop ${loopId} became terminal before token-overflow settlement`);
-                        cleanup("forceful", "token_budget_overflow");
-                        return { turnIds, result, hitMaxTurns: false, reason: "token_budget" };
+                        return await ruleTerminal(turn.curationFailure, "token_budget");
                     }
                     continue;
                 }
@@ -260,10 +264,7 @@ export default class LoopDriver {
                     if (turn.capacityFailure === undefined) {
                         throw new Error("a provider-capacity stop requires its exact failure");
                     }
-                    const result = await this.#lifecycle.finish(loopId, turn.capacityFailure);
-                    if (result === null) throw new Error(`loop ${loopId} became terminal before provider-capacity settlement`);
-                    cleanup("forceful", "provider_capacity");
-                    return { turnIds, result, hitMaxTurns: false, reason: "provider_capacity" };
+                    return await ruleTerminal(turn.capacityFailure, "provider_capacity");
                 }
                 if (turn.providerParked) {
                     // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
@@ -276,7 +277,8 @@ export default class LoopDriver {
                 // {§engine-rails} — per-turn strike accounting (cycle detection,
                 // steer coupling, hard operation outcomes). StrikeRail owns the
                 // bookkeeping; runLoop owns abandonment.
-                const verdict = this.#strikes.assess(loopId, {
+                const verdict = await this.#strikes.assess(loopId, {
+                    waitRevision: row.wait_revision,
                     fingerprint: turn.fingerprint,
                     outcomes: turn.outcomes,
                     steerStruck: turn.steerStruck,
@@ -298,10 +300,7 @@ export default class LoopDriver {
                             stage: "loop",
                             retryable: false },
                     );
-                    const result = await this.#lifecycle.finish(loopId, failure);
-                    if (result === null) throw new Error(`loop ${loopId} became terminal before strike settlement`);
-                    cleanup("forceful", "strike_threshold");
-                    return { turnIds, result, hitMaxTurns: false, reason: "strike_threshold" };
+                    return await ruleTerminal(failure, "strike_threshold");
                 }
             }
         } catch (error) {
