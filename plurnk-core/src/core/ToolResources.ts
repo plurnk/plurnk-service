@@ -1,4 +1,4 @@
-import { PathSyntax, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParser, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import ToolInputSchema from "./ToolInputSchema.ts";
 import type {
@@ -95,15 +95,34 @@ const exampleSource = (
 // invocation: a static example or the effective registry's target alternatives. It rides as plain
 // text, never as a code span: the survey is already quoted by the Log's own fence, and a
 // backticked op taught models to fence their operations (#484, run30/run31 requiems).
+const invocationInput = (invocation: RuntimeInvocationDecl): string | undefined =>
+    invocation.example?.body ?? (invocation.inputSchema === undefined
+        ? invocation.signature
+        : ToolInputSchema.preview(invocation.inputSchema));
+
 const summaryWitness = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget: string | undefined,
     summary?: string,
-): string =>
-    exampleSource(runtime, invocation, exactTarget, summary)
-        .replace(/^### EXEC0/u, "EXEC")
-        .replace("\n", "\\n");
+): string => {
+    const heading = exampleSource(runtime, invocation, exactTarget, summary)
+        .split("\n", 1)[0]!.replace(/^### EXEC0/u, "EXEC");
+    const input = invocationInput(invocation);
+    return input === undefined ? heading : `${heading}\\n${input.replaceAll("\n", "\\n")}`;
+};
+
+const authoredSummary = (source: ToolSource, summary: string): string => {
+    if (!summary.startsWith("EXEC ") || summary.includes("\\n")) return summary;
+    const { items } = PlurnkParser.parseStatements(summary.replace(/^EXEC/u, "### EXEC0"));
+    const item = items[0];
+    if (items.length !== 1 || item?.kind !== "statement" || item.statement.op !== "EXEC") return summary;
+    const statement = item.statement;
+    if ((statement.executor ?? "sh") !== source.runtime || statement.body !== null || statement.target === null) return summary;
+    const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
+    const input = invocation === undefined ? undefined : invocationInput(invocation);
+    return input === undefined ? summary : `${summary}\\n${input}`;
+};
 
 const renderInvocation = (
     runtime: string,
@@ -187,9 +206,9 @@ export default class ToolResources {
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
         const schemaPath = (target: string): string => `${root}/${source.runtime}/${ToolResources.targetSegment(target)}.md`;
-        const summary = typeof source.summary === "string" ? source.summary : summaryWitness(
+        const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
             source.runtime,
-            { body: source.invocation.body, target: source.invocation.target, example: {} },
+            tools.length === 1 ? tools[0]!.invocation : { body: source.invocation.body, target: source.invocation.target, example: {} },
             tools.map(({ target }) => target).join("|"),
             source.summary.description,
         );

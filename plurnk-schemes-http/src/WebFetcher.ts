@@ -6,6 +6,7 @@ import {
     type ProjectedText,
     type ProjectionCaps,
 } from "@plurnk/plurnk-schemes";
+import { formatJsonDocument } from "@plurnk/plurnk-contracts";
 import Guard, { GuardBlockedError } from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
 import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
@@ -294,7 +295,7 @@ export default class WebFetcher {
                     bodyOutcome: originOutcome,
                 });
             }
-            const content = await fetched.body.text();
+            const content = WebFetcher.readableText(await fetched.body.text(), fetched.mimetype);
             return {
                 body: { content, mimetype: fetched.mimetype },
                 ...(fetched.html === undefined ? {} : { html: fetched.html }),
@@ -324,12 +325,16 @@ export default class WebFetcher {
         }
         if (!MimetypeClassifier.isHtml(fetched.mimetype)) {
             return {
-                body: { content: fetched.body, mimetype: fetched.mimetype },
+                body: { content: WebFetcher.readableText(fetched.body, fetched.mimetype), mimetype: fetched.mimetype },
                 ...(fetched.header === undefined ? {} : { header: fetched.header }),
                 bodyOutcome: originOutcome,
             };
         }
         return WebFetcher.#materializeHtml(fetched, projection, signal);
+    }
+
+    static readableText(content: string, mimetype: string): string {
+        return MimetypeClassifier.isJson(mimetype) ? formatJsonDocument(content) ?? content : content;
     }
 
     static async #materializeHtml(

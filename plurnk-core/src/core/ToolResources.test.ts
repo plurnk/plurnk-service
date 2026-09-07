@@ -114,7 +114,7 @@ test("{§capability-admission} derives an inventory summary from the effective e
     });
 
     const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Summary\n\nEXEC \[fixture\] \(echo\)$/m);
+    assert.match(family, /^## Summary\n\nEXEC \[fixture\] \(echo\)\\n\{"message": string\}$/m);
     assert.doesNotMatch(family, /fail/);
 });
 

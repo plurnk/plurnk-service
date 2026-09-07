@@ -481,13 +481,16 @@ effect occurred.
 
 The EXEC channel carries the tool's RESULT, never the transport envelope
 (`_meta`, `content`): text parts are written as text with their own newlines
-— `application/json` when the text is a JSON document, else `text/plain`;
+— whitespace-formatted `application/json` when the text is a complete JSON document,
+else unchanged `text/plain` ({§json-document-presentation});
 several text parts join with newlines; an empty content with
 `structuredContent` writes it pretty-printed — so the page rule and a scoped
 READ mean what they say and nothing reaches the model double-escaped. A result
 holding any non-text variant — image, audio, resource links, embedded
 text/blob resources — is preserved losslessly as one JSON value of the whole
-result ({§json-result-rendering}), the durable evidence path. Plurnk does not claim
+result with two-space indentation, the durable evidence path. Generated catalogs
+and prompt documents use the same indentation; individual text resources preserve
+their source layout. Plurnk does not claim
 first-class client rendering of non-text variants and adds no MCP-only media
 envelopes: presentation is a client concern over ordinary typed
 entries/resources, and a text-only client degrades by rendering the JSON. A

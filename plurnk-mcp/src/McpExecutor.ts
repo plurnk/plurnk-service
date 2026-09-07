@@ -2,10 +2,10 @@ import {
     BaseExecutor,
     ErrorDetail,
     ERROR_DETAIL_LIMIT,
-    renderJsonResult,
     Results,
     RuntimeInvocation,
 } from "@plurnk/plurnk-execs";
+import { formatJsonDocument } from "@plurnk/plurnk-contracts";
 import type {
     ChannelDecl,
     Effect,
@@ -93,21 +93,11 @@ export const toolResultBody = (result: ToolResultShape): { content: string; mime
         return { content: JSON.stringify(result.structuredContent, null, 2), mimetype: "application/json" };
     }
     if (parts.length === 0 || parts.some((part) => part.type !== "text")) {
-        return { content: renderJsonResult(result), mimetype: "application/json" };
+        return { content: JSON.stringify(result, null, 2), mimetype: "application/json" };
     }
     const text = parts.map((part) => (part as { text: string }).text).join("\n");
-    return { content: text, mimetype: isJsonDocument(text) ? "application/json" : "text/plain" };
-};
-
-const isJsonDocument = (text: string): boolean => {
-    const lead = text.trimStart();
-    if (!lead.startsWith("{") && !lead.startsWith("[")) return false;
-    try {
-        JSON.parse(text);
-        return true;
-    } catch {
-        return false;
-    }
+    const formatted = formatJsonDocument(text);
+    return { content: formatted ?? text, mimetype: formatted === undefined ? "text/plain" : "application/json" };
 };
 
 export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean): RuntimeDecl => ({

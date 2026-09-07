@@ -1,6 +1,6 @@
 // One outbound HTTP request from a statement, with its bounded error detail. Split out of Http.
 import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, UrlPath, EntryData, SchemeResult } from "@plurnk/plurnk-schemes";
-import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, { DEFAULT_WEB_UA, WebMaterializationError } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
@@ -97,6 +97,7 @@ export default class HttpRequester {
         const subscription = await ctx.subscriptions.open(pathname, handle);
         const onAbort = () => local.abort();
         subscription.addEventListener("abort", onAbort, { once: true });
+        let pendingJson: { content: string; mimetype: string } | undefined;
         try {
             const response = await fetch(url, {
                 method,
@@ -170,16 +171,26 @@ export default class HttpRequester {
             // Content-Type charset remains response evidence, not a second decoder.
             let bytes = 0;
             const decoder = new TextDecoder();
+            if (MimetypeClassifier.isJson(bodyMime)) pendingJson = { content: "", mimetype: bodyMime };
             for await (const chunk of responseBody as AsyncIterable<Uint8Array>) {
                 bytes += chunk.length;
-                await subscription.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
+                const text = decoder.decode(chunk, { stream: true });
+                if (pendingJson !== undefined) pendingJson.content += text;
+                else await subscription.notifyChunk(BODY, text, bodyMime);
             }
             const tail = decoder.decode();
-            if (tail.length > 0) await subscription.notifyChunk(BODY, tail, bodyMime);
+            if (pendingJson !== undefined) {
+                const content = WebFetcher.readableText(pendingJson.content + tail, bodyMime);
+                pendingJson = undefined;
+                await subscription.notifyChunk(BODY, content, bodyMime);
+            } else if (tail.length > 0) await subscription.notifyChunk(BODY, tail, bodyMime);
 
             await subscription.close({ status: 200 }, `HTTP ${response.status}; ${bytes} bytes`);
             return { shape: "passthrough", status: 102 };
         } catch (err) {
+            if (pendingJson !== undefined && pendingJson.content.length > 0) {
+                await subscription.notifyChunk(BODY, pendingJson.content, pendingJson.mimetype);
+            }
             const aborted = local.signal.aborted;
             if (aborted) {
                 const result = this.#cancelled(url, method);

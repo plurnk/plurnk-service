@@ -135,7 +135,7 @@ const resourceBody = (result: ReadResourceResult): {
         };
     }
     return {
-        content: JSON.stringify(result),
+        content: JSON.stringify(result, null, 2),
         mimetype: "application/json",
     };
 };
@@ -184,18 +184,18 @@ export default class McpResources {
                 resources,
                 resourceTemplates: this.#catalog.resourceTemplates,
                 prompts,
-            }), "mcp-resource-index"),
+            }, null, 2), "mcp-resource-index"),
         ));
         requireEntrySuccess(await ctx.entries.write(
             RESOURCES,
             catalogEntry(JSON.stringify({
                 resources,
                 resourceTemplates: this.#catalog.resourceTemplates,
-            }), "mcp-resource-index"),
+            }, null, 2), "mcp-resource-index"),
         ));
         requireEntrySuccess(await ctx.entries.write(
             PROMPTS,
-            catalogEntry(JSON.stringify({ prompts }), "mcp-prompt-index"),
+            catalogEntry(JSON.stringify({ prompts }, null, 2), "mcp-prompt-index"),
         ));
         await Promise.all(this.#catalog.resources.map(async (resource) => {
             const pathname = resourcePath(resource.uri);
@@ -207,7 +207,7 @@ export default class McpResources {
                     JSON.stringify({
                         ...resource,
                         address: `${this.#server}://${pathname}`,
-                    }),
+                    }, null, 2),
                     CATALOG_KIND,
                 ),
             ));
@@ -222,7 +222,7 @@ export default class McpResources {
                     JSON.stringify({
                         ...prompt,
                         address: `${this.#server}://${pathname}`,
-                    }),
+                    }, null, 2),
                     "mcp-prompt-catalog",
                 ),
             ));
@@ -262,7 +262,7 @@ export default class McpResources {
         requireEntrySuccess(await ctx.entries.write(request.pathname, {
             channels: {
                 body: {
-                    content: JSON.stringify(result),
+                    content: JSON.stringify(result, null, 2),
                     mimetype: "application/json",
                 },
             },

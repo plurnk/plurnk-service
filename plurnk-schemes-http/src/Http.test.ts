@@ -365,7 +365,7 @@ test("exact FIND preparation materializes an exact URL through the checked reada
         },
     );
     assert.equal(inspect().wrote?.pathname, "/dist/index.json");
-    assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
+    assert.equal(inspect().wrote?.entry.channels.body?.content, '{\n  "version": "24.18.0"\n}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
@@ -699,6 +699,44 @@ test("SEND[200]: also materializes the entry before subscribing (shares #fetchSt
     const { wrote, seq } = inspect();
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
     assert.equal(wrote?.pathname, "/p");
+});
+
+test("JSON mutation responses publish formatted documents without changing the request", async () => {
+    const { ctx, inspect } = makeCtx();
+    const request = '{"indent":    "is source"}';
+    let submitted: BodyInit | null | undefined;
+    const respond = mockFetch(200, "OK", ['{"id":9007199254740993,', '"nested":{"ok":true}}'], { "content-type": "application/problem+json" });
+    await withFetch(async (_input, init) => {
+        submitted = init?.body;
+        return respond();
+    }, async () => {
+        await new Http().send(sendStmt(null, urlTarget("http://example.com/x", "/x"), request), ctx);
+    });
+    assert.equal(submitted, request);
+    assert.deepEqual(inspect().chunks.filter(({ channel }) => channel === "body"), [{
+        channel: "body",
+        chunk: '{\n  "id": 9007199254740993,\n  "nested": {\n    "ok": true\n  }\n}',
+        mimetype: "application/problem+json",
+    }]);
+    assert.equal(inspect().closed?.result.status, 200);
+});
+
+test("interrupted JSON mutation responses preserve received text and the acquisition error", async () => {
+    const { ctx, inspect } = makeCtx();
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+            if (pulls++ === 0) controller.enqueue(new TextEncoder().encode('{"partial":'));
+            else controller.error(new Error("response interrupted"));
+        },
+    });
+    await withFetch(async () => new Response(stream, { headers: { "content-type": "application/json" } }), async () => {
+        const result = await new Http().send(sendStmt(null, urlTarget("http://example.com/x", "/x"), "task"), ctx);
+        assert.equal(result.status, 502);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/fetch-failed");
+    });
+    assert.equal(inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""), '{"partial":');
+    assert.equal(inspect().closed?.result.status, 502);
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────

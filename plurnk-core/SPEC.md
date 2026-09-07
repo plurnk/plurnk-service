@@ -4120,6 +4120,12 @@ unasked.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 
+§tools-summary-invocation A summary featuring one exact enabled tool invocation
+includes its compact input signature after literal `\n` when no example body is
+already present. Required schema fields use {§executor-input-schema-preview};
+authored examples take precedence. Family alternatives and descriptive summaries
+remain one compact orientation line, not an expansion of every tool's signature.
+
 §members-functionality **File membership is one Worker Functionality family.**
 Core registers the `members` family with the coordinator ({§functionality-coordinator}):
 the model, the client, and the operator learn one surface — `list | discover | add |

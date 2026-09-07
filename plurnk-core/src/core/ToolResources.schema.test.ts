@@ -62,6 +62,31 @@ test("{§executor-input-schema-preview} complex conditional requirements stay in
     assert.ok(detail!.content.includes(JSON.stringify(conditional, null, 2)));
 });
 
+test("{§tools-summary-invocation} a featured exact tool includes its required input without expanding the family", () => {
+    const tool = {
+        target: "search", summary: "Search documents.",
+        invocation: {
+            body: { role: "JSON arguments", required: true },
+            inputSchema: { type: "object", required: ["query"], properties: {
+                query: { type: "string" }, page: { type: "integer" },
+            } },
+        },
+    };
+    const family = (summary: string) => ToolResources.render({
+        runtime: "brave", summary, details: "", invocation: tool.invocation,
+        registry: { tools: [tool, { ...tool, target: "news" }] },
+    })[0]!.content.split("## Summary\n\n")[1]!.split("\n\n")[0];
+    const heading = "EXEC [brave] (search) <!-- Search documents -->";
+    assert.equal(family(heading), `${heading}\\n{"query": string}`);
+    for (const authored of [
+        "Search documents and news.",
+        "EXEC [brave] (search|news)",
+        "EXEC [brave] (disabled)",
+        "EXEC [other] (search)",
+        `${heading}\\n{"query":"example"}`,
+    ]) assert.equal(family(authored), authored);
+});
+
 test("{§tools-resource-discovery} annotation normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
     assert.ok(family!.content.includes(`Schema: worker://~${detail!.pathname} -->`));

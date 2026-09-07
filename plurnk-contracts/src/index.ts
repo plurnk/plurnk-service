@@ -45,6 +45,7 @@ export { default as AcpPlanValue } from "./AcpPlanValue.ts";
 export { default as PlanValue } from "./PlanValue.ts";
 export { default as CapabilityAdmission } from "./CapabilityAdmission.ts";
 export { renderJsonResult } from "./JsonResult.ts";
+export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
 export { aguiConformanceReport } from "./AguiConformance.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";

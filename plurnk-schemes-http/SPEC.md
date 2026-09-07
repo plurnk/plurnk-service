@@ -116,7 +116,7 @@ returns the selected channel's requested text projection.
 | ----------------------------- | ------------------------------------------------------------------------------------------------ |
 | Response media type           | WHATWG `MIMEType` essence; absent or unparseable metadata becomes `application/octet-stream`     |
 | Finite GET text               | Fetch `Response.text()` UTF-8 decoding; buffering does not select a different character encoding |
-| Streamed mutation response    | Incremental replacement-mode UTF-8 through `TextDecoder`, preserving response backpressure       |
+| Streamed mutation response    | Incremental replacement-mode UTF-8 through `TextDecoder`; finite JSON documents publish after completion, other text preserves incremental backpressure |
 | `charset` parameter           | Preserve in `header` as origin evidence; it does not replace Fetch text decoding                 |
 | JSON and XML textual families | Use the same HTTP byte-to-string rule; format projections consume the resulting Unicode string   |
 | Direct HTML GET               | Fetch UTF-8 decoding of origin server HTML                                                       |
@@ -127,6 +127,13 @@ This decoder boundary remains text normalization, not a media-format processor.
 A configured binary type bypasses it and enters the mimetype family's bounded
 readable-byte projection {§mimetype-binary-input}; raw bytes never become a
 durable channel.
+
+§http-json-presentation Finite `application/json` and `+json` responses use
+{§json-document-presentation} in their canonical body channel before indexing,
+scope selection, or previews. Both GET and mutation responses follow this rule.
+Malformed JSON remains unchanged; interrupted mutation responses preserve the
+received partial text and the acquisition failure. Request bodies, authored
+entries, non-JSON text, SSE, and JSONL retain their original formatting.
 
 ### §html-materialization Readable materialization
 

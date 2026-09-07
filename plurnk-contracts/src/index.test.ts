@@ -64,6 +64,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "Validator",
         "WORKER_NAME",
         "aguiConformanceReport",
+        "formatJsonDocument",
         "parsePath",
         "renderJsonResult",
     ]);

@@ -59,12 +59,29 @@ test("live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
-        assert.equal(materialized?.body?.content, '{"a":1}');
+        assert.equal(materialized?.body?.content, '{\n  "a": 1\n}');
         assert.equal(fetched?.mimetype, "application/json");
         assert.match(fetched?.header ?? "", /^HTTP 200 /);
         assert.match(fetched?.header ?? "", /^x-plurnk-request-method: GET$/m);
         assert.match(fetched?.header ?? "", /^x-plurnk-fetched-at:/m);
     });
+});
+
+test("finite JSON presentation preserves literal values and non-JSON source layout", async () => {
+    const input = '{"id":9007199254740993,"nested":{"ok":true}}';
+    for (const mimetype of ["application/json", "application/problem+json"]) {
+        const materialized = await WebFetcher.materialize({ url: PUB, body: input, mimetype }, PROJECTION);
+        assert.equal(materialized?.body?.content, '{\n  "id": 9007199254740993,\n  "nested": {\n    "ok": true\n  }\n}');
+        assert.equal(materialized?.body?.mimetype, mimetype);
+    }
+    for (const [body, mimetype] of [
+        [input, "text/plain"],
+        ['{"partial":', "application/json"],
+        ['{"a":1}\n{"b":2}', "application/x-ndjson"],
+    ]) {
+        const materialized = await WebFetcher.materialize({ url: PUB, body, mimetype }, PROJECTION);
+        assert.equal(materialized?.body?.content, body);
+    }
 });
 
 test("the shared textual taxonomy accepts application/yaml", async () => {

@@ -81,6 +81,7 @@
         "@cfworker/json-schema": "^4.1.1",
         "antlr4ng": "^3.0.0",
         "json-p3": "2.2.2",
+        "jsonc-parser": "^3.3.1",
         "xpath": "^0.0.34"
     },
     "devDependencies": {

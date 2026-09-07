@@ -462,10 +462,14 @@ test("invalid tool arguments carry the one-object recovery", async () => {
 test("{§mcp-result-content} the channel carries the result, never the envelope", () => {
     const pretty = '[\n  {\n    "id": "PART-001"\n  }\n]';
     assert.deepEqual(toolResultBody({ content: [{ type: "text", text: pretty }] }), { content: pretty, mimetype: "application/json" });
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '[{"id":"PART-001"}]' }] }), { content: pretty, mimetype: "application/json" });
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '{"id":9007199254740993}' }] }), { content: '{\n  "id": 9007199254740993\n}', mimetype: "application/json" });
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '{"partial":' }] }), { content: '{"partial":', mimetype: "text/plain" });
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '{"a":1}\n{"b":2}' }] }), { content: '{"a":1}\n{"b":2}', mimetype: "text/plain" });
     assert.deepEqual(toolResultBody({ content: [{ type: "text", text: "plain words" }] }), { content: "plain words", mimetype: "text/plain" });
     assert.deepEqual(toolResultBody({ content: [{ type: "text", text: "one" }, { type: "text", text: "two" }] }), { content: "one\ntwo", mimetype: "text/plain" });
     assert.deepEqual(toolResultBody({ content: [], structuredContent: { a: 1 } }), { content: '{\n  "a": 1\n}', mimetype: "application/json" });
     const mixed = toolResultBody({ content: [{ type: "text", text: "see image" }, { type: "image", data: "AA==", mimeType: "image/png" }] });
     assert.equal(mixed.mimetype, "application/json");
-    assert.match(mixed.content, /"type":"image"/, "a non-text part keeps the typed rendering of the whole result");
+    assert.match(mixed.content, /"type": "image"/, "a non-text part keeps the typed rendering of the whole result");
 });

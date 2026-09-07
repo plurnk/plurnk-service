@@ -69,12 +69,21 @@ a third protocol implementation: each client feeds the same chunks and events
 through its production parser and projection seam, then verifies the declared
 outcome. Specimen names are unique within their transport or lifecycle family.
 
-§json-result-rendering `renderJsonResult` is the one presentation serializer
-for generated JSON operation results. A top-level array remains one valid,
+§json-result-rendering `renderJsonResult` renders compact aggregate operation
+rows. A top-level array remains one valid,
 compact JSON value but places each item on its own physical line by adding only
 item-boundary newlines; an empty or single-item array and every non-array value
 remain one line. It never rewrites arbitrary stored JSON, whose original lines
 remain source coordinates.
+
+§json-document-presentation Generated JSON documents use two-space indentation.
+Normalized remote JSON text uses `formatJsonDocument`: whitespace-only formatting
+of a complete, strict JSON document, preserving key order, duplicate keys, number
+lexemes, and string escapes. Invalid or incomplete input is declined, not repaired.
+Apply formatting at the representation owner before storage, indexing, scoping,
+and previews; never reformat literal resources, JSONL framing, or wire/evidence
+serialization. Compact aggregate rows ({§json-result-rendering}) and packet
+metadata retain their deliberate layouts.
 
 ## §contract-layers 1.1 Contract layers and admission boundary
 
