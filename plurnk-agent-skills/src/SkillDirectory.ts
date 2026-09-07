@@ -1,6 +1,8 @@
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { FileByteSource } from "@plurnk/plurnk-schemes";
 import { parseSkill, type SkillDocument } from "./SkillDocument.ts";
+import type SkillTree from "./SkillTree.ts";
 
 export class SkillResourceError extends Error {
     readonly code: "SKILL_PATH_OUTSIDE_ROOT" | "SKILL_RESOURCE_NOT_FILE" | "SKILL_DIRECTORY_CYCLE";
@@ -13,7 +15,7 @@ export class SkillResourceError extends Error {
 }
 
 // {§agent-skills-directory} A loaded skill is a source tree, not a flattened document.
-export default class SkillDirectory {
+export default class SkillDirectory implements SkillTree {
     readonly directory: string;
     readonly document: SkillDocument;
 
@@ -59,6 +61,10 @@ export default class SkillDirectory {
 
     read(pathname: string): Promise<Buffer> {
         return this.resolve(pathname).then((file) => readFile(file));
+    }
+
+    resource(pathname: string): FileByteSource {
+        return new FileByteSource(() => this.resolve(pathname));
     }
 
     // {§agent-skills-disclosure} Walk names only; file bodies remain demand-loaded.

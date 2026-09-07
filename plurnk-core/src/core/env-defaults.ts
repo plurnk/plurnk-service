@@ -23,7 +23,10 @@ export default class EnvDefaults {
     static async #readDefaults(dir: string, owner: string): Promise<EnvDefaultsFile | null> {
         let text: string;
         try { text = await readFile(join(dir, ".env.defaults"), "utf8"); }
-        catch { return null; }
+        catch (cause) {
+            if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+            throw new Error(`${owner}: cannot read .env.defaults.`, { cause });
+        }
         // parseEnv never throws — it silently mints junk keys from malformed lines. Malformed =
         // any parsed key that isn't a valid env name; crash naming the owner — a broken defaults
         // file is a broken package, never a silently-degraded floor.

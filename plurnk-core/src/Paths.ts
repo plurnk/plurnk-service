@@ -23,6 +23,7 @@ export default class Paths {
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
+    static configuration = resolve(Paths.#PACKAGE_ROOT, "INSTALL.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
     // {§recap} — meta-owned default Recap and its operator override.

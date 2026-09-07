@@ -12,7 +12,8 @@ Ordinary provider behavior is intentionally not reimplemented here:
 - PLURNK owns aliases, generation envelopes, normalized usage and errors,
   evidence capture, first-party metadata, and local endpoint capabilities.
 
-See `SPEC.md` for the contract and `.env.defaults` for every operational knob.
+See [SPEC.md](SPEC.md) for the contract, [the model guide](docs/models.md) for
+configuration relationships, and [.env.defaults](.env.defaults) for every knob.
 The package-owned `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT` bounds upstream
 diagnostic text in public provider Problems.
 

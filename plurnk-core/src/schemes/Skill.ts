@@ -1,9 +1,9 @@
-import { readFile, stat } from "node:fs/promises";
-import { SkillDirectory, SkillResourceError } from "@plurnk/plurnk-agent-skills";
+import { SkillResourceError, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import { PathSyntax, type FindStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes";
 import {
-    FileByteSource,
+    GeneratedByteSource,
+    type ByteSource,
     type EntryAddress,
     type EntryCoordinate,
     type RepresentationPreparationRequest,
@@ -21,7 +21,7 @@ import EntryCrud from "./_entry-crud.ts";
 import EntryFind, { emptyFindFields, type FindResult } from "./_entry-find.ts";
 import { pathScope, pathScopeMatches } from "./_path-scope.ts";
 
-// {§skills-resources} The installed directory is truth; entries are demand-loaded projections.
+// {§skills-resources} The resource tree is truth; entries are demand-loaded projections.
 export default class Skill extends CoreSchemeAdapterBase implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "skill",
@@ -37,24 +37,22 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
         modelVisible: true,
     };
 
-    readonly #directories: (workerId: number) => ReadonlyMap<string, SkillDirectory>;
+    readonly #trees: (workerId: number) => ReadonlyMap<string, SkillTree>;
 
-    constructor(directories: (workerId: number) => ReadonlyMap<string, SkillDirectory>) {
+    constructor(trees: (workerId: number) => ReadonlyMap<string, SkillTree>) {
         super();
-        this.#directories = directories;
+        this.#trees = trees;
     }
 
     async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<EntryAddress | null> {
         const address = entryCoordinateOf(target, "resource");
-        const directories = this.#directories(ctx.functionalityWorkerId);
-        return PathSyntax.hasGlob(address.authority) || directories.has(address.authority) ? address : null;
+        const trees = this.#trees(ctx.functionalityWorkerId);
+        return PathSyntax.hasGlob(address.authority) || trees.has(address.authority) ? address : null;
     }
 
-    byteSource({ authority, pathname }: EntryCoordinate, ctx: CoreSchemeCallContext): FileByteSource {
-        return new FileByteSource(async () => {
-            const directory = this.#directories(ctx.functionalityWorkerId).get(authority);
-            return directory === undefined ? null : directory.resolve(pathname.replace(/^\//u, ""));
-        });
+    byteSource({ authority, pathname }: EntryCoordinate, ctx: CoreSchemeCallContext): ByteSource {
+        return this.#trees(ctx.functionalityWorkerId).get(authority)?.resource(pathname.replace(/^\//u, ""))
+            ?? new GeneratedByteSource(async () => null);
     }
 
     static #refusal(cause: unknown, address: EntryCoordinate): RepresentationPreparationResult {
@@ -70,20 +68,20 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
     }
 
     async #materialize(address: EntryCoordinate, core: PlurnkSchemeContext): Promise<RepresentationPreparationResult> {
-        const directory = this.#directories(core.functionalityWorkerId).get(address.authority);
-        if (directory === undefined) return Skill.#refusal({ code: "ENOENT" }, address);
         try {
-            const file = await directory.resolve(address.pathname.replace(/^\//u, ""));
+            const source = this.byteSource(address, core);
+            const size = await source.size();
+            if (size === null) return Skill.#refusal({ code: "ENOENT" }, address);
             const mimetypes = core.mimetypes;
             if (mimetypes === undefined) throw new Error("Skill requires the configured mimetype registry.");
-            const mimetype = await FileMaterialization.detectMimetype(file, mimetypes);
+            const mimetype = await FileMaterialization.detectSourceMimetype(address.pathname, source, mimetypes);
             let content = "";
             let outputMimetype = mimetype;
             let attributes: Readonly<Record<string, unknown>> = {};
             if (await MimetypeBinary.isBinaryMimetype(mimetype, mimetypes)) {
                 let metadata: Readonly<Record<string, unknown>> = { mimetype };
                 try {
-                    const projected = await mimetypes.projectReadable({ path: file, hint: mimetype });
+                    const projected = await mimetypes.projectReadableStream(Skill.#chunks(source, size), mimetype);
                     if (projected !== null) {
                         content = projected.content;
                         outputMimetype = "text/markdown";
@@ -95,12 +93,12 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
                 }
                 attributes = { sourceProjection: metadata };
             } else {
-                const materialization = FileMaterialization.classify((await stat(file)).size);
+                const materialization = FileMaterialization.classify(size);
                 if (materialization.disposition === "input-limit") {
                     const rejection = FileMaterialization.rejection(`skill://${address.authority}${address.pathname}`, materialization);
                     return Results.failure("scheme:skill", rejection.code, rejection.status, rejection.detail, {}, rejection.extensions);
                 }
-                content = await readFile(file, "utf8");
+                content = new TextDecoder().decode(await source.read(1, size));
             }
             const written = await EntryCrud.writeEntry(address, {
                 channels: { body: { content, mimetype: outputMimetype } },
@@ -109,6 +107,12 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
             return written.status >= 400 ? written : { status: 200 };
         } catch (cause) {
             return Skill.#refusal(cause, address);
+        }
+    }
+
+    static async *#chunks(source: ByteSource, size: number): AsyncGenerator<Uint8Array> {
+        for (let start = 1; start <= size; start += 65536) {
+            yield await source.read(start, Math.min(start + 65535, size));
         }
     }
 
@@ -125,14 +129,14 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
         const inScope = (pathname: string): boolean => scope.kind === "glob" && scope.shallowPrefix !== null
             ? pathname.startsWith(scope.shallowPrefix)
             : pathScopeMatches(scope, pathname);
-        const directories = this.#directories(core.functionalityWorkerId);
+        const trees = this.#trees(core.functionalityWorkerId);
         const available = new Set<string>();
-        for (const [authority, directory] of directories) {
+        for (const [authority, tree] of trees) {
             if (!pathScopeMatches(authorityScope, authority)) continue;
             try {
                 const paths = scope.kind === "exact"
                     ? [scope.pathname.replace(/^\//u, "")]
-                    : await directory.list();
+                    : await tree.list();
                 for (const relative of paths) {
                     const pathname = `/${relative}`;
                     // A shallow FIND also needs deeper names for its folder summaries.
@@ -151,7 +155,7 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
             authority: null, scope_prefix: null, channel: "body",
         });
         for (const address of cached) {
-            if (!directories.has(address.authority)
+            if (!trees.has(address.authority)
                 || (pathScopeMatches(authorityScope, address.authority)
                     && inScope(address.pathname)
                     && !available.has(`${address.authority}\0${address.pathname}`))) {

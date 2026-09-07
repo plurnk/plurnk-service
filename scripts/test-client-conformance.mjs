@@ -317,7 +317,7 @@ try {
     tui.write("/mcp\r");
     await tui.waitFor(/MCP servers: none/);
     tui.write("/skills\r");
-    await tui.waitFor(/Agent Skills: none/);
+    await tui.waitFor(/plurnk\s+active\s+service/);
     tui.write("/agents\r");
     await tui.waitFor(/A2A agents: none/);
     tui.write("Exercise the installed interactive terminal.\r");

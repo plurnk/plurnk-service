@@ -2571,6 +2571,9 @@ Node's pre-script env-file form and the executable's post-script form share the 
 
 §operator-config-env-defaults **Every package owns its knobs — `.env.defaults` is the standard.** Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring its own knobs; the file is the package's configuration reference, traveling in the tarball and changing with the code that reads it. At boot the daemon assembles every installed member's file into one floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics) and applies it set-if-unset under every operator source. `plurnk-service config defaults` renders the same complete, owner-labelled aggregate to stdout on demand, preserving comments and optional declarations without persisting a second copy or exposing effective secret values. A key claimed by two packages fails boot naming both. With the reader-declares discipline, each key has one implementation and one defaults owner.
 
+§operator-config-source-errors An optional member file may be absent; other read failures surface with the
+owning package and original cause, never as an incomplete successful catalog.
+
 §operator-config-discovery The conventional `plurnk-service config` command
 family is a view over the environment cascade, never another configuration
 representation. `config` reports the canonical `.env`, actual source order,
@@ -4150,16 +4153,16 @@ verbs are these verbs.
 §skills-functionality **Agent Skills are one Worker Functionality family.**
 Core registers the `skills` family with the coordinator ({§functionality-coordinator});
 its adapter owns protocol truth for standard Agent Skills and nothing else. A
-definition is `SkillDefinition` — the standard skill `name`, the universal
-root `scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
-`~/.agents/skills`), and for a Worker-installed skill the standard installer
+definition is `SkillDefinition` — the standard skill `name`, its source
+`scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
+`~/.agents/skills`, `service` = a host-provided resource tree), and for a Worker-installed skill the standard installer
 `source` that provides it. Plurnk seeds no universal root and mutates none
 absent an explicit `add`/`remove`.
 
 *Available definitions.* The filesystem is the only truth about installation:
 every `<root>/<name>/SKILL.md` directory under the project then the global
 root is one service-origin definition, enabled by default, project shadowing
-global by name; when the standard installer's `skills-lock.json` records a
+global and then host-provided trees by name; when the standard installer's `skills-lock.json` records a
 source it rides the definition. A Worker's durable state owns enablement
 ({§functionality-state}); a disabled skill stays client-visible and leaves no
 model-facing trace.
@@ -4176,8 +4179,9 @@ contributes nothing and is refused with 400.
 and a project root when `scope` is `project`; the Worker's own definition may
 shadow a service skill of the same name.
 
-*Preparation.* For each enabled alias the adapter locates the directory at the
-definition's scope; a Worker definition whose directory is absent is installed
+*Preparation.* For each enabled alias the adapter selects the host-provided
+tree for `service` scope or locates the directory at the filesystem scope;
+a Worker definition whose directory is absent is installed
 through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, default `npx --yes skills`:
 `add <source> --agent universal --skill <name> --yes [--global]`, run with
 `HOME` set to the service's user home so the installer's `~` is the global
@@ -4195,10 +4199,11 @@ configured, otherwise `~/.agents/.skill-lock.json`. A lock's source belongs to
 its scope, never a same-named installation in another root. Missing locks mean
 unknown provenance; malformed or unreadable locks surface their cause.
 
-§skills-resources **A skill is an installed resource tree, not a rewritten document.**
-The family exposes enabled, available directories through `skill://<name>/`.
-The source directory is authoritative; Worker-owned entries are demand-loaded
-projections and never a writable installation or a second copy of its files.
+§skills-resources **A skill is a resource tree, not a rewritten document.**
+The family exposes enabled, available {§agent-skills-tree} sources through
+`skill://<name>/`. The source owns its bytes; Worker-owned entries are demand-loaded
+projections, not writable installations. Filesystem skills retain their original
+directories; service-provided trees need no generated filesystem directory.
 
 | Operation | Contract |
 | --- | --- |
@@ -4214,6 +4219,19 @@ Explicit skill URIs address these resources; bare operation paths still address
 project files, with no implicit current-skill directory. Source resolution follows
 {§agent-skills-directory}, including installer symlinks and containment of references.
 An uninstalled Git skill is not manufactured by repository detection.
+
+§plurnk-skill **Plurnk's own reference is an ordinary service-provided skill.**
+`skill://plurnk/SKILL.md` is the standard frontmatter entry point, catalogued with
+other enabled skills. It links package-owned configuration and model chapters,
+the complete `.env.defaults` aggregate at `skill://plurnk/.env.defaults`, and the
+Worker's existing tool/resource references. No chapter or defaults body is
+injected merely because the skill is enabled. The defaults bytes come from the
+same {§operator-config-env-defaults} renderer as the operator command, never the
+effective environment. Native chapter files retain their owners and locations;
+runtime-generated bytes have no invented disk location. Disable/enable,
+inheritance, and project/global shadowing use the ordinary Skills lifecycle.
+Service-provided skills are not installer targets; service definitions are
+disable-only under {§skills-remove}.
 
 §skills-remove **`remove` uninstalls what the Worker installed.** Before the
 coordinator forgets a Worker-origin skill definition the adapter removes that

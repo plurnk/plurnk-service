@@ -56,6 +56,7 @@ const SCHEME_TEACHING = Object.freeze({
 export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",
+    skill: "skills/plurnk/SKILL.md",
     schemeDocs: SCHEME_TEACHING,
 
 } as const);
@@ -63,6 +64,7 @@ export const TEACHING_CORPUS = Object.freeze({
 export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.recap
+    | typeof TEACHING_CORPUS.skill
     | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs];
 
 

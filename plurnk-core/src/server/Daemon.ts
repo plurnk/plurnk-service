@@ -32,6 +32,7 @@ import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality.ts";
+import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
 import type { WorkerCapabilityGate } from "./DaemonModule.ts";
@@ -170,9 +171,16 @@ export default class Daemon implements ApplicationPort {
             replaceWorkerCapabilities: (replacement, options) => this.replaceWorkerCapabilities(replacement, options),
             retainWorker: (workerId) => this.#residency.retain(workerId) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
-        this.#skills = new SkillsFunctionality({ db, ...skills });
+        this.#skills = new SkillsFunctionality({
+            db,
+            ...skills,
+            provided: async () => {
+                const tree = await PlurnkSkill.load(this.#nodeModulesPath);
+                return new Map([[tree.document.name, tree]]);
+            },
+        });
         this.#skills.attach(this.#functionality.register(this.#skills));
-        this.#schemes.register("skill", new Skill((workerId) => this.#skills.directories(workerId)));
+        this.#schemes.register("skill", new Skill((workerId) => this.#skills.trees(workerId)));
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);

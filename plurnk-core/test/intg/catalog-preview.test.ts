@@ -242,7 +242,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true, 200],
                     ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), false, 200],
-                    ["skills", finds.find((r) => r.scheme === "skill" && r.hostname === "*" && r.pathname === "/SKILL.md"), true, 200],
+                    ["skills", finds.find((r) => r.scheme === "skill" && r.hostname === "*" && r.pathname === "/SKILL.md"), false, 200],
                     ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/tools/*.md"), true, 200],
                     ["plurnk references", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/plurnk/*.md"), false, 200],
                     ["enabled members", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/members/*.md"), true, 200],
@@ -262,7 +262,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const skillsResult = JSON.parse(skillsSurvey!.rx) as { content?: string; results?: unknown[] };
                 const skillItems = (skillsResult.results
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
-                assert.deepEqual(skillItems, [], "an empty installation has an empty ordinary catalog");
+                assert.deepEqual(skillItems.flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"], "an empty project still has Plurnk's ordinary service skill");
+                assert.ok(skillItems[0]?.[0]?.summary, "the skill arrives with its standard description");
                 const toolSurvey = finds.find((r) => r.pathname === "/_plurnk/plurnk/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results

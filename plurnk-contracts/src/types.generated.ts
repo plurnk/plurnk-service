@@ -1265,9 +1265,9 @@ export interface SkillDefinition {
  */
 name: string
 /**
- * The universal Agent Skills root: the project's `.agents/skills` or the user's `~/.agents/skills`.
+ * Source: project `.agents/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service sources are not installer targets.
  */
-scope: ("project" | "global")
+scope: ("project" | "global" | "service")
 /**
  * The standard installer package reference (`owner/repo`, a git URL, or a local path) that provides the skill; required to add a skill that is not yet installed.
  */

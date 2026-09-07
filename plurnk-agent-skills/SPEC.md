@@ -1,5 +1,13 @@
 # Agent Skills loader
 
+## §agent-skills-tree Resource tree
+
+`SkillTree` supplies standard `SKILL.md` metadata, resource names, and the
+original bytes through {§scheme-source-bytes}. A filesystem directory and a
+consumer-composed tree implement the same contract. Listing does not read
+supporting bodies; resources without native files do not acquire synthetic ones.
+The consumer owns composition, activation, and publication, not this loader.
+
 ## §agent-skills-directory Source directory
 
 The loader consumes the standard [Agent Skills directory format](https://agentskills.io/specification).

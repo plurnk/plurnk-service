@@ -16,6 +16,7 @@ sources into a consuming package would create a second teaching owner.
 | `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
 | `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§recap}                    |
 | `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
+| `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
 
 Required is a package-membership statement, not unconditional packet
 projection. Each source is read only at its consuming boundary; absence or an
@@ -32,14 +33,13 @@ unregistered names do not ship as speculative teaching. Manifest `documentation`
 optional: an absent field contributes no pull doc, while a present field is the
 fallback only when meta owns no source for that scheme name.
 
-## §no-bundled-skills No package-bundled Agent Skills
+## §skills-installation-boundary Skill composition and installation
 
-Meta publishes no Agent Skills of its own. Skill discovery, installation, and
-enablement are the Worker's `skills` Functionality family in core
-({§skills-functionality}); the model learns that family from its generated
-manager document, never from a bundled skill that teaches a shell package
-manager. Standard skills reach a Worker only from the universal project and
-user-global roots.
+Meta authors the standard Plurnk `SKILL.md`; Core composes its resource tree
+from package-owned references and generated resources ({§plurnk-skill}). Skill
+discovery and enablement use the same Worker family as installed skills
+({§skills-functionality}). Neither package copies skills into universal roots
+or invokes an installer merely to expose the service's own reference material.
 
 ## §plugin-discovery Installed capability discovery
 

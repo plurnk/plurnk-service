@@ -54,6 +54,7 @@
         "dist/**/*",
         "README.md",
         "SPEC.md",
+        "docs/**/*.md",
         ".env.defaults"
     ],
     "scripts": {

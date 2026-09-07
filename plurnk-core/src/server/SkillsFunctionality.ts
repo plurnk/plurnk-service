@@ -1,6 +1,6 @@
 // {§skills-functionality} — standard Agent Skills as one Worker Functionality
-// family. The filesystem under the universal roots is the only truth about
-// installation; the Worker's durable state owns enablement; the standard
+// family. Universal roots and host-provided trees own resources;
+// the Worker's durable state owns enablement; the standard
 // `skills` CLI is the deterministic installer beneath `add`/`remove` and the
 // registry behind `discover`, and neither is the model's or a client's contract.
 import { execFile } from "node:child_process";
@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify, stripVTControlCharacters } from "node:util";
-import { SkillDirectory } from "@plurnk/plurnk-agent-skills";
+import { SkillDirectory, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import {
     Problems,
     Validator,
@@ -54,7 +54,7 @@ interface Installed {
 
 interface Snapshot {
     readonly signature: string;
-    readonly directories: ReadonlyMap<string, SkillDirectory>;
+    readonly trees: ReadonlyMap<string, SkillTree>;
     // Aliases whose last preparation was unavailable; an unchanged one stays
     // unavailable under a client's reject policy unless it is the retried alias.
     readonly unavailable: readonly string[];
@@ -205,25 +205,28 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly #db: Db;
     readonly #hostPaths: HostPaths;
     readonly #toolchain: SkillsToolchain;
+    readonly #provided: () => Promise<ReadonlyMap<string, SkillTree>>;
     readonly #snapshots = new Map<number, Snapshot>();
     #handle: FunctionalityFamilyHandle | null = null;
 
-    constructor({ db, hostPaths = new HostPaths(), toolchain = new StandardSkillsToolchain() }: {
+    constructor({ db, hostPaths = new HostPaths(), toolchain = new StandardSkillsToolchain(), provided = async () => new Map() }: {
         readonly db: Db;
         readonly hostPaths?: HostPaths;
         readonly toolchain?: SkillsToolchain;
+        readonly provided?: () => Promise<ReadonlyMap<string, SkillTree>>;
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
         this.#toolchain = toolchain;
+        this.#provided = provided;
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
         this.#handle = handle;
     }
 
-    directories(workerId: number): ReadonlyMap<string, SkillDirectory> {
-        return this.#snapshots.get(workerId)?.directories ?? new Map();
+    trees(workerId: number): ReadonlyMap<string, SkillTree> {
+        return this.#snapshots.get(workerId)?.trees ?? new Map();
     }
 
     async #projectRoot(workspaceId: number): Promise<string | null> {
@@ -232,6 +235,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     }
 
     #rootFor(scope: Scope, projectRoot: string | null): string | null {
+        if (scope === "service") throw new TypeError("A service-provided skill has no installer root.");
         if (scope === "global") return this.#hostPaths.globalSkillsDir;
         return projectRoot === null ? null : this.#hostPaths.projectSkillsDir(projectRoot);
     }
@@ -294,6 +298,9 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     async #signature(projectRoot: string | null): Promise<string> {
         const hash = createHash("sha256");
+        for (const [name, tree] of await this.#provided()) {
+            hash.update(JSON.stringify([name, "service", tree.document.source]));
+        }
         for (const scope of ["project", "global"] as const) {
             const root = this.#rootFor(scope, projectRoot);
             if (root === null) continue;
@@ -321,11 +328,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     async available(identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
         const projectRoot = await this.#projectRoot(identity.workspaceId);
         const sources = await this.#lockSources(projectRoot);
-        return [...(await this.#scan(projectRoot)).values()].map((installed) => {
+        const installedSkills = await this.#scan(projectRoot);
+        const native = [...installedSkills.values()].map((installed) => {
             const source = sources.get(`${installed.scope}:${installed.name}`);
             const definition: SkillDefinition = { name: installed.name, scope: installed.scope, ...(source === undefined ? {} : { source }) };
             return { alias: installed.name, definition, enabled: true };
         });
+        const provided = [...(await this.#provided()).keys()]
+            .filter((name) => !installedSkills.has(name))
+            .map((name) => ({ alias: name, definition: { name, scope: "service" } satisfies SkillDefinition, enabled: true }));
+        return [...native, ...provided];
     }
 
     async discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
@@ -372,6 +384,9 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const alias = typeof params.alias === "string" ? params.alias : definition.name;
         if (alias !== definition.name) {
             throw actionError("alias-mismatch", 400, `Alias '${alias}' must equal the skill name '${definition.name}'.`, { alias, name: definition.name, retryable: false });
+        }
+        if (definition.scope === "service") {
+            throw actionError("scope-not-installable", 400, "Service-provided skills can be enabled or disabled; adding a skill requires project or global scope.", { alias, retryable: false });
         }
         if (definition.source === undefined) {
             throw actionError("source-required", 400, `Adding '${alias}' requires the standard installer source that provides it.`, { alias, retryable: false });
@@ -425,31 +440,41 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return (await isFile(file)) ? { name: alias, scope: definition.scope, dir: join(root, alias), file } : undefined;
     }
 
+    async #loadInstalled(alias: string, definition: SkillDefinition, installed: Map<string, Installed>, projectRoot: string | null): Promise<SkillDirectory> {
+        let located = await this.#locate(alias, definition, installed, projectRoot);
+        if (located === undefined) {
+            const root = this.#rootFor(definition.scope, projectRoot);
+            if (root === null) throw actionError("project-root-required", 409, `'${alias}' targets the project scope, but this workspace has no project root.`, { name: alias, retryable: false });
+            if (definition.source === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not installed under its ${definition.scope} root.`, { name: alias, scope: definition.scope, root, retryable: false });
+            located = await this.#install(definition, root, this.#cwdFor(definition.scope, projectRoot));
+        }
+        try {
+            return await SkillDirectory.load(located.dir);
+        } catch (cause) {
+            throw actionError("skill-invalid", 422, `Agent Skill '${alias}' is not a valid standard skill: ${messageOf(cause)}`, { name: alias, scope: located.scope, path: located.file, retryable: false }, cause);
+        }
+    }
+
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
         const projectRoot = await this.#projectRoot(preparation.workspaceId);
         const installed = await this.#scan(projectRoot);
+        const provided = await this.#provided();
         const previous = preparation.previous as Snapshot | null;
         const carried = new Set(previous?.unavailable ?? []);
         const outcomes = new Map<string, FunctionalityOutcome>();
-        const directories = new Map<string, SkillDirectory>();
+        const trees = new Map<string, SkillTree>();
         for (const [alias, raw] of preparation.enabled) {
             const definition = raw as SkillDefinition;
             try {
-                let located = await this.#locate(alias, definition, installed, projectRoot);
-                if (located === undefined) {
-                    const root = this.#rootFor(definition.scope, projectRoot);
-                    if (root === null) throw actionError("project-root-required", 409, `'${alias}' targets the project scope, but this workspace has no project root.`, { name: alias, retryable: false });
-                    if (definition.source === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not installed under its ${definition.scope} root.`, { name: alias, scope: definition.scope, root, retryable: false });
-                    located = await this.#install(definition, root, this.#cwdFor(definition.scope, projectRoot));
-                }
-                let directory: SkillDirectory;
-                try {
-                    directory = await SkillDirectory.load(located.dir);
-                } catch (cause) {
-                    throw actionError("skill-invalid", 422, `Agent Skill '${alias}' is not a valid standard skill: ${messageOf(cause)}`, { name: alias, scope: located.scope, path: located.file, retryable: false }, cause);
-                }
-                directories.set(alias, directory);
-                outcomes.set(alias, { state: "active", detail: { scope: located.scope, path: directory.directory, description: directory.document.description } });
+                const tree = definition.scope === "service" ? provided.get(alias)
+                    : await this.#loadInstalled(alias, definition, installed, projectRoot);
+                if (tree === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not provided by this service.`, { name: alias, retryable: false });
+                trees.set(alias, tree);
+                outcomes.set(alias, { state: "active", detail: {
+                    scope: definition.scope,
+                    ...(tree instanceof SkillDirectory ? { path: tree.directory } : {}),
+                    description: tree.document.description,
+                } });
             } catch (cause) {
                 if (!(cause instanceof SkillsActionError)) throw cause;
                 const fresh = !carried.has(alias) || preparation.force === alias;
@@ -461,7 +486,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const signature = await this.#signature(projectRoot);
         const snapshot: Snapshot = {
             signature,
-            directories,
+            trees,
             unavailable: [...outcomes].filter(([, outcome]) => outcome.state === "unavailable").map(([alias]) => alias),
         };
         const { workerId } = preparation;

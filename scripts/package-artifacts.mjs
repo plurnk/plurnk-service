@@ -8,11 +8,20 @@ const projections = new Map([
     ["plurnk-core", {
         required: [
             "dist/core/content_weight.js",
+            "INSTALL.md",
         ],
         forbiddenPrefixes: [
             "dist/core/world-state.",
             "dist/core/zero-pin.",
         ],
+    }],
+    ["plurnk-meta", {
+        required: ["skills/plurnk/SKILL.md"],
+        forbiddenPrefixes: [],
+    }],
+    ["plurnk-providers", {
+        required: ["docs/models.md"],
+        forbiddenPrefixes: [],
     }],
     ["plurnk-mimetypes-application-pdf", {
         required: [],

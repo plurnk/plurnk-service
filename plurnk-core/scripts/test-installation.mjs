@@ -427,8 +427,9 @@ ok(
     "the packed binary projects the installed owner-labelled option catalog",
 );
 ok(
-    !existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills")),
-    "plurnk-meta ships no bundled Agent Skills; the skills family is the only discovery affordance",
+    existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills", "plurnk", "SKILL.md"))
+        && !existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills", "find-skills")),
+    "plurnk-meta ships Plurnk's own skill, not a bundled third-party discovery skill",
 );
 
 // Drive the installed daemon through its real AG-UI boundary, then inspect its
@@ -583,6 +584,17 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const skillRead = (await aguiAction(address, "op.parse", {
         text: "### READ0 (skill://inspect/SKILL.md) <1,-1>",
     }, attached.name)).results[0];
+    const ownSkillReads = [];
+    for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/models.md"]) {
+        ownSkillReads.push((await aguiAction(address, "op.parse", {
+            text: `### READ0 (skill://plurnk/${pathname}) <1,-1>`,
+        }, attached.name)).results[0]);
+    }
+    await aguiAction(address, "worker.skills.disable", { alias: "plurnk" }, attached.name);
+    const disabledSkillRead = (await aguiAction(address, "op.parse", {
+        text: "### READ0 (skill://plurnk/.env.defaults) <1,-1>",
+    }, attached.name)).results[0];
+    await aguiAction(address, "worker.skills.enable", { alias: "plurnk" }, attached.name);
     const proposed = await aguiRun(address, {
         workspace: attached.name,
         action: {
@@ -606,6 +618,8 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     return {
         skillCatalog,
         skillRead,
+        ownSkillReads,
+        disabledSkillRead,
         skillExec,
         skillExecution,
         before,
@@ -646,6 +660,16 @@ ok(
     "one unavailable packed MCP remains visible without withholding its healthy peer",
 );
 const packedSkills = readPackedCapabilityDocs();
+ok(
+    dormantBoot.probeResult?.ownSkillReads?.length === 4
+        && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
+        && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd(),
+    "the installed Plurnk skill exposes every chapter and exactly the operator's complete defaults catalog",
+);
+ok(
+    dormantBoot.probeResult?.disabledSkillRead?.status === 404,
+    "ordinary Worker skill disablement withdraws the built-in reference from the installed AG-UI path",
+);
 ok(
     dormantBoot.probeResult?.skillRead?.status === 200
         && dormantBoot.probeResult.skillRead.content.includes("description: Inspect a packed installation."),

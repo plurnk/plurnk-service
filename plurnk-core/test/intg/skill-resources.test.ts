@@ -50,13 +50,16 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
             assert.ok(Array.isArray(result.results));
             return result.results.flat() as Array<{ path: string; items?: number; summary?: string; mimetype?: string; sourceMimetype?: string }>;
         };
-        assert.deepEqual((await find("skill://*/SKILL.md")).map(({ path, summary }) => ({ path, summary })), [
+        const catalog = await find("skill://*/SKILL.md");
+        assert.ok(catalog.some(({ path, summary }) => path === "skill://plurnk/SKILL.md" && Boolean(summary)));
+        assert.deepEqual(catalog.filter(({ path }) => path !== "skill://plurnk/SKILL.md").map(({ path, summary }) => ({ path, summary })), [
             { path: "skill://alpha/SKILL.md", summary: "alpha fixture" },
             { path: "skill://beta/SKILL.md", summary: "beta fixture" },
         ]);
         assert.deepEqual((await find("skill://*/references/*")).map(({ path }) => path), [
             "skill://alpha/references/guide.md", "skill://alpha/references/nested/**",
             "skill://beta/references/guide.md", "skill://beta/references/nested/**",
+            "skill://plurnk/references/configuration.md", "skill://plurnk/references/models.md",
         ]);
         assert.deepEqual((await find("skill://{alpha,beta}/SKILL.md")).map(({ path }) => path), [
             "skill://alpha/SKILL.md", "skill://beta/SKILL.md",
@@ -93,7 +96,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         const context = { scope: "worker" as const, workspaceId, workerId: model };
         await daemon.invokeModuleAction("worker.skills.disable", { alias: "alpha" }, context);
         assert.equal((await dispatch(readStmt(target))).status, 404, "disabled resources cannot be read from cached entries");
-        assert.deepEqual((await find("skill://*/SKILL.md")).map(({ path }) => path), ["skill://beta/SKILL.md"]);
+        assert.deepEqual((await find("skill://*/SKILL.md")).map(({ path }) => path), ["skill://beta/SKILL.md", "skill://plurnk/SKILL.md"]);
         await daemon.invokeModuleAction("worker.skills.enable", { alias: "alpha" }, context);
         assert.match(String((await dispatch(readStmt(target))).content), /Changed on disk/);
     });

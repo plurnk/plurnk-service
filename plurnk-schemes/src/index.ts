@@ -139,3 +139,4 @@ export type {
 export type { WindowResult } from "./Slicer.ts";
 export type { ByteSource } from "./ByteSource.ts";
 export { default as FileByteSource } from "./FileByteSource.ts";
+export { default as GeneratedByteSource } from "./GeneratedByteSource.ts";

@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import EnvFlags from "../../src/core/EnvFlags.ts";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -16,6 +17,18 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 // startsWith prefix — a literal-token scan can't see them, so they're declared-dynamic here.
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_LIVE_TIMEOUT"]);
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_PROMPT_BUDGET_", "PLURNK_SERVICE_PROMPT_PROJECTION_", "PLURNK_SERVICE_SAFETY_"];
+
+test("every shipped service flag has an adjacent description for CLI help", () => {
+    const template = readFileSync(`${root}/.env.defaults`, "utf8");
+    const flags = EnvFlags.parseEnvDefaultsContent(template);
+    assert.ok(flags.length > 0);
+    assert.deepEqual(flags.filter(({ description }) => description === null).map(({ envName }) => envName), [],
+        "active knobs need a local explanation, not just a distant section introduction");
+    const help = EnvFlags.formatFlagsHelp(flags);
+    for (const { flagName, envName } of flags) {
+        assert.ok(help.includes(flagName), `${envName} must remain discoverable in help`);
+    }
+});
 
 test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");

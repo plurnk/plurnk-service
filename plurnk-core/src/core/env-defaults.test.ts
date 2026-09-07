@@ -46,6 +46,18 @@ test("the ONE law: a key claimed by two packages crashes naming both", async () 
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("{§operator-config-source-errors} unreadable defaults fail with their owner and cause instead of vanishing from the catalog", async (t) => {
+    const { root, nm } = await scaffold();
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await addPackage(nm, "@plurnk/plurnk-broken", {});
+    await mkdir(join(nm, "@plurnk", "plurnk-broken", ".env.defaults"));
+    await assert.rejects(() => EnvDefaults.collect(root, nm), (cause: Error) => {
+        assert.match(cause.message, /@plurnk\/plurnk-broken: cannot read \.env\.defaults/);
+        assert.equal((cause.cause as NodeJS.ErrnoException)?.code, "EISDIR");
+        return true;
+    });
+});
+
 test("apply is a floor — set-if-unset, never an override", async () => {
     const key = "PLURNK_ENVD_FLOOR_PROBE";
     delete process.env[key];
@@ -82,6 +94,24 @@ test("the on-demand catalog is owner-labelled and preserves package comments", a
         assert.match(catalog, /═══ @plurnk\/plurnk-fake ═══/, "each member section is owner-labelled");
         assert.match(catalog, /# fake's own doc line/, "the owner's comments ARE the docs — preserved verbatim");
     } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the catalog contains declarations and examples, never effective environment values", async () => {
+    const { root, nm } = await scaffold();
+    const key = "PLURNK_ENVD_REFERENCE_SECRET";
+    const previous = process.env[key];
+    try {
+        const source = `# Required only when enabled.\n# ${key}=\nPLURNK_ENVD_REFERENCE_ENABLED=0\n`;
+        await addPackage(nm, "acme-plugin", { plurnk: true, defaults: source });
+        process.env[key] = "private-test-sentinel";
+        const catalog = EnvDefaults.renderCatalog(await EnvDefaults.collect(root, nm));
+        assert.ok(catalog.includes(source), "retain optional declarations and their owner's explanations");
+        assert.ok(!catalog.includes(process.env[key]), "effective values are not configuration documentation");
+    } finally {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("PLURNK_PLUGINS_TRUSTED_ONLY gates third parties, never @plurnk/*", async () => {

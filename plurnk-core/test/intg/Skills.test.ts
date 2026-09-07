@@ -119,6 +119,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.deepEqual(await states(), [
             "bad:service:unavailable:global",
             "grep:service:active:project",
+            "plurnk:service:active:service",
             "review:service:active:global",
         ]);
         const bad = (await listed()).find(({ alias }) => alias === "bad")!;
@@ -198,6 +199,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
             "alpha:worker:active:project",
             "bad:service:unavailable:global",
             "grep:service:active:project",
+            "plurnk:service:active:service",
             "review:service:active:global",
         ]);
         const lockSourced = (await listed()).find(({ alias }) => alias === "alpha")!;
@@ -216,7 +218,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     }
 });
 
-test("{§skills-functionality} a headless workspace refuses project-scope additions and has an empty skill catalog", async () => {
+test("{§skills-functionality} a headless workspace exposes its service skill but refuses project-scope additions", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-skills-headless-"));
     const home = join(base, "home");
     await mkdir(home, { recursive: true });
@@ -229,11 +231,11 @@ test("{§skills-functionality} a headless workspace refuses project-scope additi
     await daemon.start();
     const context = { scope: "worker" as const, workspaceId, workerId: model };
     try {
-        const list = await daemon.invokeModuleAction("worker.skills.list", {}, context) as { definitions: unknown[] };
-        assert.deepEqual(list.definitions, []);
+        const list = await daemon.invokeModuleAction("worker.skills.list", {}, context) as { definitions: Array<{ alias: string; state: string; origin: string }> };
+        assert.deepEqual(list.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [{ alias: "plurnk", state: "active", origin: "service" }]);
         const catalog = await daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId: model, statement: findStmt(parsePath("skill://*/SKILL.md")) });
         assert.equal(catalog.status, 200);
-        assert.deepEqual((catalog as { results?: unknown[] }).results, []);
+        assert.deepEqual((catalog.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"]);
         const refused = await rejectedProblem(() => daemon.invokeModuleAction("worker.skills.add", { alias: "alpha", definition: { name: "alpha", scope: "project", source: "acme/kit" } }, context));
         assert.equal(refused.type, "https://problems.plurnk.xyz/skills/functionality/project-root-required");
     } finally {

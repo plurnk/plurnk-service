@@ -21,6 +21,7 @@ test("MCP package projection retains the runtime watchdog loaded beside client.j
 test("core package projection retains runtime-loaded modules and rejects test helpers", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/content_weight.js",
+        "INSTALL.md",
         "dist/index.js",
     ]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
@@ -29,6 +30,7 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "dist/core/zero-pin.d.ts",
     ]), [
         "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
+        "plurnk-core: required runtime artifact is absent: INSTALL.md",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.sql",
         "plurnk-core: test-only artifact leaked into package: dist/core/zero-pin.d.ts",
@@ -44,4 +46,11 @@ test("PDF package projection rejects fixture builders", () => {
         "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildFormPdf.js",
         "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildTaggedPdf.d.ts",
     ]);
+});
+
+test("first-party skill sources are required packed runtime inputs", () => {
+    for (const [owner, path] of [["plurnk-meta", "skills/plurnk/SKILL.md"], ["plurnk-providers", "docs/models.md"]]) {
+        assert.deepEqual(packageArtifactViolations(owner, [path]), []);
+        assert.deepEqual(packageArtifactViolations(owner, []), [`${owner}: required runtime artifact is absent: ${path}`]);
+    }
 });

@@ -17,6 +17,7 @@
         "POLICY.md",
         "recap.md",
         "docs/**/*",
+        "skills/**/*",
         "DIVERGENCES.md"
     ],
     "exports": {

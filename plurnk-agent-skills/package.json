@@ -34,5 +34,8 @@
         "prepack": "npm run build",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
-    "dependencies": { "yaml": "^2.9.0" }
+    "dependencies": {
+        "@plurnk/plurnk-schemes": "^1.16.5",
+        "yaml": "^2.9.0"
+    }
 }
