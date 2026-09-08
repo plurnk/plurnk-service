@@ -4,7 +4,7 @@
 // conformance corpus owns protocol semantics; this gate owns composed product
 // paths and host-native behavior.
 import { spawn, execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -26,6 +26,18 @@ try {
         `client conformance needs the installed terminal client checkout beside this repository: ${terminalRoot} (clone plurnk there and run npm ci); ${nvimRoot} is optional`,
         { cause },
     );
+}
+// A failed run preserves its tree for the diagnosis that follows (see the finally block); the
+// next run reaps every preserved tree older than an hour, long past any live run's start, so
+// evidence never outlives its usefulness: fifteen preserved failures (~0.5 GB each) filled a
+// 16 GB tmpfs on 2026-09-08 and broke the drill with ENOSPC.
+const STALE_EVIDENCE_MS = 60 * 60 * 1000;
+for (const entry of await readdir(tmpdir())) {
+    if (!entry.startsWith("plurnk-cross-client-")) continue;
+    const preserved = join(tmpdir(), entry);
+    if (Date.now() - (await stat(preserved)).mtimeMs < STALE_EVIDENCE_MS) continue;
+    await rm(preserved, { recursive: true, force: true });
+    process.stderr.write(`cross-client conformance reaped stale evidence at ${preserved}\n`);
 }
 const temp = await mkdtemp(join(tmpdir(), "plurnk-cross-client-"));
 const install = join(temp, "consumer");
