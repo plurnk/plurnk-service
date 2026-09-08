@@ -11,21 +11,21 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, packetSection } from "./_helpers.ts";
 import { killStmt, planValue, urlPath } from "./_dsl.ts";
 import OverflowTurn from "../../src/core/OverflowTurn.ts";
 
-const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
+const dispositionStmt = (op: DispositionStatement["op"], body: string): DispositionStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", status, target: null,
+    op, annotation: null, target: null,
     lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(200, "ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([dispositionStmt("DONE", "ok")]));
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
@@ -199,7 +199,7 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow sup
         // overflows: PLAN is evidence from the same causal turn, not a protected
         // packet surface, so it remains addressable but is suppressed with its peers.
         const planStmt = {
-            op: "PLAN", annotation: null, delimiter: "", target: null, metadata: null,
+            op: "PLAN", annotation: null, target: null, metadata: null,
             lineMarker: null,
             body: [{
                 content: "Read the document, then answer.",
@@ -208,7 +208,7 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow sup
             position: { line: 1, column: 1 },
         } as PlurnkStatement;
         const engine = plainEngine(db);
-        const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
+        const wideP = mockAt(4096, [response([planStmt, dispositionStmt("DONE", "ok")])]);
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
@@ -255,7 +255,7 @@ test("{§overflow-turn-curation}: the causal predecessor is producer-neutral and
         const predecessorId = await insertOperationTurn(db, loopId, 1, "plugin");
         const predecessor = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: predecessorId, sequence: 1,
-            origin: "plugin", source: null, model_call_id: null, op: "READ", delimiter: "",
+            origin: "plugin", source: null, model_call_id: null, op: "READ",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/plugin-result", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -290,7 +290,7 @@ test("{§overflow-turn-curation}: a body the model scoped away before recovery i
         const oldTurnId = await insertTurn(db, loopId, 1, 200);
         const target = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "",
+            origin: "model", source: null, model_call_id: null, op: "READ",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/old", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -360,8 +360,8 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(turnOps?.initial_folded, "[[1,-1]]", "overflow turnOps are initially body-suppressed source evidence");
         assert.equal(turnOps?.folded, "[]", "initial suppression is not deliberate curation");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^## PLAN_\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
-        assert.match(source, /\n### SEND_ \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
+        assert.match(source, /^```PLAN\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
+        assert.match(source, /\n```NEXT\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.\n```$/);
     } finally { await db.close(); }
 });
 
@@ -378,7 +378,7 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
         const turnId = await insertTurn(db, loopId, next.next, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "_plurnk", source: null, model_call_id: null, op: "READ", delimiter: "",
+            origin: "_plurnk", source: null, model_call_id: null, op: "READ",
             scheme: "search", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -387,7 +387,7 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
         });
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "_plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "",
+            origin: "_plurnk", source: "rail", model_call_id: null, op: "error",
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -429,7 +429,7 @@ test("an exact provider overflow remains distinct from curation admission", asyn
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         await engine.runTurn({
-            provider: mockAt(999_000, [response([sendStmt(102, "continue")])], 1_000_000),
+            provider: mockAt(999_000, [response([dispositionStmt("NEXT", "continue")])], 1_000_000),
             workspaceId,
             workerId,
             loopId,
@@ -453,7 +453,7 @@ test("an exact provider overflow remains distinct from curation admission", asyn
         const capacity = Math.floor((probe.weight + exactChars) / 2);
         assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");
 
-        const provider = exactCharAt(capacity, [response([sendStmt(200, "unreachable")])]);
+        const provider = exactCharAt(capacity, [response([dispositionStmt("DONE", "unreachable")])]);
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(result.status, 413);
         assert.equal(result.capacityHardStop, true);
@@ -508,7 +508,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         );
         const provider = new UpstreamPromptCapacityMock({
             contextWindow: 100_000,
-            responses: [response([sendStmt(200, "recovered")])],
+            responses: [response([dispositionStmt("DONE", "recovered")])],
         });
         const result = await plainEngine(db).runTurn({
             provider,
@@ -583,7 +583,7 @@ test("a proven request-token upper bound can authorize provider admission", asyn
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const mock = Object.assign(mockAt(199_998, [response([sendStmt(200, "recovered")])], 200_000), {
+        const mock = Object.assign(mockAt(199_998, [response([dispositionStmt("DONE", "recovered")])], 200_000), {
             countPromptTokens: async () => ({
                 kind: "upper_bound" as const,
                 tokens: 1,

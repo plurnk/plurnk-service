@@ -26,7 +26,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx, testExecutors } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
-import { copyStmt, editStmt, sendStmt, readStmt, execStmt, fullReplace, urlPath } from "./_dsl.ts";
+import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, execStmt, fullReplace, urlPath } from "./_dsl.ts";
 
 // {§worker-scheme} — the authority is a worker name or the current-worker sigil `~`.
 // Control operations carry no entry path; storage operations do.
@@ -53,12 +53,12 @@ const workerEntry = (owner: string, path: string): ParsedPath => ({
 // branches the current worker into a named sister. The body is the seed task, not a destination path.
 const spawnedWorker = (name: string, prompt: string): WorkStatement => ({
     metadata: null,
-    op: "WORK", annotation: null, delimiter: "", target: workerPath(name),
+    op: "WORK", annotation: null, target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 const forkWorker = (name: string, prompt: string): ForkStatement => ({
     metadata: null,
-    op: "FORK", annotation: null, delimiter: "", target: workerPath(name),
+    op: "FORK", annotation: null, target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 
@@ -79,7 +79,7 @@ const weigh = (text: string): number => Math.ceil(text.length / 4);
 // FIND in one owner's space: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "",
+    op: "FIND", annotation: null,
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -87,7 +87,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
 // READ from one owner's space: worker://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -95,7 +95,7 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
 // KILL in one owner's space: worker://<owner>/<path> — deletes the private entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, delimiter: "",
+    op: "KILL", annotation: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -336,9 +336,9 @@ test("the exact worker control address is enforced before every operation path (
         const statements: PlurnkStatement[] = [
             { ...spawnedWorker("worker", "spawn"), target },
             { ...forkWorker("worker", "fork"), target },
-            sendStmt(null, target, "message"),
+            sendStmt(target, "message"),
             readStmt(target),
-            { metadata: null, op: "KILL", annotation: null, delimiter: "", target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "KILL", annotation: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
         ];
 
         const results = [];
@@ -390,11 +390,11 @@ test("~ is the sole current-worker sigil; self is an ordinary worker name", asyn
         if (named === undefined) throw new Error("WORK(worker://self) must create the literally named worker");
 
         assert.equal((await engine.dispatch({
-            statement: sendStmt(null, workerPath("~"), "message the caller"),
+            statement: sendStmt(workerPath("~"), "message the caller"),
             workspaceId, workerId: actorId, loopId, turnId, sequence: 2, origin: "model",
         })).status, 200);
         assert.equal((await engine.dispatch({
-            statement: sendStmt(null, workerPath("self"), "message the named worker"),
+            statement: sendStmt(workerPath("self"), "message the named worker"),
             workspaceId, workerId: actorId, loopId, turnId, sequence: 3, origin: "model",
         })).status, 200);
         assert.deepEqual(
@@ -412,7 +412,7 @@ test("~ is the sole current-worker sigil; self is an ordinary worker name", asyn
             workspaceId, workerId: actorId, loopId, turnId, sequence: 5, origin: "model",
         })).status, 403, "worker://self/path is the named worker's space, not an own-space alias");
 
-        const killCurrent: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killCurrent: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const killNamed: KillStatement = { ...killCurrent, target: workerPath("self") };
         assert.equal((await engine.dispatch({ statement: killCurrent, workspaceId, workerId: actorId, loopId, turnId, sequence: 6, origin: "model" })).status, 200);
         assert.equal((await engine.dispatch({ statement: killNamed, workspaceId, workerId: actorId, loopId, turnId, sequence: 7, origin: "model" })).status, 200);
@@ -650,7 +650,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
         const sisterId = await insertWorker(db, workspaceId, null, "worker");
 
         const ok = await engine.dispatch({
-            statement: sendStmt(null, workerPath("worker"), "what's your status?"),
+            statement: sendStmt(workerPath("worker"), "what's your status?"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
@@ -659,7 +659,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
         assert.deepEqual(ircPolicy, { capabilities: {}, proposals: "review" }, "the sender's policy rides the irc ({§worker-delegation-inherits-policy})");
 
         const missing = await engine.dispatch({
-            statement: sendStmt(null, workerPath("ghost"), "anyone there?"),
+            statement: sendStmt(workerPath("ghost"), "anyone there?"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(missing.status, 404, "irc to a non-existent sister is 404");
@@ -690,7 +690,7 @@ test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sende
         await insertWorker(db, workspaceId, null, "sister");
 
         const result = await engine.dispatch({
-            statement: sendStmt(null, workerPath("sister"), "continue this work"),
+            statement: sendStmt(workerPath("sister"), "continue this work"),
             workspaceId,
             workerId,
             loopId,
@@ -728,7 +728,7 @@ test("worker IRC rejects contract-invalid delegator policy before inheritance (#
 
         await assert.rejects(
             new Worker().send(
-                sendStmt(null, workerPath("worker"), "what's your status?"),
+                sendStmt(workerPath("worker"), "what's your status?"),
                 makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, injectWorker }),
             ),
             (error: unknown) => {
@@ -861,12 +861,12 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
         const turnId = await insertTurn(db, loopId, 1, 102);
         const sisterId = await insertWorker(db, workspaceId, null, "worker");
 
-        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killWorker, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
         assert.deepEqual(killed, [sisterId], "the named sister worker is aborted by id");
 
-        const killGhost: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killGhost: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
@@ -882,7 +882,7 @@ for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "p
         const childId = await insertWorker(db, workspaceId, related ? meId : null, "author");
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
+        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
 
         // own-space EDIT(worker://~/note.md) — owner-keyed storage, BARE pathname ({§entry-owner}).
         const childLoop = await insertLoop(db, childId, 1, "go");
@@ -947,7 +947,7 @@ test("the reserved runtime worker is an ordinary named space: readable by name, 
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} READ(worker://running-child) makes the turn's bare SEND[102] park", async () => {
+test("{§join-blocking-collect} READ(worker://running-child) makes the turn's bare NEXT park", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-collect-${crypto.randomUUID()}`);
@@ -961,15 +961,15 @@ test("{§join-blocking-collect} READ(worker://running-child) makes the turn's ba
         // 1. READ the running worker → 425 (still running) AND arms the join on this loop.
         const read = await engine.dispatch({ statement: readStmt(workerPath("worker")), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(read.status, 425, "the worker hasn't delivered — 425 still-running");
-        // 2. the turn's bare SEND[102] (continue) becomes a PARK — the blocking join, not a spin.
-        const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        // 2. the turn's bare NEXT (continue) becomes a PARK — the blocking join, not a spin.
+        const send = await engine.dispatch({ statement: dispositionStmt("NEXT", null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.equal((send.attrs as { join?: boolean } | undefined)?.join, true, "the bare continue was converted to a join-park");
         const parked = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
-        assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know SEND[202]<-1>");
+        assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know WAIT<-1>");
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} a bare SEND[102] without an armed join continues normally", async () => {
+test("{§join-blocking-collect} a bare NEXT without an armed join continues normally", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-none-${crypto.randomUUID()}`);
@@ -977,14 +977,14 @@ test("{§join-blocking-collect} a bare SEND[102] without an armed join continues
         const loop = await insertLoop(db, worker, 1, "go");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const send = await engine.dispatch({ statement: dispositionStmt("NEXT", null), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.notEqual((send.attrs as { join?: boolean } | undefined)?.join, true, "no READ armed a join — a plain continue");
         const status = await db.test_get_loop_status.get<{ status: number }>({ id: loop });
         assert.notEqual(status?.status, 202, "the loop did not park — a bare continue without a join stays live");
     } finally { await db.close(); }
 });
 
-test("{§op-synchronous} KILL(worker) is decisive before same-turn SEND[200]", async () => {
+test("{§op-synchronous} KILL(worker) is decisive before same-turn DONE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);
@@ -1002,19 +1002,19 @@ test("{§op-synchronous} KILL(worker) is decisive before same-turn SEND[200]", a
             },
         });
 
-        // Before: the live child would make a SEND[200] a premature-terminate. KILL must fix it IN this turn.
-        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        // Before: the live child would make a DONE a premature-terminate. KILL must fix it IN this turn.
+        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
-        const send = await engine.dispatch({ statement: sendStmt(200, null, "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        const send = await engine.dispatch({ statement: dispositionStmt("DONE", "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.notEqual(send.status, 409, `no premature-terminate 409 — the killed child is not live pending work; got ${send.status}`);
     } finally { await db.close(); }
 });
 
-test("SEND[202]: a live obligation blocks; an empty join completes immediately", async () => {
+test("WAIT: a live obligation blocks; an empty join completes immediately", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -1025,7 +1025,7 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
         const child = await insertWorker(db, s1, parent, "worker");
         await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
-        const blocked = await eng1.dispatch({ statement: sendStmt(202, null, "awaiting worker"), workspaceId: s1, workerId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
+        const blocked = await eng1.dispatch({ statement: dispositionStmt("WAIT", "awaiting worker"), workspaceId: s1, workerId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
@@ -1035,7 +1035,7 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
         const loop = await insertLoop(db, worker, 1, "solo");
         const turn = await insertTurn(db, loop, 1, 200);
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
-        const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), workspaceId: s2, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const satisfied = await eng2.dispatch({ statement: dispositionStmt("WAIT", "standing by"), workspaceId: s2, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(satisfied.status, 200, "202 on an empty task group completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "the empty join is terminal");
 
@@ -1045,7 +1045,7 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
         const loop3 = await insertLoop(db, run3, 1, "solo");
         const turn3 = await insertTurn(db, loop3, 1, 200);
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
-        const indef = { ...sendStmt(202, null, "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
+        const indef = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
         const noHang = await eng3.dispatch({ statement: indef, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(noHang.status, 200, "202<-1> on nothing completes immediately");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 200, "no held-open 202");
@@ -1060,7 +1060,7 @@ test("an already-drained join is a normal deliverable", async () => {
         const wLoop = await insertLoop(db, worker, 1, "test the module");
         const wTurn = await insertTurn(db, wLoop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const waited = await engine.dispatch({ statement: sendStmt(202, null, "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
+        const waited = await engine.dispatch({ statement: dispositionStmt("WAIT", "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
         assert.equal(waited.status, 200, "the empty join completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop concluded");
         const reader = await insertWorker(db, workspaceId);
@@ -1078,7 +1078,7 @@ test("an idle join completes in the same turn", async () => {
         const loop = await insertLoop(db, worker, 1, "nothing to do");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "idle"), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the already-drained join completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
     } finally { await db.close(); }

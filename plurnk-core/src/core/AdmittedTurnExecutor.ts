@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -20,7 +21,7 @@ import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
 import LineAnchors from "../content/line-anchors.ts";
-import { ENGINE_PROBLEMS, TERMINAL_SEND_SIGNALS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
+import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult } from "./TurnRunner.ts";
 
 export default class AdmittedTurnExecutor {
@@ -94,21 +95,18 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        // {§turn-shape} — PLAN is a SHOULD; the terminal SEND is the one structural requirement.
-        const dispositions = statements.filter((statement) => statement.op === "SEND" && statement.status !== null);
+        // {§turn-shape} — PLAN is a SHOULD; one disposition concludes the admitted program.
+        const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions[0];
-        if (dispositions.length !== 1 || finalOp?.op !== "SEND") {
-            throw new Error("an admitted operation batch must contain exactly one disposition SEND");
+        if (dispositions.length !== 1 || finalOp === undefined) {
+            throw new Error("an admitted operation batch must contain exactly one disposition");
         }
-        const dispositionSignal = finalOp.status;
-        if (dispositionSignal === null || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
-            throw new Error("an admitted turnOps program must contain a valid disposition SEND");
-        }
-        let sendOp = finalOp;
+        const dispositionSignal = TurnDisposition.status(finalOp.op);
+        let sendOp: typeof finalOp = finalOp;
         let turnStatus: number = dispositionSignal;
         let steerStruck = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
-        const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND").length
+        const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND" && !TurnDisposition.is(statement)).length
             + recoverableParseErrors.length;
         if (enforceIdle && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && middleCount === 0) {
             // {§send-idle-turn} — an empty (NEXT) while the worker holds a live stream or child is a
@@ -117,7 +115,7 @@ export default class AdmittedTurnExecutor {
             // wake. With nothing in flight the idle-turn 409 stands.
             if (await this.#dispatcher.hasLiveWork(workerId)) {
                 const note = "an empty NEXT while a stream or child is in flight waits like WAIT - say WAIT to wait on it";
-                sendOp = { ...finalOp, status: 202, annotation: finalOp.annotation === null ? note : `${finalOp.annotation} · ${note}` };
+                sendOp = { ...finalOp, op: "WAIT", annotation: finalOp.annotation === null ? note : `${finalOp.annotation} · ${note}` };
                 turnStatus = 202;
             } else {
                 steerStruck = true;
@@ -164,7 +162,7 @@ export default class AdmittedTurnExecutor {
             if (parseErrorsRecorded) return;
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
-                const envelopeDefault = error.code === PlurnkParser.MISSING_SEND;
+                const envelopeDefault = error.code === PlurnkParser.MISSING_DISPOSITION;
                 const recorded = await this.#problems.record({
                     workerId,
                     loopId,
@@ -312,7 +310,7 @@ export default class AdmittedTurnExecutor {
                 statement === sendOp
                 && result.status !== 409
                 && sendOp.target === null
-                && sendOp.status === 202
+                && sendOp.op === "WAIT"
                 && result.status !== 202
             ) {
                 turnStatus = result.status;
@@ -332,7 +330,7 @@ export default class AdmittedTurnExecutor {
                 }
                 : {
                     stage: "turn",
-                    recovery: "Perform an operation before continuing with `### SEND_ (NEXT)`.",
+                    recovery: "Perform an operation before continuing with `NEXT`.",
                     retryable: false,
                 };
             await this.#problems.record({

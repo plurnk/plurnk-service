@@ -207,6 +207,20 @@ test("a heading-looking line in a fenced block does not declare a tag", () => {
     });
 });
 
+test("a backtick code span at column zero does not hide subsequent declarations", () => {
+    const files = [{ name: "alpha/SPEC.md", text: [
+        "```READ (notes.md)```",
+        "",
+        `${declare("after-span")} The following contract remains visible.`,
+        "",
+        cite("after-span"),
+    ].join("\n") }];
+    assert.deepEqual(analyzeSpecReferences(files), {
+        duplicateDeclarations: [], unresolvedReferences: [], ambiguousReferences: [],
+        invalidTagUsages: [], emptyDeclarations: [],
+    });
+});
+
 test("inline and indented code neither declare nor cite tags", () => {
     const files = [{
         name: "alpha/SPEC.md",

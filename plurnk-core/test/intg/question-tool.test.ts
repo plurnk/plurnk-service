@@ -17,7 +17,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", executor: "question", annotation: null, delimiter: "", target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", executor: "question", annotation: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 for (const target of [null, "question", "user"]) test(`{§question-tool}: dispatched question accepts target ${target} and returns the answer`, async () => {
@@ -97,8 +97,13 @@ for (const timing of ["before park", "after park"] as const) {
                 type: "object", properties: { branch: { type: "string" }, notes: { type: "string" } },
             } });
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                makeMockResponse(`### EXEC_ [question]\n${body}\n### SEND_ (WAIT)\nWaiting for your answer.`),
-                makeMockResponse("### SEND_ (TERM)\nThe answer arrived."),
+                makeMockResponse(`\`\`\`question
+${body}
+\`\`\`
+\`\`\`WAIT
+Waiting for your answer.
+\`\`\``),
+                makeMockResponse("```DONE\nThe answer arrived.\n```"),
             ] });
             try {
                 await withDaemon(provider, async (db, daemon) => {
@@ -139,7 +144,7 @@ for (const timing of ["before park", "after park"] as const) {
 
 test("{§question-tool}: cancelling the worker concludes a pending question as cancellation, not an executor crash", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [makeMockResponse(
-        '### EXEC_ [question]\n{"message":"Which branch?","requestedSchema":{"type":"object","properties":{"branch":{"type":"string"}}}}\n### SEND_ (WAIT)\nAwaiting an answer.',
+        "```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```WAIT\nAwaiting an answer.\n```",
     )] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
@@ -164,9 +169,9 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
 
 test("{§client-interactions}: KILL ends the question's own waiter without cancelling its loop", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse('### EXEC_ [question]\n{"message":"Which branch?","requestedSchema":{"type":"object","properties":{"branch":{"type":"string"}}}}\n### SEND_ (NEXT)\nContinue while the question is pending.'),
-        makeMockResponse("### KILL_ (question:///1/2/3/EXEC)\n### SEND_ (NEXT)\nCancel the question."),
-        makeMockResponse("### SEND_ (TERM)\nDone."),
+        makeMockResponse("```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```NEXT\nContinue while the question is pending.\n```"),
+        makeMockResponse("```KILL (question:///1/2/3/EXEC)```\n```NEXT\nCancel the question.\n```"),
+        makeMockResponse("```DONE\nDone.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });

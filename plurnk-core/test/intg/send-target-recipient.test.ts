@@ -7,8 +7,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("a SEND addressed to the prompt is refused 400 with neutral recipient guidance", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### SEND_ (prompt:///1/1)\nthe answer", 10),
-        makeMockResponse("### SEND_ (TERM)\nthe answer", 10),
+        makeMockResponse("```SEND (prompt:///1/1)\nthe answer\n```", 10),
+        makeMockResponse("```DONE\nthe answer\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -26,15 +26,15 @@ test("a SEND addressed to the prompt is refused 400 with neutral recipient guida
             assert.equal(problem?.recovery, "A targetless SEND answers the active prompt; a directed SEND requires a recipient that implements SEND.");
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
-            assert.equal(sends.at(-1)?.status_rx, 200, "the second turn's label SEND concludes");
+            assert.equal(rows.find((r) => r.op === "DONE" && r.origin === "model")?.status_rx, 200, "the second turn's DONE concludes");
         } finally { ws.close(); }
     });
 });
 
 test("a SEND addressed to a file path preserves the scheme's factual 501", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### SEND_ (.)\nwaiting", 10),
-        makeMockResponse("### SEND_ (TERM)\ndone", 10),
+        makeMockResponse("```SEND (.)\nwaiting\n```", 10),
+        makeMockResponse("```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

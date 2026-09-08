@@ -397,7 +397,7 @@ export default class DrainSupervisor {
                         },
                     );
                     if (result.result.status === 202) {
-                        // The loop slept via SEND signal 202 — suspended, not terminated. Leave it at 202
+                        // The loop parked — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // through handleWakeWorker re-queues it; if it holds a polled stream, a poll timer
                         // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.

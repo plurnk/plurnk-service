@@ -24,8 +24,18 @@ test("live: broad log KILL retires turn programs without erasing digest artifact
             { signal: t.signal },
         );
         assert.equal(primed.finalStatus, 200, "the first loop establishes finite prior turn history");
+        const primedTurnId = primed.turnIds.at(-1);
+        assert.notEqual(primedTurnId, undefined);
+        const primedTurn = await s.db.test_get_turn.get<{ loop_id: number }>({ id: primedTurnId! });
+        assert.ok(primedTurn);
+        const priorPrograms = (await s.db.test_log_entries_by_loop.all<{
+            id: number; attrs: string; active: number;
+        }>({ loop_id: primedTurn.loop_id })).filter(({ attrs }) => JSON.parse(attrs).kind === "turnOps");
+        assert.ok(priorPrograms.length >= 2, "the prior loop contains multiple admitted turn programs");
+        const activePriorIds = priorPrograms.filter(({ active }) => active === 1).map(({ id }) => id);
+        assert.ok(activePriorIds.length > 0, "the requested curation has active prior programs to retire");
 
-        const { finalStatus, modelWorkerId } = await liveLoop(
+        const { finalStatus, modelWorkerId, turnIds } = await liveLoop(
             s,
             3,
             {
@@ -42,10 +52,12 @@ test("live: broad log KILL retires turn programs without erasing digest artifact
             active_before: number;
             active_after: number;
             op: string;
+            turn_id: number;
         }>({ worker_id: modelWorkerId });
         const killedTurnOps: number[] = [];
         const killOperations = new Set<number>();
         for (const effect of effects) {
+            if (!turnIds.includes(effect.turn_id)) continue;
             if (effect.op !== "KILL" || effect.active_before !== 1 || effect.active_after !== 0) continue;
             const target = await s.db.test_log_entries_get_by_id.get<{ attrs: string }>({ id: effect.target_log_entry_id });
             if ((JSON.parse(target?.attrs ?? "{}") as { kind?: string }).kind === "turnOps") {
@@ -53,7 +65,11 @@ test("live: broad log KILL retires turn programs without erasing digest artifact
                 killOperations.add(effect.operation_log_entry_id);
             }
         }
-        assert.ok(killedTurnOps.length >= 2, "the real broad KILL retires multiple admitted turn programs");
+        assert.deepEqual(
+            killedTurnOps.toSorted((a, b) => a - b),
+            activePriorIds.toSorted((a, b) => a - b),
+            "the requested KILL retires every still-active prior program, independent of preparatory curation",
+        );
         assert.equal(killOperations.size, 1, "one broad KILL owns the complete retired target set");
 
         await s.cleanup();
@@ -65,7 +81,7 @@ test("live: broad log KILL retires turn programs without erasing digest artifact
         };
         const durableTurnOps = digest.log_entries.filter(({ attrs }) => attrs.kind === "turnOps");
         assert.ok(
-            killedTurnOps.every((id) => digest.log_entries.some((entry) => entry.id === id && !entry.projection.active)),
+            priorPrograms.every(({ id }) => digest.log_entries.some((entry) => entry.id === id && !entry.projection.active)),
             "every retired turn program remains durable and forensically marked inactive",
         );
 

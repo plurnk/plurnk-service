@@ -892,7 +892,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const core = this.coreContext(ctx);
         const outcome = scope === null
             ? await this.#planKill(pathname.replace(/^\//, ""), core, null)
-            : await this.#planScoped({ op: "KILL", delimiter: "", annotation: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, body: null, position: UNKNOWN_POSITION }, core, null);
+            : await this.#planScoped({ op: "KILL", annotation: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, body: null, position: UNKNOWN_POSITION }, core, null);
         if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
         return outcome.result;
     }

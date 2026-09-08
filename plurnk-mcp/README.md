@@ -60,7 +60,7 @@ published by the coordinator and the two continuations by this module:
 | `worker.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
 | `worker.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
 
-The model manages the same family through `EXEC [mcp] (list|discover|add|enable|disable|remove)`.
+The model manages the same family through ```` ```mcp (list|discover|add|enable|disable|remove) ````.
 
 Tool discovery uses ordinary `FIND (worker://~/_plurnk/tools/*.md)` and READ.
 Each server's document lists enabled EXEC calls with required-field previews
@@ -164,7 +164,7 @@ Portable timeouts and complete examples live in [`.env.defaults`](./.env.default
 | MCP surface | Plurnk surface |
 |---|---|
 | Server tools | `worker://~/_plurnk/tools/<server>.md` family summary |
-| Enabled tool | Exact `worker://~/_plurnk/tools/<server>/<encoded-tool>.md` document and `### EXEC_ [server] (tool)` |
+| Enabled tool | Exact `worker://~/_plurnk/tools/<server>/<encoded-tool>.md` document and ```` ```server (tool) ```` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

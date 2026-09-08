@@ -42,7 +42,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
             assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
         } finally {
             clearTimeout(timer);
-            send("</think>## PLAN_\n[]\n### SEND_ (TERM)\nDone.", "stop");
+            send("</think>```PLAN\n[]\n```\n```DONE\nDone.\n```", "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -116,7 +116,12 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         // Finish in a different order from admission while all three streams overlap.
         for (const index of [1, 2, 0]) {
             const { name } = workers[index]!;
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}## PLAN_\n[]\n### SEND_ (TERM)\nONLY_${name}` }, "stop", {
+            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`PLAN
+[]
+\`\`\`
+\`\`\`DONE
+ONLY_${name}
+\`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
             });
             streams.get(name)!.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
@@ -129,7 +134,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0]!.response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
-            assert.match(response.assistant.content, new RegExp(`ONLY_${name}$`));
+            assert.match(response.assistant.content, new RegExp("ONLY_" + name + "\\n```$"));
             for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");
             }

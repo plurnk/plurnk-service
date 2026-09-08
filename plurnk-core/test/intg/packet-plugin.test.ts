@@ -8,7 +8,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 
 // Plugin packet control: a trusted scheme rewrites the engine's default section
 // list through transformSections — the in-process seam that lets a third-party
@@ -40,7 +40,7 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
             },
         });
         const engine = new Engine({ db, schemes });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
 

@@ -1,5 +1,5 @@
 // {§send-premature-terminate}: a successful same-turn mutation's receipt lands in the next packet,
-// so SEND[200] over it is refused 409 — the model sees what it changed before it claims done.
+// so DONE over it is refused 409 — the model sees what it changed before it claims done.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -7,8 +7,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("{§send-premature-terminate}: an EDIT receipt blocks same-turn 200 until the next packet shows it", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## PLAN_\nwrite then conclude\n\n### EDIT_ (worker:///notes.md)\nhello\n\n### SEND_ (TERM)\ndone", 10),
-        makeMockResponse("## PLAN_\nthe edit receipt is in the log; concluding\n\n### SEND_ (TERM)\ndone", 10),
+        makeMockResponse("```PLAN\nwrite then conclude\n```\n\n```EDIT (worker:///notes.md)\nhello\n```\n\n```DONE\ndone\n```", 10),
+        makeMockResponse("```PLAN\nthe edit receipt is in the log; concluding\n```\n\n```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -19,7 +19,7 @@ test("{§send-premature-terminate}: an EDIT receipt blocks same-turn 200 until t
             assert.equal(turnIds.length, 3, "initialization plus two model turns — the refusal forced one observation turn, no more");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const sends = rows.filter((r) => r.op === "SEND" && r.origin === "model");
+            const sends = rows.filter((r) => r.op === "DONE" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen receipt");
             const problem = JSON.parse(sends[0]?.rx ?? "{}") as { problem?: { detail?: string; pending?: string[]; recovery?: string } };
             assert.equal(problem.problem?.detail, "Completion preceded this turn's operation results; they enter the next packet.");

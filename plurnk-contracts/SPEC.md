@@ -113,12 +113,12 @@ flowchart LR
 | Stable current law       | `SPEC.md`                           | Owns invariants and boundaries; forge issues retain history                     |
 | Canonical model teaching | `plurnk.md`                         | Teaches the lean spelling and operational model the model should emit           |
 | Constrained generation   | generated `plurnk.*.gbnf`           | Increases likely ANTLR compliance without reproducing all parser/runtime checks |
-| Accepted syntax          | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, heading lanes, slot shape, and section boundaries    |
+| Accepted syntax          | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, operation fences, slot shape, and section boundaries    |
 | Typed admission          | `AstBuilder`                        | Produces JSON-serializable unions and validates deterministic body/path syntax  |
 | Shared wire data         | `schema/*.json`                     | Defines runtime-neutral data shapes projected into generated TypeScript         |
 | Stateful behavior        | consuming runtime                   | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle   |
 
-ANTLR owns statement structure, delimiter matching, slot multiplicity, accepted
+ANTLR owns statement structure, fence matching, slot multiplicity, accepted
 slot permutations, scope-number syntax, and interstatement text recognition.
 AstBuilder owns URL decomposition and deterministic matcher validation through
 WHATWG `URL`, ECMAScript `RegExp`, XPath 1.0, and RFC 9535 JSONPath parsers.
@@ -249,194 +249,122 @@ and parse diagnostics are separate contracts.
 
 ## 1.2 GBNF Generation Rail
 
-§gbnf-rail-purpose ANTLR and AstBuilder define accepted PLURNK input. The generated
-`dist/plurnk.{gemma,qwen}.gbnf` are optional local llama.cpp sampling rails kept lean
-to make useful, ANTLR-compliant turns more likely without reproducing every
-parser or semantic validator. Parse compatibility is a design goal balanced
-against rail size and sampling efficiency, not a language-subset guarantee. A
-rail-legal operation can therefore produce a parser or AstBuilder error; consumers
-apply their ordinary admission and bounded-operation recovery contract.
-The complete package build emits both rails; they are not source-controlled. Source and
-differential tests serialize the owning generator directly, while installation
-coverage verifies the packed export.
+§gbnf-rail-purpose ANTLR and AstBuilder own accepted syntax and admission.
+Generated `dist/plurnk.{gemma,qwen}.gbnf` are bounded sampling aids, not
+another parser or a semantic guarantee. The complete build generates both;
+they are not source-controlled. Source and differential tests exercise the
+generator, and packed-artifact coverage verifies its exports.
 
-The rails share one turn shape but begin at their respective sampled-token
-boundaries:
+§gbnf-turn-shape Both profiles generate an optional PLAN block, ordinary
+operation blocks, and one disposition block ending the turn. NEXT requires
+at least one ordinary operation. The rail uses matching three- or four-backtick
+fences; ANTLR also admits longer matching fences. There is no
+turn-wide delimiter, heading lane, or outer program wrapper.
 
-```ebnf
-root-gemma ::= channel sep framed-turn
-root-qwen  ::= think-body think-close sep framed-turn
-root-qwen-response ::= think-open root-qwen
-framed-turn ::= turn | fence-open turn fence-close
-turn       ::= (plan sep)? tail-0
-```
+§gbnf-reasoning-boundary Sampling constraints begin at token zero. Gemma emits
+a nonempty `<|channel>thought\n … <channel|>` reasoning enclosure. Qwen's
+template supplies `<think>\n`; its sampled root emits nonempty reasoning and
+`</think>`. Each artifact declares an `@plurnk-response-root`, which restores
+any template prefix when checking complete provider evidence. The projected
+content alone is not checked as though it still included reasoning.
 
-§gbnf-turn-shape Neither rail admits an empty thought: the `gemma` channel body and the `qwen` think body each begin with at least one character, so a constrained call reasons before it acts. The `gemma` transport root samples one complete
-`<|channel>thought\n … <channel|>` enclosure. A Qwen-style chat template has
-already supplied `<think>\n` when the `qwen` transport root begins, so that root
-samples the body and required `</think>` closer. Each generated artifact declares
-an `@plurnk-response-root`; for `qwen`, that root composes the template opener
-back onto the sampled text so the complete pre-projection response can be graded.
-Neither body may contain its profile's opener or closer.
-`sep` is zero through seven whitespace characters. The projected PLURNK content
-is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
-may begin with `## PLAN_`, and every ordinary operation is a same-lane `### OP0`
-section.
-`tail-0` admits any number of ordinary operations followed by exactly one
-disposition SEND, whose body is the last sampled text of the turn
-({§disposition-ends-turn}): no statement follows it, so a rail that keeps
-generating can only lengthen that body, never emit another operation. NEXT
-requires at least one ordinary operation before it. A second disposition is not
-admitted.
+§rail-heading-boundaries Rail bodies exclude their closing fence sequence,
+including at the start of a one-line matcher. Bodyless operations admit inline
+and empty multiline blocks. Blank lines may separate blocks. OP names and
+Markdown headings remain literal body content. Four-backtick rail blocks admit
+literal triple-backtick code fences in their bodies.
 
-```mermaid
-flowchart LR
-    sampled["Constrained sampled text<br/>profile reasoning bytes · sep · optional fence · PLAN_ turn"]
-    raw["Pre-projection response<br/>one complete reasoning envelope · PLURNK turn"]
-    split["llama.cpp<br/>reasoning_format: auto"]
-    reasoning["reasoning_content<br/>envelope body"]
-    content["content<br/>bare or fenced PLAN through terminal SEND"]
-    parser["ANTLR + AstBuilder<br/>admission and diagnostics"]
-    sampled --> raw
-    raw --> split
-    split --> reasoning
-    split --> content
-    content --> parser
-```
-
-§gbnf-reasoning-boundary GBNF applies from sampled token zero before response
-projection. The declared response root composes any template-provided prefix for
-independent validation of the pre-projection evidence. The two projected fields
-are not separate GBNF languages, and `content` alone is not revalidated as though
-it still contained the required reasoning envelope. Provider and core own the
-projection evidence and rail-verdict boundary; this package owns the sampled and
-response roots plus the parser/AstBuilder result.
-
-§rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `_`.
-Reserved PLAN and operation stems are structural only at column zero, including
-the first body line. At those boundaries a non-`0` pseudo-heading cannot be
-swallowed as body text. Inline quotations and indented examples remain ordinary
-body text. ANTLR remains the wider language and accepts intentional alternate-lane
-headings during ingestion.
-
-§gbnf-kill-shaping The rail shapes KILL as one required target, an optional
-text-coordinate scope (numeric or anchored), and an optional one-line matcher body,
-without proving that the selection resolves; ANTLR and AstBuilder own the statement's
-shape, and runtime owns target resolution ({§kill-scope}).
+§gbnf-kill-shaping KILL has a required target, optional numeric or anchored
+text scope, and optional one-line matcher. The rail does not prove that a target
+or selection exists.
 
 ## §canonical-statement 2. Canonical statement form
 
-```text
-## PLANdelimiter
+`````text
+```OP (path)? {metadata}* <scope>? <!-- annotation -->?
 body
-
-## OPdelimiter (path)? {metadata}* <scope>? <!-- annotation -->?
-body?
 ```
 
-§section-boundary A statement is one Markdown section. PLAN alone uses a level-one
-heading; every other operation uses a level-two heading. Its body is the
-character-perfect section content before the next structural heading or EOF.
-Canonical adjacent sections place the next structural heading on the immediately
-following line. The tolerant ingester also admits one empty separator line; that
-separator is syntax rather than body content, while any additional preceding
-blank lines remain body content.
+```OP (path)? <scope>?```
 
-§empty-section An empty section has no body lines between its heading and the next
-structural heading, tolerated separator, or EOF. Optional operation bodies normalize
-to null; PLAN admission normalizes its required semantic body to `[]`
-under {§plan-value}.
+```executor (program-or-tool)?
+input
+```
+`````
 
-| Element      | Canonical contract                                                        |
-|--------------|---------------------------------------------------------------------------|
-| `## PLAN`     | Required level-one turn anchor                                             |
-| `## OP`      | Level-two protocol operation                                               |
-| `delimiter`     | Heading lane, joined directly to PLAN or OP                                |
-| `(path)`     | Optional target slot, preceded by one space                                |
-| `{metadata}` | Optional repeatable scheme-metadata modifier after a target                |
-| `<scope>`    | Optional numeric scope, preceded by one space                              |
-| `<!-- … -->` | Optional trailing operation annotation, preceded by one space               |
-| line ending  | Ends the single-line heading                                               |
-| `body`       | Zero or more characters of operation-specific, character-perfect content  |
-| blank line   | Canonical section separator; excluded from the preceding body              |
+§section-boundary Every statement is one executable backtick block. Its header
+occupies one physical line. A fence has at least three backticks; its closing
+fence has exactly the same count and no following text except horizontal
+whitespace. Each statement chooses its own count independently. There are no
+operation suffixes or heading levels.
 
-The following constraints are structural:
+§fence-boundary A matching fence on its own line closes a multiline body;
+a different-length fence or a fence carrying text is literal body content.
+A bodyless statement may close on its header line after its modifiers.
+At top level, a header names a reserved Plurnk operation or an executor.
+Inside an open body, no header is executable. An unfinished block establishes
+{§unparsed-tail-boundary}; earlier complete operations remain independently
+admissible.
 
-- §lane-match PLAN establishes one lane for the turn. A heading is structural
-  only when its delimiter character-matches that lane; a different delimiter remains
-  ordinary body text.
-- PLAN is the only H1 operation and every non-PLAN operation is H2.
-- A header occupies one physical line.
-- Each admitted signal, target, and scope slot appears at most once. Metadata
-  blocks may repeat only immediately after the target.
-- §plan-slotless PLAN accepts no signal, target, metadata, or scope modifier;
-  observed modifiers are a bounded hard error naming only the rejected slots.
-- An annotation follows every present modifier and appears at most once.
-- BARE, WORK, FORK, and KILL do not admit a scope slot.
-- An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `_`.
+§empty-section Both the compact bodyless form and an empty multiline block
+normalize optional bodies to null. PLAN normalizes an empty body to `[]`
+under {§plan-value}. Closing fences are required even for bodyless operations.
 
-§slot-order Canonical producers and the GBNF rail emit signal, then target, then
-metadata, then scope, then annotation, with one ASCII space before every present modifier. Slot delimiters make
-their boundaries unambiguous, so the tolerant ANTLR ingester accepts zero or
-more horizontal whitespace characters before each slot and any permutation of
-the signal, target-with-metadata, and scope admitted by that operation, at most
-once each. Metadata remains attached immediately after its target. Accepted
-spacing and permutation are not second canonical spellings.
+§statement-rendering `PlurnkParser.stringify` renders native OP names and named
+EXEC executors from the shared AST. It chooses at least three backticks and
+more than any run within the body, preserving body bytes on reparse. Fence
+length is syntax, not AST or persistence state. Core-authored programs use
+this serializer and the ordinary admission parser.
 
-§heading-inline-body Text that follows the last slot on a heading line — after
-horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
-`(`, or `<`, nor `{` after a target) — is the first body line: `### EXEC_ [crm] (crm_query) SELECT Id FROM Case` and
-`### FIND_ (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
-lost and the stored statement is canonical; the spelling is tolerated and announced:
-one warning-severity advisory follows the statement, naming the heading and the rule
-(body content goes immediately beneath the OP heading line), so the model learns
-the form from the packet and never from silent acceptance.
+| Element | Contract |
+|---|---|
+| Fence name | Reserved native OP, otherwise a registered executor or attached MCP service |
+| `(path)` | Target/program/tool slot; COPY and MOVE each have two resource operands |
+| `{metadata}` | Opaque owner-defined modifiers; not JSON input in disguise |
+| `<scope>` | Operation-specific numeric or anchored coordinates |
+| `<!-- … -->` | Optional final, single-line annotation |
+| Body | Literal content between framing newlines |
+| Closing fence | Exactly the opening backtick count |
 
-§operation-annotation A heading may end with one single-line Markdown HTML
-comment. AstBuilder strips the delimiters and surrounding horizontal whitespace
-into the statement's fixed `annotation: string | null` field. The annotation is
-durable, model- and client-facing descriptive text but semantically inert: it
-does not alter operation identity, signal, target, scope, dispatch, effect,
-authorization, status, or body. An empty comment normalizes to the empty string.
-Text containing a newline or lacking the closing `-->` is not an annotation;
-`<!--` elsewhere remains ordinary body text.
+§slot-order Producers put target, metadata, scope, then annotation, separated
+by one ASCII space. COPY/MOVE repeat the target/metadata/scope group per
+operand. ANTLR accepts adjacent slots and the admitted target/scope
+permutations without making them distinct canonical forms. Each slot appears
+at most once, except metadata blocks attached to their owning target.
 
-§scheme-metadata-modifier A target may be followed by zero or more
-single-line `{metadata}` blocks. AstBuilder preserves each block's exact inner
-text and order as the statement's `metadata: string[] | null`; nested braces
-remain balanced content, while braces inside double-quoted strings are inert
-(backslash escapes the next character). The blocks are not part of the target: braces inside
-`(path)` remain ordinary path and glob syntax, including `{PLAN,READ}`. The
-language assigns metadata no meaning. A runtime admits it only for an invoked
-handler that declares the capability; that handler or its selected tool owns
-interpretation, validation, and authorization. For EXEC this is the selected
-executor, not the scheme supplying its target ({§executor-metadata}).
-An unfinished block or a newline before its
-closing brace is a structural failure.
+§plan-slotless PLAN accepts no target, metadata, or scope. Rejected modifiers
+produce a bounded error naming only those modifiers.
 
-The ingester also accepts several bounded noncanonical forms so it can explain
-or safely execute understandable input:
+§heading-inline-body Nonempty body text belongs below the fence header.
+The ingester tolerates body text after horizontal whitespace on the header,
+preserves it, and emits one warning stating that normalization. This does not
+change the meaning of a compact empty block or permit unmatched fences.
 
-| Tolerated input                                   | Canonical or runtime disposition                                    |
-|---------------------------------------------------|---------------------------------------------------------------------|
-| Reordered admitted slots                          | Producers retain signal → target → metadata → scope order           |
-| Missing target on a generally targeted operation | AST carries `null`; the runtime rejects when the target is required |
-| A non-`0` PLAN lane                               | Model canon uses lane `_`                                           |
-| KILL annotation body                              | AST preserves it; model teaching leaves the KILL section empty      |
-| Dash-separated or comma-space scope numbers       | Producers use adjacent comma-separated numbers                      |
-| Empty content where semantics require a body      | The empty section normalizes null; the operation owner rejects it   |
+§operation-annotation The final header modifier may be one single-line HTML
+comment. AstBuilder removes its delimiters and surrounding whitespace into
+`annotation: string | null`. It is durable descriptive text, not authority,
+routing, timing, or body input. Comments inside a body remain literal except
+for the narrowly owned {§misplaced-annotation-advisory}.
+
+§scheme-metadata-modifier A target may carry repeatable single-line
+`{metadata}` blocks; EXEC also admits them without a target. Balanced braces
+inside blocks are retained, and double-quoted strings protect their braces.
+The AST preserves each block's exact inner text in order. Braces inside
+`(path)` remain ordinary path/glob characters. The selected scheme or executor
+owns interpretation, validation and authority; the language assigns no meaning
+to metadata. An unfinished block or multiline metadata loses its boundary.
 
 ## 3. Lexical elements
 
-| Element     | Accepted shape or role                                             |
-|-------------|--------------------------------------------------------------------|
-| `OP`        | `FIND READ EDIT COPY MOVE SEND EXEC BARE WORK FORK KILL PLAN`           |
-| `delimiter`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
-| `(path)`    | Local path or scheme URL target; detailed in §5                    |
-| `{metadata}` | Repeatable opaque scheme modifier attached after a target          |
-| `<scope>`   | One or more signed integers or decimals; detailed in §7            |
-| annotation  | Optional trailing `<!-- … -->` descriptive text                    |
-| `body`      | Opaque section text before the next same-lane heading or EOF        |
+| Element | Shape or role |
+|---|---|
+| Native OP | `PLAN FIND READ EDIT COPY MOVE SEND EXEC BARE WORK FORK KILL NEXT WAIT DONE FAIL` |
+| Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
+| Fence | Three or more backticks, matched by exact count |
+| `(path)` | Local path, URI, program or tool name; §5 |
+| `{metadata}` | Opaque, repeatable owner-defined modifier |
+| `<scope>` | Numeric or anchored coordinates; §7 |
+| Body | Literal text; never recursively interpreted as operations |
 
 ## §op-shapes 4. Per-operation semantics
 
@@ -451,18 +379,18 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | EDIT | required file or entry                       | required for an existing target | literal text                   |
 | COPY | required source and destination              | optional region after each path | empty                          |
 | MOVE | required source and destination              | optional region after each path | empty                          |
-| EXEC | optional `[executor]`, optional program path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
+| EXEC | fence names executor; optional program/tool path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | required fresh `worker://name`               | none                            | required prompt                |
 | FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
-| SEND | a label `(NEXT\|WAIT\|TERM\|FAIL)` or an optional recipient ({§send-label}) | numeric timing on WAIT or a recipient | message; terminal is nonempty |
+| SEND | optional recipient | optional recipient timing | message |
+| NEXT, DONE, FAIL | none | none | user-facing message |
+| WAIT | none | optional timeout and poll | user-facing message |
 
-§operation-code-polymorphism SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
-For pathless terminal SEND, the code is the loop disposition defined in §9.
-Directed SEND and KILL delegate any present code to the addressed target's
-operation contract; a live process may interpret a KILL code as a Unix signal,
-but that interpretation does not define KILL generally.
+§operation-code-polymorphism Operation-result statuses and turn dispositions are
+distinct facts. NEXT, WAIT, DONE, and FAIL derive their requested lifecycle
+outcome from the operation name; SEND and KILL carry no disposition operand.
 
 §plan-value **PLAN carries the model's task inventory.**
 Finished actions are `completed`, open work is `pending`, and active work is
@@ -491,20 +419,28 @@ to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
 commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
-§exec-executor-slot An EXEC heading takes an optional `[executor]` slot before its path: `### EXEC_ [python3] (tools/report.py)`. The executor may also trail the path (`### EXEC_ (tools/report.py) [python3]`); either position binds the same AST, since no other slot after a path uses `[...]`. Canonical rendering leads with the executor. Two executors are the one rejected shape. The bracket names the registered executor that runs the program — a tool family, a language runtime, or the shell — and lexes as one `EXECUTOR` token only on an EXEC heading. The path names the program: a registered tool of that family, or a script file or entry. A bare `### EXEC_` is the shell running its body; with a path the body is the program's input. The AST carries `executor` (null for the shell) and `target` separately; the path is never split. Each of the executor, the path, and the `<timeout,poll>` scope appears at most once. Tool teaching, not the grammar, spells the registered executors; a `{cwd=…}` metadata block, interpreted by the executor, names the working directory.
+§exec-executor-slot The fence name selects the executor directly: for example,
+`python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.
+Reserved native OP names take precedence. Other names lower to the same EXEC
+AST with `executor`, `target`, metadata, timing and body fields.
+Registration is checked by the runtime, not by the syntax parser. An attached
+MCP service uses that executor path and its owner validates the named tool and
+input-body JSON against its schema. Unknown names do not fall back to a shell.
+The native `EXEC` form without a selected executor retains the runtime's
+default executor contract; canonical shell examples name `sh` explicitly.
+The path names a program or tool and is never split. Metadata such as
+`{cwd=…}` remains interpreted by the selected executor.
 
-§send-label SEND's path slot carries either a turn label or a recipient. The four
-labels `(NEXT)`, `(WAIT)`, `(TERM)`, and `(FAIL)` lex as one `SEND_LABEL` token
-and make the SEND terminal: the AST `status` is 102, 202, 200, or 499 and `target`
-is null. A label SEND names no recipient; a label beside a recipient path is one
-error at the heading naming that rule. A SEND whose path is a recipient
-(`### SEND_ (worker://recheck)`, `(https://…)`, `(a2a://…)`), or whose path slot is
-empty (the user), is a mid-turn message with `status` null. The GBNF rail spells a
-mid-turn recipient as a URL, so a constrained turn can never place a label mid-turn.
+§turn-disposition NEXT, WAIT, DONE, and FAIL are native operations whose names
+remain intact in the AST, durable log, and client events. `TurnDisposition`
+derives their lifecycle status: NEXT → 102, WAIT → 202, DONE → 200, FAIL → 499.
+The AST has no independently settable status, target, or metadata for them.
+SEND only messages its recipient, or the user when targetless; it never
+supplies a turn disposition. The numeric runtime lifecycle and completion
+checks are unchanged. No old label syntax is a disposition alias.
 
-§send-wait-scope A `(WAIT)` SEND keeps its numeric `<scope>` — the park interval
-and poll ({§park-202-only}); the dispatcher owns what it accepts. Every other label
-takes no scope.
+§send-wait-scope WAIT keeps its numeric `<scope>` — the park interval and poll
+({§park-202-only}); the dispatcher owns its bounds. Other dispositions take no scope.
 
 §send-directed-scope A recipient SEND preserves an optional numeric scope after
 its target and metadata. The addressed owner assigns its semantics; worker
@@ -512,14 +448,16 @@ actors use `<delay[,interval]>` ({§worker-scheduled-send}). A targetless messag
 takes no scope. Scheduling does not change the message body or disposition.
 
 §kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
-anchored (`### KILL_ (log:///**/READ) <17,-1>`, `### KILL_ (worker:///notes.md)
-<@aB3dE,@0Aa9Z>`), and an optional one-line matcher body that selects rows. The AST
+anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
+```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional one-line matcher body that selects rows. The AST
 is `{ op: "KILL", target, lineMarker: TextLineMarker | null, body: MatcherBody | null }`.
 Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.
 
-§legacy-bracket-slot The bracket slot carries no signal, tag, code, or status on any heading; EXEC alone takes `[executor]` ({§exec-executor-slot}). A `[` on any other heading is one bounded lexer diagnostic that names that rule and the OP's own `(path)` slot, and after PLAN states that PLAN takes no modifiers. The statement drops and its siblings run.
+§legacy-bracket-slot No header has a bracket modifier. The runtime or MCP
+service is the fence name, and tool input belongs in the body. A stray `[`
+produces one bounded header diagnostic; it cannot select another executor.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and SEND scope owner-defined timing. READ, EDIT, COPY,
@@ -686,11 +624,11 @@ visitor error and never falls back to glob matching.
 
 - §heading-boundary-recovery A column-0 heading is the trustworthy boundary. After a
   statement-level error the parser discards the rest of that statement and resumes at the
-  next heading; the turn shape is decided locally (a terminal SEND is recognized by its own
+  next heading; the turn shape is decided locally (a turn disposition is recognized by its own
   disposition signal, never by a whole-turn alternative), so one malformed heading costs one
-  diagnostic and every later statement, the terminal SEND included, stands on its own. Any
+  diagnostic and every later statement, the turn disposition included, stands on its own. Any
   other second path slot names the one-slot rule.
-- §scope-slot-tolerance A line scope written inside a path slot (`### COPY_ (worker:///src.md<2,3>)`)
+- §scope-slot-tolerance A line scope written inside a path slot (```` ```COPY (worker:///src.md<2,3>) ````)
   is read as `(worker:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
   before a slot's closing paren can only be a scope; every path slot of a statement is repaired
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
@@ -751,7 +689,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| `### SEND_ (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
+| ```` ```WAIT ````     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
 | Directed SEND         | Owner-defined numeric scope           | Worker actors schedule a task with `delay[,interval]` ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -787,68 +725,35 @@ reinterpreting them. FIND owns a deterministic result order so the same
 inclusive range selects the same positions from unchanged state. The parser
 does not enforce either condition.
 
-## §delimiter-discipline 8. Delimiter Discipline
+## 8. Literal programs and code blocks
 
-The delimiter is a turn-wide heading lane. A heading carrying the active lane
-is structural; an otherwise valid PLURNK heading carrying another lane is body
-text. The lane therefore makes literal or nested PLURNK unambiguous.
+A producer carrying literal fences uses an outer backtick count absent from
+standalone fence lines in its body ({§fence-boundary}). The serializer chooses
+a count greater than every backtick run in the body; parsed AST values carry
+no framing state.
 
-Delimiter rules:
+`````text
+````EDIT (README.md) <1,-1>
+Run the tests:
 
-- `delimiter` is `[A-Za-z0-9_]*`, concatenated to PLAN or OP with no separator.
-- The H1 PLAN establishes the lane; every real H2 operation heading in that
-  turn has the exact same delimiter.
-- An empty delimiter is accepted only by ANTLR ingestion. Canonical teaching and
-  the generated rail use `_` on PLAN and every operation: an arbitrary lane driven
-  home so it reads as official, chosen because it is neither a number a model
-  increments nor a character natural markdown puts after an OP name.
-- A body may contain any heading whose delimiter differs from the active lane.
-- §foreign-lane-advisory When a body swallows OP-shaped headings of another lane, the
-  parser adds one warning advisory per statement and foreign suffix, positioned at
-  the first swallowed heading: how many headings, which operations, which suffix,
-  which statement took them as body, and the turn's lane. It is factual, never a
-  rejection or a rewrite: the model that numbered `EDIT1…EDIT23` inside a lane `_`
-  turn learns in one turn what it otherwise infers from a 1,136-line receipt, and
-  the model that nested a quoted program on purpose reads a confirmation. Core
-  publishes it like every parser warning, as a `parse_advisory` notice on the next
-  packet (#515).
-- To carry a nested turn written with lane `_`, choose another delimiter for the
-  outer turn and repeat it on every outer heading.
-- The GBNF deliberately emits only lane `_`. It cannot emit body content that
-  contains a same-lane structural heading; unconstrained producers use another
-  outer lane when that representation is required.
-
-Example — a lane `_` turn stored inside a lane-2 EDIT body:
-
-```example
-## PLAN2
-[{"content":"Store the quoted turn.","status":"in_progress"}]
-
-### EDIT2 (worker:///quoted.plurnk)
-## PLAN_
-[{"content":"Answer from memory.","status":"in_progress"}]
-
-### SEND_ (TERM)
-Paris.
-
-### SEND2 (TERM)
-Stored the quoted turn.
+```sh
+npm test
 ```
+````
+`````
 
-The lane `_` headings are ordinary EDIT body text because the outer turn's
-structural lane is `2`. This rule belongs to section framing and applies to
-every operation, not to EDIT semantics.
+The inner shell example is EDIT content, not an EXEC invocation. The same
+rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. SEND Codes
 
-Pathless terminal SEND disposition codes align with HTTP semantics so that model training
-transfers directly:
+Native dispositions map to the existing HTTP-shaped lifecycle statuses:
 
 | Class | Terminal meaning                                                | Disposition used by the model |
 |-------|-----------------------------------------------------------------|-------------------------------|
-| `1xx` | Continue after submitted operations                             | `102 Processing`              |
-| `2xx` | Conclude successfully or wait on live obligations               | `200 OK`, `202 Accepted`      |
-| `4xx` | Abandon the loop after a model-side inability                   | `499`                         |
+| `1xx` | Continue after submitted operations                             | `NEXT` → 102                 |
+| `2xx` | Conclude successfully or wait on live obligations               | `DONE` → 200, `WAIT` → 202    |
+| `4xx` | Abandon the loop after a model-side inability                   | `FAIL` → 499                 |
 | `5xx` | Runtime or infrastructure failure; never a model terminal claim | none                          |
 
 ### §waitpid-dispositions The terminal contract (waitpid)
@@ -860,20 +765,19 @@ streams, pending retrievals); the grammar polices *shape* only. Asking
 the human is the native `question` EXEC tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
-- §send-mid-reservation The four labels lex as one `SEND_LABEL` token
-  ({§send-label}). A turn admits exactly one disposition SEND, and it ends the
+- §send-mid-reservation The four native disposition OPs have reserved tokens
+  ({§turn-disposition}). A turn admits exactly one disposition, and it ends the
   turn ({§disposition-ends-turn}): ordinary operations precede it, and the
   runtime executes it last. A second disposition is a structural
-  error, not a choice between competing outcomes. GBNF uses the same rule and
-  spells non-disposition SEND recipients as URLs, which no label is.
-- §disposition-ends-turn The disposition SEND and its body end a model turn.
+  error, not a choice between competing outcomes. GBNF uses the same rule.
+- §disposition-ends-turn The disposition operation and its body end a model turn.
   `PlurnkParser.parse` admits no statement after them: trailing statements are
   recognized as operations, dropped, never executed, and reported as one hard
   diagnostic with `code: "operations-after-disposition"` anchored at the first
   dropped heading. The message names the disposition heading, counts what was
   dropped by OP (`3 operations after its body were not admitted (KILL ×1, READ ×1,
   SEND ×1)`), and states the rule: `Every OP, including KILL, precedes the
-  disposition SEND.` Bounded hard diagnostics positioned after the disposition
+  disposition.` Bounded hard diagnostics positioned after the disposition
   belong to that dropped source and collapse into the same diagnostic as ignored
   malformed headings; the disposition's own advisories and a second-disposition
   structural error stand as before. A disposition the parser synthesized
@@ -883,9 +787,8 @@ disposition. The shape rules ARE structural:
   written under the earlier shape stays readable. Origin: on a constrained weak
   rail, three emissions in one night continued past a correct disposition into
   the packet they expected next, executing 194, 302, and 481 operations.
-- A **non-disposition** SEND is comms: a recipient path or
-  none, no label, empty body allowed.
-- §terminal-body-nonempty The GBNF rail requires a non-empty terminal SEND body — a constrained
+- SEND is communication: an optional recipient path and an optional body.
+- §terminal-body-nonempty The GBNF rail requires a non-empty disposition body — a constrained
   turn cannot end empty-handed. ANTLR remains tolerant during ingestion.
 - §park-202-only The **park** rides `(WAIT)` only: `<T>` (wait up to T minutes),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
@@ -899,9 +802,8 @@ disposition. The shape rules ARE structural:
   downstream validation — survives the rail by nature; the engine's
   idle-turn 409 backstops that class.
 
-SEND with no `(path)` broadcasts to the default control channel — the
-turn's disposition. SEND with `(path)` directs the message at a
-specific recipient URI (a worker, a stream, a peer).
+SEND with no `(path)` messages the user without ending the turn. SEND with
+`(path)` directs the message to that recipient. Neither changes loop status.
 
 ### §send-body SEND body projection
 
@@ -913,78 +815,35 @@ defines no synthetic scheme or READ-back convention for them.
 
 ## §parser-architecture 10. Parser architecture
 
-`plurnkLexer.g4` owns tokens and modes; `plurnkParser.g4` owns document tiers
-and statement composition; AstBuilder projects parse-tree leaves into the public
-AST. Generated TypeScript targets the `antlr4ng` runtime.
+ANTLR owns framing, slots and statement composition; AstBuilder produces the
+schema-owned AST. Registration, effects and authority remain runtime concerns.
 
 ```mermaid
 stateDiagram-v2
     [*] --> DEFAULT
-    DEFAULT --> DEFAULT: whitespace or TEXT
-    DEFAULT --> SLOTS: H1 PLANlane or H2 OPlane
-    SLOTS --> SIGNAL: signal opener
-    SIGNAL --> SLOTS: signal close
-    SLOTS --> TARGET: target opener
-    TARGET --> TARGET: balanced literals / target escapes
-    TARGET --> SLOTS: target close at depth zero
-    SLOTS --> METADATA: metadata opener after target
-    METADATA --> METADATA: balanced inner braces
-    METADATA --> SLOTS: metadata close at depth zero
-    SLOTS --> SLOTS: scope token
-    SLOTS --> SLOTS: trailing annotation
-    SLOTS --> BODY: heading line end
-    BODY --> DEFAULT: same-lane heading boundary
-    BODY --> [*]: end of input
+    DEFAULT --> SLOTS: fenced native OP or executor
+    SLOTS --> TARGET: (
+    TARGET --> SLOTS: )
+    SLOTS --> METADATA: {
+    METADATA --> SLOTS: }
+    SLOTS --> BODY: header newline or tolerated inline body
+    SLOTS --> DEFAULT: matching compact closer
+    BODY --> DEFAULT: matching standalone closer
+    BODY --> BODY: literal content, including other fences
 ```
-
-The first H1 PLAN establishes the turn lane. DEFAULT recognizes only an H1
-PLAN or H2 minted operation carrying that exact lane. SLOTS admits
-operation-appropriate signal, target-with-metadata, and scope openers in any
-order, followed by an optional annotation; the parser grammar enforces
-at-most-once slot multiplicity and keeps repeatable metadata attached to its target.
-Signal submodes select tags, integer,
-or identifier tokens by operation family. TARGET preserves balanced inner
-parentheses and recognized target escapes. BODY emits opaque text until a
-same-lane heading boundary or EOF.
-
-A differently delimited heading stays BODY text. Multi-turn logs are plain
-sequences of independently lane-anchored PLAN turns. Complete native reasoning
-enclosures before PLAN remain one TEXT token so an operation drafted inside
-provider reasoning cannot become the turn anchor.
-
-RecordingListener captures lexer and parser failures; AstBuilder adds visitor
-failures. PlurnkErrorStrategy recovers at structural heading boundaries where
-possible. EOF is a valid body boundary. An unfinished signal, target, or metadata block produces
-`unparsedTail`; no later input is trustworthy.
 
 ## §whitespace-contract 11. Whitespace and interstatement text
 
-| Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
-|-----------------------------|---------------------------------------|-----------------------------------------------------------|
-| Heading marker              | `## PLAN_` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
-| Between OP and delimiter       | Adjacent                              | Must remain adjacent                                      |
-| Before each modifier        | One ASCII space                       | Zero or more horizontal whitespace characters             |
-| Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
-| Inside target               | Path alias plus target escapes         | Balanced literals tolerated; newline is invalid           |
-| Inside scheme metadata      | Scheme-defined single-line content     | Balanced braces tolerated; newline is invalid              |
-| Inside scope                | Comma-separated numbers               | Dash separator and one post-comma space are also accepted |
-| Before annotation           | One ASCII space                        | Zero or more horizontal whitespace characters             |
-| Inside annotation           | One-line prose padded by one space     | Any single-line text through the first closing `-->`       |
-| Inside body                 | Character-perfect                     | Character-perfect                                         |
-| Between canonical sections  | No empty separator line                | One empty separator line is also admitted                  |
-| Before the first PLAN       | Nothing                               | Whitespace or TEXT may surface as preamble items without requiring a separator before PLAN |
+Body framing removes the header line ending and the single line ending
+immediately before the closing fence. Every other body character is preserved,
+including leading/trailing blank lines, indentation, CRLF and literal
+backslash escapes. A formatter adds its own framing newline even when a body
+already ends in one. Interstatement whitespace belongs to no body.
 
-PLURNK never escape-decodes body text: `\n` reaches the owning operation as
-backslash plus `n`. A matcher or executor may interpret those characters under
-its own body dialect. Producers that need a physical newline in literal EDIT
-content emit an actual newline.
-
-`parse` admits TEXT before its PLAN, including without an intervening line
-break, and returns it as ordered text items without assigning semantics. Once
-a heading begins, all nonstructural text belongs to that section body.
-`parseStatements` and `parseClient` admit H2 statements;
-`parseLog` admits consecutive H1 PLAN turns. PLURNK defines no general comment
-syntax; only the trailing heading position gives `<!-- … -->` annotation meaning.
+A header starts at column zero; the first operation may follow tolerated
+provider preamble without a separating newline. Preamble TEXT has no execution
+semantics. No generic Markdown rendering, indentation stripping or recursive
+code-block extraction occurs. Only a header annotation has comment semantics.
 
 ## §public-api 12. Public API
 
@@ -993,33 +852,18 @@ and wire types come from generated schemas; the small hand-maintained parser
 types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
-§turn-shape `PlurnkParser.parse` accepts exactly one model turn containing at
-least one parsed source operation. Canonical teaching may begin with PLAN
-(a SHOULD, never repeated mid-turn) and end with a label SEND; accepted source
-and GBNF end the turn at that sole disposition ({§disposition-ends-turn}). A turn without
-a PLAN stands as written — no PLAN is synthesized and nothing is diagnosed. When
-no valid terminal SEND was parsed, the parser appends a bodyless terminal
-`SEND (NEXT)` with the first parsed operation's delimiter (including the empty delimiter),
-carrying {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
-stating the active delimiter and applied default. Alternate-delimiter headings
-remain body text; recovery does not reinterpret them as operations. The source text
-remains unchanged. The GBNF rail takes the same optional PLAN.
-The disposition does not change the turn's delimiter. Bounded
-operation errors before the disposition retain valid siblings; duplicate dispositions,
-a second PLAN, and failed document boundaries are structural failures.
-Tolerated TEXT
-may appear only before the first operation; after that point, nonstructural text
-is section body content. `parseLog` requires a disposition for each saved turn;
-a following PLAN separates turns and may establish a new delimiter. It retains
-trailing ordinary operations in source order.
+§turn-shape `PlurnkParser.parse` accepts one operation-bearing model turn.
+PLAN is optional and is not synthesized or diagnosed when absent. One
+disposition ends the turn ({§disposition-ends-turn}). If complete valid
+operations omit it, the parser appends a bodyless NEXT with
+`UNKNOWN_POSITION` and one hard `missing-turn-disposition` diagnostic; the raw
+source is unchanged. Unfinished blocks never receive inferred closers.
+Bounded operation errors retain valid siblings. Duplicate dispositions,
+repeated PLAN, and failed document boundaries remain structural failures.
 
-§document-fence `PlurnkParser.parse` additionally admits one outer Markdown code
-fence whose opening line is exactly ```` ```example ```` (or the earlier ```` ```plurnk ````) and whose closing line,
-when present, is ```` ``` ````. The fence encloses the complete
-model turn and projects neither text nor body content into the AST. Its opener
-commits the document to either that closer or EOF immediately after the turn.
-This is document framing, not another statement grammar, and
-no other parser tier admits it. GBNF continues to shape the paired form.
+`parseLog` reads consecutive saved turns separated by their PLAN anchors and
+requires their dispositions. There is no outer Markdown program wrapper;
+the executable blocks themselves are the program.
 
 §tier-entrypoints Each parser entry point owns one document tier:
 
@@ -1027,7 +871,7 @@ no other parser tier admits it. GBNF continues to shape the paired form.
 |--------------------------------|----------------------------------------------------------------|-----------------------|
 | `PlurnkParser.parse`           | One operation-bearing model turn, bare with optional TEXT or inside one outer `example` (or `plurnk`) fence; omitted PLAN/SEND recover to defaults | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
-| `PlurnkParser.parseLog`        | One or more consecutive same-lane PLAN-anchored turns           | `PlurnkStatement`     |
+| `PlurnkParser.parseLog`        | One or more consecutive PLAN-anchored turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |
 
 Every entry point returns ordered `statement`, `error`, and, where admitted,
@@ -1337,12 +1181,12 @@ class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
-    readonly code?: "missing-terminal-send";
+    readonly code?: "missing-turn-disposition";
 }
 ```
 
 §parser-position Parser source locations are points, not text regions. An AST
-statement's `position` identifies the first `#` of its heading; a diagnostic
+statement's `position` identifies the first backtick of its header; a diagnostic
 identifies the offending or recovery point; a text item and `unparsedTail.from`
 identify the first point at which that item or undefined tail begins. A
 statement constructed without retained parsed source uses `UNKNOWN_POSITION`,
@@ -1376,18 +1220,12 @@ the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
 turn-shape diagnostics. Missing PLAN is not diagnosed ({§turn-shape}). A missing
-terminal SEND carries the structured `code: "missing-terminal-send"`; consumers
+turn disposition carries the structured `code: "missing-turn-disposition"`; consumers
 use that code, never message wording, to recognize envelope recovery. Operations
 after the disposition carry `code: "operations-after-disposition"`
 ({§disposition-ends-turn}). A failed
 document boundary carries `code: "invalid-turn-structure"`, which cannot be
-recovered as an individual failed operation. The missing-SEND message
-names the turn's actual lane, attributes the synthesized SEND to the parser, and
-states the lane rule and the terminal forms without inviting a lane change,
-for example ``The turn ended without a terminal SEND in its lane "1"; parser
-appended `### SEND1 (NEXT)`. Every OP of a turn shares that one lane; end the
-turn with `### SEND1 (NEXT|WAIT|TERM|FAIL)`.`` (a live specimen read the older
-"no terminal SEND matched delimiter" as an instruction to stop using its lane).
+recovered as an individual failed operation. The missing-SEND message states that the parser appended \`NEXT\`, without inferring intent.
 Its position is the authored emission's EOF, not the last
 operation's heading, using the parser's line/column convention above. Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
@@ -1415,10 +1253,6 @@ diagnostics are:
   positions, EXEC/WAIT minutes, text coordinates, or no scope. Do not append advice for
   other operations or infer why the producer supplied the value. Spacing and
   boundary-loss diagnostics retain their own contracts.
-- §label-recipient-redirect **A label beside a recipient.** `### SEND_ (TERM)
-  (worker://parent)` and `### SEND_ (worker://parent) (TERM)` are one parser error at
-  the heading: `a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient
-  with its own SEND first` ({§send-label}).
 - §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
   body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
   the annotation the model put on the line below the heading. The builder takes
@@ -1438,7 +1272,7 @@ provide:
 | Non-fatal advisory     | `severity: "warning"` | One narrowly gated likely mistake and canonical alternative; input remains admitted.      |
 | Boundary loss          | `unparsedTail`        | Where trust ends, which header slot remains open, and why later input is undefined.        |
 
-All messages use PLURNK protocol vocabulary: heading, lane, signal, target,
+All messages use PLURNK protocol vocabulary: opening fence, closing fence, target,
 scope, line marker, body, section boundary, or space between slots. They never
 expose ANTLR rule or token names. They refer to a slot or
 feature rather than an implementation rule. Generic tutoring, speculative
@@ -1447,9 +1281,9 @@ intent, coordinate restatement, and multiple repair strategies are forbidden.
 Examples of canonical hard facts:
 
 - `unrecognized character '<' in target`
-- `unrecognized character ':' in signal`
+- `unexpected bracket modifier; the fence name selects the executor`
 - `unrecognized character 'X' in statement header`
-- `a turn must begin with \`## PLAN_\``
+- `PLAN takes no modifiers; its body begins below the header`
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded
@@ -1484,6 +1318,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "target slot of `### READ_` opened at line 1 but never closed - add `)`"
+    "message": "READ block opened at line 1 but was not closed with 3 backticks"
 }
 ```

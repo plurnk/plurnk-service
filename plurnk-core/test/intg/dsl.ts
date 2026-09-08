@@ -2,7 +2,7 @@
 // statement parser so Core receives production AST shapes. {§tier-entrypoints}
 // {§methods-op-mirror}
 
-import { PLURNK_OPS, PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 interface OpWithMatcher {
@@ -24,15 +24,13 @@ interface OpCopyMoveParams {
     destinationRange?: LineMarker;
 }
 
-// {§send-label} — a label concludes the turn and names no recipient; a recipient path (or
-// none, the user) is a mid-turn message.
+// {§turn-disposition} — SEND is messaging, never a disposition.
 interface OpSendParams {
-    status?: 102 | 200 | 202 | 499;
     recipient?: string;
     body?: string;
 }
 
-// {§exec-executor-slot} — `[executor]` leads; `{cwd=…}` names the directory; the body is the program.
+// {§exec-executor-slot} — the fence name selects the executor; `{cwd=…}` names the directory; the body is the program.
 interface OpExecParams {
     cwd?: string;
     runtime?: string;
@@ -40,17 +38,6 @@ interface OpExecParams {
 }
 
 export default class Dsl {
-    // Use the canonical lane unless the body contains a heading in that lane;
-    // then deterministically choose the first lane that leaves the body opaque.
-    static #delimiterFor(body: string): string {
-        const h2Ops = PLURNK_OPS.filter((op) => op !== "PLAN").join("|");
-        for (let lane = 1; ; lane++) {
-            const delimiter = String(lane);
-            const structuralHeading = new RegExp(`^(?:## PLAN|## (?:${h2Ops}))${delimiter}(?=$|[ \\t])`, "m");
-            if (!structuralHeading.test(body)) return delimiter;
-        }
-    }
-
     static #formatLineMarker(lm: LineMarker | undefined): string {
         if (lm === undefined || lm === null) return "";
         return `<${lm.marks.join(",")}>`;
@@ -72,10 +59,9 @@ export default class Dsl {
         lineMarker: string;
         body: string;
     }): string {
-        const delimiter = Dsl.#delimiterFor(body);
-        const modifiers = [executor, target, metadata, lineMarker].filter((value) => value.length > 0).join(" ");
-        const heading = `### ${op}${delimiter}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
-        return body.length === 0 ? heading : `${heading}\n${body}`;
+        const modifiers = [target, metadata, lineMarker].filter((value) => value.length > 0).join(" ");
+        const header = `${executor || op}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
+        return PlurnkParser.frame(header, body.length === 0 ? null : body);
     }
 
     static parseSingleStatement(text: string): PlurnkStatement {
@@ -125,32 +111,22 @@ export default class Dsl {
 
     static buildCopy(p: OpCopyMoveParams): PlurnkStatement {
         if (p.destination === undefined) throw new Error("op.copy requires destination");
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "COPY",
-            target: Dsl.#formatPath(p.source),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: `${p.destination}${Dsl.#formatLineMarker(p.destinationRange)}`,
-        }));
+        const source = `${Dsl.#formatPath(p.source)} ${Dsl.#formatLineMarker(p.lineRange)}`.trim();
+        const destination = `${Dsl.#formatPath(p.destination)} ${Dsl.#formatLineMarker(p.destinationRange)}`.trim();
+        return Dsl.parseSingleStatement(PlurnkParser.frame(`COPY ${source} ${destination}`, null));
     }
 
     static buildMove(p: OpCopyMoveParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "MOVE",
-            target: Dsl.#formatPath(p.source),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: p.destination === undefined
-                ? ""
-                : `${p.destination}${Dsl.#formatLineMarker(p.destinationRange)}`,
-        }));
+        if (p.destination === undefined) throw new Error("op.move requires destination");
+        const source = `${Dsl.#formatPath(p.source)} ${Dsl.#formatLineMarker(p.lineRange)}`.trim();
+        const destination = `${Dsl.#formatPath(p.destination)} ${Dsl.#formatLineMarker(p.destinationRange)}`.trim();
+        return Dsl.parseSingleStatement(PlurnkParser.frame(`MOVE ${source} ${destination}`, null));
     }
 
-    static #SEND_LABELS: Readonly<Record<number, string>> = Object.freeze({ 102: "NEXT", 200: "TERM", 202: "WAIT", 499: "FAIL" });
-
     static buildSend(p: OpSendParams): PlurnkStatement {
-        if (p.status !== undefined && p.recipient !== undefined) throw new Error("a label SEND names no recipient");
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "SEND",
-            target: p.status !== undefined ? `(${Dsl.#SEND_LABELS[p.status]})` : (p.recipient !== undefined ? Dsl.#formatPath(p.recipient) : ""),
+            target: Dsl.#formatPath(p.recipient),
             lineMarker: "",
             body: p.body ?? "",
         }));
@@ -159,7 +135,7 @@ export default class Dsl {
     static buildExec(p: OpExecParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "EXEC",
-            executor: p.runtime === undefined ? "" : `[${p.runtime}]`,
+            executor: p.runtime ?? "",
             target: "",
             metadata: p.cwd === undefined ? "" : `{cwd=${p.cwd}}`,
             lineMarker: "",

@@ -67,7 +67,6 @@ const statement = (runtime: string, target: string | null, body: string): ExecSt
     metadata: null,
     op: "EXEC",
     annotation: null,
-    delimiter: "",
     executor: runtime, target: target === null ? null : parsePath(target),
     lineMarker: null,
     body,
@@ -208,7 +207,7 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId, ctx.workerId);
         const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/familytool.md");
-        assert.match(familyDoc?.content ?? "", /### EXEC_ \[familytool\] \(enabled_tool\)/, "the family document carries every registered target");
+        assert.match(familyDoc?.content ?? "", /```familytool \(enabled_tool\)/, "the family document carries every registered target");
         assert.equal(
             reference.some((doc) => doc.pathname.startsWith("/_plurnk/plurnk/familytool/")),
             false,

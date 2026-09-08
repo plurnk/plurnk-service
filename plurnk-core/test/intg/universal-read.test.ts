@@ -200,7 +200,10 @@ class IndependentChannelScheme implements SchemeHandler {
 }
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`## PLAN_\n${dsl}`).items.find(
+    const item = PlurnkParser.parse(`\`\`\`PLAN
+[]
+\`\`\`
+${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -210,7 +213,10 @@ const parseRead = (dsl: string): ReadStatement => {
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`## PLAN_\n${dsl}`).items.find(
+    const item = PlurnkParser.parse(`\`\`\`PLAN
+[]
+\`\`\`
+${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {
@@ -240,7 +246,7 @@ test("entry-backed data schemes inherit exact READ projection", async () => {
         });
 
         const result = await engine.dispatch({
-            statement: parseRead("### READ_ (entry-backed:///document.txt)"),
+            statement: parseRead("```READ (entry-backed:///document.txt)```"),
             workspaceId,
             workerId,
             loopId,
@@ -285,7 +291,7 @@ test("inherited READ uses the scheme's canonical pathname and owner", async () =
         });
 
         const result = await engine.dispatch({
-            statement: parseRead("### READ_ (resolved-entry:///alias_%28v1%29.txt#body) <1,-1>"),
+            statement: parseRead("```READ (resolved-entry:///alias_%28v1%29.txt#body) <1,-1>```"),
             workspaceId,
             workerId,
             loopId,
@@ -312,7 +318,7 @@ test("preparation capabilities bind to the already-resolved canonical owner", as
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseRead("### READ_ (owner-bound-preparation:///alias.txt) <1,-1>"),
+            statement: parseRead("```READ (owner-bound-preparation:///alias.txt) <1,-1>```"),
             workspaceId,
             workerId,
             loopId,
@@ -341,7 +347,7 @@ test("scope-blind preparation durably composes producer status with cold and war
 
         for (const sequence of [1, 2]) {
             const result = await engine.dispatch({
-                statement: parseRead("### READ_ (archive:///aliases/latest) <17,18>"),
+                statement: parseRead("```READ (archive:///aliases/latest) <17,18>```"),
                 workspaceId,
                 workerId,
                 loopId,
@@ -386,7 +392,7 @@ test("core selects one channel before applying its independent durable producer 
         });
 
         const body = await dispatch(
-            parseRead("### READ_ (independent-channel:///item) <1,-1>"),
+            parseRead("```READ (independent-channel:///item) <1,-1>```"),
             1,
         );
         assert.equal(body.status, 200);
@@ -394,7 +400,7 @@ test("core selects one channel before applying its independent durable producer 
 
         for (const sequence of [2, 3]) {
             const html = await dispatch(
-                parseRead("### READ_ (independent-channel:///item#html) <1,-1>"),
+                parseRead("```READ (independent-channel:///item#html) <1,-1>```"),
                 sequence,
             );
             assert.equal(html.status, 502);
@@ -421,7 +427,7 @@ test("exact FIND shares representation preparation but retains universal query s
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("### FIND_ (archive:///aliases/latest)"),
+            statement: parseFind("```FIND (archive:///aliases/latest)```"),
             workspaceId,
             workerId,
             loopId,
@@ -597,7 +603,7 @@ test("cold finite HTTP READ acquires before applying the exact text scope", asyn
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
-            statement: parseRead("### READ_ (https://93.184.216.34/document.txt) <17,18>"),
+            statement: parseRead("```READ (https://93.184.216.34/document.txt) <17,18>```"),
             workspaceId,
             workerId,
             loopId,

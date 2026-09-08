@@ -2,14 +2,15 @@
 
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
-```example
-### EXEC_ [jq]
+```jq
 [1,2,3] | add
+```
 
-### EXEC_ [jq] (data.json)
+```jq (data.json)
 .users[].name
+```
 
-### EXEC_ [jq] (sqlite:///1/2/3/EXEC#results)
+```jq (sqlite:///1/2/3/EXEC#results)
 .[] | .name
 ```
 

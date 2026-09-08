@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -208,7 +209,7 @@ export default class LogBody {
             };
         }
 
-        if (row.op === "SEND" || row.op === "WORK" || row.op === "FORK") {
+        if (row.op !== null && TurnDisposition.isOp(row.op) || row.op === "SEND" || row.op === "WORK" || row.op === "FORK") {
             if (tx !== null && typeof tx === "object") {
                 const body = (tx as { body?: unknown }).body;
                 const content = typeof body === "string"

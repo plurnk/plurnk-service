@@ -16,56 +16,53 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #OFFENDING_CHAR_RE = /at: '([^']*)'$/;
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
-        DEFAULT_MODE: "before the PLAN heading",
-        SLOTS: "in operation heading - expected a space before `(path)`, `{metadata}`, or `<scope>`, or a line ending",
+        DEFAULT_MODE: "outside an operation block",
+        SLOTS: "in operation header - expected `(path)`, `{metadata}`, `<scope>`, a line ending, or the matching closing fence",
         TARGET: "in `(path)` slot - expected URI characters or `)`",
         METADATA: "in `{metadata}` modifier - expected single-line scheme content or `}`",
         BODY: "in body",
     };
 
     static #SLOT_BY_TOKEN: Record<number, string> = {
-        [plurnkParser.OPEN_FIND]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_READ]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_EDIT]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_COPY]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_MOVE]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_SEND]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_EXEC]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_BARE]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_WORK]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_FORK]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_KILL]: "H3 operation heading `### OPdelimiter`",
-        [plurnkParser.OPEN_PLAN]: "PLAN heading `## PLANdelimiter`",
-        [plurnkParser.OPEN_LOOK]: "H3 client heading `### OPdelimiter`",
-        [plurnkParser.OPEN_BUFF]: "H3 client heading `### OPdelimiter`",
+        [plurnkParser.OPEN_FIND]: "operation fence header",
+        [plurnkParser.OPEN_READ]: "operation fence header",
+        [plurnkParser.OPEN_EDIT]: "operation fence header",
+        [plurnkParser.OPEN_COPY]: "operation fence header",
+        [plurnkParser.OPEN_MOVE]: "operation fence header",
+        [plurnkParser.OPEN_SEND]: "operation fence header",
+        [plurnkParser.OPEN_NEXT]: "operation fence header",
+        [plurnkParser.OPEN_WAIT]: "operation fence header",
+        [plurnkParser.OPEN_DONE]: "operation fence header",
+        [plurnkParser.OPEN_FAIL]: "operation fence header",
+        [plurnkParser.OPEN_EXEC]: "operation fence header",
+        [plurnkParser.OPEN_BARE]: "operation fence header",
+        [plurnkParser.OPEN_WORK]: "operation fence header",
+        [plurnkParser.OPEN_FORK]: "operation fence header",
+        [plurnkParser.OPEN_KILL]: "operation fence header",
+        [plurnkParser.OPEN_PLAN]: "PLAN fence header",
+        [plurnkParser.OPEN_LOOK]: "client operation fence header",
+        [plurnkParser.OPEN_BUFF]: "client operation fence header",
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
         [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
         [plurnkParser.LBRACE]: "`{` (`{metadata}` modifier opener)",
-        [plurnkParser.EXECUTOR]: "`[executor]` (EXEC executor slot)",
         [plurnkParser.RBRACE]: "`}` (`{metadata}` modifier closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.BODY_OPEN]: "operation-heading line ending",
-        [plurnkParser.SECTION_END]: "next same-lane heading",
+        [plurnkParser.SECTION_END]: "matching closing fence",
         [plurnkParser.TARGET_TEXT]: "path content",
         [plurnkParser.METADATA_TEXT]: "scheme metadata content",
         [plurnkParser.BODY_TEXT]: "body content",
-        [plurnkParser.TEXT]: "text before PLAN",
+        [plurnkParser.TEXT]: "text outside an operation block",
     };
 
     static translateLexerMessage(lexer: plurnkLexer, originalMsg: string): string {
         const modeName = lexer.modeNames[lexer.mode] ?? "DEFAULT_MODE";
         const context = PlurnkErrorStrategy.#LEXER_MODE_CONTEXT[modeName] ?? "between statements";
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
-        // {§legacy-bracket-slot} — the retired `[signal]` slot gets one bounded redirect to the
-        // two forms that replaced it, instead of the generic spacing rule.
-        if (modeName === "SLOTS" && ch.startsWith("'[") && lexer.getOpenTag().startsWith("PLAN")) {
-            return "unrecognized character '[' after PLAN - PLAN takes no modifiers; the Plan body starts on the next line";
-        }
         if (modeName === "SLOTS" && ch.startsWith("'[")) {
-            const op = /^[A-Z]+/.exec(lexer.getOpenTag())?.[0] ?? "this";
-            return op === "EXEC"
-                ? "malformed `[executor]` on EXEC - an executor name is letters, digits, `_`, `.`, `+`, or `-`, as in `### EXEC_ [python3] (tool.py)`"
-                : `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`### EXEC_ [python3] (tool.py)\`); ${op} takes \`(path)\``;
+            return lexer.getOpenOp() === "PLAN"
+                ? "PLAN takes no modifiers; its body begins below the header"
+                : "unexpected bracket modifier; the fence name selects the executor";
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath redirect only once the heading has closed a `(target)` — before
@@ -74,11 +71,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // A `<…>` slot that opened after its own space is a scope whose CONTENT is wrong —
         // name the shapes the slot admits instead of the spacing rule (#386). A `<` glued to
         // the previous slot keeps the spacing message below.
-        if (modeName === "SLOTS" && ch.startsWith("'<") && PlurnkErrorStrategy.#scopeOpenedAfterSpace(lexer)) {
+        if (modeName === "SLOTS" && ch.startsWith("'<")) {
             const op = lexer.getOpenOp();
             const constraint = op === "FIND"
                 ? "use numeric result positions, e.g. `<1,16>`"
-                : op === "EXEC" || op === "SEND"
+                : op === "EXEC" || op === "SEND" || op === "WAIT"
                     ? "use minutes, e.g. `<5,1>`"
                     : lexer.isTextCoordinateOp()
                         ? "use numeric coordinates or `@hash` line anchors"
@@ -99,23 +96,12 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         for (let i = start; i < stream.size; i += 1) {
             const char = stream.getTextFromRange(i, i);
             if (char === "\r" || char === "\n") break;
+            if (stream.getTextFromRange(i, Math.min(i + 2, stream.size - 1)) === "```") break;
             if (i - start === 64) return `${excerpt}…`;
             excerpt += char;
             if (char === ">") break;
         }
         return excerpt;
-    }
-
-    // True when the nearest `<` on the current heading line follows a space, i.e. the slot
-    // was opened as its own slot rather than glued to the previous one.
-    static #scopeOpenedAfterSpace(lexer: plurnkLexer): boolean {
-        const stream = lexer.inputStream;
-        for (let i = Math.min(stream.index, stream.size - 1); i >= 0; i -= 1) {
-            const char = stream.getTextFromRange(i, i);
-            if (char === "\n") return false;
-            if (char === "<") return i > 0 && stream.getTextFromRange(i - 1, i - 1) === " ";
-        }
-        return false;
     }
 
     // True when the current heading line already closed a `(...)` target.
@@ -133,7 +119,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const m = PlurnkErrorStrategy.#OFFENDING_CHAR_RE.exec(msg);
         if (!m) return "input";
         const text = m[1];
-        return text === "" ? "end of input" : `'${text}'`;
+        return text === "" ? "end of input" : `'${Array.from(text)[0]}'`;
     }
 
     static #describeToken(tok: Token | null): string {
@@ -166,32 +152,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     // {§combined-anchor-line-redirect} The rejected token is a complete bounded
     // scope, so its one canonical correction is known without interpreting intent.
     static #targetedMessage(tok: Token | null): string | null {
-        // {§exec-executor-slot} — the executor slot leads an EXEC heading, once.
-        if (tok?.type === plurnkParser.EXECUTOR) {
-            return "misplaced `[executor]` - it leads an EXEC heading, once, before the path: `### EXEC_ [python3] (tool.py)`";
-        }
         if (tok?.type !== plurnkParser.COMBINED_L_MARKER) return null;
         return COMBINED_ANCHOR_LINE_DIAGNOSTIC;
-    }
-
-    // {§send-label} — a label beside a recipient on one SEND heading: the label ends the turn
-    // and names no recipient.
-    static #labelRecipientMessage(recognizer: Parser, tok: Token | null): string | null {
-        if (tok === null || (tok.type !== plurnkParser.SEND_LABEL && tok.type !== plurnkParser.LPAREN)) return null;
-        const stream = recognizer.tokenStream;
-        let sawLabel = false;
-        let sawTarget = false;
-        for (let i = tok.tokenIndex - 1; i >= 0; i -= 1) {
-            const prior = stream.get(i);
-            if (prior.line !== tok.line) return null;
-            if (prior.type === plurnkParser.SEND_LABEL) sawLabel = true;
-            if (prior.type === plurnkParser.RPAREN) sawTarget = true;
-            if (prior.type === plurnkParser.OPEN_SEND) {
-                const clash = (tok.type === plurnkParser.SEND_LABEL && sawTarget) || (tok.type === plurnkParser.LPAREN && sawLabel);
-                return clash ? "a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient with its own SEND first" : null;
-            }
-        }
-        return null;
     }
 
     // A second `(` on a heading that already closed a `(path)`: the heading has one path slot
@@ -209,16 +171,14 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return null;
     }
 
-    // {§matcher-prefix-claims} "later statements remain recoverable when their boundaries are
-    // trustworthy" - a column-0 heading is that boundary. After a statement-level error, the rest
-    // of the broken statement (heading line and body) is discarded and parsing resumes at the next
-    // heading, so every later statement - the terminal SEND included - is judged on its own.
+    // {§matcher-prefix-claims} Recovery resumes at the next top-level operation fence;
+    // later statements, including the disposition, are judged independently.
     static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
         plurnkParser.OPEN_PLAN, plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
         plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE,
-        plurnkParser.OPEN_SEND, plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
+        plurnkParser.OPEN_SEND, plurnkParser.OPEN_NEXT, plurnkParser.OPEN_WAIT, plurnkParser.OPEN_DONE, plurnkParser.OPEN_FAIL,
+        plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
         plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK, plurnkParser.OPEN_BUFF,
-        plurnkParser.FENCE_CLOSE,
     ]);
 
     // The entry rules end with EOF; an error raised there means the document expected its end.
@@ -254,11 +214,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const targeted = PlurnkErrorStrategy.#targetedMessage(e.offendingToken);
         if (targeted !== null) {
             recognizer.notifyErrorListeners(targeted, e.offendingToken, e);
-            return;
-        }
-        const labelled = PlurnkErrorStrategy.#labelRecipientMessage(recognizer, e.offendingToken);
-        if (labelled !== null) {
-            recognizer.notifyErrorListeners(labelled, e.offendingToken, e);
             return;
         }
         const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, e.offendingToken);
@@ -306,11 +261,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const targeted = PlurnkErrorStrategy.#targetedMessage(tok);
         if (targeted !== null) {
             recognizer.notifyErrorListeners(targeted, tok, null);
-            return;
-        }
-        const labelled = PlurnkErrorStrategy.#labelRecipientMessage(recognizer, tok);
-        if (labelled !== null) {
-            recognizer.notifyErrorListeners(labelled, tok, null);
             return;
         }
         const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, tok);

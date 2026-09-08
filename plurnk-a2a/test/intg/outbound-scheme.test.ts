@@ -30,9 +30,7 @@ const target = (pathname = "", fragment: string | null = null): UrlPath => ({
 
 const send = (body: string, pathname = ""): SendStatement => ({
     op: "SEND",
-    delimiter: "SEND",
     annotation: null,
-    status: null,
     target: target(pathname),
     metadata: null,
     lineMarker: null,
@@ -61,7 +59,7 @@ test("{§a2a-resource-projection} declares a resource-authority scheme with conc
     assert.equal(manifest.authority, "resource");
     assert.equal(manifest.defaultChannel, "body");
     assert.equal(manifest.documentation?.includes("## Summary"), true);
-    assert.equal(manifest.documentation?.includes("SEND_ (a2a://"), true);
+    assert.equal(manifest.documentation?.includes("```SEND (a2a://"), true);
 });
 
 test("READ of an agent root materializes its discovered Agent Card", async (t) => {

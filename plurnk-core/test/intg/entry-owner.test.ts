@@ -15,13 +15,13 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null,
+    op: "EXEC", annotation: null, executor: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const streamRead = (scheme: string, hostname: string | null, pathname: string): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
     target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });

@@ -48,7 +48,7 @@ PLURNK_A2A_ENABLED=["research"]
 In the service those definitions are the baseline of the Worker `agents`
 Functionality family (`OutboundModule`): every Worker lists, discovers, adds,
 enables, disables, and removes outbound agents through the common
-`worker.agents.*` actions or the generated `EXEC [agents]` manager, and the
+`worker.agents.*` actions or the generated ```` ```agents ```` manager, and the
 `a2a://<alias>` scheme resolves an alias against the Worker's own enabled
 snapshot. Enabled agents appear in Turn 0 as one `worker://~/_plurnk/agents/<alias>.md`
 catalog row each; the exact Agent Card stays pullable with `READ a2a://<alias>`.

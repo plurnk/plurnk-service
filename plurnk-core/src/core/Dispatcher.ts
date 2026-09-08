@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
@@ -31,7 +32,7 @@ import LogVisibility from "./LogVisibility.ts";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
 import KillHandler from "./KillHandler.ts";
-import SendBroadcastHandler from "./SendBroadcastHandler.ts";
+import TurnDispositionHandler from "./TurnDispositionHandler.ts";
 import LogWriter from "./LogWriter.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 import type EditSequence from "./EditSequence.ts";
@@ -140,7 +141,7 @@ export default class Dispatcher {
     #capabilities: CapabilityResolver;
     readonly #workerControl: WorkerControlHandler;
     readonly #kill: KillHandler;
-    readonly #sendBroadcast: SendBroadcastHandler;
+    readonly #disposition: TurnDispositionHandler;
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
@@ -207,7 +208,7 @@ export default class Dispatcher {
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, schemes: this.#schemes, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
-        this.#sendBroadcast = new SendBroadcastHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
+        this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
@@ -424,7 +425,6 @@ export default class Dispatcher {
         if (handler === undefined || typeof handler.kill === "function") return null;
         const edit: EditStatement = {
             op: "EDIT",
-            delimiter: statement.delimiter,
             annotation: statement.annotation,
             metadata: statement.metadata,
             target: statement.target,
@@ -478,7 +478,9 @@ export default class Dispatcher {
                 if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#sendBroadcast.handleSendBroadcast(statement, {
+                    result = { status: 200 };
+                } else if (TurnDisposition.is(statement)) {
+                    result = await this.#disposition.handle(statement, {
                         workspaceId,
                         workerId,
                         loopId,
@@ -557,8 +559,8 @@ export default class Dispatcher {
         });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
-        // side-effecting op returns status 202 (a broadcast SEND signal 202 park is model
-        // speech, not a proposal — #isProposal), the entry is written
+        // side-effecting op returns status 202 (a WAIT disposition parks rather
+        // than proposing — #isProposal), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
         // core-owned disposition, or timeout). The post-resolution status replaces 202 in the
@@ -892,7 +894,7 @@ export default class Dispatcher {
     #checkWritable(statement: PlurnkStatement, origin: WriterTier, functionalityWorkerId: number): DispatchResult | null {
         const workerId = functionalityWorkerId;
         if (!MUTATING_OPS.has(statement.op)) return null;
-        if (statement.op === "SEND" && statement.target === null) return null;
+        if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
 
         // EXEC's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
@@ -1024,7 +1026,7 @@ export default class Dispatcher {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, model_call_id: modelCallId,
-            op: null, delimiter: "", signal: null,
+            op: null, signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
@@ -1159,13 +1161,9 @@ export default class Dispatcher {
     }
 
 
-    // {§send-premature-terminate} — the unified PENDING SET, judged at the terminal's OWN dispatch
-    // (post-batch: the emission's earlier ops already executed, so a same-turn KILL+[200] repairs in
-    // ONE turn, and a same-turn WORK+[200] is caught — the spawn is live by the time the SEND lands).
-    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/BARE, results unseen
-    // until next packet). Failed operations are the separate next-packet leg shared by explicit
-    // completion and empty-join completion. Nothing pending may be silently discarded; 499 discards
-    // BY STATED INTENT and is never gated.
+    // {§send-premature-terminate} The pending set is judged at DONE's dispatch point,
+    // after earlier operations have executed. Log curation does not block DONE;
+    // retrieval/mutation receipts, live work and undelivered results do.
     async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
         const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
@@ -1204,8 +1202,8 @@ export default class Dispatcher {
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            // {§log-kill-scope} — a log KILL is housekeeping: it continues an empty (WAIT) but never
-            // blocks an explicit (TERM); every other boundary row is a retrieval receipt.
+            // {§log-kill-scope} — log housekeeping continues an empty WAIT but never
+            // blocks explicit DONE; every other boundary row is a retrieval receipt.
             retrievals: turnBoundaries.some(({ op }) => op !== "KILL"),
             curations: turnBoundaries.some(({ op }) => op === "KILL"),
             streamTerminations,
@@ -1287,11 +1285,10 @@ export default class Dispatcher {
         return { result: Results.assert(outcome.result), plan: outcome.plan };
     }
 
-    // {§proposal}/{§send} — status 202 is a proposal except for broadcast
-    // SEND signal 202, which parks the loop. The operation disambiguates the status.
+    // {§proposal}/{§send} — native dispositions park; other 202 results propose.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
         if (result.status !== 202) return false;
-        return !(statement.op === "SEND" && statement.target === null);
+        return !TurnDisposition.is(statement);
     }
 
     // Normalize a parsed target for log storage. Bare paths and `file:///...`

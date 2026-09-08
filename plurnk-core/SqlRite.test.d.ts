@@ -426,7 +426,7 @@ export class SqlRiteSync {
 	test_log_entries_by_worker_op_signal: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op_full: SqlRiteSyncPreparedStatements;
 	test_error_rows_for_worker: SqlRiteSyncPreparedStatements;
-	test_send_rows_for_worker: SqlRiteSyncPreparedStatements;
+	test_disposition_rows_for_worker: SqlRiteSyncPreparedStatements;
 	test_workers_by_workspace: SqlRiteSyncPreparedStatements;
 	test_first_turn_for_loop: SqlRiteSyncPreparedStatements;
 	test_prompt_folded: SqlRiteSyncPreparedStatements;
@@ -947,7 +947,7 @@ export default class SqlRite {
 	test_log_entries_by_worker_op_signal: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op_full: SqlRitePreparedStatements;
 	test_error_rows_for_worker: SqlRitePreparedStatements;
-	test_send_rows_for_worker: SqlRitePreparedStatements;
+	test_disposition_rows_for_worker: SqlRitePreparedStatements;
 	test_workers_by_workspace: SqlRitePreparedStatements;
 	test_first_turn_for_loop: SqlRitePreparedStatements;
 	test_prompt_folded: SqlRitePreparedStatements;

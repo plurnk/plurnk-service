@@ -22,7 +22,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; } = {}): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
     target,
     lineMarker: opts.lineMarker ?? null, body: null,
     position: { line: 1, column: 1 },
@@ -30,7 +30,7 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "", target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "FIND", annotation: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -39,14 +39,20 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`## PLAN_\n${dsl}`).items
+    const found = PlurnkParser.parse(`\`\`\`PLAN
+[]
+\`\`\`
+${dsl}`).items
         .find((i) => i.kind === "statement" && i.statement.op === "READ");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const found = PlurnkParser.parse(`## PLAN_\n${dsl}`).items
+    const found = PlurnkParser.parse(`\`\`\`PLAN
+[]
+\`\`\`
+${dsl}`).items
         .find((i) => i.kind === "statement" && i.statement.op === "FIND");
     if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: FindStatement }).statement;
@@ -262,7 +268,7 @@ test("File.find: a binary member does not poison a body search across readable m
             await Owner.commonsId(ctx.db, ctx.workspaceId),
         );
 
-        const result = await new File().find(parseFind("### FIND_ (**)\n/needle/"), ctx);
+        const result = await new File().find(parseFind("```FIND (**)\n/needle/\n```"), ctx);
         assert.equal(result.status, 200);
         assert.deepEqual(resourcePaths(result), ["readme.md"]);
     });
@@ -367,7 +373,7 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
         // The member is keyed "/notes.md", but the model naturally types the bare "notes.md"
         // it copies from the catalog. READ must resolve it the way WRITE does — the regression
         // that 404'd "read the codename from notes.md" against the live model.
-        const result = await readFileScheme(parseRead("### READ_ (notes.md)"), ctx);
+        const result = await readFileScheme(parseRead("```READ (notes.md)```"), ctx);
         assert.equal(result.status, 200, "bare relative READ resolves to the /notes.md member, not 404");
         assert.equal(result.content, "Codename: Bluejay\n");
     });
@@ -379,13 +385,13 @@ test("File.read: markerless exact READ returns 16 lines and explicit <1,-1> retu
         await writeFile(join(root, "bounded.txt"), content);
         await addMember(ctx, "bounded.txt");
 
-        const bounded = await readFileScheme(parseRead("### READ_ (bounded.txt)"), ctx);
+        const bounded = await readFileScheme(parseRead("```READ (bounded.txt)```"), ctx);
         assert.equal(bounded.status, 200);
         assert.equal(bounded.content, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
         assert.equal(bounded.range?.total, 20);
         assert.deepEqual(bounded.range?.returned, [1, 16]);
 
-        const all = await readFileScheme(parseRead("### READ_ (bounded.txt) <1,-1>"), ctx);
+        const all = await readFileScheme(parseRead("```READ (bounded.txt) <1,-1>```"), ctx);
         assert.equal(all.status, 200);
         assert.equal(all.content, content);
         assert.deepEqual(all.range?.returned, [1, 20]);
@@ -397,7 +403,7 @@ test("File.read: bare nested relative path resolves to its member key too", asyn
         await mkdir(join(root, "src"));
         await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
         await addMember(ctx, "src/app.js");
-        const result = await readFileScheme(parseRead("### READ_ (src/app.js)"), ctx);
+        const result = await readFileScheme(parseRead("```READ (src/app.js)```"), ctx);
         assert.equal(result.status, 200, "bare nested relative READ resolves");
         assert.equal(result.content, "// TODO: rename\n");
     });

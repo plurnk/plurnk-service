@@ -15,7 +15,7 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
             else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
         });
         const provider = new Mock({ contextWindow: 65536, responses: [
-            makeMockResponse("### SEND_ (WAIT) <1,0>\nResume the same task later."),
+            makeMockResponse("```WAIT <1,0>\nResume the same task later.\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             let activeDaemon = daemon;

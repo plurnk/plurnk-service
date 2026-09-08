@@ -129,9 +129,9 @@ export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise
 
 export default class Exec extends CoreSchemeAdapterBase {
     // The slot contract, stated when a resource source cannot be read: the resource IS the
-    // program and the body its stdin; a command belongs beneath a targetless heading.
+    // program and the body its stdin; a targetless invocation takes a command body.
     static sourceRecovery(source: string, upstream: unknown): string {
-        const contract = `\`### EXEC_ (${source})\` runs that resource as the program (its content is the program; the body is its stdin). To run a command in the workspace, write it beneath a targetless \`### EXEC_\`.`;
+        const contract = `The target \`${source}\` names the program resource; the body is its stdin. Without a target, the EXEC body is the command.`;
         return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
     }
 
@@ -147,7 +147,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         volatile: true,
         modelVisible: true,
         metadataModifier: true,
-        documentation: "Runs a registered executable tool — `### EXEC_ [executor] (program) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
+        documentation: "The opening fence names a registered executor or MCP service; its target, body, metadata, and timing follow that tool's invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -292,7 +292,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `### EXEC_ [runtime] (target)\nbody` → runtime-owned invocation buckets.
+    // Named executable fences lower to runtime-owned invocation buckets.
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
@@ -314,7 +314,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 "scheme:exec",
                 "executor-not-registered",
                 400,
-                `\`[${runtime}]\` names no registered executor for this worker. Executors are taught under \`worker://~/_plurnk/tools/\`; a bare \`### EXEC_\` is the shell.`,
+                `No executor or MCP service named \`${runtime}\` is registered for this worker.`,
                 {},
                 {
                     requestedRuntime: runtime,
@@ -498,8 +498,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     : executors.availableRuntimes(core.functionalityWorkerId)
                         .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
                 const recovery = ownerRuntimes.length === 0
-                    ? "Name an existing script as the program, or place a shell command beneath a bare `### EXEC_`."
-                    : `Run the registered tool with \`### EXEC_ [${ownerRuntimes[0]}] (${target})\`.`;
+                    ? "The target must name an existing program resource. A targetless EXEC takes the command in its body."
+                    : `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`; use that name on the opening fence.`;
                 return refuse(
                     "target-not-found",
                     "The EXEC program does not resolve as a script or a registered tool for this executor.",
@@ -581,7 +581,6 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
             const source = await this.readExecSource({
                 op: "READ",
-                delimiter: "",
                 annotation: null,
                 target: sourceTarget,
                 metadata: null,
@@ -750,7 +749,6 @@ export default class Exec extends CoreSchemeAdapterBase {
                 && executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === program) === true);
         if (owners.length === 0) return result;
         const owner = owners[0]!;
-        const invocation = `### EXEC_ [${owner}] (${program})`;
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
         const root = executors.entry(owner, core.functionalityWorkerId)?.resourcesPath ?? "/plurnk";
         const contract = `worker://~${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.md`)}`;
@@ -758,8 +756,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             ...result,
             problem: {
                 ...result.problem,
-                detail: `'${runtime}' exited with code 127: \`${program}\` is not a shell command; it is a tool of [${owner}].`,
-                recovery: `Invoke the tool with \`${invocation}\` and its JSON input as the body; its contract is at ${contract}.`,
+                detail: `'${runtime}' exited with code 127; \`${program}\` is a registered tool of \`${owner}\`.`,
+                recovery: `Use the \`${owner}\` fence with target \`(${program})\` and JSON input in the body; contract: ${contract}.`,
                 toolRuntimes: owners,
                 tool: program,
             },
@@ -940,7 +938,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                     origin: "_plurnk", source: causalSource, model_call_id: null,
-                    op: "EDIT", delimiter: "", signal: null,
+                    op: "EDIT", signal: null,
                     scheme, username: null, password: null,
                     hostname: address === null ? null : parsed.hostname,
                     port: address === null ? null : parsed.port,

@@ -2,7 +2,7 @@
 
 An MCP server is an external process (`stdio`) or endpoint (`http`) that
 publishes tools. Once a server is enabled, it is a runtime here under its own
-name: each tool is a target — `### EXEC_ [<server>] (<tool>)` with a JSON
+name: each tool is a target — ```` ```<server> (<tool>) ```` with a JSON
 body — and its input schema and result channel are documented at
 `worker://~/_plurnk/plurnk/<server>.md` and `worker://~/_plurnk/tools/`. You
 never speak the protocol yourself; one EXEC is one tool call.
@@ -23,16 +23,14 @@ never speak the protocol yourself; one EXEC is one tool call.
 connected once, its tool list is read, and one inert candidate comes back
 carrying the exact definition to add. Discovery persists and enables nothing.
 
-```example
-### EXEC_ [mcp] (discover) <!-- inspect before adding -->
+```mcp (discover) <!-- inspect before adding -->
 {"source": "npx -y @modelcontextprotocol/server-filesystem ."}
 ```
 
 `add` persists the definition for this worker, connects, and enables it
 atomically. It is a host effect: it proposes and runs only on acceptance.
 
-```example
-### EXEC_ [mcp] (add)
+```mcp (add)
 {"alias": "files", "definition": {"name": "files", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]}}
 ```
 

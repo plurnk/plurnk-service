@@ -10,12 +10,12 @@ type SqlValue = string | number | bigint | null;
 const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
     const params: Record<string, SqlValue> = {
         worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
-        sequence: 1, origin: "model", op: "EDIT", delimiter: "",
+        sequence: 1, origin: "model", op: "EDIT",
         source: null,
         signal: null,
         scheme: "worker", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
-        tx: "### EDIT_ (worker:///meaning)\n42", mimetype_tx: "text/x-plurnk",
+        tx: "```EDIT (worker:///meaning)\n42\n```", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         weight: 32, attrs: "{}",
         ...overrides,
@@ -71,10 +71,11 @@ test("log_entries: minimal insert — defaults populate", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-defaults");
         const ins = await db.test_log_entries_insert_minimal.get<{ id: number }>({ worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId });
-        const row = await db.test_log_entries_get_by_id.get<{ version: number; at: string; delimiter: string; weight: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
+        const row = await db.test_log_entries_get_by_id.get<{ version: number; at: string; weight: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
         assert.equal(row?.version, 0);
         assert.match(row?.at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.equal(row?.delimiter, "");
+        assert.ok(row);
+        assert.equal(Object.hasOwn(row, "delimiter"), false);
         assert.equal(row?.weight, 0);
         assert.equal(row?.signal, null);
         assert.equal(row?.lineMarker, null);
@@ -149,7 +150,7 @@ test("log_entries: worker, loop, turn, producer, and model-call ownership are on
             () => db.engine_insert_log_entry.get({
                 worker_id: secondWorker, loop_id: secondLoop, turn_id: secondTurn.id,
                 sequence: 1, origin: "client", source: null, model_call_id: modelCall.id,
-                op: "READ", delimiter: "",
+                op: "READ",
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/wrong-call", query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: "", mimetype_rx: "text/plain",
@@ -519,7 +520,7 @@ test("log_entries: immutability trigger — UPDATE of core fields rejected", asy
             /log_entries core fields are immutable/,
         );
         const tx = (await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id }))?.tx;
-        assert.match(tx ?? "", /^### EDIT_/);
+        assert.match(tx ?? "", /^```EDIT/);
     } finally { await db.close(); }
 });
 

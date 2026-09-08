@@ -9,12 +9,11 @@ import { urlPath, fullReplace } from "./_dsl.ts";
 
 const editStatement = (opts: {
     target?: ParsedPath | null; body?: string | null;
-    lineMarker?: LineMarker | null; delimiter?: string;
+    lineMarker?: LineMarker | null;
 }): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT",
     annotation: null,
-    delimiter: opts.delimiter ?? "",
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
@@ -25,7 +24,6 @@ const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => (
     metadata: null,
     op: "READ",
     annotation: null,
-    delimiter: "",
     target: opts.target ?? null,
     lineMarker: null,
     body: null,

@@ -44,7 +44,7 @@ test("{§reasoning-initial-read}: view limits use the selected alias and reject 
 test("{§reasoning-initial-read}: pressure never widens a configured range", () => {
     for (const [limit, expected] of [[-1, 16], [1, 1], [8, 8], [16, 16], [32, 16]] as const) {
         const proposed: ReadStatement = {
-            op: "READ", delimiter: "_", target: null, annotation: null,
+            op: "READ", target: null, annotation: null,
             metadata: null, body: null, position: UNKNOWN_POSITION,
             lineMarker: { marks: [1, limit] },
         };

@@ -313,10 +313,10 @@ try {
         || cliRecord.finalStatus !== 200
         || cliRecord.workspace?.name !== "installed-cli"
         || cliRecord.turnCount !== 2
-        || JSON.stringify(modelOps) !== JSON.stringify(["PLAN", "SEND"])) {
+        || JSON.stringify(modelOps) !== JSON.stringify(["PLAN", "DONE"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
-    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + model PLAN/SEND\n");
+    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + model PLAN/DONE\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-tui",
@@ -342,10 +342,10 @@ try {
     const tuiOutput = tui.output();
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI PLAN");
-    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI SEND");
+    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI DONE");
     await tui.exit();
     tui = undefined;
-    process.stdout.write("installed interactive TUI journey GREEN: Functionality + reasoning + PLAN + SEND + status\n");
+    process.stdout.write("installed interactive TUI journey GREEN: Functionality + reasoning + PLAN + DONE + status\n");
 
     const nvim = await run("nvim", [
         "--headless", "-u", "NONE", "-l", join(nvimRoot, "tests/installed-journey.lua"),
@@ -363,7 +363,7 @@ try {
     if (nvimOutput.includes("vim.schedule callback:")) {
         throw new Error(`installed Neovim raised an asynchronous callback failure\n${nvimOutput}`);
     }
-    process.stdout.write("installed Neovim journey GREEN: mapping + multiline + review/resume + reasoning + PLAN + SEND\n");
+    process.stdout.write("installed Neovim journey GREEN: mapping + multiline + review/resume + reasoning + PLAN + DONE\n");
 
     const firstNvim = fixture.requests.find(({ journey }) => journey === "nvim")?.body;
     const firstNvimMessages = JSON.stringify(firstNvim?.messages ?? []);

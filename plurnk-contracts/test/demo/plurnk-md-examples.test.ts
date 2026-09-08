@@ -1,86 +1,40 @@
 /** Broad structural checks for the model-facing reference, never wording pins. */
-
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { PlurnkParser, PLURNK_OPS } from "../../src/index.ts";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
-const operations = PLURNK_OPS;
-// ```example fences carry the turn specimens ({§packet-operation-fences});
-// other fences (mermaid) are excluded, and everything outside a fence is prose.
-const specimens: string[] = [];
-const proseChunks: string[] = [];
-{
-    const lines = plurnkMd.split("\n");
-    let fenceLanguage: string | null = null;
-    let block: string[] = [];
-    for (const line of lines) {
-        const opened: RegExpExecArray | null = fenceLanguage === null ? /^```(\w*)$/.exec(line) : null;
-        if (opened !== null) {
-            fenceLanguage = opened[1] ?? "";
-            block = [];
-            continue;
-        }
-        if (fenceLanguage !== null && line === "```") {
-            if (fenceLanguage === "example") specimens.push(block.join("\n").trim());
-            fenceLanguage = null;
-            continue;
-        }
-        if (fenceLanguage !== null) {
-            block.push(line);
-            continue;
-        }
-        proseChunks.push(line);
-    }
-}
-const proseAndInline = proseChunks.join("\n");
-const headingExample = new RegExp(`^#{2,3} (?:${operations.join("|")})[A-Za-z0-9_]*(?: |$)`);
-// A bracketed signal containing whitespace is a prose placeholder (`[submit code]`),
-// not an example — real signals never carry spaces. Placeholders are skipped, not parsed.
-const placeholderSignal = /\[[^\]]*\s[^\]]*\]/;
-const inlineHeadings = [...proseAndInline.matchAll(/`([^`\n]+)`/g)]
-    .map((match) => match[1])
-    .filter((example) => headingExample.test(example) && !placeholderSignal.test(example));
-const completeTurns = specimens.filter((body) => /^### SEND[A-Za-z0-9_]+ \((?:NEXT|WAIT|TERM|FAIL)\)/m.test(body));
+const teaching = readFileSync(new URL("../../plurnk.md", import.meta.url), "utf8");
 
-test("inline operation headings in plurnk.md parse as one clean statement", () => {
-    assert.ok(inlineHeadings.length > 0, "plurnk.md contains no inline operation headings");
-    const failures: string[] = [];
-    for (const example of inlineHeadings) {
-        const result = PlurnkParser.parseStatements(example);
-        const statements = result.items.filter((item) => item.kind === "statement");
-        const errors = result.items.filter((item) => item.kind === "error");
-        if (statements.length !== 1 || errors.length > 0 || result.unparsedTail) {
-            failures.push(`${JSON.stringify(example)} -> ${errors.map(({ error }) => error.message).join(" | ")}`);
-        }
-    }
-    assert.deepEqual(failures, []);
-});
-
-// The living complete specimen is the turn-0 program every packet carries, parse-guarded
-// at its source (TurnOps.renderInternal throws on invalid output). Fenced doc specimens are
-// optional under the compressed teaching; any that exist must still parse.
-test("any complete plurnk.md turn specimens parse cleanly", () => {
-    for (const [index, body] of completeTurns.entries()) {
-        const result = PlurnkParser.parse(body);
-        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], `specimen ${index + 1}`);
-        assert.equal(result.unparsedTail, undefined, `specimen ${index + 1}`);
+test("concrete compact examples in plurnk.md parse as one clean operation", () => {
+    const examples = [...teaching.matchAll(/^[*|].*?(```[A-Z]+[^`\n]*```)/gm)].map((match) => match[1]!);
+    assert.ok(examples.length > 0, "the reference demonstrates compact operations");
+    for (const source of examples) {
+        const parsed = PlurnkParser.parseStatements(source);
+        assert.equal(parsed.items.length, 1, source);
+        assert.equal(parsed.items[0]?.kind, "statement", source);
+        assert.equal(parsed.unparsedTail, undefined, source);
     }
 });
 
-test("plurnk.md retains broad language coverage without pinning prose", () => {
-    assert.ok(
-        /^## PLAN([A-Za-z0-9_]+)(?: .*)?\n[\s\S]*?^### OP\1(?: |$)/m.test(plurnkMd),
-        "the syntax sketch teaches `## PLAN` and same-delimiter `### OP` headings",
-    );
-    // Every operation is taught as a heading in the per-OP signature sketch, whatever lane the
-    // canonical teaching uses ({§delimiter-discipline}: the lane is `[A-Za-z0-9_]*`, not a digit).
-    for (const operation of operations) {
-        assert.match(plurnkMd, new RegExp(`^#{2,3} ${operation}[A-Za-z0-9_]*(?: |$)`, "m"), `operation signature is missing ${operation}`);
+test("the complete workflow example parses as an executable turn", () => {
+    const workflow = [...teaching.matchAll(/^````example\n([\s\S]*?)\n````$/gm)]
+        .map((match) => match[1]!.trim()).find((source) => source.startsWith("```PLAN\n"));
+    assert.ok(workflow, "the reference includes a workflow");
+    const start = workflow.search(/^```PLAN\n/m);
+    assert.ok(start >= 0, "the workflow demonstrates a complete turn");
+    const parsed = PlurnkParser.parse(workflow.slice(start));
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
+    assert.equal(parsed.unparsedTail, undefined);
+    const statements = parsed.items.filter((item) => item.kind === "statement");
+    assert.equal(statements[0]?.statement.op, "PLAN");
+    assert.equal(statements.at(-1)?.statement.op, "NEXT");
+    assert.ok(statements.some(({ statement }) => statement.op === "EXEC"), "the turn composes native OPs and named executors");
+});
+
+test("plurnk.md retains broad operation coverage without pinning prose", () => {
+    for (const op of PLURNK_OPS) {
+        if (op === "EXEC") continue;
+        assert.match(teaching, new RegExp("^```" + op + "(?: |$)", "m"), `operation signature is missing ${op}`);
     }
-    assert.ok(completeTurns.every((body) => /^## PLAN[A-Za-z0-9_]*(?: |\n)/.test(body)), "every turn specimen opens with the `## PLAN` heading");
 });

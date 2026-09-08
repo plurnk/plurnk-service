@@ -1,5 +1,5 @@
 // {§send-premature-terminate} — a same-turn stream that CLOSED SUCCESSFULLY before the terminal's
-// dispatch is banked, not pending: SEND[200] over it concludes in ONE turn on the stream's own
+// dispatch is banked, not pending: DONE over it concludes in ONE turn on the stream's own
 // success. A stream that closed in failure is an unseen failure: refused 409, the stream named.
 
 import assert from "node:assert/strict";
@@ -18,10 +18,10 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
     }
 };
 
-test("a successful same-turn stream does not gate SEND[200]: submit-and-conclude is one turn", async () => {
+test("a successful same-turn stream does not gate DONE: submit-and-conclude is one turn", async () => {
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: [makeMockResponse("### EXEC_\ntrue\n### SEND_ (TERM)\nsubmitted and concluding")],
+        responses: [makeMockResponse("```EXEC\ntrue\n```\n```DONE\nsubmitted and concluding\n```")],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -32,19 +32,19 @@ test("a successful same-turn stream does not gate SEND[200]: submit-and-conclude
             assert.equal(provider.remaining, 0, "the conclusion cost no extra provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
             assert.ok(rows.some((r) => r.op === "EXEC"), "the stream ran");
-            assert.equal(rows.filter((r) => r.op === "SEND" && r.status_rx === 409).length, 0, "no refusal was recorded");
+            assert.equal(rows.filter((r) => r.op === "DONE" && r.status_rx === 409).length, 0, "no refusal was recorded");
         } finally {
             ws.close();
         }
     }));
 });
 
-test("a failed same-turn stream still refuses SEND[200] without echoing its command", async () => {
+test("a failed same-turn stream still refuses DONE without echoing its command", async () => {
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### EXEC_\nexit 3\n### SEND_ (TERM)\nconcluding blind"),
-            makeMockResponse("### SEND_ (TERM)\nconcluding after reading the failure"),
+            makeMockResponse("```EXEC\nexit 3\n```\n```DONE\nconcluding blind\n```"),
+            makeMockResponse("```DONE\nconcluding after reading the failure\n```"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -55,7 +55,7 @@ test("a failed same-turn stream still refuses SEND[200] without echoing its comm
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the refusal cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            const refused = rows.find((r) => r.op === "SEND" && r.status_rx === 409);
+            const refused = rows.find((r) => r.op === "DONE" && r.status_rx === 409);
             assert.ok(refused, "the blind conclusion was refused 409");
             const entry = await db.test_get_log_entry_by_id.get<{ rx: string | null }>({ id: refused.id });
             const problem = (JSON.parse(entry?.rx ?? "{}") as { problem?: Record<string, unknown> }).problem;

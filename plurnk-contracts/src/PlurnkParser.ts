@@ -2,28 +2,32 @@ import { CharStream, CommonTokenStream, type ParserRuleContext } from "antlr4ng"
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
+import PlanValue from "./PlanValue.ts";
+import TurnDisposition from "./TurnDisposition.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import {
     UNKNOWN_POSITION,
+    PLURNK_OPS,
     type ClientStatement,
     type ParseItem,
     type ParseResult,
     type PlurnkStatement,
     type Position,
-    type SendStatement,
+    type DispositionStatement,
+    type ResourceSelection,
 } from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
-// `midStatement` (mid-turn ops) each wrap one op; PLAN and the terminal SEND attach as direct
-// `planStatement`/`sendStatement` children of a turn; `clientStatement` wraps one op in the
+// `midStatement` (mid-turn ops) each wrap one op; PLAN and the turn disposition attach as direct
+// `planStatement`/`dispositionStatement` children of a turn; `clientStatement` wraps one op in the
 // client tier.
 const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_statement,
     plurnkParser.RULE_midStatement,
     plurnkParser.RULE_planStatement,
-    plurnkParser.RULE_sendStatement,
+    plurnkParser.RULE_dispositionStatement,
     plurnkParser.RULE_clientStatement,
 ]);
 
@@ -38,17 +42,54 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly MISSING_SEND = "missing-terminal-send";
+    static readonly MISSING_DISPOSITION = "missing-turn-disposition";
     static readonly OPERATIONS_AFTER_DISPOSITION = "operations-after-disposition";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
-    // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and
+    static frame(header: string, body: string | null): string {
+        const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
+        const fence = "`".repeat(Math.max(3, longest + 1));
+        return body === null ? `${fence}${header}${fence}` : `${fence}${header}\n${body}\n${fence}`;
+    }
+
+    // {§statement-rendering} — framing is syntax, never persisted AST state.
+    static stringify(statements: readonly ClientStatement[]): string {
+        return statements.map((statement) => {
+            const name = statement.op === "EXEC" ? statement.executor ?? "EXEC" : statement.op;
+            if (statement.op === "EXEC" && statement.executor !== null
+                && [...PLURNK_OPS, "LOOK", "BUFF"].includes(name)) {
+                throw new TypeError(`Executor name ${JSON.stringify(name)} is reserved for a Plurnk operation.`);
+            }
+            const modifiers: string[] = [];
+            const selection = (resource: ResourceSelection): void => {
+                modifiers.push(`(${resource.target.raw})`);
+                for (const metadata of resource.metadata ?? []) modifiers.push(`{${metadata}}`);
+                if (resource.lineMarker !== null) modifiers.push(`<${resource.lineMarker.marks.join(",")}>`);
+            };
+            if (statement.op === "COPY" || statement.op === "MOVE") {
+                selection(statement.source);
+                selection(statement.destination);
+            } else {
+                if (statement.target !== null) {
+                    modifiers.push(`(${statement.target.raw})`);
+                }
+                for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
+                if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
+            }
+            if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
+            const body = statement.op === "PLAN" ? PlanValue.stringify(statement.body)
+                : statement.op === "COPY" || statement.op === "MOVE" || statement.body === null ? null
+                : typeof statement.body === "string" ? statement.body : statement.body.raw;
+            const header = `${name}${modifiers.length === 0 ? "" : ` ${modifiers.join(" ")}`}`;
+            return PlurnkParser.frame(header, body);
+        }).join("\n");
+    }
+
+    // Parse one model turn. Canonical PLAN/disposition framing stays strict in teaching and
     // generation; a source operation lets ingestion recover either omitted boundary.
     // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
-        const { source, tolerated: scoped } = PlurnkParser.#tolerateScopeSlots(input);
-        const result = PlurnkParser.#run(source, (parser) => parser.document());
-        PlurnkParser.#scoldScopeSlots(result.items, scoped);
+        const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
         if (result.unparsedTail === undefined) {
@@ -56,99 +97,21 @@ export default class PlurnkParser {
             PlurnkParser.#recoverTurnEnvelope(result.items);
             PlurnkParser.#dispositionEndsTurn(result.items);
         }
-        PlurnkParser.#adviseForeignLaneHeadings(result.items);
         return result;
     }
 
-    // {§foreign-lane-advisory} — under {§lane-match} a heading whose suffix differs from the turn's
-    // lane is body text, by design. When a body swallows OP-shaped headings, say so once, factually,
-    // right after the statement that swallowed them: the model that numbered `EDIT1…EDIT23` learns in
-    // one turn what it otherwise infers from a 1,136-line receipt; the model that nested a quoted
-    // program on purpose reads a confirmation. Nothing is accepted, rewritten, or rejected (#515).
-    static readonly #OP_SHAPED_HEADING = /^#{2,3} (PLAN|FIND|READ|EDIT|COPY|MOVE|EXEC|WORK|FORK|BARE|KILL|SEND)([A-Za-z0-9_]*)(?=\s|$)/u;
-    static #adviseForeignLaneHeadings(items: ParseItem<any>[]): void {
-        const advisories: Array<{ at: number; error: PlurnkParseError }> = [];
-        items.forEach((item, index) => {
-            if (item.kind !== "statement") return;
-            const statement = item.statement as { op: string; delimiter?: string; body?: string | { raw?: string } | null; position?: Position };
-            const body = typeof statement.body === "string" ? statement.body : statement.body?.raw;
-            if (typeof body !== "string" || statement.position === undefined) return;
-            const lane = statement.delimiter ?? "";
-            const swallowed = new Map<string, { count: number; ops: Set<string>; line: number }>();
-            body.split("\n").forEach((text, offset) => {
-                const match = PlurnkParser.#OP_SHAPED_HEADING.exec(text);
-                if (match === null || match[2] === lane) return;
-                const entry = swallowed.get(match[2]) ?? { count: 0, ops: new Set<string>(), line: statement.position!.line + 1 + offset };
-                entry.count += 1;
-                entry.ops.add(match[1]);
-                swallowed.set(match[2], entry);
-            });
-            for (const [suffix, entry] of swallowed) {
-                const plural = entry.count === 1 ? "heading" : "headings";
-                const shown = suffix === "" ? "no suffix" : `suffix \`${suffix}\``;
-                const laneShown = lane === "" ? "no suffix" : `\`${lane}\``;
-                advisories.push({ at: index, error: new PlurnkParseError(
-                    entry.line,
-                    0,
-                    "parser",
-                    `${entry.count} OP-shaped ${plural} (${[...entry.ops].join(", ")}) carrying ${shown} were taken as body text of ${statement.op}${lane}; this turn's lane is ${laneShown}, and only headings carrying it are operations.`,
-                    "warning",
-                ) });
-            }
-        });
-        // Splice from the end so earlier indices stay valid; an advisory follows its statement.
-        for (const { at, error } of advisories.toReversed()) items.splice(at + 1, 0, { kind: "error", error });
-    }
-
-    // {§scope-slot-tolerance} — `### COPY_ (worker:///src.md<2,3>)`: the line scope was written inside
-    // the path slot. `<` and `>` are not URI characters, so a `<...>` right before a slot's closing
-    // paren can only be a scope: the heading is read as `(worker:///src.md) <2,3>` and the slip is a
-    // warning advisory after its statement — the statement runs (#442, ruled 2026-08-30: accept with a
-    // warning). The rewrite adds one character per slot, so a column on the same heading after the
-    // slot is off by that much; lines stay true.
-    static readonly #SCOPE_SLOT = /\(([^\s()<>]+)<([^<>()\s]+)>\)/g;
-    static #tolerateScopeSlots(input: string): { source: string; tolerated: readonly { line: number; column: number; scope: string }[] } {
-        const tolerated: { line: number; column: number; scope: string }[] = [];
-        const source = input.split("\n").map((text, index) => {
-            if (!/^#{2,3} [A-Z]+[A-Za-z0-9_]* /.test(text)) return text;
-            return text.replace(PlurnkParser.#SCOPE_SLOT, (match: string, path: string, scope: string, offset: number) => {
-                tolerated.push({ line: index + 1, column: offset + path.length + 2, scope });
-                return `(${path}) <${scope}>`;
-            });
-        }).join("\n");
-        return { source, tolerated };
-    }
-    static #scoldScopeSlots(items: ParseItem<any>[], tolerated: readonly { line: number; column: number; scope: string }[]): void {
-        // Each scold splices in right after its statement; reversed, two slips on one heading
-        // keep their authored order.
-        for (const { line, column, scope } of tolerated.toReversed()) {
-            const scold: ParseItem<any> = {
-                kind: "error",
-                error: new PlurnkParseError(
-                    line,
-                    column,
-                    "parser",
-                    `\`<${scope}>\` belongs after the \`(path)\` slot, not inside it - \`(path) <${scope}>\` was used.`,
-                    "warning",
-                ),
-            };
-            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === line);
-            if (at === -1) items.push(scold);
-            else items.splice(at + 1, 0, scold);
-        }
-    }
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
 
     // Replace ANTLR's generic structure errors with the exact envelope default when the
-    // canonical PLAN...SEND shape is cleanly incomplete. The parser admits the useful
+    // canonical PLAN...disposition shape is cleanly incomplete. The parser admits the useful
     // operations and core records this hard diagnostic as the turn's strike. {§turn-shape}
     static #imperativeTurnShape(items: ParseItem<any>[], input: string): void {
-        // {§turn-shape} — PLAN is a SHOULD; only the terminal SEND is structural. A
-        // recipient SEND does not satisfy it ({§send-label}).
-        const hasSend = items.some(
-            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && i.statement.status !== null,
+        // {§turn-shape} — PLAN is a SHOULD; only the turn disposition is structural. A
+        // recipient SEND does not satisfy it ({§turn-disposition}).
+        const hasDisposition = items.some(
+            (i: any) => i.kind === "statement" && TurnDisposition.is(i.statement),
         );
-        if (hasSend) return;
+        if (hasDisposition) return;
         const isStructErr = (i: ParseItem<any>) => i.kind === "error" && i.error.source === "parser" && i.error.severity === "error";
         const structErrors = items.filter(isStructErr);
         const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -171,47 +134,37 @@ export default class PlurnkParser {
         }
         // Only add the anchor imperative when the shape is CLEANLY incomplete. If a bounded lexer
         // or visitor error is present, the turn derailed within an operation, so the
-        // missing PLAN/SEND is a parse artifact, not the real fix - that specific bounded error
+        // missing PLAN/disposition is a parse artifact, not the real fix - that specific bounded error
         // is the actionable guidance, and an imperative would mislead.
         const hasSpecificError = items.some(
             (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
         );
         if (hasSpecificError) return;
-        if (!hasSend) {
+        if (!hasDisposition) {
             const position = {
                 line: input.split("\n").length,
                 column: [...input.slice(input.lastIndexOf("\n") + 1)].length,
             };
-            const delimiter = statements[0]?.delimiter ?? "_";
             items.push({
                 kind: "error",
                 error: new PlurnkParseError(
                     position.line,
                     position.column,
                     "parser",
-                    // {§turn-shape} — the turn ended without its terminal SEND; say what was added and why
-                    // the lane matters, without inviting the model to change lanes (#574).
-                    `The turn ended without a terminal SEND in its lane ${JSON.stringify(delimiter)}; parser appended \`### SEND${delimiter} (NEXT)\`. Every OP of a turn shares that one lane; end the turn with \`### SEND${delimiter} (NEXT|WAIT|TERM|FAIL)\`.`,
+                    "The turn ended without NEXT, WAIT, DONE, or FAIL; parser appended `NEXT`.",
                     "error",
-                    PlurnkParser.MISSING_SEND,
+                    PlurnkParser.MISSING_DISPOSITION,
                 ),
             });
         }
     }
 
-    // {§disposition-ends-turn} — the disposition SEND and its body end the turn. A rail that keeps
-    // generating past them wrote the next packet it expected and answered it (2026-09-08: 194, 434,
-    // and 35 repeated statements after a correct disposition, each executed, each a receipt row);
-    // nothing after the disposition is admitted. The statements are dropped, never executed, and
-    // the packet carries ONE hard diagnostic that counts them by OP and states the rule. Bounded
-    // diagnostics positioned after the disposition are about that dropped source and collapse into
-    // it; a second disposition stays the structural error it always was. parseLog is untouched:
-    // saved turns retain trailing operations as authored, so earlier history stays readable.
-    static readonly #DISPOSITION_LABEL: Record<number, string> = { 102: "NEXT", 200: "TERM", 202: "WAIT", 499: "FAIL" };
+    // {§disposition-ends-turn} — coalesce trailing operations and their bounded diagnostics
+    // without hiding a duplicate disposition. parseLog retains the complete authored source.
     static #dispositionEndsTurn(items: ParseItem<PlurnkStatement>[]): void {
-        const at = items.findIndex((item) => item.kind === "statement" && item.statement.op === "SEND" && item.statement.status !== null);
+        const at = items.findIndex((item) => item.kind === "statement" && TurnDisposition.is(item.statement));
         if (at === -1) return;
-        const disposition = (items[at] as { statement: PlurnkStatement & { status: number; delimiter: string; position: Position } }).statement;
+        const disposition = (items[at] as { statement: DispositionStatement }).statement;
         // A disposition the parser synthesized ({§turn-shape} recovery) closes the source; nothing authored follows it.
         if (disposition.position.line === UNKNOWN_POSITION.line) return;
         // The cut is the first trailing statement or the first hard bounded diagnostic past the
@@ -241,14 +194,14 @@ export default class PlurnkParser {
             parts.push(dropped === 1 ? `1 operation after its body was not admitted (${byOp})` : `${dropped} operations after its body were not admitted (${byOp})`);
         }
         if (malformed > 0) parts.push(malformed === 1 ? "1 malformed heading after it was ignored" : `${malformed} malformed headings after it were ignored`);
-        const heading = `### SEND${disposition.delimiter} (${PlurnkParser.#DISPOSITION_LABEL[disposition.status] ?? disposition.status})`;
+        const heading = disposition.op;
         kept.push({
             kind: "error",
             error: new PlurnkParseError(
                 anchor?.line ?? disposition.position.line,
                 anchor?.column ?? 0,
                 "parser",
-                `The disposition \`${heading}\` ended the turn; ${parts.join(" and ")}. Every OP, including KILL, precedes the disposition SEND.`,
+                `The disposition \`${heading}\` ended the turn; ${parts.join(" and ")}. Every OP, including KILL, precedes NEXT, WAIT, DONE, or FAIL.`,
                 "error",
                 PlurnkParser.OPERATIONS_AFTER_DISPOSITION,
             ),
@@ -263,16 +216,13 @@ export default class PlurnkParser {
     static #recoverTurnEnvelope(items: ParseItem<PlurnkStatement>[]): void {
         const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (sourceStatements.length === 0) return;
-        const delimiter = sourceStatements[0]?.delimiter ?? "_";
         const hasTerminalSend = sourceStatements.some(
-            (statement) => statement.op === "SEND" && statement.status !== null,
+            (statement) => TurnDisposition.is(statement),
         );
         if (!hasTerminalSend) {
-            const send: SendStatement = {
-                op: "SEND",
-                delimiter,
+            const disposition: DispositionStatement = {
+                op: "NEXT",
                 annotation: null,
-                status: 102,
                 target: null,
                 metadata: null,
                 lineMarker: null,
@@ -280,7 +230,7 @@ export default class PlurnkParser {
                 position: UNKNOWN_POSITION,
             };
             const lastStatement = items.findLastIndex((item) => item.kind === "statement");
-            items.splice(lastStatement + 1, 0, { kind: "statement", statement: send });
+            items.splice(lastStatement + 1, 0, { kind: "statement", statement: disposition });
         }
     }
 
@@ -317,7 +267,7 @@ export default class PlurnkParser {
     // Parse saved turns in source order; PLAN separates them. Each turn
     // requires a disposition, including when ordinary operations follow it.
     static parseLog(input: string): ParseResult {
-        return PlurnkParser.#run(input, (parser) => parser.log(), undefined, true);
+        return PlurnkParser.#run(input, (parser) => parser.log());
     }
 
     // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
@@ -335,10 +285,8 @@ export default class PlurnkParser {
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
         buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
-        savedLog = false,
     ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
-        lexer.savedLog = savedLog;
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
@@ -365,7 +313,7 @@ export default class PlurnkParser {
                     note.line,
                     note.column,
                     "parser",
-                    `\`${note.heading}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the OP heading line.`,
+                    `\`${note.heading.replace(/^`+/, "")}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line.`,
                     "warning",
                 ),
             };
@@ -387,16 +335,16 @@ export default class PlurnkParser {
     // synthesize tree nodes after an unfinished lexer mode, but those nodes have no public AST
     // meaning and can violate AstBuilder's complete-statement precondition. {§unparsed-tail-boundary}
     static #unparsedTail(lexer: plurnkLexer): ParseResult["unparsedTail"] {
-        // EOF concludes a section body and may directly conclude a bodyless
-        // heading. Only a partially open modifier destroys the later boundary.
         const modeName = lexer.modeNames[lexer.mode] ?? "";
-        if (lexer.mode === 0 || modeName === "BODY" || modeName === "SLOTS") return undefined;
+        if (lexer.mode === 0) return undefined;
         const openTag = lexer.getOpenTag();
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
-        const heading = lexer.getOpenHeading() || `## ${openTag}`;
+        const heading = lexer.getOpenHeading().replace(/^`+/, "") || openTag;
         const reason = modeName === "METADATA"
             ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`}\``
-            : `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``;
+            : modeName === "TARGET"
+                ? `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``
+                : `${openTag} block opened at line ${from.line} but was not closed with ${lexer.getFenceLength()} backticks`;
         return { from, reason };
     }
 

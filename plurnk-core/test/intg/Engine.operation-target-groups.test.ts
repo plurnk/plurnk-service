@@ -43,7 +43,6 @@ const seedLogRead = async (
         source: null,
         model_call_id: null,
         op: "READ",
-        delimiter: "",
         scheme: "worker",
         username: null,
         password: null,
@@ -53,7 +52,7 @@ const seedLogRead = async (
         query: null,
         fragment: null,
         lineMarker: null,
-        tx: `### READ_ (worker:///source-${sequence}.md)`,
+        tx: `\`\`\`READ (worker:///source-${sequence}.md)\`\`\``,
         mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({
             status: 200,
@@ -88,13 +87,14 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response([
-                "## PLAN_",
+                "```PLAN",
                 "Read both resources.",
+                "```",
                 "",
-                "### READ_ (worker:///alpha.md worker:///beta.md)",
-                "",
-                "### SEND_ (NEXT)",
+                "```READ (worker:///alpha.md worker:///beta.md)```",
+                "```NEXT",
                 "Both reads are pending review.",
+                "```",
             ].join("\n"))],
         });
 
@@ -134,13 +134,14 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response([
-                "## PLAN_",
+                "```PLAN",
                 "Curate both completed reads.",
+                "```",
                 "",
-                "### KILL_ (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>",
-                "",
-                "### SEND_ (NEXT)",
+                "```KILL (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>```",
+                "```NEXT",
                 "Both read bodies are suppressed.",
+                "```",
             ].join("\n"))],
         });
 
@@ -174,13 +175,14 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
         const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
         const source = [
-            "## PLAN_",
+            "```PLAN",
             "Retire the selected history.",
+            "```",
             "",
-            "### KILL_ (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)",
-            "",
-            "### SEND_ (NEXT)",
+            "```KILL (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)```",
+            "```NEXT",
             "Review the independent KILL outcomes.",
+            "```",
         ].join("\n");
         const provider = new Mock({
             contextWindow: 100_000,

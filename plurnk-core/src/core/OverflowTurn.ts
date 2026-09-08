@@ -2,7 +2,7 @@ import {
     UNKNOWN_POSITION,
     type KillStatement,
     type PlanStatement,
-    type SendStatement,
+    type DispositionStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -48,7 +48,6 @@ const killFor = (row: RecoveryRow): OverflowKill => {
     const statement: KillStatement = {
         op: "KILL",
         annotation: null,
-        delimiter: "",
         target: targetFor(coordinate),
         metadata: null,
         lineMarker: { marks: [1, -1] },
@@ -85,7 +84,7 @@ export default class OverflowTurn {
 
     static planStatement(): PlanStatement {
         return {
-            op: "PLAN", delimiter: "", annotation: null,
+            op: "PLAN", annotation: null,
             target: null, metadata: null, lineMarker: null,
             body: [{
                 content: OVERFLOW_PLAN,
@@ -95,10 +94,9 @@ export default class OverflowTurn {
         };
     }
 
-    static sendStatement(): SendStatement {
+    static sendStatement(): DispositionStatement {
         return {
-            op: "SEND", delimiter: "", annotation: null,
-            status: 102, target: null, metadata: null, lineMarker: null,
+            op: "NEXT", annotation: null, target: null, metadata: null, lineMarker: null,
             body: {
                 raw: OVERFLOW_SEND,
                 json: null,

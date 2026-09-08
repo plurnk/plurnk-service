@@ -9,7 +9,7 @@ import {
     type KillStatement,
     type PlanStatement,
     type ReadStatement,
-    type SendStatement,
+    type DispositionStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
@@ -34,16 +34,14 @@ const continueResponse = () => ({
         content: "",
         reasoning: null,
         ops: [{
-            op: "SEND",
+            op: "NEXT",
             annotation: null,
-            delimiter: "",
             metadata: null,
-            status: 102,
             target: null,
             lineMarker: null,
             body: { raw: "continue", json: null },
             position: { line: 1, column: 1 },
-        } as SendStatement],
+        } as DispositionStatement],
     },
 });
 
@@ -51,7 +49,6 @@ const plan = (body: string): PlanStatement => ({
     metadata: null,
     op: "PLAN",
     annotation: null,
-    delimiter: "",
     target: null,
     lineMarker: null,
     body: PlanValue.admit(body),
@@ -75,7 +72,6 @@ const read = (target: UrlPath): ReadStatement => ({
     metadata: null,
     op: "READ",
     annotation: null,
-    delimiter: "",
     target,
     lineMarker: null,
     body: null,
@@ -86,7 +82,6 @@ const kill = (target: UrlPath): KillStatement => ({
     metadata: null,
     op: "KILL",
     annotation: null,
-    delimiter: "",
     target,
     lineMarker: null,
     body: null,

@@ -34,13 +34,13 @@ selects the working directory. Script arguments use `{args=["arg",...]}`;
 each string is passed literally, without shell expansion ({§executor-metadata}).
 These options work for local, Worker, and Skill script targets alike.
 
-```example
-### EXEC_ (./deploy.sh)
+```EXEC (./deploy.sh)
 yes
 yes
 no
+```
 
-### EXEC_ [python3] (transform.py) {args=["--format","json"]}
+```python3 (transform.py) {args=["--format","json"]}
 3
 1
 4

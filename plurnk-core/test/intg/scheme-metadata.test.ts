@@ -71,7 +71,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
 
     try {
         const supported = read(
-            "### READ_ (opaque:///record) {first: {nested}} {second: duplicate}",
+            "```READ (opaque:///record) {first: {nested}} {second: duplicate}```",
         );
         assert.equal(supported.target?.raw, "opaque:///record");
         assert.deepEqual(supported.metadata, ["first: {nested}", "second: duplicate"]);
@@ -85,7 +85,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
         assert.deepEqual(supportedMetadata, ["first: {nested}", "second: duplicate"]);
 
         const routedAlias = await engine.dispatch({
-            statement: read("### READ_ (http://example.test/record) {Accept: text/plain}"),
+            statement: read("```READ (http://example.test/record) {Accept: text/plain}```"),
             ...env,
             sequence: 2,
             origin: "model",
@@ -94,7 +94,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
         assert.deepEqual(routedAliasMetadata, ["Accept: text/plain"]);
 
         const rejected = await engine.dispatch({
-            statement: read("### READ_ (plain:///record) {anything the scheme might define}"),
+            statement: read("```READ (plain:///record) {anything the scheme might define}```"),
             ...env,
             sequence: 3,
             origin: "model",

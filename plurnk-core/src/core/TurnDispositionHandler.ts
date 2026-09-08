@@ -1,5 +1,4 @@
-// SEND broadcast dispatch: the terminal send that parks, joins, or wakes the loop, split out of Dispatcher.
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, type DispositionStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
 import { type CancelDescendantsNotify } from "./ChannelWrite.ts";
@@ -9,7 +8,7 @@ import Results from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
-export default class SendBroadcastHandler {
+export default class TurnDispositionHandler {
     readonly #db: Db;
     readonly #cancelDescendants: CancelDescendantsNotify | undefined;
     readonly #joinTargets: Set<number>;
@@ -48,7 +47,7 @@ export default class SendBroadcastHandler {
         this.#unobservedFailures = unobservedFailures;
     }
 
-    async handleSendBroadcast(statement: PlurnkStatement, ctx: {
+    async handle(statement: DispositionStatement, ctx: {
         workspaceId: number;
         workerId: number;
         loopId: number;
@@ -57,27 +56,20 @@ export default class SendBroadcastHandler {
         origin: WriterTier;
         allowUnobservedRetrievalCompletion?: boolean;
     }): Promise<DispatchResult> {
-        if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
-        const status = statement.status;
-        // {§send-label} — a targetless SEND without a label is a message to the user: delivered
-        // through the log row, it changes nothing about the loop.
-        if (status === null) return { status: 200 };
+        const status = TurnDisposition.status(statement.op);
         const raw = statement.body === null ? "" : statement.body.raw;
 
-        // The park rides SEND signal 202 only ({§park-202-only}). A scoped signal 102 is neither
-        // a wait nor a meaningful continuation, so reject it instead of preserving the
-        // retired dual spelling.
-        if (status === 102 && statement.lineMarker !== null) {
+        // {§park-202-only} applies to direct AST producers as well as parsed programs.
+        if (statement.op !== "WAIT" && statement.lineMarker !== null) {
             return this.#failure(
-                "send-scope-invalid",
+                "disposition-scope-invalid",
                 400,
-                "`### SEND_ (NEXT)` does not accept a scope.",
+                `${statement.op} does not accept a scope.`,
                 {},
                 {
-                    requestedStatus: 102,
+                    operation: statement.op,
                     scope: statement.lineMarker,
-                    recovery: "Use `### SEND_ (WAIT) <scope>` to wait, or remove the scope to continue.",
                     retryable: false,
                 },
             );
@@ -88,7 +80,7 @@ export default class SendBroadcastHandler {
         const joinArmed = this.#joinTargets.delete(loopId);
         if (status === 102 && statement.lineMarker === null && joinArmed) {
             if (!await this.#lifecycle.park(loopId)) {
-                return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to park it.");
+                return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when NEXT attempted to park it.");
             }
             return { status: 102, attrs: { parked: -1, join: true } };
         }
@@ -102,7 +94,7 @@ export default class SendBroadcastHandler {
             if ((marks?.length ?? 0) > 2 || timeout < -1 || (poll !== undefined && poll < 0)
                 || [timeout, poll].some((value) => value !== undefined
                     && (!Number.isSafeInteger(value) || value * 60_000 + Date.now() > 8.64e15))) {
-                return this.#failure("send-wait-timing-invalid", 400,
+                return this.#failure("wait-timing-invalid", 400,
                     "WAIT accepts <timeout[,poll]> in whole minutes: timeout is -1 or nonnegative; poll is nonnegative.");
             }
             const seconds = timeout < 0 ? -1 : timeout * 60;
@@ -112,7 +104,7 @@ export default class SendBroadcastHandler {
             };
             if (timeout >= 0 || (poll ?? 0) > 0 || await this.#hasLiveWork(workerId)) {
                 if (!await this.#lifecycle.park(loopId, timing)) {
-                    return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");
+                    return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when WAIT attempted to wait.");
                 }
                 return { status: 202, attrs: { waiting: seconds, ...(poll === undefined ? {} : { polling: poll * 60 }) } };
             }
@@ -190,7 +182,7 @@ export default class SendBroadcastHandler {
             return this.#statusResult(
                 finished !== null ? 200 : await this.#lifecycle.status(loopId),
                 "loop-already-terminal",
-                "The loop was already terminal when SEND attempted to conclude it.",
+                "The loop was already terminal when DONE attempted to conclude it.",
             );
         }
         if (status === 499) {
@@ -198,7 +190,7 @@ export default class SendBroadcastHandler {
             const failure = this.#failure(
                 "scope-abandoned",
                 499,
-                "The worker ended its scope with SEND[499].",
+                "The worker ended its scope with FAIL.",
                 {},
                 {
                     ...(reason === null ? {} : { reason }),
@@ -210,24 +202,18 @@ export default class SendBroadcastHandler {
                 turn_id: turnId,
             });
             if (seqs === undefined) {
-                throw new Error(`SEND signal 499: no coordinate for loop=${loopId} turn=${turnId}`);
+                throw new Error(`FAIL: no coordinate for loop=${loopId} turn=${turnId}`);
             }
             Results.attachInstance(
                 failure,
-                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/SEND`,
+                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/FAIL`,
             );
             const finished = await this.#lifecycle.finish(loopId, failure);
-            if (finished === null) return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to abandon it.");
-            await this.#cancelDescendants?.(workerId, reason ?? "parent worker ended its scope with SEND[499]");
+            if (finished === null) return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when FAIL attempted to abandon it.");
+            await this.#cancelDescendants?.(workerId, reason ?? "parent worker ended its scope with FAIL");
             return failure;
         }
-        // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —
-        // is a plain broadcast row: no loop transition.
-        return this.#statusResult(
-            status,
-            "send-broadcast-failed",
-            raw === "" ? `SEND broadcast reported status ${status}.` : raw,
-        );
+        return { status };
     }
 
 }

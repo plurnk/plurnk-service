@@ -55,7 +55,7 @@ test("{§functionality-model-projection} all verbs carry their coordinator schem
         assert.deepEqual(tool(verb).invocation.inputSchema, schemas[verb]);
         assert.equal(tool(verb).invocation.signature, undefined);
     }
-    assert.match(tool("add").details ?? "", /\n### EXEC_ \[fx\] \(add\)\n\{"alias":"a","definition":\{"kind":"ok"\}\}\n/u, "one exact example rides the add teaching");
+    assert.match(tool("add").details ?? "", /\n```fx \(add\)\n\{"alias":"a","definition":\{"kind":"ok"\}\}\n/u, "one exact example rides the add teaching");
     assert.doesNotMatch(tool("add").details ?? "", /\| Field|options\.retries/u);
     assert.match(tool("discover").details ?? "", /fixture locator/u);
 });

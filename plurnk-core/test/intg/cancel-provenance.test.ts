@@ -20,8 +20,8 @@ const terminalResult = (row: LoopRow): {
 
 test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### EXEC_\nsleep 30\n\n### SEND_ (NEXT)\nrunning"),
-        makeMockResponse("### SEND_ (TERM)\ndone"),
+        makeMockResponse("```EXEC\nsleep 30\n```\n\n```NEXT\nrunning\n```"),
+        makeMockResponse("```DONE\ndone\n```"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -80,8 +80,8 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
         else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previousSettlement;
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### EXEC_\nsleep 30\n\n### SEND_ (WAIT)\nawaiting the slow job"),
-        makeMockResponse("### SEND_ (TERM)\ndone"),
+        makeMockResponse("```EXEC\nsleep 30\n```\n\n```WAIT\nawaiting the slow job\n```"),
+        makeMockResponse("```DONE\ndone\n```"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

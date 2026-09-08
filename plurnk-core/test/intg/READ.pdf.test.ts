@@ -15,7 +15,10 @@ process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `## PLAN_\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `\`\`\`PLAN
+[]
+\`\`\`
+${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -27,7 +30,7 @@ const runLoop = async (modalities: readonly InputModality[]) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
         inputModalities: modalities,
-        responses: [mockTurn("### READ_ (contract.pdf)\n\n### SEND_ (NEXT)\nlooking"), mockTurn("### SEND_ (TERM)\nseen")],
+        responses: [mockTurn("```READ (contract.pdf)```\n```NEXT\nlooking\n```"), mockTurn("```DONE\nseen\n```")],
     });
     try {
         await withDaemon(mock, async (db, _daemon, addr) => {

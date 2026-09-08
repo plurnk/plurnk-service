@@ -20,7 +20,7 @@ const response = (content: string): MockResponse => ({
 });
 
 const invalid = response("unframed prose");
-const valid = response("## PLAN_\nfinish\n\n### SEND_ (TERM)\ndone");
+const valid = response("```PLAN\nfinish\n```\n\n```DONE\ndone\n```");
 const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
 
 test("each emission attempt composes opaque family hooks and records exactly what was forwarded", async () => {

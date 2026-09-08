@@ -23,7 +23,11 @@
         "loopId": { "type": "integer", "minimum": 1 },
         "turnId": { "type": "integer", "minimum": 1 },
         "op": {
-            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL", "PLAN"]
+            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL", "PLAN",
+                "NEXT",
+                "WAIT",
+                "DONE",
+                "FAIL"]
         },
         "target": {
             "type": "object",

@@ -283,10 +283,10 @@ status: "cancelled"
 
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
- * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
-export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
+export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement | DispositionStatement)
 /**
  * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
  */
@@ -317,7 +317,6 @@ export type LineMarkerOrNull = (LineMarker | null)
 
 export interface FindStatement {
 op: "FIND"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -426,7 +425,6 @@ column: number
 
 export interface ReadStatement {
 op: "READ"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -450,7 +448,6 @@ marks: [(number | string), ...((number | string))[]]
 
 export interface EditStatement {
 op: "EDIT"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -464,7 +461,6 @@ position: Position
 
 export interface CopyStatement {
 op: "COPY"
-delimiter: string
 annotation: (string | null)
 source: ResourceSelection
 destination: ResourceSelection
@@ -485,7 +481,6 @@ lineMarker: (TextLineMarker | null)
 
 export interface MoveStatement {
 op: "MOVE"
-delimiter: string
 annotation: (string | null)
 source: ResourceSelection
 destination: ResourceSelection
@@ -494,7 +489,6 @@ position: Position
 
 export interface SendStatement {
 op: "SEND"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -504,10 +498,6 @@ target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (SendBody | null)
 position: Position
-/**
- * The turn disposition the label names ({§send-label}): NEXT 102, WAIT 202, TERM 200, FAIL 499; null for a mid-turn message to a recipient.
- */
-status: ((102 | 200 | 202 | 499) | null)
 }
 /**
  * Parsed body of a SEND statement. `raw` is the literal body text; `json` is the best-effort `JSON.parse(raw)` result, or null when the body isn't valid JSON.
@@ -520,14 +510,13 @@ json: unknown
 
 export interface ExecStatement {
 op: "EXEC"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
 /**
- * The `[executor]` slot: the registered executor that runs the program; null is the default shell.
+ * The registered executor selected by the fence name; null is the default shell for native EXEC.
  */
 executor: (string | null)
 target: (ParsedPath | null)
@@ -538,7 +527,6 @@ position: Position
 
 export interface BareStatement {
 op: "BARE"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -552,7 +540,6 @@ position: Position
 
 export interface WorkStatement {
 op: "WORK"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -566,7 +553,6 @@ position: Position
 
 export interface ForkStatement {
 op: "FORK"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -580,7 +566,6 @@ position: Position
 
 export interface KillStatement {
 op: "KILL"
-delimiter: string
 annotation: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
@@ -600,7 +585,6 @@ position: Position
 
 export interface PlanStatement {
 op: "PLAN"
-delimiter: string
 annotation: (string | null)
 metadata: null
 target: null
@@ -629,9 +613,18 @@ _meta?: ({
 } | null)
 }
 
+export interface DispositionStatement {
+op: ("NEXT" | "WAIT" | "DONE" | "FAIL")
+annotation: (string | null)
+metadata: null
+target: null
+lineMarker: (LineMarker | null)
+body: (SendBody | null)
+position: Position
+}
+
 export interface LookStatement {
 op: "LOOK"
-delimiter: string
 annotation: AnnotationOrNull
 metadata: SchemeMetadataOrNull
 target: PathOrNull
@@ -642,7 +635,6 @@ position: Position
 
 export interface BuffStatement {
 op: "BUFF"
-delimiter: string
 annotation: AnnotationOrNull
 metadata: SchemeMetadataOrNull
 target: PathOrNull
@@ -1177,7 +1169,7 @@ logEntryId: number
 workerId: number
 loopId: number
 turnId: number
-op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "PLAN")
+op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "PLAN" | "NEXT" | "WAIT" | "DONE" | "FAIL")
 target: {
 scheme: (string | null)
 authority: (string | null)

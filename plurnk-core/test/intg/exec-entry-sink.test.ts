@@ -18,12 +18,12 @@ import { parseLogRecords } from "../LogRecords.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null,
+    op: "EXEC", annotation: null, executor: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`## PLAN_\n${input}`);
+    const parsed = PlurnkParser.parseStatements(input);
     const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
@@ -213,7 +213,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         // projects the machine-created entry as an ordinary system READ, carrying the honest recovery
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (initial_folded: readonly (readonly [number, number])[]): object[] => [{
-            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "",
+            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             initial_folded, source: "worker://researcher", attrs: { kind: "entry_materialized" },
@@ -339,7 +339,7 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("### FIND_ (https://example.org/turkeys)\n*large birds*") as FindStatement,
+            statement: parseOne("```FIND (https://example.org/turkeys)\n*large birds*\n```") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
@@ -387,7 +387,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         assert.equal(stored?.pathname, "/people_(current)",
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
-            statement: parseOne("### READ_ (https://example.org/people_%28current%29) <2,2>") as ReadStatement,
+            statement: parseOne("```READ (https://example.org/people_%28current%29) <2,2>```") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
@@ -414,7 +414,7 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("### FIND_ (https://example.org/turkeys)\n~birthday cake") as FindStatement,
+            statement: parseOne("```FIND (https://example.org/turkeys)\n~birthday cake\n```") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
@@ -430,7 +430,7 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     })) as typeof fetch;
     try {
         const result = await engine.dispatch({
-            statement: parseOne("### READ_ (https://example.org/)") as ReadStatement,
+            statement: parseOne("```READ (https://example.org/)```") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");

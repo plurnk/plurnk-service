@@ -24,9 +24,9 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### EXEC_\nseq 1 40\n\n### SEND_ (WAIT)\nwaiting", 10),
-            makeMockResponse("### READ_ (sh:///1/2/3/EXEC#stdout) <38,40>\n### SEND_ (NEXT)\nreading the tail", 10),
-            makeMockResponse("### SEND_ (TERM)\ndone", 10),
+            makeMockResponse("```EXEC\nseq 1 40\n```\n\n```WAIT\nwaiting\n```", 10),
+            makeMockResponse("```READ (sh:///1/2/3/EXEC#stdout) <38,40>```\n```NEXT\nreading the tail\n```", 10),
+            makeMockResponse("```DONE\ndone\n```", 10),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -78,10 +78,10 @@ test("an active stream reaches the model only as a Child Streams pointer with it
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### EXEC_\nseq 1 5; sleep 2\n\n### SEND_ (NEXT)\nlet it run", 10),
+            makeMockResponse("```EXEC\nseq 1 5; sleep 2\n```\n\n```NEXT\nlet it run\n```", 10),
             // the stream is still running when this packet is built: only the pointer shows it
-            makeMockResponse("### SEND_ (WAIT) <10>\nwait for it", 10),
-            makeMockResponse("### SEND_ (TERM)\ndone", 10),
+            makeMockResponse("```WAIT <10>\nwait for it\n```", 10),
+            makeMockResponse("```DONE\ndone\n```", 10),
         ],
     });
     await withSettlement("200", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -120,9 +120,14 @@ for (const specimen of [
 ]) test(`{§exec-stream-page}: automatic ${specimen.name} shares the character bound; explicit READ retains the full stream`, async () => {
     const { content } = specimen;
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse(`### EXEC_ [node]\nprocess.stdout.write(${JSON.stringify(content)});\n### SEND_ (WAIT)\nwaiting`, 10),
-        makeMockResponse("### READ_ (node:///1/2/3/EXEC#stdout) <1,-1>\n### SEND_ (NEXT)\nRead the full result.", 10),
-        makeMockResponse("### SEND_ (TERM)\ndone", 10),
+        makeMockResponse(`\`\`\`node
+process.stdout.write(${JSON.stringify(content)});
+\`\`\`
+\`\`\`WAIT
+waiting
+\`\`\``, 10),
+        makeMockResponse("```READ (node:///1/2/3/EXEC#stdout) <1,-1>```\n```NEXT\nRead the full result.\n```", 10),
+        makeMockResponse("```DONE\ndone\n```", 10),
     ] });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);

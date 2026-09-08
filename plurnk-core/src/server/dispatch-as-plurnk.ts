@@ -9,7 +9,7 @@ import {
     UNKNOWN_POSITION,
     type PlanStatement,
     type PlurnkStatement,
-    type SendStatement,
+    type DispositionStatement,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
@@ -42,14 +42,10 @@ export default class DispatchAsPlurnk {
             producer: "_plurnk",
             kind: "maintenance",
         });
-        const serializedStatements = JSON.stringify(statements);
-        let delimiter = `_plurnk${turnId}`;
-        while (serializedStatements.includes(delimiter)) delimiter += "_";
         let turnOpen = true;
         const program: PlurnkStatement[] = [
             {
                 op: "PLAN",
-                delimiter,
                 annotation: null,
                 target: null,
                 metadata: null,
@@ -59,16 +55,14 @@ export default class DispatchAsPlurnk {
             } satisfies PlanStatement,
             ...statements,
             {
-                op: "SEND",
-                delimiter: "_",
+                op: "DONE",
                 annotation: null,
-                status: 200,
                 target: null,
                 metadata: null,
                 lineMarker: null,
                 body: { raw: "Generated Worker reference documents reconciled.", json: null },
                 position: UNKNOWN_POSITION,
-            } satisfies SendStatement,
+            } satisfies DispositionStatement,
         ];
         const source = TurnOps.renderInternal(program);
         const admitted = TurnOps.parseInternal(source);

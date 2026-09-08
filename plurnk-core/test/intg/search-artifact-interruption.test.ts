@@ -4,7 +4,7 @@ import { BaseHandler, Mimetypes, ParserCoordinateError } from "@plurnk/plurnk-mi
 import { Mock } from "@plurnk/plurnk-providers";
 import type {
     Notice,
-    SendStatement,
+    DispositionStatement,
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
@@ -27,7 +27,7 @@ const target: UrlPath = {
 };
 const statement: ResolvedEditStatement = {
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: null,
+    op: "EDIT", annotation: null, target, lineMarker: null,
     body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 
@@ -295,7 +295,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
         const provider = new Mock({ contextWindow: 100000, responses: [{
             assistant: {
                 content: "",
-                ops: [{ op: "SEND", annotation: null, delimiter: "", status: 200, target: null, metadata: null, lineMarker: null, body: { raw: "done", json: null }, position: { line: 1, column: 1 } } as SendStatement],
+                ops: [{ op: "DONE", annotation: null, target: null, metadata: null, lineMarker: null, body: { raw: "done", json: null }, position: { line: 1, column: 1 } } as DispositionStatement],
                 reasoning: null,
             },
         }] });

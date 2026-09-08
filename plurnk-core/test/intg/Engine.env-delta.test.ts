@@ -20,7 +20,7 @@ import Owner from "../../src/core/Owner.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { DispositionStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, logEntries, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
 
@@ -29,7 +29,7 @@ const execFileP = promisify(execFile);
 const okSend = (): MockResponse => ({
     assistant: {
         content: "",
-        ops: [{ op: "SEND", annotation: null, delimiter: "", status: 200, target: null, metadata: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as SendStatement],
+        ops: [{ op: "DONE", annotation: null, target: null, metadata: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as DispositionStatement],
         reasoning: null,
     },
 });
@@ -84,7 +84,7 @@ const workerPath = (authority: string, pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: null, body,
+    op: "EDIT", annotation: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 test("a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {
@@ -252,7 +252,7 @@ test("a settled child proposal reaches its parent while only a landed commons ef
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
-                origin: "model", source: null, model_call_id: null, op: "EDIT", delimiter: "",
+                origin: "model", source: null, model_call_id: null, op: "EDIT",
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
@@ -482,7 +482,7 @@ test("a child-activity delta preserves typed attributes and initial classificati
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence: 1,
             origin: "_plurnk", source: "worker://observer", model_call_id: null,
-            op: "EDIT", delimiter: "", signal: JSON.stringify(["+query"]),
+            op: "EDIT", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
@@ -741,7 +741,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
             "every death-path lands untargeted, in occurrence order, attributed to the concluding worker",
         );
         const win = terminations.find((r) => r.source === "worker://worker");
-        assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
+        assert.ok(win, "worker's DONE termination surfaced as a worker delta in A's log");
         assert.equal(win!.origin, "_plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");

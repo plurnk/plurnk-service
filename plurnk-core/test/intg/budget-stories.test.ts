@@ -26,7 +26,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Plan, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, sendStmt, planValue } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, dispositionStmt, planValue } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat visible READ
@@ -37,15 +37,15 @@ const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(200, null, "ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([dispositionStmt("DONE", "ok")]));
 // A turn that writes a fat entry then READS it back (the read RESULT renders into
 // the log — that is the budget pressure) then closes. The EDIT body is free; the
 // READ render is not. Repeated n times for multi-turn accumulation.
 // A heavy read turn — EDIT a fat entry then READ it back; the READ appears in the NEXT turn's packet
-// (that's what makes the next turn fat). It CONTINUES (SEND[102]) — the result is for the next turn
+// (that's what makes the next turn fat). It CONTINUES (NEXT) — the result is for the next turn
 // and therefore cannot be observed in the emission that requested it.
 const fatReads = (chars: number, n = 1): MockResponse[] =>
-    Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), sendStmt(102, null, "ok")]));
+    Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), dispositionStmt("NEXT", "ok")]));
 
 const engineAt = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 const ENVELOPE_KEYS = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
@@ -121,10 +121,10 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
-        // A heavy DELIVERING turn (fat EDIT + terminal SEND[200], no same-turn READ) — under a wide
+        // A heavy DELIVERING turn (fat EDIT + terminal DONE, no same-turn READ) — under a wide
         // ceiling it delivers and the packet reads ≤ 100%.
         // {§send-premature-terminate} — the edit's receipt lands next packet; a continuing SEND carries the delivery story.
-        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), sendStmt(102, null, "ok")])];
+        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), dispositionStmt("NEXT", "ok")])];
         const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 102, "delivered");
         assert.equal(t.capacityHardStop, false, "no provider-capacity stop under a wide curation budget");
@@ -225,7 +225,7 @@ test("budget: an irreducible hard-413 short-circuits dispatch — the model is n
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
-        const provider = mockCeiling(TINY, [response([sendStmt(200, null, "must not run")])]);
+        const provider = mockCeiling(TINY, [response([dispositionStmt("DONE", "must not run")])]);
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413, "the effective context envelope rejects immediately");
         assert.equal(t.producer, "_plurnk");

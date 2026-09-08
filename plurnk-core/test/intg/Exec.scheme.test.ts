@@ -23,7 +23,7 @@ import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 // {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `{cwd=…}`.
 const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
     metadata: cwd === null ? null : [`cwd=${cwd}`],
-    op: "EXEC", annotation: null, delimiter: "", executor: runtime,
+    op: "EXEC", annotation: null, executor: runtime,
     target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -95,7 +95,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
 
         const statement: ExecStatement = {
             metadata: null,
-            op: "EXEC", executor: "sh", annotation: null, delimiter: "",
+            op: "EXEC", executor: "sh", annotation: null,
             target: urlPath("worker", "/script"),
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
@@ -142,7 +142,7 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
         assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/EXEC` addresses this runtime's result streams/, "the recovery names the coordinate space");
-        assert.match(ownText, /A tool's own ids are arguments: `### EXEC_ \[<executor>\] \(<tool>\)`/, "the recovery routes ids to the tool");
+        assert.match(ownText, /A tool's own ids are body arguments; the opening fence names the executor and its target names the tool\./, "the recovery routes ids to the tool");
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
@@ -205,7 +205,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /Run the registered tool with `### EXEC_ \[crm\] \(crm_query\)`\./, "the recovery gives the one applicable invocation");
+        assert.match(rendered, /The tool `crm_query` is registered under executor `crm`; use that name on the opening fence\./, "the recovery gives the one applicable invocation");
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
@@ -223,7 +223,7 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.match(rendered, /target-not-found/);
         assert.match(rendered, /The EXEC program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
-        assert.match(rendered, /Name an existing script as the program, or place a shell command beneath a bare `### EXEC_`\./);
+        assert.match(rendered, /The target must name an existing program resource\. A targetless EXEC takes the command in its body\./);
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });

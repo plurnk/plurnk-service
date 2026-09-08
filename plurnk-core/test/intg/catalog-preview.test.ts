@@ -13,7 +13,7 @@ import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("### SEND_ (TERM)\ndone", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -143,7 +143,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("### SEND_ (TERM)\ndone", 50), makeMockResponse("### SEND_ (TERM)\ndone", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```DONE\ndone\n```", 50), makeMockResponse("```DONE\ndone\n```", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -185,7 +185,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND", null],
+                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT", null],
                     "the initialization records every operation outcome beside its exact turnOps",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -193,7 +193,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
                     { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
-                assert.ok(turn?.completed_at !== null, "completed SEND[102] is distinct from an open turn");
+                assert.ok(turn?.completed_at !== null, "completed NEXT is distinct from an open turn");
                 const plan = JSON.parse(initializationRows[0]!.tx) as { annotation: string | null; body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
@@ -202,8 +202,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     },
                 ]);
                 const program = JSON.parse(initializationRows.find(({ op }) => op === null)!.rx) as { content: string };
-                assert.match(program.content, /^## PLAN_\n\[/, "initialization demonstrates an ordinary structured task plan");
-                const send = JSON.parse(initializationRows.find(({ op }) => op === "SEND")!.tx) as { body: { raw: string } };
+                assert.match(program.content, /^```PLAN\n\[/, "initialization demonstrates an ordinary structured task plan");
+                const send = JSON.parse(initializationRows.find(({ op }) => op === "NEXT")!.tx) as { body: { raw: string } };
                 assert.match(send.body.raw, /Address the prompt/);
             } finally { ws.close(); }
         });
@@ -272,13 +272,13 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.summary,
-                    "EXEC <!-- Run POSIX shell commands and scripts. -->\\ngit status --short",
+                    "```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```",
                     "Turn 0 teaches a compact executable witness with its authored summary, as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.summary,
-                    "EXEC [python3] <!-- Run Python 3 code or scripts. -->",
+                    "```python3 <!-- Run Python 3 code or scripts. -->```",
                     "equivalent interpreters remain discoverable without repeating toy bodies",
                 );
                 for (const removed of ["git", "isogit"]) {
@@ -301,7 +301,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
                     "the initialization outcomes contain the prompt archive and the eight surveys between PLAN and SEND",
                 );
                 const turnOps = initializationRows.find(({ op }) => op === null);
@@ -310,7 +310,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^## PLAN_\n[\s\S]*\n### SEND_ \(NEXT\)\nNext: Address the prompt\.$/,
+                    /^```PLAN\n[\s\S]*\n```NEXT\nNext: Address the prompt\.\n```$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

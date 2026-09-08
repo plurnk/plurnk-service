@@ -17,14 +17,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", target,
+    op: "READ", annotation: null, target,
     lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "",
+    op: "EDIT", annotation: null,
     target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
@@ -56,7 +56,6 @@ const insertActionless = async (
         source: null,
         model_call_id: null,
         op: null,
-        delimiter: "",
         scheme: null,
         username: null,
         password: null,
@@ -111,14 +110,14 @@ test("Log.read: an exact /OP delimiter must agree with the addressed row", async
 test("{§log-coordinate-hierarchy}: admitted programs and rejected attempts are exact /ops and /attempt resources", async () => {
     const { db, workerId, loopId, turnId } = await setup();
     try {
-        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "## PLAN_\n[]\n### SEND_ (NEXT)");
+        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "```PLAN\n[]\n```\n```NEXT```");
         await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
         const ctx = makeSchemeCtx({ db, workerId });
 
         const ops = await readLog(readStmt(urlPath("log", "/1/1/1/ops")), ctx);
         const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
         assert.equal(ops.status, 200);
-        assert.match(ops.content ?? "", /## PLAN_/);
+        assert.match(ops.content ?? "", /```PLAN/);
         assert.equal(attempt.status, 200);
         assert.equal(attempt.content, "malformed response");
 
@@ -266,7 +265,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: FindStatement = {
             metadata: null,
-            op: "FIND", annotation: null, delimiter: "", target: urlPath("log", "/1/1/2"), lineMarker: null,
+            op: "FIND", annotation: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
             body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, position: { line: 1, column: 1 },
         };
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workerId }));
@@ -305,7 +304,7 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
         // exact, <1> selects the first match location.
         const stmt: FindStatement = {
             metadata: null,
-            op: "FIND", annotation: null, delimiter: "", target: urlPath("log", "/1/1/2"),
+            op: "FIND", annotation: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
             body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, position: { line: 1, column: 1 },
         };
@@ -328,7 +327,7 @@ test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
         const result = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "FIND", annotation: null, delimiter: "",
+                op: "FIND", annotation: null,
                 target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
                 body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
@@ -380,7 +379,7 @@ test("Log.read: #channel on an EXEC log item names the command's stream address 
         const dispatched = new Promise<number>((settle) => {
             void engine.dispatch({
                 statement: {
-                    metadata: null, op: "EXEC", executor: "sh", annotation: null, delimiter: "",
+                    metadata: null, op: "EXEC", executor: "sh", annotation: null,
                     target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
                 },
                 workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

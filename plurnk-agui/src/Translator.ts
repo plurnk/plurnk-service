@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
@@ -159,7 +160,7 @@ export default class Translator {
         // A family client renders the SEND from plurnk.row rather than duplicating
         // TEXT_MESSAGE. Delay that one mirror until after the standard reasoning
         // lifecycle so both generic and family clients observe reasoning before speech.
-        const delayedSendRow = e.origin === "model" && e.op === "SEND";
+        const delayedSendRow = e.origin === "model" && (e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op));
         if (!delayedSendRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         if (e.origin !== "model") {
@@ -177,7 +178,7 @@ export default class Translator {
             });
             return events;
         }
-        if (e.op === "SEND") {
+        if ((e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op))) {
             const text = Translator.#txBody(e.tx);
             if (typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
             const streamed = typeof e.turn_id === "number"
@@ -351,7 +352,7 @@ export default class Translator {
                 };
                 currentPlanPosition = messages.length;
             }
-            if (e.op === "SEND") {
+            if ((e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op))) {
                 const reasoning = typeof e.reasoning === "string" ? e.reasoning : "";
                 if (reasoning.length > 0) {
                     messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });

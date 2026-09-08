@@ -19,11 +19,17 @@ test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; wi
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse(`### EXEC_\nwhile [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished\n\n### SEND_ (NEXT)\nstarted`, 50),
-            makeMockResponse("### SEND_ (NEXT)\nwaiting for the command", 50),
-            makeMockResponse("### SEND_ (TERM)\ndone", 50),
-            makeMockResponse("### SEND_ (NEXT)\nnothing to wait on", 50),
-            makeMockResponse("### SEND_ (TERM)\nconcluded", 50),
+            makeMockResponse(`\`\`\`EXEC
+while [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished
+\`\`\`
+
+\`\`\`NEXT
+started
+\`\`\``, 50),
+            makeMockResponse("```NEXT\nwaiting for the command\n```", 50),
+            makeMockResponse("```DONE\ndone\n```", 50),
+            makeMockResponse("```NEXT\nnothing to wait on\n```", 50),
+            makeMockResponse("```DONE\nconcluded\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -39,14 +45,14 @@ test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; wi
                 const parked = await running;
                 assert.equal(parked.result.status, 200, "the loop concludes after the parked turn wakes on the stream's end");
                 const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
-                assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 202), `the empty [102] was recorded as a 202 park; got ${JSON.stringify(rows)}`);
+                assert.ok(rows.some((r) => r.op === "WAIT" && r.status_rx === 202), `the empty [102] was recorded as a 202 park; got ${JSON.stringify(rows)}`);
                 const errBefore = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: parked.modelWorkerId! });
                 assert.equal(errBefore.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length, 0, "no idle strike while the stream was in flight");
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: parked.turnIds![3]! }))!.packet);
                 const log = (packet.sections as Array<{ name: string; content: string }>).find((s) => s.name === "log")?.content ?? "";
-                const sendRows = parseLogRecords(log).filter(({ path }) => typeof path === "string" && path.endsWith("/SEND"));
+                const sendRows = parseLogRecords(log).filter(({ path }) => typeof path === "string" && path.endsWith("/WAIT"));
                 const sendRow = sendRows.find(({ status }) => status === 202);
-                assert.match(JSON.stringify(sendRow), /waits like WAIT/, `the wake packet shows the shifted SEND[202] carrying the correction; SEND rows: ${JSON.stringify(sendRows)}`);
+                assert.match(JSON.stringify(sendRow), /waits like WAIT/, `the wake packet shows the shifted WAIT carrying the correction; SEND rows: ${JSON.stringify(sendRows)}`);
                 // The same worker, nothing in flight: an empty [102] is idleness and strikes as before.
                 const idle = await runLoopToTerminal(ws, 3, { prompt: "sit", policy: { proposals: "accept" } });
                 assert.equal(idle.result.status, 200);

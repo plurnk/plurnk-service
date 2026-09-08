@@ -5,7 +5,7 @@ SELECT status, wait_revision FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_has_live_child
 -- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
--- like an open stream. A SEND signal 200 while one exists is a premature-terminate ({§send-premature-terminate}).
+-- like an open stream. DONE while one exists is premature completion ({§send-premature-terminate}).
 -- Live = a child with ANY unresolved loop (100/102/202) — the SAME definition
 -- engine_child_workers_live uses for the Active Child Workers orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
@@ -328,7 +328,7 @@ WITH observation AS (
 SELECT o.cursor, o.boundary,
        ae.id AS event_id, ae.producer_worker_id, producer.name AS producer_worker_name,
        ae.kind, ae.source, ae.at,
-       ae.op, ae.delimiter, ae.signal,
+       ae.op, ae.signal,
        ae.scheme, ae.username, ae.password, ae.hostname, ae.port,
        ae.pathname, ae.query, ae.fragment, ae.line_marker,
        ae.tx, ae.mimetype_tx, ae.rx, ae.mimetype_rx,
@@ -358,13 +358,13 @@ ORDER BY ae.id;
 -- unrelated sequence, FK, or shape violation.
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id,
-    op, delimiter, signal,
+    op, signal,
     scheme, username, password, hostname, port, pathname, query, fragment,
     lineMarker, tx, mimetype_tx,
     rx, mimetype_rx, status_rx, weight, state, outcome, initial_folded, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $at, '_plurnk', $source, $event_id,
-    $op, $delimiter, $signal,
+    $op, $signal,
     $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment,
     $line_marker, $tx, $mimetype_tx,
     $rx, $mimetype_rx, $status, $weight, $state, $outcome, $folded, $attrs
@@ -567,7 +567,7 @@ SELECT
     le.sequence,
     -- le.origin is attribution, never a render filter; the worker's actor — {§actor-boundary-origin-not-filter} {§machine-processes-worker-origin}
     le.origin,
-    le.op, le.delimiter, le.signal,
+    le.op, le.signal,
     le.scheme, le.username, le.password,
     le.hostname, le.port, le.pathname,
     le.query, le.fragment,
@@ -623,14 +623,14 @@ WHERE worker_id = $worker_id;
 -- via proposal resolution; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
-    op, delimiter, signal,
+    op, signal,
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
     state, outcome, attrs, initial_folded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
-    $op, $delimiter, $signal,
+    $op, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,
     $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight,
@@ -673,8 +673,8 @@ SELECT l.sequence AS loop_seq,
 -- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
 -- into the next packet: READ/FIND/BARE results, successful EDIT/COPY/MOVE receipts (the model
 -- sees what it changed before it claims done — deterministic railing, one cached turn), plus
--- successful log curation. Receipts block an explicit (TERM); a log KILL blocks only the
--- empty-(WAIT) inference because explicit final housekeeping remains valid.
+-- successful log curation. Receipts block explicit DONE; a log KILL blocks only the
+-- empty-WAIT inference because explicit final housekeeping remains valid.
 SELECT id, op FROM active_log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'

@@ -17,7 +17,7 @@ test("a KILL after TERM never executes: one diagnostic row, the TERM refused unt
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("## PLAN_\n[]\n### EDIT_ (worker:///note.md)\nEvidence.\n### SEND_ (NEXT)\nReview.")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```PLAN\n[]\n```\n```EDIT (worker:///note.md)\nEvidence.\n```\n```NEXT\nReview.\n```")] }),
             workspaceId, workerId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
@@ -25,7 +25,13 @@ test("a KILL after TERM never executes: one diagnostic row, the TERM refused unt
         assert.ok(plan);
         const turn = await db.test_latest_model_turn_in_loop.get<{ sequence: number }>({ loop_id: loopId });
         assert.ok(turn);
-        const source = `## PLAN_\n[]\n### SEND_ (TERM)\nAnswer.\n### KILL_ (log:///1/${turn.sequence}/${plan.sequence}/PLAN)`;
+        const source = `\`\`\`PLAN
+[]
+\`\`\`
+\`\`\`DONE
+Answer.
+\`\`\`
+\`\`\`KILL (log:///1/${turn.sequence}/${plan.sequence}/PLAN)\`\`\``;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
@@ -35,17 +41,17 @@ test("a KILL after TERM never executes: one diagnostic row, the TERM refused unt
         assert.deepEqual(result.outcomes, [
             { op: "PLAN", status: 200, problemType: null },
             { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
-            { op: "SEND", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
+            { op: "DONE", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
         ]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; rx: string; attrs: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["PLAN", "error", "SEND"]);
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["PLAN", "error", "DONE"]);
         const diagnostic = rows.find(({ op }) => op === "error");
         assert.ok(diagnostic);
         assert.equal(
             JSON.parse(diagnostic.rx).problem.detail,
-            `The disposition \`### SEND_ (TERM)\` ended the turn; 1 operation after its body was not admitted (KILL ×1). Every OP, including KILL, precedes the disposition SEND.`,
+            `The disposition \`DONE\` ended the turn; 1 operation after its body was not admitted (KILL ×1). Every OP, including KILL, precedes NEXT, WAIT, DONE, or FAIL.`,
         );
-        const send = rows.find(({ op }) => op === "SEND");
+        const send = rows.find(({ op }) => op === "DONE");
         assert.ok(send);
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -63,24 +69,24 @@ test("NEXT authored first ends the turn: nothing after it executes, and one diag
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "### SEND_ (NEXT)\nInspect results.\n### READ_ (worker:///note.md)\n### EDIT_ (worker:///note.md)\nCreated before READ.\n### FIND_ (worker:///*)\n/[/\n### KILL_ (log:///99/*/*)";
+        const source = "```NEXT\nInspect results.\n```\n```READ (worker:///note.md)```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```FIND (worker:///*)\n/[/\n```\n```KILL (log:///99/*/*)```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["error", "SEND"]);
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["error", "NEXT"]);
         const diagnostic = rows.find(({ op }) => op === "error");
         assert.ok(diagnostic);
         assert.equal(diagnostic.status_rx, 400);
         assert.equal(
             JSON.parse(diagnostic.rx).problem.detail,
-            `The disposition \`### SEND_ (NEXT)\` ended the turn; 3 operations after its body were not admitted (READ ×1, EDIT ×1, KILL ×1) and 1 malformed heading after it was ignored. Every OP, including KILL, precedes the disposition SEND.`,
+            `The disposition \`NEXT\` ended the turn; 3 operations after its body were not admitted (READ ×1, EDIT ×1, KILL ×1) and 1 malformed heading after it was ignored. Every OP, including KILL, precedes NEXT, WAIT, DONE, or FAIL.`,
         );
         assert.equal(rows.some(({ op }) => op === "EDIT" || op === "READ" || op === "KILL"), false, "nothing after the disposition ran");
     } finally { await db.close(); }
 });
 
 test("duplicate dispositions and unclosed trailing targets dispatch no part of the rejected attempt", async () => {
-    for (const tail of ["### SEND_ (TERM)\nContradiction.", "### READ_ (unfinished"]) {
+    for (const tail of ["```DONE\nContradiction.\n```", "```READ (unfinished"]) {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "rejected-disposition");
@@ -89,8 +95,14 @@ test("duplicate dispositions and unclosed trailing targets dispatch no part of t
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runTurn({
                 provider: new Mock({ contextWindow: 100_000, responses: [
-                    response(`### EDIT_ (worker:///must-not-exist)\nNo effect.\n### SEND_ (NEXT)\nContinue.\n${tail}`),
-                    response("### SEND_ (TERM)\nRecovered."),
+                    response(`\`\`\`EDIT (worker:///must-not-exist)
+No effect.
+\`\`\`
+\`\`\`NEXT
+Continue.
+\`\`\`
+${tail}`),
+                    response("```DONE\nRecovered.\n```"),
                 ] }), workspaceId, workerId, loopId, messages: [],
             });
             assert.equal(result.status, 200);
@@ -103,13 +115,13 @@ test("duplicate dispositions and unclosed trailing targets dispatch no part of t
 });
 
 test("internal turn programs end at the disposition like model turns", () => {
-    const source = "## PLAN_\n[]\n### KILL_ (log:///1/1/*)\n### SEND_ (NEXT)\nContinue.";
+    const source = "```PLAN\n[]\n```\n```KILL (log:///1/1/*)```\n```NEXT\nContinue.\n```";
     const statements = TurnOps.parseInternal(source);
-    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "KILL", "SEND"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "KILL", "NEXT"]);
     assert.equal(TurnOps.renderInternal(statements), source);
     // {§disposition-ends-turn} — a program that authors an operation after its disposition is invalid turnOps.
     assert.throws(
-        () => TurnOps.parseInternal("## PLAN_\n[]\n### SEND_ (NEXT)\nContinue.\n### KILL_ (log:///1/1/*)"),
-        { name: "SyntaxError", message: /Core generated invalid turnOps: The disposition `### SEND_ \(NEXT\)` ended the turn; 1 operation after its body was not admitted \(KILL ×1\)/u },
+        () => TurnOps.parseInternal("```PLAN\n[]\n```\n```NEXT\nContinue.\n```\n```KILL (log:///1/1/*)```"),
+        { name: "SyntaxError", message: /Core generated invalid turnOps: The disposition `NEXT` ended the turn; 1 operation after its body was not admitted \(KILL ×1\)/u },
     );
 });

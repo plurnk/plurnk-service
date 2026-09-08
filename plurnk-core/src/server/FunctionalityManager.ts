@@ -7,6 +7,7 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
 import type { JsonSchema } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";
@@ -120,10 +121,7 @@ export default class FunctionalityManager extends BaseExecutor {
         if (verb !== "add") return base.details;
         const example = this.#teaching.example === undefined ? [] : [
             "",
-            "```example",
-            `### EXEC_ [${this.runtime}] (add)`,
-            JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition }),
-            "```",
+            PlurnkParser.frame(`${this.runtime} (add)`, JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition })),
         ];
         return [base.details, ...example].join("\n");
     }

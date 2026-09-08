@@ -8,13 +8,13 @@ import PacketLint from "./PacketLint.ts";
 test("lintDir globs only packet files and tags each finding by file", () => {
     const dir = mkdtempSync(join(tmpdir(), "packetlint-"));
     try {
-        // A bare op in prose is an op-fence deviation; the clean user packet stays clean.
-        writeFileSync(join(dir, "packet001.system.md"), "## Resources\n\nHere is an example.\n### READ_ (worker:///plan.md)\n");
+        // One malformed executable block; the clean user packet stays clean.
+        writeFileSync(join(dir, "packet001.system.md"), "## Resources\n\n```READ (worker:///plan.md) <N>```");
         writeFileSync(join(dir, "packet001.user.md"), "## Log\n\nShort clean prose.\n");
         writeFileSync(join(dir, "digest.md"), "not a packet file — must be ignored");
         const { packets, findings } = PacketLint.lintDir(dir);
         assert.deepEqual(packets, ["packet001.system.md", "packet001.user.md"]);
-        const opFence = findings.filter((f) => f.rule === "op-fence");
+        const opFence = findings.filter((f) => f.rule === "op-syntax");
         assert.equal(opFence.length, 1);
         assert.equal(opFence[0].file, "packet001.system.md");
         assert.equal(findings.filter((f) => f.file === "packet001.user.md").length, 0);

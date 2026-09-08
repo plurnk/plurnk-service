@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The observational boundary's span topology through the REAL loop path
 // ({§observability-boundary}). A Mock provider without pre-supplied ops drives
 // the production parse path. One warmed engine cycle may complete the ordinary
@@ -22,7 +23,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "## PLAN_\ncurate:\n\n### SEND_ (TERM)\nobserved.",
+                    content: "```PLAN\ncurate:\n```\n\n```DONE\nobserved.\n```",
                     reasoning: null,
                 },
             }],
@@ -86,9 +87,9 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
         const ops = dispatches.map((s) => s.attributes.op);
         assert.equal(ops.filter((op) => op === "PLAN").length, 2, "initialization and inference each dispatch their real PLAN");
-        assert.equal(ops.filter((op) => op === "SEND").length, 2, "initialization and inference each dispatch their real SEND");
+        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "initialization and inference each dispatch their real SEND");
         assert.ok(
-            ops.filter((op) => op !== "PLAN" && op !== "SEND").every((op) => op === "FIND" || op === "COPY"),
+            ops.filter((op) => op !== "PLAN" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "FIND" || op === "COPY"),
             `the remaining initialization operations are the prompt-archive COPY and catalog FINDs; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {

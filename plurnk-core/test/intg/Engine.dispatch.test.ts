@@ -19,7 +19,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: opts.annotation ?? null, delimiter: "",
+    op: "EDIT", annotation: opts.annotation ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
@@ -28,7 +28,7 @@ const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: Tex
 
 const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: null,
@@ -37,7 +37,7 @@ const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker
 
 const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; body?: MatcherBody | null }): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, delimiter: "",
+    op: "KILL", annotation: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
@@ -46,7 +46,7 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; bo
 
 const planStmt = (opts: { body?: string | null }): PlanStatement => ({
     metadata: null,
-    op: "PLAN", annotation: null, delimiter: "",
+    op: "PLAN", annotation: null,
     target: null,
     lineMarker: null,
     body: PlanValue.admit(opts.body ?? ""),
@@ -394,7 +394,7 @@ test("Engine.dispatch: scoped KILL accepts body and log anchors, and READ respec
     try {
         await db.engine_insert_log_entry.get({
             worker_id: env.workerId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "",
+            origin: "model", source: null, model_call_id: null, op: "READ",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/source.md", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -664,7 +664,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         });
         const log = await db.test_first_log_entry_for_turn.get<{
             worker_id: number; loop_id: number; turn_id: number; sequence: number;
-            origin: string; op: string; delimiter: string; signal: string | null;
+            origin: string; op: string; signal: string | null;
             scheme: string | null; pathname: string | null;
             tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
         }>({ turn_id: env.turnId });
@@ -675,7 +675,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         assert.equal(log.sequence, 1);
         assert.equal(log.origin, "model");
         assert.equal(log.op, "EDIT");
-        assert.equal(log.delimiter, "");
+        assert.equal(Object.hasOwn(log, "delimiter"), false);
         assert.equal(log.signal, null);
         assert.equal(log.scheme, "worker");
         assert.equal(log.pathname, "/x");
@@ -727,7 +727,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     try {
         const stmt: EditStatement = {
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", target: null, lineMarker: null, body: "y",
+            op: "EDIT", annotation: null, target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -921,7 +921,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { metadata: null, op: "SEND", annotation: null, delimiter: "", status: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "DONE", annotation: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -1012,7 +1012,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                op: "COPY", annotation: null, delimiter: "",
+                op: "COPY", annotation: null,
                 source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null },
                 destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null },
                 position: { line: 1, column: 1 },

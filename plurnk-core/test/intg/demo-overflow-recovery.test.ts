@@ -10,8 +10,10 @@ test("{§methods-loop-run-open-paths}: one oversized attachment is previewed wit
     const fixture = await seedOverflowFixture();
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
-        makeMockResponse("### READ_ (incident.txt) <2>\n### SEND_ (NEXT)\nInspect the recovery site."),
-        makeMockResponse(`### SEND_ (TERM)\n${fixture.answer}`),
+        makeMockResponse("```READ (incident.txt) <2>```\n```NEXT\nInspect the recovery site.\n```"),
+        makeMockResponse(`\`\`\`DONE
+${fixture.answer}
+\`\`\``),
     ] });
     try {
         await writeFile(join(fixture.workspace, "incident.txt"), content);
@@ -45,8 +47,8 @@ for (const retire of [false, true]) test(`the recovery demo preserves overflow e
     const provider = new Mock({
         contextWindow: 20_000,
         responses: [
-            makeMockResponse("### READ_ (incident.txt) <2>\n### SEND_ (NEXT)\nInspect the recovery site."),
-            makeMockResponse(`${retire ? "### KILL_ (log:///**/READ)\n" : ""}### SEND_ (TERM)\n${fixture.answer}`),
+            makeMockResponse("```READ (incident.txt) <2>```\n```NEXT\nInspect the recovery site.\n```"),
+            makeMockResponse(`${retire ? "```KILL (log:///**/READ)```\n" : ""}\`\`\`DONE\n${fixture.answer}\n\`\`\``),
         ],
     });
     try {

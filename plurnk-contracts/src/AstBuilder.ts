@@ -6,7 +6,6 @@ import { JSONPathEnvironment } from "json-p3/dist/json-p3.esm.js";
 import type {
     BuffStatement,
     BareStatement,
-    ClientOp,
     ClientStatement,
     CopyStatement,
     EditStatement,
@@ -22,12 +21,12 @@ import type {
     ResourceSelection,
     ParsedPath,
     PlanStatement,
-    PlurnkOp,
     PlurnkStatement,
     Position,
     ReadStatement,
     SendBody,
     SendStatement,
+    DispositionStatement,
     TextLineMarker,
     UrlPath,
 } from "./types.ts";
@@ -55,7 +54,7 @@ import {
     BodyContext,
     LineMarkerContext,
     MetadataContext,
-    MidSendContext,
+    DispositionStatementContext,
     PlanStatementContext,
     SendStatementContext,
     TargetContext,
@@ -65,6 +64,7 @@ import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PathSyntax from "./PathSyntax.ts";
 import PlanValue from "./PlanValue.ts";
+import TurnDisposition from "./TurnDisposition.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -90,7 +90,7 @@ export default class AstBuilder {
 
     // A body that is solely an HTML comment can never be a matcher. Preserve it
     // as the operation annotation and report only that deterministic normalization.
-    static #annotationBody(op: string, delimiter: string, annotation: string | null, raw: string | null, position: Position): { annotation: string | null; raw: string | null } {
+    static #annotationBody(op: string, annotation: string | null, raw: string | null, position: Position): { annotation: string | null; raw: string | null } {
         if (raw === null) return { annotation, raw };
         const comment = /^\s*<!--([\s\S]*?)-->\s*$/u.exec(raw);
         if (comment === null) return { annotation, raw };
@@ -109,13 +109,12 @@ export default class AstBuilder {
     static #JSONPATH = new JSONPathEnvironment();
     static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 
-    static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext | MidSendContext): PlurnkStatement {
-        // The strict turn root attaches the leading PLAN and the terminal SEND as direct
-        // children (not wrapped in `statement`), so dispatch those by type first.
+    static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
+        // PLAN, disposition and SEND contexts can arrive without a statement wrapper.
         if (ctx instanceof PlanStatementContext) return AstBuilder.#buildPlan(ctx);
+        if (ctx instanceof DispositionStatementContext) return AstBuilder.#buildDisposition(ctx);
         if (ctx instanceof SendStatementContext) return AstBuilder.#buildSend(ctx);
-        if (ctx instanceof MidSendContext) return AstBuilder.#buildMidSend(ctx);
-        const midSend = ctx.midSend(); if (midSend) return AstBuilder.#buildMidSend(midSend);
+        const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         const find = ctx.findStatement(); if (find) return AstBuilder.#buildFind(find);
         const read = ctx.readStatement(); if (read) return AstBuilder.#buildRead(read);
         const edit = ctx.editStatement(); if (edit) return AstBuilder.#buildEdit(edit);
@@ -130,14 +129,14 @@ export default class AstBuilder {
         // full `statement` rule does.
         if ("planStatement" in ctx) {
             const plan = ctx.planStatement(); if (plan) return AstBuilder.#buildPlan(plan);
-            const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
+            const disposition = ctx.dispositionStatement(); if (disposition) return AstBuilder.#buildDisposition(disposition);
         }
         throw new Error("statement context has no recognized alternative");
     }
 
     static #buildFind(ctx: FindStatementContext): FindStatement {
         const positionForBody = AstBuilder.#positionOf(ctx);
-        const bodied = AstBuilder.#annotationBody("FIND", AstBuilder.#splitDelimiter(ctx.OPEN_FIND().getText(), "FIND"), AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), positionForBody);
+        const bodied = AstBuilder.#annotationBody("FIND", AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), positionForBody);
         return AstBuilder.#buildFindFrom(ctx, bodied.annotation, bodied.raw);
     }
 
@@ -146,7 +145,6 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         return {
             op: "FIND",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FIND().getText(), "FIND"),
             annotation,
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -173,7 +171,6 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "LOOK",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_LOOK().getText(), "LOOK"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -187,7 +184,6 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "BUFF",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_BUFF().getText(), "BUFF"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -198,8 +194,7 @@ export default class AstBuilder {
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const delimiter = AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ");
-        const bodied = AstBuilder.#annotationBody("READ", delimiter, AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
+        const bodied = AstBuilder.#annotationBody("READ", AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
         const annotation = bodied.annotation;
         const raw = bodied.raw;
         const targetPath = slots.target?.kind === "url"
@@ -218,7 +213,6 @@ export default class AstBuilder {
             const findSlots = slots as Slots;
             return {
                 op: "FIND",
-                delimiter,
                 annotation,
                 ...findSlots,
                 body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -227,7 +221,6 @@ export default class AstBuilder {
         }
         return {
             op: "READ",
-            delimiter,
             annotation,
             ...slots,
             body: null,
@@ -240,7 +233,6 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         return {
             op: "EDIT",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EDIT().getText(), "EDIT"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
@@ -255,7 +247,6 @@ export default class AstBuilder {
         if (selections.length !== 2) throw new Error("COPY grammar did not produce two resource selections");
         return {
             op: "COPY",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_COPY().getText(), "COPY"),
             annotation: AstBuilder.#annotationOf(ctx),
             source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
             destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
@@ -270,7 +261,6 @@ export default class AstBuilder {
         if (selections.length !== 2) throw new Error("MOVE grammar did not produce two resource selections");
         return {
             op: "MOVE",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_MOVE().getText(), "MOVE"),
             annotation: AstBuilder.#annotationOf(ctx),
             source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
             destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
@@ -278,23 +268,16 @@ export default class AstBuilder {
         };
     }
 
-    // {§send-label} — a disposition label makes the SEND terminal and names no recipient.
-    static readonly #SEND_LABELS: Readonly<Record<string, 102 | 200 | 202 | 499>> = Object.freeze({ NEXT: 102, WAIT: 202, TERM: 200, FAIL: 499 });
-
-    static #buildSend(ctx: SendStatementContext): SendStatement {
+    static #buildDisposition(ctx: DispositionStatementContext): DispositionStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const label = ctx.SEND_LABEL().getText().slice(1, -1);
-        const status = AstBuilder.#SEND_LABELS[label];
-        if (status === undefined) throw new Error(`the lexer admitted an unknown SEND label: ${label}`);
+        const op = (ctx.start?.text ?? "").replace(/^`+/, "");
+        if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
-            op: "SEND",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_SEND().getText(), "SEND"),
+            op,
             annotation: AstBuilder.#annotationOf(ctx),
-            status,
             target: null,
             metadata: null,
-            // A WAIT keeps its scope ({§send-wait-scope}); the dispatcher owns what it accepts.
             lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
@@ -302,15 +285,13 @@ export default class AstBuilder {
     }
 
     // A mid-turn SEND is a message to its recipient path, or to the user when it names none.
-    static #buildMidSend(ctx: MidSendContext): SendStatement {
+    static #buildSend(ctx: SendStatementContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_SEND().getText(), "SEND"),
             annotation: AstBuilder.#annotationOf(ctx),
-            status: null,
             target: slots.target,
             metadata: slots.metadata,
             lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
@@ -324,24 +305,17 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
         return {
             op: "EXEC",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EXEC().getText(), "EXEC"),
             annotation: AstBuilder.#annotationOf(ctx),
-            executor: AstBuilder.#executorOf(ctx, position),
+            executor: AstBuilder.#executorOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
     }
 
-    // {§exec-executor-slot} — the executor may lead the heading or trail the path (once, unambiguous:
-    // no other slot after a path uses `[...]`); two executors are the one rejected shape.
-    static #executorOf(ctx: ExecStatementContext, pos: Position): string | null {
-        const found = ctx.EXECUTOR();
-        const list = Array.isArray(found) ? found : found === null || found === undefined ? [] : [found];
-        if (list.length > 1) {
-            throw new PlurnkParseError(pos.line, pos.column, "visitor", "`### EXEC_` accepts one `[executor]`");
-        }
-        return list[0]?.getText().slice(1, -1) ?? null;
+    static #executorOf(ctx: ExecStatementContext): string | null {
+        const name = ctx.OPEN_EXEC().getText().replace(/^`+/, "");
+        return name === "EXEC" ? null : name;
     }
 
     static #buildBare(ctx: BareStatementContext): BareStatement {
@@ -349,7 +323,6 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "BARE",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_BARE().getText(), "BARE"),
             annotation: AstBuilder.#annotationOf(ctx),
             target: slots.target,
             metadata: slots.metadata,
@@ -377,7 +350,6 @@ export default class AstBuilder {
         }
         return {
             op: "PLAN",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_PLAN().getText(), "PLAN"),
             annotation: AstBuilder.#annotationOf(ctx),
             target: null,
             metadata: null,
@@ -400,7 +372,6 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "KILL",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_KILL().getText(), "KILL"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -413,7 +384,6 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "WORK",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_WORK().getText(), "WORK"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
@@ -427,7 +397,6 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "FORK",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FORK().getText(), "FORK"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
@@ -443,11 +412,17 @@ export default class AstBuilder {
         };
     }
 
+    static #singleMarker(ctx: ParserRuleContext | null, pos: Position): LineMarkerContext | null {
+        const found = AstBuilder.#findAll(ctx, LineMarkerContext);
+        if (found.length > 1) throw new PlurnkParseError(pos.line, pos.column, "visitor", "A resource selection takes at most one scope.");
+        return found[0] ?? null;
+    }
+
     static #extractSlots(modCtx: SlotModifiersContext | null, pos: Position): Slots {
         return {
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
-            lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+            lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#singleMarker(modCtx, pos)),
         };
     }
 
@@ -455,7 +430,7 @@ export default class AstBuilder {
         return {
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
-            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#singleMarker(modCtx, pos)),
         };
     }
 
@@ -478,7 +453,7 @@ export default class AstBuilder {
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `\`### EXEC_\` accepts ${slot} at most once`);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `EXEC accepts ${slot} at most once`);
             }
             return found[0] ?? null;
         };
@@ -513,6 +488,15 @@ export default class AstBuilder {
 
     static #targetFromCtx(ctx: TargetContext | null, pos: Position): ParsedPath | null {
         if (ctx === null) return null;
+        const nestedScope = ctx.lineMarker();
+        if (nestedScope !== null) {
+            const point = AstBuilder.#positionOf(nestedScope);
+            AstBuilder.#advisories.push(new PlurnkParseError(
+                point.line, point.column, "parser",
+                "The scope was inside the target slot; it was applied as the operation scope.",
+                "warning",
+            ));
+        }
         const text = ctx.TARGET_TEXT().map((token) => token.getText()).join("");
         return AstBuilder.parsePath(text, pos);
     }
@@ -530,7 +514,7 @@ export default class AstBuilder {
         return {
             target,
             metadata: AstBuilder.#metadataFromCtx(ctx),
-            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(ctx, LineMarkerContext)),
+            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#singleMarker(ctx, pos)),
         };
     }
 
@@ -569,11 +553,6 @@ export default class AstBuilder {
 
     static #requiredBodyTextOf(ctx: ParserRuleContext): string {
         return AstBuilder.#bodyTextOf(ctx) ?? "";
-    }
-
-    static #splitDelimiter(headingText: string, op: PlurnkOp | ClientOp): string {
-        const marker = op === "PLAN" ? "## " : "### ";
-        return headingText.slice(marker.length + op.length);
     }
 
     static #isDigit(c: string | undefined): boolean {

@@ -6,7 +6,13 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const response = (operation: string, status = "NEXT") => ({
-    assistant: { content: `## PLAN_\n[]\n${operation}\n### SEND_ (${status})\nContinue.`, reasoning: null },
+    assistant: { content: `\`\`\`PLAN
+[]
+\`\`\`
+${operation}
+\`\`\`${status}
+Continue.
+\`\`\``, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -18,20 +24,20 @@ test("{§channel-selection-missing} channel exploration across operation owners 
         const loopId = await insertLoop(db, workerId, 1, "Retrieve the retained text.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const misses = [
-            "### READ_ (worker:///note#stdout)",
-            "### FIND_ (worker:///note#stderr)",
-            "### COPY_ (worker:///note#results) (worker:///copy)",
-            "### COPY_ (worker:///note) (worker:///copy#results)",
-            "### MOVE_ (worker:///note#stdout) (worker:///moved)",
-            "### MOVE_ (worker:///note) (worker:///moved#stdout)",
-            "### EDIT_ (worker:///note#extra) <1>\nreplacement",
-            "### EDIT_ (worker:///note#constructor) <1>\nreplacement",
+            "```READ (worker:///note#stdout)```",
+            "```FIND (worker:///note#stderr)```",
+            "```COPY (worker:///note#results) (worker:///copy)```",
+            "```COPY (worker:///note) (worker:///copy#results)```",
+            "```MOVE (worker:///note#stdout) (worker:///moved)```",
+            "```MOVE (worker:///note) (worker:///moved#stdout)```",
+            "```EDIT (worker:///note#extra) <1>\nreplacement\n```",
+            "```EDIT (worker:///note#constructor) <1>\nreplacement\n```",
         ];
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response("### EDIT_ (worker:///note)\nretained text"),
+            response("```EDIT (worker:///note)\nretained text\n```"),
             ...misses.map((operation) => response(operation)),
-            response("### READ_ (worker:///note)"),
-            response("", "TERM"),
+            response("```READ (worker:///note)```"),
+            response("", "DONE"),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 15 });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));

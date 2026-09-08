@@ -42,7 +42,7 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.md");
-    assert.match(family!.content, /### EXEC_ \[gitea\] \(issue\/read\) <!-- List issues\. Schema: worker:\/\/~\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}/);
+    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. Schema: worker:\/\/~\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}\n```/);
     assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
     assert.ok(detail!.content.includes(description), "complete multiline description is preserved");
     assert.deepEqual(JSON.parse(detail!.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!), schema);
@@ -76,14 +76,14 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
         runtime: "brave", summary, details: "", invocation: tool.invocation,
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0]!.content.split("## Summary\n\n")[1]!.split("\n\n")[0];
-    const heading = "EXEC [brave] (search) <!-- Search documents -->";
-    assert.equal(family(heading), `${heading}\\n{"query": string}`);
+    const heading = "```brave (search) <!-- Search documents -->";
+    assert.equal(family(`${heading}\`\`\``), `${heading}\\n{"query": string}\\n\`\`\``);
     for (const authored of [
         "Search documents and news.",
-        "EXEC [brave] (search|news)",
-        "EXEC [brave] (disabled)",
-        "EXEC [other] (search)",
-        `${heading}\\n{"query":"example"}`,
+        "```brave (search|news)```",
+        "```brave (disabled)```",
+        "```other (search)```",
+        `${heading}\\n{"query":"example"}\\n\`\`\``,
     ]) assert.equal(family(authored), authored);
 });
 

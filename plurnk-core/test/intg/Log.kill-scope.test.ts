@@ -30,12 +30,12 @@ const setup = async (attrs = "{}", span = "body") => {
         origin: "_plurnk",
         source: null,
         model_call_id: null,
-        op: "EDIT", delimiter: "",
+        op: "EDIT",
         scheme: "worker", username: null, password: null,
         hostname: null, port: null,
         pathname: "/x", query: null, fragment: null,
         lineMarker: null,
-        tx: "### EDIT_ (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
+        tx: "```EDIT (worker:///x)\nbody\n```", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201, ...(span.length === 0 ? {} : { span }) }), mimetype_rx: "application/json",
         status_rx: 201, weight: 0,
         state: "resolved", outcome: null, attrs,
@@ -56,7 +56,7 @@ const getFolded = async (db: Awaited<ReturnType<typeof openMigrated>>, workerId:
 const seedRead = async ({ db, workerId, loopId, turnId }: Awaited<ReturnType<typeof setup>>, sequence: number, content: string): Promise<number> => {
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-        origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "",
+        origin: "model", source: null, model_call_id: null, op: "READ",
         scheme: "worker", username: null, password: null, hostname: null, port: null,
         pathname: `/doc-${sequence}`, query: null, fragment: null, lineMarker: null,
         tx: "", mimetype_tx: "text/plain",
@@ -228,10 +228,10 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId,
             sequence: 2, origin: "_plurnk", source: "file", model_call_id: null,
-            op: "EDIT", delimiter: "",
+            op: "EDIT",
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
-            tx: "### EDIT_ (file:///config.toml)", mimetype_tx: "text/vnd.plurnk",
+            tx: "```EDIT (file:///config.toml)```", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
             status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
@@ -305,7 +305,7 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
             await db.engine_insert_log_entry.get({
                 worker_id: workerId, loop_id: loopId, turn_id: candidateTurnId,
                 sequence: index === 0 ? 2 : 1,
-                origin: "model", source: null, model_call_id: null, op: "PLAN", delimiter: "",
+                origin: "model", source: null, model_call_id: null, op: "PLAN",
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ body: [] }), mimetype_tx: "application/json",
@@ -364,7 +364,7 @@ test("KILL retires an op='error' item while preserving the durable failure recor
         // Seed an actionless op='error' row at 1/1/2 (the errors-into-log shape).
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "model", source: "grammar", model_call_id: null, op: "error", delimiter: "",
+            origin: "model", source: "grammar", model_call_id: null, op: "error",
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -433,7 +433,7 @@ test("a scoped KILL curates engine-minted error rows through the same operation 
         // Curation must work identically on every log row.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "_plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "",
+            origin: "_plurnk", source: "rail", model_call_id: null, op: "error",
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",

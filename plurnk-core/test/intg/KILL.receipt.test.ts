@@ -16,10 +16,14 @@ for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
         const target = `${scheme}:///notes.md`;
         try {
             const mock = new Mock({ contextWindow: 32768, responses: [
-                makeMockResponse(`### EDIT_ (${target})\n${source}\n### SEND_ (NEXT)`, 10),
-                makeMockResponse(`### READ_ (${target}) <1,-1>\n### SEND_ (NEXT)`, 10),
-                makeMockResponse("### SEND_ (NEXT)\ncontinue", 10),
-                makeMockResponse("### SEND_ (TERM)\ndone", 10),
+                makeMockResponse(`\`\`\`EDIT (${target})
+${source}
+\`\`\`
+\`\`\`NEXT\`\`\``, 10),
+                makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
+\`\`\`NEXT\`\`\``, 10),
+                makeMockResponse("```NEXT\ncontinue\n```", 10),
+                makeMockResponse("```DONE\ndone\n```", 10),
             ] });
             await withDaemon(mock, async (db, daemon, addr) => {
                 const generate = mock.generate.bind(mock);
@@ -31,7 +35,8 @@ for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
                         const end = packet.match(/^(@[A-Za-z0-9]{5}) +11:line 11$/m)?.[1];
                         assert.ok(start && end, "the preceding READ published the coordinates used by KILL");
                         const scope = anchored ? `${start},${end}` : "10,11";
-                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`### KILL_ (${target}) <${scope}>\n### SEND_ (NEXT)`, 10)] }).generate(args);
+                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`KILL (${target}) <${scope}>\`\`\`
+\`\`\`NEXT\`\`\``, 10)] }).generate(args);
                     }
                     return generate(args);
                 };
@@ -62,7 +67,7 @@ for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
                     assert.ok(Number(receipt.tokensBody) > 0, "packet accounting includes the visible receipt body");
                     const recalled = await daemon.engine.look({
                         workspaceId, workerId: run.modelWorkerId!, loopId: run.loopId,
-                        statement: { op: "READ", delimiter: "_", annotation: null, metadata: null, target: parsePath(String(receipt.path)), lineMarker: { marks: [1, -1] }, body: null, position: { line: 1, column: 0 } },
+                        statement: { op: "READ", annotation: null, metadata: null, target: parsePath(String(receipt.path)), lineMarker: { marks: [1, -1] }, body: null, position: { line: 1, column: 0 } },
                     });
                     assert.equal(recalled.status, 200);
                     assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
@@ -74,9 +79,9 @@ for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
 
 test("whole-entry KILL has a bodyless result, not an invented text mutation receipt", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("### EDIT_ (worker:///doomed)\ncontent\n### SEND_ (NEXT)", 10),
-        makeMockResponse("### KILL_ (worker:///doomed)\n### SEND_ (NEXT)", 10),
-        makeMockResponse("### SEND_ (TERM)\ndone", 10),
+        makeMockResponse("```EDIT (worker:///doomed)\ncontent\n```\n```NEXT```", 10),
+        makeMockResponse("```KILL (worker:///doomed)```\n```NEXT```", 10),
+        makeMockResponse("```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

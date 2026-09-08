@@ -1,63 +1,19 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import {
     PlurnkParseError,
     PlurnkParser,
-    PlanValue,
-    type ResourceSelection,
     type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
-const SEND_LABELS: Readonly<Record<102 | 200 | 202 | 499, string>> = Object.freeze({ 102: "NEXT", 202: "WAIT", 200: "TERM", 499: "FAIL" });
-
-const renderBody = (statement: InternalTurnStatement): string | null => {
-    if (statement.op === "PLAN") return PlanValue.stringify(statement.body);
-    if (statement.op === "COPY" || statement.op === "MOVE") return null;
-    if (statement.body === null) return null;
-    if (typeof statement.body === "string") return statement.body;
-    if ("raw" in statement.body) return statement.body.raw;
-    return null;
-};
-
-const renderSelection = (selection: ResourceSelection): string[] => {
-    const modifiers = [`(${selection.target.raw})`];
-    for (const metadata of selection.metadata ?? []) modifiers.push(`{${metadata}}`);
-    if (selection.lineMarker !== null) modifiers.push(`<${selection.lineMarker.marks.join(",")}>`);
-    return modifiers;
-};
-
-// Core-authored turns are programs, not synthetic result rows. This formatter
-// owns the deliberately small statement alphabet used by initialization and
-// overflow recovery; its output is reparsed before admission so the parser,
-// rather than constructed AST objects, remains the executable authority.
+// {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
-        if (statements[0]?.op !== "PLAN" || statements.filter((statement) => statement.op === "SEND" && statement.status !== null).length !== 1) {
-            throw new TypeError("An internal turnOps program must begin with PLAN and contain one disposition SEND.");
+        if (statements[0]?.op !== "PLAN" || statements.filter((statement) => TurnDisposition.is(statement)).length !== 1) {
+            throw new TypeError("An internal turnOps program must begin with PLAN and contain one disposition.");
         }
-        const delimiter = statements[0].delimiter || "_";
-        return statements.map((statement, index) => {
-            const heading = statement.op === "PLAN"
-                ? `## PLAN${delimiter}`
-                : `### ${statement.op}${delimiter}`;
-            const modifiers: string[] = [];
-            // {§send-label} — a disposition renders as its label in the path slot.
-            if (statement.op === "SEND" && statement.status !== null) modifiers.push(`(${SEND_LABELS[statement.status]})`);
-            if (statement.op === "COPY" || statement.op === "MOVE") {
-                modifiers.push(...renderSelection(statement.source), ...renderSelection(statement.destination));
-            } else {
-                if (statement.target !== null) modifiers.push(`(${statement.target.raw})`);
-                for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
-                if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
-            }
-            if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
-            const header = modifiers.length === 0 ? heading : `${heading} ${modifiers.join(" ")}`;
-            const body = renderBody(statement);
-            const boundaryPadding = body?.endsWith("\n") === true && index < statements.length - 1
-                ? "\n"
-                : "";
-            return body === null ? header : `${header}\n${body}${boundaryPadding}`;
-        }).join("\n");
+        return PlurnkParser.stringify(statements);
     }
 
     static parseInternal(source: string): PlurnkStatement[] {
@@ -70,9 +26,6 @@ export default class TurnOps {
                 continue;
             }
             if (item.kind === "text" && item.text.trim().length === 0) continue;
-            // Warnings are advisories for a model reader ({§foreign-lane-advisory}: a materialized
-            // document quoting lane `_` examples inside a `_plurnk` lane body earns one). An internal
-            // program has no reader to advise and nothing was mis-parsed; only hard errors reject it.
             if (item.kind === "error" && item.error.severity === "warning") continue;
             const error = item.kind === "error" ? item.error : null;
             failures.push(error instanceof PlurnkParseError ? error.message : "unparsed text");
@@ -81,8 +34,8 @@ export default class TurnOps {
         if (failures.length > 0) {
             throw new SyntaxError(`Core generated invalid turnOps: ${failures.join("; ")}`);
         }
-        if (statements[0]?.op !== "PLAN" || statements.filter((statement) => statement.op === "SEND" && statement.status !== null).length !== 1) {
-            throw new SyntaxError("Core generated turnOps without a leading PLAN and one disposition SEND.");
+        if (statements[0]?.op !== "PLAN" || statements.filter((statement) => TurnDisposition.is(statement)).length !== 1) {
+            throw new SyntaxError("Core generated turnOps without a leading PLAN and one disposition.");
         }
         return statements;
     }

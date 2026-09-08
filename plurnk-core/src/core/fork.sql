@@ -91,7 +91,7 @@ RETURNING id;
 -- worker_id is the branch's; loop_id/turn_id are remapped by the caller. The source `id` rides along so
 -- the caller can remap old log ids to their copies (old id → new id); origin/source (attribution)
 -- and initial/current projection ride along too. {§machine-processes-fork-copies-the-log}
-SELECT id, loop_id, turn_id, sequence, at, origin, source, op, delimiter, signal,
+SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
        ambient_event_id,
        scheme, username, password, hostname, port, pathname, query, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
@@ -107,8 +107,8 @@ ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can remap old log ids to their copies.
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, 1, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $initial_folded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history, op, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, 1, $op, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $initial_folded)
 RETURNING id;
 
 -- PREP: fork_set_log_entry_projection

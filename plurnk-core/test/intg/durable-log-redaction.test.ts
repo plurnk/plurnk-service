@@ -29,7 +29,7 @@ import {
     insertWorkspace,
     openMigrated,
 } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 
 const REDACTED = "__redacted__";
 const STRUCTURAL_SECRETS = [
@@ -121,15 +121,15 @@ test("ordinary operation evidence redacts credential slots once before every dur
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
         const read = parseClientStatement(
-            "### READ_ (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) {Authorization: Bearer primary-header-secret} {X-Api-Key: secondary-header-secret}",
+            "```READ (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) {Authorization: Bearer primary-header-secret} {X-Api-Key: secondary-header-secret}```",
             "READ",
         );
         const copy = parseClientStatement(
-            "### COPY_ (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)",
+            "```COPY (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)```",
             "COPY",
         );
         const move = parseClientStatement(
-            "### MOVE_ (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)",
+            "```MOVE (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)```",
             "MOVE",
         );
 
@@ -165,7 +165,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
         });
         const nextTurn = await engine.runTurn({
             provider,

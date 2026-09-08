@@ -10,8 +10,8 @@ import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 
 test("{§worker-scheduled-send}: directed timing queues a separate task without early inference or blocking a ready arrival", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### SEND_ (worker://~) <60>\nCheck for updated revenue figures.\n### SEND_ (TERM)\nCheck scheduled."),
-        makeMockResponse("### SEND_ (TERM)\nAnswered the independent question."),
+        makeMockResponse("```SEND (worker://~) <60>\nCheck for updated revenue figures.\n```\n```DONE\nCheck scheduled.\n```"),
+        makeMockResponse("```DONE\nAnswered the independent question.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-arrival" });
@@ -46,8 +46,13 @@ test("{§worker-scheduled-send}: directed timing queues a separate task without 
 for (const scope of ["<-1>", "<0,0>", "<0,-1>", "<0.5>", "<0,1,2>"]) {
     test(`{§worker-scheduled-send}: invalid timing ${scope} refuses only that SEND and admits no task`, async () => {
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse(`### SEND_ (worker://~) ${scope}\nUnadmitted scheduled instruction.\n### SEND_ (NEXT)\nInspect the timing refusal.`),
-            makeMockResponse("### SEND_ (TERM)\nThe requested timing was invalid."),
+            makeMockResponse(`\`\`\`SEND (worker://~) ${scope}
+Unadmitted scheduled instruction.
+\`\`\`
+\`\`\`NEXT
+Inspect the timing refusal.
+\`\`\``),
+            makeMockResponse("```DONE\nThe requested timing was invalid.\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "invalid-schedule" });
@@ -81,8 +86,8 @@ function nextTermination(daemon: Daemon, workerId: number): Promise<{ loopId: nu
 for (const recurring of [false, true]) {
     test(`{§worker-scheduled-send}: ${recurring ? "recurrence" : "one-shot"} survives restart and runs once when due`, async (t) => {
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("### SEND_ (TERM)\nChecked the latest revenue figures."),
-            makeMockResponse("### SEND_ (FAIL)\nThe next check failed; stop the assignment."),
+            makeMockResponse("```DONE\nChecked the latest revenue figures.\n```"),
+            makeMockResponse("```FAIL\nThe next check failed; stop the assignment.\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-restart" });
@@ -159,8 +164,8 @@ for (const recurring of [false, true]) {
 
 test("{§worker-scheduled-send}: a backwards clock cannot re-delay a resumed occurrence", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### SEND_ (WAIT) <60,0>\nAwait information."),
-        makeMockResponse("### SEND_ (TERM)\nThe information arrived."),
+        makeMockResponse("```WAIT <60,0>\nAwait information.\n```"),
+        makeMockResponse("```DONE\nThe information arrived.\n```"),
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "resumed-schedule-clock" });
@@ -241,9 +246,9 @@ test("{§worker-scheduled-send}: concurrent scheduled arrivals and a successful 
 
 test("{§worker-scheduled-send}: parked occurrences do not overlap, and corrections are not replayed into a coalesced successor", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### SEND_ (WAIT) <60,0>\nWaiting for more information."),
-        makeMockResponse("### SEND_ (TERM)\nFirst occurrence completed using the correction."),
-        makeMockResponse("### SEND_ (FAIL)\nThe later occurrence cannot complete."),
+        makeMockResponse("```WAIT <60,0>\nWaiting for more information.\n```"),
+        makeMockResponse("```DONE\nFirst occurrence completed using the correction.\n```"),
+        makeMockResponse("```FAIL\nThe later occurrence cannot complete.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "nonoverlapping-recurrence" });
@@ -289,7 +294,7 @@ test("{§worker-scheduled-send}: parked occurrences do not overlap, and correcti
 
 for (const ordering of ["cancel-before-success", "success-before-cancel"] as const) {
     test(`{§worker-scheduled-send}: ${ordering} leaves no live successor`, async (t) => {
-        const provider = new Mock({ contextWindow: 100000, responses: [makeMockResponse("### SEND_ (TERM)\nOccurrence complete.")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\nOccurrence complete.\n```")] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: ordering });
             const workerId = await daemon.ensureModelWorker(workspaceId);
@@ -411,9 +416,9 @@ test("{§worker-scheduled-send}: AG-UI reattachment exposes durable timing witho
 
 test("{§worker-scheduled-send}: a scheduled child's future work is visible, prevents TERM, and belongs to parent cancellation", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### SEND_ (worker://reviewer) <60,60>\nCheck for updated revenue figures.\n### SEND_ (NEXT)\nInspect scheduling."),
-        makeMockResponse("### SEND_ (TERM)\nThe ongoing assignment is complete."),
-        makeMockResponse("### SEND_ (WAIT)\nWait for the scheduled child."),
+        makeMockResponse("```SEND (worker://reviewer) <60,60>\nCheck for updated revenue figures.\n```\n```NEXT\nInspect scheduling.\n```"),
+        makeMockResponse("```DONE\nThe ongoing assignment is complete.\n```"),
+        makeMockResponse("```WAIT\nWait for the scheduled child.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-child-obligation" });
@@ -425,7 +430,7 @@ test("{§worker-scheduled-send}: a scheduled child's future work is visible, pre
             await waitForDb(() => db.test_get_loop_status.get({ id: initial.loopId }), (row) => row?.status === 202);
             assert.equal(provider.received.length, 3, "only the parent ran; the scheduled child is not due");
             const receipts = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: initial.loopId });
-            assert.ok(receipts.some(({ op, rx }) => op === "SEND" && JSON.parse(rx).status === 409), "TERM is refused while the scheduled child remains live");
+            assert.ok(receipts.some(({ op, rx }) => op === "DONE" && JSON.parse(rx).status === 409), "TERM is refused while the scheduled child remains live");
             const childLoops = await daemon.listWorkerLoops({ workspaceId, workerId: childId });
             const child = childLoops.find(({ prompt }) => prompt === "Check for updated revenue figures.");
             assert.equal(child?.status, 100);

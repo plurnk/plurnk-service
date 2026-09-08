@@ -4,6 +4,7 @@
 // its own `close` listener, mirroring the real WebSocket.
 
 import test from "node:test";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { strict as assert } from "node:assert";
 import Ws from "./Ws.ts";
 import {
@@ -201,12 +202,12 @@ const wss = (raw: string, pathname: string): UrlPath => {
         pathname, query: url.search === "" ? null : url.search.slice(1), fragment: null,
     };
 };
-const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", delimiter: "READ", annotation: null, target, metadata: null, lineMarker: null, body: null, position: { line: 0, column: 0 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", annotation: null, target, metadata: null, lineMarker: null, body: null, position: { line: 0, column: 0 } });
 const editStmt = (
     target: UrlPath,
     body: string | null,
     lineMarker: ResolvedEditStatement["lineMarker"] = null,
-): ResolvedEditStatement => ({ op: "EDIT", delimiter: "EDIT", annotation: null, target, metadata: null, lineMarker, body, position: { line: 0, column: 0 } });
+): ResolvedEditStatement => ({ op: "EDIT", annotation: null, target, metadata: null, lineMarker, body, position: { line: 0, column: 0 } });
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
     if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
@@ -218,8 +219,8 @@ const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx)
         pathname: address.pathname,
     }, ctx);
 };
-const sendStmt = (status: SendStatement["status"], target: UrlPath, body?: string): SendStatement => ({ op: "SEND", delimiter: "SEND", annotation: null, status, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
-const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", delimiter: "KILL", annotation: null, target, metadata: null, lineMarker: null, body: null, position: { line: 0, column: 0 } });
+const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "SEND", annotation: null, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
+const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", annotation: null, target, metadata: null, lineMarker: null, body: null, position: { line: 0, column: 0 } });
 
 const flush = () => new Promise((r) => setImmediate(r));
 
@@ -239,7 +240,7 @@ test("manifest: documentation is loaded verbatim from docs/wss.md", async () => 
     assert.equal(Ws.manifest.documentation, fromFile);
     assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
     assert.match(Ws.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}_ (`), `${op} remains illustrated in the discoverable reference`);
+    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`\`\`\`${op} (`), `${op} remains illustrated in the discoverable reference`);
 });
 
 test("READ: inbound frames stream into messages; socket close settles done", async () => {
@@ -280,7 +281,7 @@ test("READ: returns 102 after native open while the socket remains owned", async
     sock.emit("open");
     await flush();
     const returnedWhileOpen = returned;
-    assert.equal((await ws.send(sendStmt(null, target, "same actor can continue"), ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(target, "same actor can continue"), ctx)).status, 200);
     sock.close(1000);
     assert.equal((await read).status, 102);
     await awaitClosed();
@@ -390,7 +391,7 @@ for (const [form, data] of [
         assert.deepEqual(sock.closed, { code: 4003, reason: "binary unsupported" });
         assert.equal(inspect().closeCount, 1);
         await flush();
-        assert.equal((await ws.send(sendStmt(null, target, "late"), ctx)).status, 409);
+        assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409);
     });
 }
 
@@ -447,7 +448,7 @@ test("READ preserves an exact seed-write failure without connecting", async () =
     assert.equal(inspect().opened, null);
 });
 
-test("SEND[200]: connecting is 409, open is sendable, and closing cannot silently discard", async () => {
+test("DONE: connecting is 409, open is sendable, and closing cannot silently discard", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, inspect, awaitClosed } = makeCtx();
@@ -455,7 +456,7 @@ test("SEND[200]: connecting is 409, open is sendable, and closing cannot silentl
     const read = prepareRepresentation(ws, readStmt(target), ctx); // owner exists while READ remains pending
     await flush();
 
-    const early = await ws.send(sendStmt(null, target, "early"), ctx);
+    const early = await ws.send(sendStmt(target, "early"), ctx);
     assert.equal(early.status, 409);
     assert.equal(early.problem?.type, "https://problems.plurnk.xyz/scheme/wss/socket-not-open");
     assert.equal(early.problem?.connectionState, "connecting");
@@ -474,11 +475,11 @@ test("SEND[200]: connecting is 409, open is sendable, and closing cannot silentl
         state: "active",
         contentLength: 0,
     }]);
-    assert.equal((await ws.send(sendStmt(null, target, "ping"), ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(target, "ping"), ctx)).status, 200);
     assert.deepEqual(sock.sent, ["ping"]);
 
     sock.startClosing();
-    const late = await ws.send(sendStmt(null, target, "late"), ctx);
+    const late = await ws.send(sendStmt(target, "late"), ctx);
     assert.equal(late.status, 409);
     assert.equal(late.problem?.connectionState, "settling");
     assert.deepEqual(sock.sent, ["ping"], "SEND cannot report success for a native no-op after closing starts");
@@ -488,7 +489,7 @@ test("SEND[200]: connecting is 409, open is sendable, and closing cannot silentl
     await awaitClosed();
 });
 
-test("SEND[200]: a claimed owner is distinct from an absent connection", async () => {
+test("DONE: a claimed owner is distinct from an absent connection", async () => {
     const writeGate = Promise.withResolvers<void>();
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
@@ -502,7 +503,7 @@ test("SEND[200]: a claimed owner is distinct from an absent connection", async (
     const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
 
-    const result = await ws.send(sendStmt(null, target, "early"), ctx);
+    const result = await ws.send(sendStmt(target, "early"), ctx);
     assert.equal(result.status, 409);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/socket-not-open");
     assert.equal(result.problem?.connectionState, "claimed");
@@ -583,7 +584,7 @@ test("READ: a close before open is one connection failure and releases ownership
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     assert.equal(inspect().closeCount, 1);
-    assert.equal((await ws.send(sendStmt(null, target, "late"), ctx)).status, 409);
+    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409);
 });
 
 test("READ: terminal cleanup exposes the existing canonical representation until it settles", async () => {
@@ -635,7 +636,7 @@ test("READ: duplicate canonical workspace address reuses its representation and 
         assert.equal(connects, 1, "the duplicate does not create a second transport");
         assert.equal(secondCtx.inspect().wrote, null, "the duplicate has no storage side effects");
         assert.equal(secondCtx.inspect().opened, null, "the duplicate opens no subscription");
-        assert.equal((await ws.send(sendStmt(null, target, "still-owned"), firstCtx.ctx)).status, 200);
+        assert.equal((await ws.send(sendStmt(target, "still-owned"), firstCtx.ctx)).status, 200);
         assert.deepEqual(sockets[0].sent, ["still-owned"]);
     } finally {
         sockets[0].close(1000);
@@ -660,8 +661,8 @@ test("socket ownership isolates the same canonical address by owning worker with
     sockets[1].emit("open");
     await flush();
 
-    assert.equal((await ws.send(sendStmt(null, target, "first"), firstCtx.ctx)).status, 200);
-    assert.equal((await ws.send(sendStmt(null, target, "second"), secondCtx.ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(target, "first"), firstCtx.ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(target, "second"), secondCtx.ctx)).status, 200);
     assert.deepEqual(sockets[0].sent, ["first"]);
     assert.deepEqual(sockets[1].sent, ["second"]);
 
@@ -683,10 +684,10 @@ test("socket lookup isolates addressed protocol, port, and ordered query", async
     assert.equal(inspect().wrote, "/feed?room=1&role=a&role=b");
 
     const reordered = wss("wss://93.184.216.34:8443/feed?role=a&role=b&room=1", "/feed");
-    assert.equal((await ws.send(sendStmt(null, reordered, "wrong"), ctx)).status, 409);
+    assert.equal((await ws.send(sendStmt(reordered, "wrong"), ctx)).status, 409);
     const plain = wss("ws://93.184.216.34:8443/feed?room=1&role=a&role=b", "/feed");
-    assert.equal((await ws.send(sendStmt(null, plain, "wrong"), ctx)).status, 409);
-    assert.equal((await ws.send(sendStmt(null, opened, "right"), ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(plain, "wrong"), ctx)).status, 409);
+    assert.equal((await ws.send(sendStmt(opened, "right"), ctx)).status, 200);
     assert.deepEqual(sock.sent, ["right"]);
     sock.close(1000);
     await read;
@@ -711,11 +712,11 @@ test("WebSocket userinfo is rejected before connection", async () => {
     assert.equal(connected, false);
 });
 
-test("EDIT and SEND[200]: no claimed socket → 409", async () => {
+test("EDIT and DONE: no claimed socket → 409", async () => {
     const { ctx } = makeCtx();
     const ws = new Ws(() => fakeSocket());
     const target = wss(PUB, "/feed");
-    const send = await ws.send(sendStmt(null, target, "x"), ctx);
+    const send = await ws.send(sendStmt(target, "x"), ctx);
     const edit = await ws.editBatch([editStmt(target, "x")], ctx);
     for (const result of [edit, send]) {
         assert.equal(result.status, 409);
@@ -724,7 +725,7 @@ test("EDIT and SEND[200]: no claimed socket → 409", async () => {
     }
 });
 
-test("EDIT and SEND[200]: both send one whole text frame through the open owner", async () => {
+test("EDIT and DONE: both send one whole text frame through the open owner", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, awaitClosed } = makeCtx();
@@ -735,7 +736,7 @@ test("EDIT and SEND[200]: both send one whole text frame through the open owner"
     await flush();
 
     assert.equal((await ws.editBatch([editStmt(target, "edit frame")], ctx)).status, 200);
-    assert.equal((await ws.send(sendStmt(null, target, "send frame"), ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(target, "send frame"), ctx)).status, 200);
     assert.deepEqual(sock.sent, ["edit frame", "send frame"]);
 
     sock.close(1000);
@@ -761,7 +762,7 @@ test("EDIT: ranges and multi-edit pseudo-atomicity are rejected", async () => {
     assert.equal(multiple.problem?.type, "https://problems.plurnk.xyz/scheme/wss/non-atomic-edit-batch");
 });
 
-test("SEND[200]: a socket send throw becomes a structured transport failure", async () => {
+test("DONE: a socket send throw becomes a structured transport failure", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => ({
         ...sock,
@@ -773,7 +774,7 @@ test("SEND[200]: a socket send throw becomes a structured transport failure", as
     await flush();
     sock.emit("open");
     await flush();
-    const result = await ws.send(sendStmt(null, wss(PUB, "/feed"), "ping"), ctx);
+    const result = await ws.send(sendStmt(wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-failed");
     assert.equal(result.problem?.detail, "The WebSocket message could not be sent.");
@@ -782,13 +783,10 @@ test("SEND[200]: a socket send throw becomes a structured transport failure", as
     await read;
     await awaitClosed();
 });
-test("a label SEND never reaches the scheme: a non-null status → 501", async () => {
-    const { ctx } = makeCtx();
-    const r = await new Ws(() => fakeSocket()).send(sendStmt(200, wss(PUB, "/feed"), "x"), ctx);
-    assert.equal(r.status, 501);
-    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-status-unsupported");
-    assert.equal(r.problem?.requestedStatus, 200);
-    assert.equal(r.problem?.stage, "dispatch");
+test("WebSocket SEND cannot carry an independently supplied lifecycle status", () => {
+    const message = sendStmt(wss(PUB, "/feed"), "x");
+    assert.equal(Validator.validatePlurnkStatement(message).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...message, status: 200 }).valid, false);
 });
 
 test("KILL: closes the claimed socket and settles the READ", async () => {
@@ -873,7 +871,7 @@ test("READ: message persistence failure settles with a structured problem", asyn
     assert.equal(inspect().closeCount, 1);
     assert.notEqual(sock.closed, null, "a terminal persistence failure closes its transport");
     await flush();
-    assert.equal((await ws.send(sendStmt(null, target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
+    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
 });
 
 test("READ: a pending persistence failure supersedes graceful close", async () => {
@@ -917,7 +915,7 @@ test("READ: a pre-open transport error closes once before settling", async () =>
     assert.equal(inspect().closed?.result.problem, result.problem);
     assert.equal(inspect().closeCount, 1, "the error+close event pair has one settlement owner");
     assert.deepEqual(sock.closed, { code: 4011, reason: "transport failed" });
-    assert.equal((await ws.send(sendStmt(null, target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
+    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
 });
 
 test("READ: a post-acquisition transport error settles the retained stream", async () => {
@@ -935,7 +933,7 @@ test("READ: a post-acquisition transport error settles the retained stream", asy
     assert.equal(terminal.result.status, 502);
     assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     await flush();
-    assert.equal((await ws.send(sendStmt(null, target, "late"), ctx)).status, 409);
+    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409);
 });
 
 test("READ: subscription close rejection is diagnosed after the acquired READ", async (t) => {
@@ -992,7 +990,7 @@ test("handler close closes every remaining socket and waits for READ cleanup", a
     await shutdown;
     const results = await Promise.all(reads);
     assert.deepEqual(results.map(({ status }) => status), [499, 499]);
-    assert.equal((await ws.send(sendStmt(null, wss("wss://93.184.216.34/one", "/one"), "late"), firstCtx.ctx)).status, 409);
+    assert.equal((await ws.send(sendStmt(wss("wss://93.184.216.34/one", "/one"), "late"), firstCtx.ctx)).status, 409);
 });
 
 test("handler close settles every READ and aggregates transport close failures", async () => {

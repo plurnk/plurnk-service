@@ -7,7 +7,6 @@ options { tokenVocab = plurnkLexer; }
 // disposition per turn. Authored position does not prescribe execution order. {§turn-shape}
 document
     : modelTurnContent EOF
-    | FENCE_OPEN modelTurn FENCE_CLOSE? EOF
     ;
 
 // PLAN separates saved turns; a disposition need not be their last statement.
@@ -25,18 +24,18 @@ modelTurnContent
 
 // {§turn-shape} — PLAN is a SHOULD: a turn may open with any operation.
 turn
-    : planStatement? midStatement* sendStatement midStatement*
+    : planStatement? midStatement* dispositionStatement midStatement*
     ;
 
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
-// disposition SEND is recognized by its own label, never by a whole-turn
+// disposition is recognized by its own token, never by a whole-turn
 // alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
 // Statements after the disposition stay recognizable here so that model admission
 // can drop them and name what it dropped ({§disposition-ends-turn}); saved logs keep them.
 modelTurn
-    : planStatement midStatement* (sendStatement midStatement*)?
-    | midStatement+ (sendStatement midStatement*)?
-    | sendStatement midStatement*
+    : planStatement midStatement* (dispositionStatement midStatement*)?
+    | midStatement+ (dispositionStatement midStatement*)?
+    | dispositionStatement midStatement*
     ;
 
 statementSeq
@@ -59,8 +58,8 @@ statement
     | editStatement
     | copyStatement
     | moveStatement
+    | dispositionStatement
     | sendStatement
-    | midSend
     | execStatement
     | bareStatement
     | workStatement
@@ -75,7 +74,7 @@ midStatement
     | editStatement
     | copyStatement
     | moveStatement
-    | midSend
+    | sendStatement
     | execStatement
     | bareStatement
     | workStatement
@@ -88,11 +87,13 @@ readStatement : OPEN_READ slotModifiers? opAnnotation? statementEnd ;
 editStatement : OPEN_EDIT slotModifiers? opAnnotation? statementEnd ;
 copyStatement : OPEN_COPY transferModifiers opAnnotation? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
-// {§send-label} — a disposition label makes the SEND terminal and names no recipient; a
-// mid-turn SEND messages a recipient path, or the user when it names none.
-sendStatement : OPEN_SEND SEND_LABEL lineMarker? opAnnotation? statementEnd ;
-midSend : OPEN_SEND (targetWithMetadata lineMarker?)? opAnnotation? statementEnd ;
-execStatement : OPEN_EXEC EXECUTOR? execModifiers? EXECUTOR? opAnnotation? statementEnd ;
+// {§turn-disposition} — lifecycle operations and addressed messages are distinct.
+dispositionStatement
+    : (OPEN_NEXT | OPEN_DONE | OPEN_FAIL) opAnnotation? statementEnd
+    | OPEN_WAIT lineMarker? opAnnotation? statementEnd
+    ;
+sendStatement : OPEN_SEND (targetWithMetadata lineMarker?)? opAnnotation? statementEnd ;
+execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
 bareStatement : OPEN_BARE targetWithMetadata? opAnnotation? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
 forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;
@@ -104,13 +105,12 @@ buffStatement : OPEN_BUFF slotModifiers? opAnnotation? statementEnd ;
 
 opAnnotation : ANNOTATION ;
 
-// A direct next heading, an ordinary section body, or EOF after a bodyless
-// heading all normalize through the same AST path. {§empty-section}
+// Inline and multiline blocks normalize through the same AST path. Every
+// statement retains its matching closing fence. {§empty-section}
 statementEnd
     : SECTION_END
-    | BODY_OPEN body? SECTION_END?
-    | body SECTION_END?
-    |
+    | BODY_OPEN body? SECTION_END
+    | body SECTION_END
     ;
 
 // COPY and MOVE are binary resource operations. Each operand owns the metadata
@@ -125,8 +125,7 @@ resourceSelection
 
 emptyStatementEnd
     : SECTION_END
-    | BODY_OPEN SECTION_END?
-    |
+    | BODY_OPEN SECTION_END
     ;
 
 slotModifiers
@@ -134,8 +133,8 @@ slotModifiers
     | lineMarker targetWithMetadata?
     ;
 
-// EXEC names its runtime and tool in the path ({§exec-executor-slot}) and takes a scope;
-// the visitor admits each slot at most once.
+// The fence selects the executor; its program/tool path and metadata retain
+// their own modifier slots. {§exec-executor-slot}
 execModifiers
     : execSlot+
     ;
@@ -146,7 +145,7 @@ execSlot
     | lineMarker
     ;
 
-target      : LPAREN TARGET_TEXT* RPAREN ;
+target      : LPAREN TARGET_TEXT* lineMarker? RPAREN ;
 targetWithMetadata : target metadata* ;
 metadata    : LBRACE METADATA_TEXT* RBRACE ;
 lineMarker  : L_MARKER ;

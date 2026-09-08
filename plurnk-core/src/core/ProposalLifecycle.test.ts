@@ -113,7 +113,6 @@ test("workerApply invokes a discovered scheme through the public proposal contex
     });
     const statement = {
         op: "EDIT",
-        delimiter: "",
         metadata: ["Authorization: secret"],
         target: {
             kind: "url",

@@ -18,7 +18,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { InvalidLoopPolicyError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
+import { copyStmt, editStmt, readStmt, findStmt, regex, dispositionStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
@@ -39,9 +39,9 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
                 { assistant: { content: "", reasoning: null, ops: [
                     editStmt(target, source),
                     readStmt(target, { marks: [9, 10] }),
-                    sendStmt(102),
+                    dispositionStmt("NEXT"),
                 ] } },
-                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+                { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } },
             ],
         });
 
@@ -71,9 +71,9 @@ test("assembled packet: landed EDIT receipts expose causal parser-recovery evide
                 { assistant: { content: "", reasoning: null, ops: [
                     editStmt(brokenTarget, "package sample\nfunc broken("),
                     editStmt(cleanTarget, "package sample\nfunc valid() {}"),
-                    sendStmt(102),
+                    dispositionStmt("NEXT"),
                 ] } },
-                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+                { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } },
             ],
         });
 
@@ -101,7 +101,7 @@ test("packet assembly surfaces contract-invalid persisted loop policy at the sam
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
         });
 
         await assert.rejects(
@@ -130,7 +130,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/.github/settings.yml", channel: "body", content: "setting: true", mimetype: "text/yaml" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; origin: string; tx: string; rx: string; attrs: string }>({ loop_id: loopId });
         const foists = rows
@@ -179,7 +179,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization.filter(({ path }) => !String(path).endsWith("/ops"));
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
             "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
@@ -229,8 +229,8 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                { assistant: { content: "", reasoning: null, ops: [matchedFind, sendStmt(102)] } },
-                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+                { assistant: { content: "", reasoning: null, ops: [matchedFind, dispositionStmt("NEXT")] } },
+                { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } },
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -269,11 +269,11 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
                             editStmt(source, "one\ntwo\nthree\nfour"),
                             scopedCopy,
                             scopedCopy,
-                            sendStmt(102),
+                            dispositionStmt("NEXT"),
                         ],
                     },
                 },
-                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+                { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } },
             ],
         });
 
@@ -282,7 +282,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
             { op: "EDIT", status: 201, problemType: null },
             { op: "COPY", status: 201, problemType: null },
             { op: "COPY", status: 304, problemType: null },
-            { op: "SEND", status: 102, problemType: null },
+            { op: "NEXT", status: 102, problemType: null },
         ]);
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
@@ -320,7 +320,7 @@ test("the default wire preserves canonical order and projects the Recap override
         const loopId = await insertLoop(db, workerId, 1, "go");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({
             provider,
             recap: "CUSTOM_RECAP_SENTINEL",
@@ -349,7 +349,7 @@ test("the empty default Recap source omits the rendered footer", async () => {
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
 
         const result = await engine.runTurn({
             provider,
@@ -375,9 +375,9 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Worker
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n### EDIT_ (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n```EDIT (worker:///notes.md)\nNotes.\n```", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
@@ -401,7 +401,7 @@ test("assembled packet: the bodyless Worker reference catalog succeeds when no r
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -430,7 +430,7 @@ test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged syst
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
@@ -459,7 +459,7 @@ test("the live things a worker holds — child workers — surface as terse poin
         await insertLoop(db, child, 1, "working");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
@@ -479,7 +479,7 @@ test("no live children or streams → the orientation sections are omitted (like
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
         // model never sees a bare header — same as the errors section when there are no errors.
@@ -496,7 +496,7 @@ test("assembled packet: definition tables compact without changing other whitesp
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const definition = [
             "# Definition",
             "",
@@ -543,12 +543,12 @@ test("{§definition-table-projection}: canonical inline operation examples survi
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const definition = await readFile(Paths.instructionsSystem, "utf8");
 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const inlineGrammar = [...definition.matchAll(/`(#{1,2} [A-Z]+[A-Za-z0-9_]*(?: [^`\n]*)?)`/gu)].map((match) => match[0]);
+        const inlineGrammar = [...definition.matchAll(/```[A-Za-z]+[^\n`]*```/gu)].map((match) => match[0]);
 
         assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
         for (const example of inlineGrammar) {
@@ -564,7 +564,7 @@ test("{§schemes-directory}: the assembled packet retains the definition without
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 

@@ -1,10 +1,9 @@
 # sh
 
 A bare `EXEC` is the shell. The body is the command line, run via `sh -c`,
-character-perfect including whitespace. `[sh]` names the shell explicitly.
+character-perfect including whitespace. The fence name `sh` selects it explicitly.
 
-```example
-### EXEC_ <!-- the body is the script itself: several lines, never fenced -->
+```sh <!-- the body is the script itself -->
 printf 'hello\n' > hello.txt
 wc -l hello.txt
 ```
@@ -19,16 +18,15 @@ read plurnk's credentials. The project's environment passes through.
 
 The working directory is the workspace project root — where file operations
 write — or, in a workspace without one, the directory the shell would run in
-anyway. A `{cwd=<directory>}` block on the heading overrides it for its body:
+anyway. A `{cwd=<directory>}` block on the opening fence line overrides it for its body:
 
-```example
-### EXEC_ {cwd=./dir}
+```sh {cwd=./dir}
 pwd
 ```
 
 The receipt always names the directory the command ran in.
 
-A script target runs that script: `### EXEC_ (greet.sh)` runs it with an empty
+A script target runs that script: ```` ```sh (greet.sh) ```` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
@@ -51,9 +49,7 @@ completion, the harness adds one `_plurnk` READ per channel: its first page
 (up to 16 lines), `range` extent, and terminal exit status. READ the `stream`
 address for more; the `log:///…/READ` item holds only its recorded page:
 
-```example
-### READ_ (sh:///1/2/3/EXEC#stdout) <17,40>
-```
+```READ (sh:///1/2/3/EXEC#stdout) <17,40>```
 
 A nonzero exit closes with status 500; inspect both channels because either
 may carry the useful diagnostic.
@@ -62,17 +58,19 @@ may carry the useful diagnostic.
 
 For a long-running command, the `<L>` slot carries `<timeout, poll>` in minutes:
 
-```example
-### EXEC_ <30>
+```sh <30>
 npm run build
+```
 
-### EXEC_ <30,5>
+```sh <30,5>
 npm run e2e
+```
 
-### EXEC_ <-1,5>
+```sh <-1,5>
 npm run test
+```
 
-### EXEC_ <-1,0>
+```sh <-1,0>
 tail -f app.log
 ```
 

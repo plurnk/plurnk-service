@@ -213,7 +213,7 @@ host owns; decoration and layout are not cross-client protocol facts.
 | -------------------- | ------------ | -------------------- | ------ | --------------------------------- |
 | lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | editor statusline and winbar | process, terminal, and editor lifecycle idioms |
 | PLAN and reasoning | structured record and trace | streaming waterfall blocks | buffer blocks and folds | host-native persistence and navigation |
-| operation receipts and terminal SEND | stdout plus structured operation record | scrollback waterfall | worker waterfall buffer | Unix streams versus durable visual surfaces |
+| operation receipts and turn disposition | stdout plus structured operation record | scrollback waterfall | worker waterfall buffer | Unix streams versus durable visual surfaces |
 | cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | editor review, selection, and input | each host owns human interaction |
 | Problems and Notices | RFC 9457 JSON or stderr | terminal rows | editor diagnostics | presentation only; exact semantics survive |
 | MCP, Skills, and A2A Functionality | state commands | slash commands | `:AI` commands | one `worker.{mcp,skills,agents}.*` action contract |
@@ -498,7 +498,7 @@ this Run.
 `entry.loop_id`) refines it wherever the event is loop-scoped. Branch-batch
 events remain workspace status and route only to conversation Runs. Opening a
 read-only management Run can therefore never replay reasoning, operation rows,
-or terminal SEND from an active conversation.
+or turn disposition from an active conversation.
 
 ## §agui-configuration Module configuration
 

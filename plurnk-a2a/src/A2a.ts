@@ -154,13 +154,6 @@ export default class A2a implements SchemeHandler {
         const resolvedAddress = A2a.#address(statement.target);
         if ("problem" in resolvedAddress) return A2a.#passthrough(resolvedAddress.problem);
         const { address } = resolvedAddress;
-        if (statement.status !== null) {
-            return A2a.#failure("send-status-unsupported", 501, `The A2A scheme takes a recipient SEND, not a disposition (${statement.status}).`, {
-                requestedStatus: statement.status,
-                stage: "dispatch",
-                retryable: false,
-            });
-        }
         const text = statement.body?.raw;
         if (text === undefined || text.length === 0) {
             return A2a.#failure("message-required", 400, "A2A SEND requires a non-empty Message body.", {

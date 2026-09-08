@@ -1,7 +1,7 @@
 import type { ExecStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 
-// {§exec-executor-slot} — `### EXEC_ [executor] (program)`: the bracket names the registered
-// executor and the path names its program. A bare heading is the default shell.
+// {§exec-executor-slot} — the fence names the registered executor; the target names
+// its program. Native EXEC without an executor selects the default shell.
 export type ExecRoute = { readonly runtime: string; readonly target: ParsedPath | null };
 
 export const execRouteOf = (statement: ExecStatement): ExecRoute => ({ runtime: statement.executor ?? "sh", target: statement.target });

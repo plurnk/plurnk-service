@@ -11,7 +11,7 @@ import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel, testProviderCapacity, logEntries } from "./_helpers.ts";
-import { editStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
+import { editStmt, readStmt, dispositionStmt, urlPath } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
@@ -19,9 +19,13 @@ import { OperationFailureError } from "../../src/core/results.ts";
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
         // Turns lead with PLAN; the Engine re-parses the supplied content.
-        content: content.startsWith("## PLAN")
+        content: content.startsWith("```PLAN")
             ? content
-            : `## PLAN_\nadmit the supplied turn\n\n${content}`,
+            : `\`\`\`PLAN
+admit the supplied turn
+\`\`\`
+${content}
+`,
         reasoning: null,
     },
     assistantRaw: null,
@@ -29,14 +33,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("### SEND_ (TERM)\ndrained");
+const drainTurn = contentResponse("```DONE\ndrained\n```");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "## PLAN_\nreasoning\n\n### SEND_ (TERM)\nnoted";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("### SEND_") + 3)).length;
+const NOTICE_CONTENT = "```PLAN\nreasoning\n```\n\n```DONE\nnoted\n```";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("```DONE") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -97,7 +101,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* grammar_unenforced: decode escaped into a discarded channel @ 4:3",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 5:3",
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -108,7 +112,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 4:3$/m);
+        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 5:3$/m);
 
         // The mirror body is ALWAYS suppressed — even on the NOTICE turn;
         // the model READs the row at the cited line when it cares.
@@ -160,8 +164,8 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                stmtTurn([scopedRead, sendStmt(102, null, "read")]),
-                stmtTurn([sendStmt(200, null, "done")]),
+                stmtTurn([scopedRead, dispositionStmt("NEXT", "read")]),
+                stmtTurn([dispositionStmt("DONE", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -201,9 +205,9 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                 stmtTurn([
                     editStmt(target, "A", { marks: [1, 2, 1] }),
                     editStmt(target, "G", { marks: [3, 2, 3] }),
-                    sendStmt(102, null, "edited"),
+                    dispositionStmt("NEXT", "edited"),
                 ]),
-                stmtTurn([sendStmt(200, null, "done")]),
+                stmtTurn([dispositionStmt("DONE", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -357,7 +361,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "## PLAN_\nedit the file\n\n### EDIT_ (src/example.ts<1,-1>)\nbody\n\n### SEND_ (TERM)\ndone";
+        const emission = "```PLAN\nedit the file\n```\n\n```EDIT (src/example.ts<1,-1>)\nbody\n```\n\n```DONE\ndone\n```";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -376,10 +380,10 @@ test("a parser warning remains advisory while the independently invalid mutation
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
         assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
         assert.equal(advisories[0]!.payload.notice.level, "warn");
-        assert.match(String(advisories[0]!.payload.notice.message), /belongs after the `\(path\)` slot/);
+        assert.match(String(advisories[0]!.payload.notice.message), /The scope was inside the target slot; it was applied as the operation scope\./);
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 4, column: 26 },
+            { type: "content-offset", line: 5, column: 23 },
             "the Notice retains the parser's typed source position",
         );
         const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{
@@ -423,42 +427,46 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const liveNotice = liveParse[0].payload.notice;
         assert.equal(liveNotice.source, "provider:mock");
         assert.equal(liveNotice.kind, "grammar_unenforced");
-        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 4, column: 3 });
+        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 5, column: 3 });
 
         // Model side: the notice drains once as a bounded projection.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* grammar_unenforced: decode escaped into a discarded channel @ 4:3",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 5:3",
         );
     } finally { await db.close(); }
 });
 
-// {§foreign-lane-advisory} — the numbered-ops failure (run94: EDIT1…EDIT23 inside a lane `_` turn) is
-// named on the next packet instead of being inferred from a giant receipt (#515).
-test("headings of another lane swallowed by a body surface as one parse advisory on the next packet", async () => {
+test("{§fence-boundary}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const emission = [
-            "## PLAN_", "[{\"content\":\"write two notes\",\"status\":\"in_progress\"}]",
-            "### EDIT_ (worker://~/a.md) <!-- first note -->", "alpha",
-            "### EDIT1 (worker://~/b.md) <!-- meant as a second op -->", "beta",
-            "### EDIT1 (worker://~/c.md)", "gamma",
-            "### SEND_ (NEXT)", "continue",
+            "```PLAN",
+            "[{\"content\":\"write two notes\",\"status\":\"in_progress\"}]",
+            "```",
+            "````EDIT (worker://~/a.md) <!-- first note -->",
+            "alpha",
+            "```EDIT (worker://~/b.md) <!-- literal example -->",
+            "beta",
+            "```",
+            "```EDIT (worker://~/c.md)",
+            "gamma",
+            "```",
+            "````",
+            "```NEXT",
+            "continue",
+            "```",
         ].join("\n");
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("## PLAN_\n[]\n### SEND_ (TERM)\ndone")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```PLAN\n[]\n```\n```DONE\ndone\n```")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(t1.emissionAttempts, 1, "the advisory never rejects the frame");
+        assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");
-        assert.equal(edits.length, 1, "the lane rule is unchanged: the foreign headings stayed body text of EDIT_");
+        assert.equal(edits.length, 1, "the nested programs are one EDIT's literal body");
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
-        assert.match(
-            String(notice),
-            /parse_advisory: 2 OP-shaped headings \(EDIT\) carrying suffix `1` were taken as body text of EDIT_; this turn's lane is `_`, and only headings carrying it are operations\. @ 5:0/,
-            "the next packet names the count, the suffix, the swallowing op, and the lane",
-        );
+        assert.doesNotMatch(String(notice), /parse_advisory|parse_error/, "literal examples are not probable mistakes");
     } finally { await db.close(); }
 });

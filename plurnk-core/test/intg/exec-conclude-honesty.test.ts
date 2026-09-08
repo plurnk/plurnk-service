@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
-import { execStmt, sendStmt } from "./_dsl.ts";
+import { execStmt, dispositionStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { waitFor } from "./_rpc.ts";
 
@@ -232,7 +232,7 @@ for (const specimen of [
             assert.equal(wakes[0].result.status, specimen.status);
 
             const waited = await engine.dispatch({
-                statement: sendStmt(202, null, "waiting"),
+                statement: dispositionStmt("WAIT", "waiting"),
                 workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
             });
             assert.equal(

@@ -35,12 +35,12 @@ test("{§edit-execution}: reviewer replacement supersedes only its EDIT; the nex
         const mock = new Mock({
             contextWindow: 32768,
             responses: [makeMockResponse(
-                "## PLAN_\nedit two disjoint lines\n"
-                + "### EDIT_ (file:///reviewed.md) <2>\nTWO\n"
-                + "### EDIT_ (file:///reviewed.md) <4>\nFOUR\n"
-                + "### SEND_ (TERM)\ndone",
+                "```PLAN\nedit two disjoint lines\n```\n"
+                + "```EDIT (file:///reviewed.md) <2>\nTWO\n```\n"
+                + "```EDIT (file:///reviewed.md) <4>\nFOUR\n```\n"
+                + "```DONE\ndone\n```",
                 20,
-            ), makeMockResponse("### SEND_ (TERM)\ndone", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
+            ), makeMockResponse("```DONE\ndone\n```", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {

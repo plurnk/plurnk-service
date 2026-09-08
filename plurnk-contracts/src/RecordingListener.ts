@@ -1,5 +1,6 @@
 import {
     BaseErrorListener,
+    ParserRuleContext,
     type RecognitionException,
     type Recognizer,
     type Token,
@@ -28,18 +29,20 @@ export default class RecordingListener extends BaseErrorListener {
         _e: RecognitionException | null,
     ): void {
         let duplicateDisposition = false;
-        if (recognizer instanceof plurnkParser && offendingSymbol?.type === plurnkParser.SEND_LABEL) {
+        if (recognizer instanceof plurnkParser && offendingSymbol !== null && [
+            plurnkParser.OPEN_NEXT, plurnkParser.OPEN_WAIT, plurnkParser.OPEN_DONE, plurnkParser.OPEN_FAIL,
+        ].includes(offendingSymbol.type)) {
+            const containsDisposition = (context: ParserRuleContext): boolean =>
+                context.ruleIndex === plurnkParser.RULE_dispositionStatement
+                || context.children.some((child) => child instanceof ParserRuleContext && containsDisposition(child));
             for (let context = recognizer.context; context !== null; context = context.parent) {
-                if (![plurnkParser.RULE_modelTurn, plurnkParser.RULE_turn].includes(context.ruleIndex)) continue;
-                duplicateDisposition = context.children.some((child) =>
-                    "ruleIndex" in child && child.ruleIndex === plurnkParser.RULE_sendStatement);
-                break;
+                if (containsDisposition(context)) { duplicateDisposition = true; break; }
             }
         }
         const structural = duplicateDisposition || recognizer instanceof plurnkParser
             && [plurnkParser.RULE_document, plurnkParser.RULE_log].includes(recognizer.context?.ruleIndex ?? -1);
         const translated = duplicateDisposition
-            ? "A turn permits only one disposition SEND."
+            ? "A turn permits only one disposition: NEXT, WAIT, DONE, or FAIL."
             : this.source === "lexer"
             ? PlurnkErrorStrategy.translateLexerMessage(recognizer as plurnkLexer, msg)
             : msg;

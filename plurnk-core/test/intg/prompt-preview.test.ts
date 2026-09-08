@@ -11,7 +11,7 @@ import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helper
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("### SEND_ (TERM)\ndone", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 
@@ -85,7 +85,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
-        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", delimiter: "", source: "worker://comparison-checker",
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://comparison-checker",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
@@ -100,7 +100,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = "x".repeat(20_000); // one line, run111-scale
     const row = {
-        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", delimiter: "", source: "worker://oneliner",
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://oneliner",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
@@ -114,7 +114,7 @@ test("a single-line body is constrained by the independent character bound", () 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const row = {
-        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", delimiter: "", source: "worker://tidy",
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://tidy",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/tidy", query: null, fragment: null },
         status: 200, rx: "answer: 42\nnotes: none", mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };

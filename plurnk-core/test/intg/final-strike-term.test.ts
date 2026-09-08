@@ -19,26 +19,32 @@ const fixture = async (t: TestContext) => {
         content: "The answer is 42.", mimetype: "text/markdown", state: "static",
     });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    const sends = async () => (await db.test_log_entries_by_worker_op_full.all<{
-        origin: string; status_rx: number; tx: string; rx: string;
-    }>({ worker_id: workerId, op: "SEND" })).filter(({ origin }) => origin === "model");
+    const sends = async () => await db.test_disposition_rows_for_worker.all<{
+        status_rx: number; tx: string; rx: string;
+    }>({ worker_id: workerId });
     return { db, workspaceId, workerId, loopId, engine, sends };
 };
 
-const response = (operation: string, disposition = "TERM", body = "The answer is 42.") => ({
+const response = (operation: string, disposition = "DONE", body = "The answer is 42.") => ({
     assistant: {
-        content: `## PLAN_\n[]\n${operation}\n### SEND_ (${disposition})\n${body}`,
+        content: `\`\`\`PLAN
+[]
+\`\`\`
+${operation}
+\`\`\`${disposition}
+${body}
+\`\`\``,
         reasoning: null,
     },
 });
 
 for (const { name, operation, maxStrikes } of [
-    { name: "READ at zero tolerance", operation: "### READ_ (worker:///answer.md)", maxStrikes: 0 },
-    { name: "READ at one strike", operation: "### READ_ (worker:///answer.md)", maxStrikes: 1 },
-    { name: "repeated READ", operation: "### READ_ (worker:///answer.md)", maxStrikes: 3 },
-    { name: "READ at five strikes", operation: "### READ_ (worker:///answer.md)", maxStrikes: 5 },
-    { name: "FIND", operation: "### FIND_ (worker:///answer.md)", maxStrikes: 3 },
-    { name: "BARE", operation: "### BARE_\nWhat is six times seven?", maxStrikes: 3 },
+    { name: "READ at zero tolerance", operation: "```READ (worker:///answer.md)```", maxStrikes: 0 },
+    { name: "READ at one strike", operation: "```READ (worker:///answer.md)```", maxStrikes: 1 },
+    { name: "repeated READ", operation: "```READ (worker:///answer.md)```", maxStrikes: 3 },
+    { name: "READ at five strikes", operation: "```READ (worker:///answer.md)```", maxStrikes: 5 },
+    { name: "FIND", operation: "```FIND (worker:///answer.md)```", maxStrikes: 3 },
+    { name: "BARE", operation: "```BARE\nWhat is six times seven?\n```", maxStrikes: 3 },
 ]) {
     test(`{§send-final-strike-retrieval}: ${name} concludes at the existing limit without rewriting prior refusals`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
@@ -79,7 +85,7 @@ for (const { name, operation, maxStrikes } of [
 
 test("{§send-final-strike-retrieval}: a clean turn resets the allowance with the ordinary strike streak", async (t) => {
     const { engine, workspaceId, workerId, loopId, sends } = await fixture(t);
-    const read = "### READ_ (worker:///answer.md)";
+    const read = "```READ (worker:///answer.md)```";
     const provider = new Mock({ contextWindow: 100_000, responses: [
         response(read), response(read), response(read, "NEXT"),
         response(read), response(read), response(read),
@@ -93,10 +99,11 @@ test("{§send-final-strike-retrieval}: a clean turn resets the allowance with th
 for (const kind of ["workers", "streams", "failed-stream-results", "worker-results", "operation-failure"] as const) {
     test(`{§send-final-strike-retrieval}: final-strike TERM remains blocked by ${kind}`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
-        const read = "### READ_ (worker:///answer.md)";
+        const read = "```READ (worker:///answer.md)```";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             response(read), response(read),
-            response(kind === "operation-failure" ? `${read}\n### READ_ (worker:///missing.md)` : read),
+            response(kind === "operation-failure" ? `${read}
+\`\`\`READ (worker:///missing.md)\`\`\`` : read),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
@@ -147,7 +154,7 @@ for (const kind of ["workers", "streams", "failed-stream-results", "worker-resul
 
 test("{§send-final-strike-retrieval}: a different loop does not inherit the allowance", async (t) => {
     const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
-    const read = "### READ_ (worker:///answer.md)";
+    const read = "```READ (worker:///answer.md)```";
     const first = await engine.runLoop({
         provider: new Mock({ contextWindow: 100_000, responses: [response(read), response(read)] }),
         workspaceId, workerId, loopId, messages: [], maxTurns: 2, maxStrikes: 3,
@@ -164,7 +171,7 @@ test("{§send-final-strike-retrieval}: a different loop does not inherit the all
 
 test("{§send-final-strike-retrieval}: the final allowance does not turn an idle NEXT into completion", async (t) => {
     const { engine, workspaceId, workerId, loopId } = await fixture(t);
-    const read = "### READ_ (worker:///answer.md)";
+    const read = "```READ (worker:///answer.md)```";
     const result = await engine.runLoop({
         provider: new Mock({ contextWindow: 100_000, responses: [response(read), response(read), response("", "NEXT")] }),
         workspaceId, workerId, loopId, messages: [], maxTurns: 4, maxStrikes: 3,

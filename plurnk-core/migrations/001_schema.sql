@@ -153,7 +153,6 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     at                      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     source                  TEXT,
     op                      TEXT    NOT NULL,
-    delimiter               TEXT    NOT NULL DEFAULT '',
     signal                  TEXT             CHECK (signal IS NULL OR json_valid(signal)),
     scheme                  TEXT,
     username                TEXT,
@@ -180,7 +179,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
         OR
         (kind = 'loop_termination'
             AND op = 'SEND'
-            -- {§env-delta-child-termination}: untargeted, like the terminal SEND that produced it;
+            -- {§env-delta-child-termination}: a message from the concluded child;
             -- `source` names the actor and its READ address (#567, operator 2026-09-07).
             AND scheme IS NULL
             AND pathname IS NULL
@@ -384,7 +383,7 @@ END;
 -- A child terminal transition is an occurrence addressed only to its direct
 -- parent. Directly inserted fork history never crosses this transition and
 -- therefore cannot fabricate a new conclusion event. The occurrence carries no
--- target: the terminal SEND it mirrors had none, and a commons-shaped
+-- target: it is a message from the child, and a commons-shaped
 -- `worker:///name` would name an entry the child never wrote (#567).
 CREATE TRIGGER IF NOT EXISTS loops_append_ambient_event
 AFTER UPDATE OF status ON loops
@@ -393,12 +392,12 @@ BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, target_parent_worker_id,
         workspace_broadcast, kind, source_record_id, source,
-        op, delimiter, scheme, pathname,
+        op, scheme, pathname,
         tx, mimetype_tx, rx, mimetype_rx, status_rx, state, terminated_by
     )
     SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
            0, 'loop_termination', NEW.id, NULL,
-           'SEND', '', NULL, NULL,
+           'SEND', NULL, NULL,
            '', 'text/plain', NEW.terminal_result, 'application/json',
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by
     FROM workers w
@@ -1130,7 +1129,6 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
     -- (it did — FORK/WORK). Validity lives at the parse + type layer, not duplicated in DDL.
     op              TEXT,
-    delimiter          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 
     scheme          TEXT                       CHECK (scheme IS NULL OR length(scheme) > 0),
@@ -1210,7 +1208,7 @@ CREATE VIEW IF NOT EXISTS active_log_entries AS
 SELECT le.id, le.version, le.worker_id, le.loop_id, le.turn_id, le.sequence,
        le.at, le.origin, le.source, le.ambient_event_id, le.inherited_history,
        le.deep_hash, le.model_call_id, le.subscription_publication_id,
-       le.op, le.delimiter, le.signal, le.scheme, le.username, le.password,
+       le.op, le.signal, le.scheme, le.username, le.password,
        le.hostname, le.port, le.pathname, le.query, le.fragment, le.lineMarker,
        le.tx, le.mimetype_tx,
        le.rx, le.mimetype_rx, le.status_rx, le.weight,
@@ -1723,7 +1721,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
     worker_id, loop_id, turn_id, sequence, at, origin, source, inherited_history, model_call_id,
-    op, delimiter, signal,
+    op, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,
     lineMarker, tx, mimetype_tx, mimetype_rx, initial_folded
@@ -1792,7 +1790,6 @@ FROM (
            le.at,
            le.source,
            le.op,
-           le.delimiter,
            le.signal,
            le.scheme,
            le.username,
@@ -1820,8 +1817,7 @@ FROM (
       AND le.op IS NOT NULL
       AND le.state != 'proposed'
       AND NOT (
-          le.op = 'SEND'
-          AND le.scheme IS NULL
+          le.op IN ('NEXT', 'WAIT', 'DONE', 'FAIL')
           AND l.status IN (200, 413, 429, 499, 500, 504, 508)
       )
 ) candidate
@@ -1837,14 +1833,14 @@ BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, target_parent_worker_id,
         workspace_broadcast, kind, source_record_id, at, source,
-        op, delimiter, signal,
+        op, signal,
         scheme, username, password, hostname, port, pathname, query, fragment,
         line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
         state, outcome, attrs
     )
     SELECT workspace_id, producer_worker_id, target_parent_worker_id,
            workspace_broadcast, 'activity', source_record_id, at, source,
-           op, delimiter, signal,
+           op, signal,
            scheme, username, password, hostname, port, pathname, query, fragment,
            line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
            state, outcome, attrs
@@ -1875,14 +1871,14 @@ BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, target_parent_worker_id,
         workspace_broadcast, kind, source_record_id, at, source,
-        op, delimiter, signal,
+        op, signal,
         scheme, username, password, hostname, port, pathname, query, fragment,
         line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
         state, outcome, attrs
     )
     SELECT workspace_id, producer_worker_id, target_parent_worker_id,
            workspace_broadcast, 'activity', source_record_id, at, source,
-           op, delimiter, signal,
+           op, signal,
            scheme, username, password, hostname, port, pathname, query, fragment,
            line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
            state, outcome, attrs

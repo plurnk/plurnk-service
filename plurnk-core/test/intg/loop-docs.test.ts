@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import TurnOps from "../../src/core/TurnOps.ts";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
 
 class FixtureEngine extends Engine {
@@ -46,7 +47,7 @@ test("{§env-delta-child-termination} generated child documentation is durable w
             "housekeeping is not an unobserved child result that can advance WAIT or refuse TERM");
 
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] }),
             workspaceId, workerId: parentId, loopId: parentLoopId,
             messages: [{ role: "system", content: "Observe the child." }, { role: "user", content: "continue" }],
         });
@@ -112,11 +113,16 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
         });
         assert.ok(doc, "the installed executor's documentation reaches the worker");
         const readme = await readFile(new URL("README.md", import.meta.resolve(`@plurnk/plurnk-execs-${runtime}/package.json`)), "utf8");
-        const examples = [doc.content, readme].flatMap((content) => [...content.matchAll(/^```example\n([\s\S]*?)\n```/gm)]);
+        const examples = [doc.content, readme].flatMap((content) => Lexer.lex(content)
+            .filter((token) => token.type === "code" && token.lang?.split(/[ \t]/)[0] === runtime));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
-        const laneOf = (source: string): string => /^#{2,3} [A-Z]+([A-Za-z0-9_]*)/m.exec(source)?.[1] ?? "_";
-        const execs = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN${laneOf(source)}\n[]\n${source}\n### SEND${laneOf(source)} (NEXT)\nReview the results.`))
-            .filter((statement) => statement.op === "EXEC");
+        const execs = examples.flatMap(({ raw }) => {
+            const parsed = PlurnkParser.parseStatements(raw);
+            assert.equal(parsed.unparsedTail, undefined, raw);
+            assert.equal(parsed.items.length, 1, raw);
+            assert.equal(parsed.items[0]?.kind, "statement", raw);
+            return parsed.items.flatMap((item) => item.kind === "statement" && item.statement.op === "EXEC" ? [item.statement] : []);
+        });
         assert.ok(execs.length > 0);
         assert.ok(execs.every(({ executor }) => executor === runtime), `${runtime} is the executor, never the input target`);
         assert.ok(execs.some(({ target }) => target === null), `${runtime} demonstrates the no-target form`);
@@ -165,11 +171,14 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
             pathname: "/_plurnk/plurnk/sh.md", scheme: "worker", name: "body",
         });
         assert.ok(doc, "the installed shell's documentation reaches the worker");
-        const examples = [...doc.content.matchAll(/^```example\n([\s\S]*?)\n```/gm)];
-        // Examples carry their own lane ({§delimiter-discipline}); wrap each in a PLAN/SEND of that lane.
-        const laneOf = (source: string): string => /^#{2,3} [A-Z]+([A-Za-z0-9_]*)/m.exec(source)?.[1] ?? "_";
-        const reads = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN${laneOf(source)}\n[]\n${source}\n### SEND${laneOf(source)} (NEXT)\nReview the results.`))
-            .filter((statement) => statement.op === "READ");
+        const examples = [...doc.content.matchAll(/^```READ[^\n]*```$/gm)];
+        const reads = examples.flatMap(([source]) => {
+            const parsed = PlurnkParser.parseStatements(source);
+            assert.equal(parsed.unparsedTail, undefined, source);
+            assert.equal(parsed.items.length, 1, source);
+            assert.equal(parsed.items[0]?.kind, "statement", source);
+            return parsed.items.flatMap((item) => item.kind === "statement" && item.statement.op === "READ" ? [item.statement] : []);
+        });
         assert.ok(reads.length > 0, "the doc demonstrates fetching beyond the terminal observation");
         for (const read of reads) {
             assert.equal(read.target?.kind, "url");

@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -19,7 +20,7 @@ type RailState = { strike_streak: number; cycle_history: string; cycle_wait_revi
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
-const SOURCE_DECORATION = new Set(["annotation", "delimiter", "position"]);
+const SOURCE_DECORATION = new Set(["annotation", "position"]);
 
 const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
     ? result
@@ -38,7 +39,7 @@ export default class StrikeRail {
         }
         const activity = ops.flatMap((statement, index) => {
             if (statement.op === "PLAN") return [];
-            const disposition = statement.op === "SEND" && statement.target === null && statement.status !== null;
+            const disposition = TurnDisposition.is(statement);
             const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
                 !SOURCE_DECORATION.has(key) && !(disposition && key === "body")));
             return [[operation, observedResult(results?.[index])]];
