@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
-import { packetSection } from "./_helpers.ts";
+import { logEntries, packetSection } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -62,6 +62,18 @@ for (const c of CASES) {
                     assert.equal(read.status_rx, 200, `the parent reads the child's file by bare path, got ${read.status_rx}: ${read.rx.slice(0, 220)}`);
                     assert.match(read.rx, /"content":"3"/, "the parent sees the child's content");
                     assert.equal(finalStatus, 200);
+                    // {§env-delta-child-termination} (#567) — the parent's next packet carries the child's
+                    // conclusion as the engine's SEND attributed to `worker://counter`: status and body ride,
+                    // no target is invented (a commons `worker:///counter` would name nothing the child wrote).
+                    const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
+                    const conclusions = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
+                        .filter((entry) => entry.source === "worker://counter" && String(entry.path).endsWith("/SEND") && entry.status === 200));
+                    assert.equal(new Set(conclusions.map(({ path }) => path)).size, 1, `one durable child conclusion row reaches the parent's packets: ${JSON.stringify(conclusions)}`);
+                    const [conclusion] = conclusions;
+                    assert.equal(conclusion!.origin, "_plurnk", "the conclusion is the engine's narration");
+                    assert.equal(conclusion!.status, 200, "the child's terminal status rides");
+                    assert.equal("target" in conclusion!, false, `the conclusion is untargeted like the TERM it mirrors: ${JSON.stringify(conclusion)}`);
+                    assert.match(String(conclusion!.body ?? ""), /written/, "a 2xx conclusion arrives with its body visible");
                 } finally { ws.close(); }
             });
         } finally { await rm(root, { recursive: true, force: true }); }

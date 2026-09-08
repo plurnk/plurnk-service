@@ -180,7 +180,10 @@ CREATE TABLE IF NOT EXISTS ambient_events (
         OR
         (kind = 'loop_termination'
             AND op = 'SEND'
-            AND scheme = 'worker'
+            -- {§env-delta-child-termination}: untargeted, like the terminal SEND that produced it;
+            -- `source` names the actor and its READ address (#567, operator 2026-09-07).
+            AND scheme IS NULL
+            AND pathname IS NULL
             AND json_valid(rx)
             AND json_type(rx) = 'object'
             AND json_type(rx, '$.status') = 'integer'
@@ -380,7 +383,9 @@ END;
 
 -- A child terminal transition is an occurrence addressed only to its direct
 -- parent. Directly inserted fork history never crosses this transition and
--- therefore cannot fabricate a new conclusion event.
+-- therefore cannot fabricate a new conclusion event. The occurrence carries no
+-- target: the terminal SEND it mirrors had none, and a commons-shaped
+-- `worker:///name` would name an entry the child never wrote (#567).
 CREATE TRIGGER IF NOT EXISTS loops_append_ambient_event
 AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
@@ -393,7 +398,7 @@ BEGIN
     )
     SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
            0, 'loop_termination', NEW.id, NULL,
-           'SEND', '', 'worker', '/' || w.name,
+           'SEND', '', NULL, NULL,
            '', 'text/plain', NEW.terminal_result, 'application/json',
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by
     FROM workers w

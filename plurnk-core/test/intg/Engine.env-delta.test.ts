@@ -688,6 +688,8 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         const workerLoop = await insertLoop(db, worker, 1, "investigate the bug");
         const failedWorker = await insertWorker(db, workspaceId, workerA, "failed-worker");
         const failedLoop = await insertLoop(db, failedWorker, 1, "call provider");
+        const cancelledWorker = await insertWorker(db, workspaceId, workerA, "cancelled-worker");
+        const cancelledLoop = await insertLoop(db, cancelledWorker, 1, "get killed");
         const independent = await insertWorker(db, workspaceId, null, "independent");
         const independentLoop = await insertLoop(db, independent, 1, "unrelated");
         const eng = makeEngine(db);
@@ -702,6 +704,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         const deliverable = { status: 200, content: "the answer is 42", mimetype: "text/markdown" };
         await insertTurn(db, workerLoop, 1, 102);
         await insertTurn(db, failedLoop, 1, 102);
+        await insertTurn(db, cancelledLoop, 1, 102);
         assert.deepEqual(await lifecycle.finish(workerLoop, deliverable), deliverable);
         assert.equal(
             (await lifecycle.finish(
@@ -710,14 +713,34 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
             ))?.status,
             502,
         );
+        assert.equal(
+            (await lifecycle.finish(
+                cancelledLoop,
+                Results.failure("daemon:loop", "cancelled", 499, "Cancelled by the client."),
+                { terminatedBy: "cancel" },
+            ))?.status,
+            499,
+        );
 
         // A's turn 2 pulls both terminations from the shared log: the 2xx
         // deliverable born visible, the failure body-suppressed.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string | null; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string; attrs: string }>({ worker_id: workerA });
 
-        const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
+        // {§env-delta-child-termination} (#567): the occurrence is attributed by `source` alone —
+        // untargeted like the terminal SEND it mirrors, never a commons-shaped `worker:///name`.
+        const terminations = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND" && r.source?.startsWith("worker://") === true);
+        assert.deepEqual(
+            terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
+            [
+                { source: "worker://worker", scheme: null, pathname: null, status_rx: 200 },
+                { source: "worker://failed-worker", scheme: null, pathname: null, status_rx: 502 },
+                { source: "worker://cancelled-worker", scheme: null, pathname: null, status_rx: 499 },
+            ],
+            "every death-path lands untargeted, in occurrence order, attributed to the concluding worker",
+        );
+        const win = terminations.find((r) => r.source === "worker://worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
         assert.equal(win!.origin, "_plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
@@ -726,7 +749,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         assert.equal(win!.initial_folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
         assert.equal(win!.folded, "[]", "the deliverable is untrimmed");
 
-        const failed = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/failed-worker");
+        const failed = terminations.find((r) => r.source === "worker://failed-worker");
         assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
         assert.equal(failed!.status_rx, 502, "the parent edge carries the exact status, not scheduler class 500");
         const failure = JSON.parse(failed!.rx) as { status: number; problem?: { detail?: string } };
@@ -735,11 +758,24 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
         assert.equal(failed!.initial_folded, "[[1,-1]]", "a failure stays body-suppressed — only a 2xx deliverable is born visible");
         assert.equal(failed!.folded, "[]", "the failure is still READable");
+        const cancelled = terminations.find((r) => r.source === "worker://cancelled-worker");
+        assert.ok(cancelled, "a KILLed child concludes to its parent through the same untargeted occurrence");
+        assert.equal((JSON.parse(cancelled!.attrs) as { terminatedBy?: string }).terminatedBy, "cancel", "cancellation authorship rides the attrs, not a target");
+        assert.equal(cancelled!.initial_folded, "[[1,-1]]", "a cancellation is body-suppressed like any non-2xx conclusion");
         const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
         assert.equal(
-            independentRows.some(({ source }) => source === "worker://worker" || source === "worker://failed-worker"),
+            independentRows.some(({ source }) => source?.startsWith("worker://") === true),
             false,
             "child terminal results never broadcast to an independent root",
+        );
+        // A fork copies the observed conclusions as inherited history: same attribution, still untargeted.
+        const branch = await Fork.fork(db, workerA, "branch", {}, () => "none");
+        const branchRows = await db.engine_render_log.all<{ origin: string; op: string; scheme: string | null; pathname: string | null; source: string | null; status_rx: number | null }>({ worker_id: branch });
+        assert.deepEqual(
+            branchRows.filter((r) => r.origin === "_plurnk" && r.op === "SEND" && r.source?.startsWith("worker://") === true)
+                .map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
+            terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
+            "a fork inherits the parent's observed conclusions verbatim — attributed by source, no invented target",
         );
     } finally {
         await db.close();
