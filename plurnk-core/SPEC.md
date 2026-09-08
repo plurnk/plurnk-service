@@ -2257,6 +2257,15 @@ batch of 2026-08-29 showed the absolute `cwd` copied back into the target slot a
 family — and neither a command nor a working directory is ever a target. The default
 shell is taught as targetless bare `EXEC`; `[sh]` remains the explicit form.
 
+§exec-tool-fall-through **A tool run as a shell command is named at the failure
+site.** A bare shell command whose program is the name of a tool published by
+another enabled runtime (`brave_web_search {…}` under the default shell) exits
+127; the stream's terminal receipt then says the program is not a shell command
+but a tool of that runtime, gives the exact bracketed invocation with the JSON
+body convention, names the tool's own document, and carries `toolRuntimes` and
+`tool`. The status stays the shell's 500, nothing is rerouted, and a program the
+registry does not know keeps the plain exit-127 receipt.
+
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |
 | Omitted              | Any present target                      | —                       | Refuse 400 before admission.                              |

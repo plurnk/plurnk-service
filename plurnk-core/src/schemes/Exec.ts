@@ -20,7 +20,7 @@ import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
-import { renderAddress } from "../core/plurnk-uri.ts";
+import { generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, resolve } from "node:path";
@@ -40,6 +40,7 @@ import Turn from "../core/Turn.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
+import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler from "./ExecScheduler.ts";
 import { execRouteOf } from "./exec-runtime.ts";
@@ -734,6 +735,37 @@ export default class Exec extends CoreSchemeAdapterBase {
     // a setState("closed") that races a prior write() can flip the
     // notify's reported state to "closed" before the chunk event fires
     // as "active." Chain through a single promise queue to serialize.
+    // {§exec-tool-fall-through} — a bare shell command whose program is really the name of a tool
+    // of an enabled runtime (`brave_web_search {…}` under the default shell) dies with the shell's
+    // exit 127. The failure receipt states that fact at the failure site, with the invocation the
+    // registry actually publishes, so the model recovers in one turn instead of by rereading docs.
+    #namedToolFallThrough(result: SchemeResult, runtime: string, body: string, ctx: PlurnkSchemeContext): SchemeResult {
+        const core = this.coreContext(ctx);
+        const executors = core.executors;
+        if (executors === undefined || result.problem === undefined) return result;
+        const program = body.trim().split(/\s+/u, 1)[0] ?? "";
+        if (program.length === 0) return result;
+        const owners = executors.availableRuntimes(core.functionalityWorkerId)
+            .filter((tag) => tag !== runtime
+                && executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === program) === true);
+        if (owners.length === 0) return result;
+        const owner = owners[0]!;
+        const invocation = `### EXEC_ [${owner}] (${program})`;
+        // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
+        const root = executors.entry(owner, core.functionalityWorkerId)?.resourcesPath ?? "/plurnk";
+        const contract = `worker://~${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.md`)}`;
+        return {
+            ...result,
+            problem: {
+                ...result.problem,
+                detail: `'${runtime}' exited with code 127: \`${program}\` is not a shell command; it is a tool of [${owner}].`,
+                recovery: `Invoke the tool with \`${invocation}\` and its JSON input as the body; its contract is at ${contract}.`,
+                toolRuntimes: owners,
+                tool: program,
+            },
+        };
+    }
+
     async #runExecutor(opts: {
         executor: Executor;
         runtime: string; body: string; cwd: string | null; target: string | null; metadata: readonly string[] | null; ctx: PlurnkSchemeContext;
@@ -1037,6 +1069,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             // spawn we reaped did not succeed, whatever it resolved under abort.
             } else if (signal.aborted && result.status < 400) {
                 result = cancelled(exitCode ?? undefined);
+            } else if (result.status >= 400 && exitCode === 127 && target === null) {
+                result = this.#namedToolFallThrough(result, runtime, body, ctx);
             }
             exitLabel = timedOut
                 ? `timed out after ${(timeoutSec ?? 0) / 60}m`
