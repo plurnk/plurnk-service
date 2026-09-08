@@ -35,7 +35,7 @@ filter pattern
 ### READ_ (target) <text region> <!-- retrieve target content -->
 
 ### EDIT_ (target) <text region> <!-- edit/replace/delete text -->
-literal replacement text
+literal, unfenced replacement text
 
 ### COPY_ (source) <source text region> (destination) <destination text region> <!-- copy between targets -->
 
