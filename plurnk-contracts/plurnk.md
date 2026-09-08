@@ -94,6 +94,9 @@ FROM q;
 Check for updated revenue figures and report material changes.
 
 ### BARE_ (worker://~/H2-insight-analysis-prompt.md) <!-- think deeply about second half of year trends -->
+### BARE_ <!-- an isolated question: the body is the whole prompt -->
+Which Q4 revenue driver would a skeptical CFO question first, and why?
+
 ### KILL_ (log:///1/5/3/READ) <42,67> <!-- purge reasoning about completed task -->
 ### MOVE_ (log:///1/5/3/READ) <123,456> (worker://~/notes/Q4-insights.md) <!-- offload reasoning to private notes -->
 ### KILL_ (log:///1/5/4/READ) <!-- purge previous summary chunk -->
