@@ -3709,7 +3709,15 @@ and never re-fetch a match.
   `core.hooksPath=/dev/null`), so repository identity follows `project_root`,
   never the daemon's launch environment, and inspecting a supplied repository
   never runs a program its `.git/config` names. Other repository-local
-  configuration is still read (#568).
+  configuration is still read (#568). The one program no key can pin off is a
+  `filter.<name>.clean` / `filter.<name>.process` driver, which `git status`
+  index refresh may run: automatic inspection asks the repository's own config
+  first (`git config --get-regexp`, no program runs) and, when any such key is
+  declared, refuses the repository as a warning-and-skip — Git status and
+  automatic Git membership answer exactly as for a non-repository, and one
+  `engine:membership` / `git_inspection_refused` notice names the key, once per
+  workspace until it changes or clears. User- and model-requested Git commands
+  stay on their explicit execution path.
 - §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is `### EXEC_ (sh)`'s job, not the file scheme's.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
@@ -4239,6 +4247,7 @@ retain distinct contracts and lifetimes.
 | `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
 | `search_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info`, `warn` when a completed pass carries failed members ({§derivation-member-failure}), `error` on terminal failure | none |
+| `git_inspection_refused` | engine membership — automatic Git inspection refused a supplied repository whose config declares a `filter.*` program ({§membership-git-hermetic}); names the key; `level: warn`, once per workspace until the key changes or clears | none |
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 

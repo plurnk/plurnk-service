@@ -24,7 +24,7 @@
 // AbortSignal-respecting).
 
 import { execFile, spawn } from "node:child_process";
-import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
+import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import { glob, stat } from "node:fs/promises";
 import { resolve, matchesGlob, relative, isAbsolute } from "node:path";
@@ -66,6 +66,8 @@ export interface MemberSnapshot {
 }
 
 interface MembershipResolution {
+    // {§membership-git-hermetic} (#568): the `filter.*` key that made automatic inspection refuse the repository.
+    refusedFilter?: string;
     members: string[];
     removed: FsDivergence[];
 }
@@ -155,6 +157,19 @@ export default class GitMembership {
         }
     }
 
+    // {§membership-git-hermetic} (#568): the repository automatic inspection may run Git in. A supplied
+    // repository declaring a `filter.<name>.clean|process` program is refused — treated as no
+    // repository — because `git status` index refresh could run that program as the daemon.
+    static async #automaticRepository(
+        dir: string,
+        signal: AbortSignal | undefined,
+    ): Promise<{ repository: string | null; refusedFilter: string | null }> {
+        const repository = await GitMembership.#repoToplevel(dir, signal);
+        if (repository === null) return { repository: null, refusedFilter: null };
+        const refusedFilter = await declaredFilterProgram(repository, signal);
+        return refusedFilter === null ? { repository, refusedFilter: null } : { repository: null, refusedFilter };
+    }
+
     // A workspace owns exactly the repository containing project_root. Packages and
     // projects inside that repository share its Git state; unrelated repositories
     // belong to unrelated workspaces.
@@ -176,7 +191,7 @@ export default class GitMembership {
             || process.env.PLURNK_SERVICE_GIT_AUTO !== "1"
             || (await WorkspaceSettings.read(db, workspaceId)).git === false
         ) return null;
-        return GitMembership.#repoToplevel(root, signal);
+        return (await GitMembership.#automaticRepository(root, signal)).repository;
     }
 
     static async #isIgnoredByRepository(
@@ -334,7 +349,7 @@ export default class GitMembership {
         workspaceId: number,
         signal: AbortSignal | undefined,
         constraints: readonly OverlayRow[],
-    ): Promise<{ root: string; gitMembers: string[]; included: string[]; masked: string[]; excludeGlobs: string[]; scans: Map<string, string[]> } | null> {
+    ): Promise<{ root: string; gitMembers: string[]; included: string[]; masked: string[]; excludeGlobs: string[]; scans: Map<string, string[]>; refusedFilter: string | null } | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;   // headless — no disk surface to resolve
 
@@ -352,12 +367,13 @@ export default class GitMembership {
         const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
         let gitMembers: string[] = [];
         let repository: string | null = null;
+        let refusedFilter: string | null = null;
         if (
             process.env.PLURNK_SERVICE_GIT_ALLOWED === "1"
             && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
             && workspaceGit !== false
         ) {
-            repository = await GitMembership.#repoToplevel(root, signal);
+            ({ repository, refusedFilter } = await GitMembership.#automaticRepository(root, signal));
             if (repository !== null) {
                 gitMembers = await GitMembership.#projectMembers(root, repository, signal);
             }
@@ -387,7 +403,7 @@ export default class GitMembership {
             }
         }
         const included = [...new Set([...defined, ...admitted])]; // {§membership-overlay-include}
-        return { root, gitMembers, included, masked, excludeGlobs, scans };
+        return { root, gitMembers, included, masked, excludeGlobs, scans, refusedFilter };
     }
 
     static async #removeMissingCreationRecords(
@@ -426,7 +442,7 @@ export default class GitMembership {
         const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
         const inputs = await GitMembership.#resolveOverlayInputs(db, workspaceId, signal, constraints);
         if (inputs === null) return { members: [], removed: [] };   // headless — no disk surface to resolve
-        const { gitMembers: members, included, masked, excludeGlobs } = inputs;
+        const { gitMembers: members, included, masked, excludeGlobs, refusedFilter } = inputs;
 
         // Compose: (git ∪ include) − exclude ({§membership-overlay-exclude}). An inclusion wins
         // provenance when both grantors admit a path; outside-root write authority
@@ -481,7 +497,7 @@ export default class GitMembership {
                 await db.crud_delete_entry.run({ entry_id: m.id });
             }
         }
-        return { members: desired, removed };
+        return { members: desired, removed, ...(refusedFilter === null ? {} : { refusedFilter }) };
     }
 
     static async resolveGitMembership(
@@ -632,10 +648,35 @@ export default class GitMembership {
         return run;
     }
 
+    // {§membership-git-hermetic} (#568): one notice per refused repository per workspace, re-announced only
+    // when the declared key changes or after the refusal clears.
+    static #announcedRefusals = new WeakMap<Db, Map<number, string>>();
+
+    static #announceRefusal(ctx: PlurnkSchemeContext, refusedFilter: string | undefined): void {
+        let announced = GitMembership.#announcedRefusals.get(ctx.db);
+        if (announced === undefined) {
+            announced = new Map();
+            GitMembership.#announcedRefusals.set(ctx.db, announced);
+        }
+        if (refusedFilter === undefined) {
+            announced.delete(ctx.workspaceId);
+            return;
+        }
+        if (announced.get(ctx.workspaceId) === refusedFilter) return;
+        announced.set(ctx.workspaceId, refusedFilter);
+        ctx.pushNotice?.({
+            source: "engine:membership",
+            kind: "git_inspection_refused",
+            level: "warn",
+            message: `Automatic Git inspection is off for this repository: its config declares ${refusedFilter}, a program git status could run. Git status and automatic Git membership are skipped; explicit git commands are unaffected.`,
+        });
+    }
+
     static async #indexGitMembershipUnlocked(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
         const root = await GitMembership.#loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return [];
         const resolution = await GitMembership.#reconcileGitMembership(ctx.db, ctx.workspaceId, ctx.signal);
+        GitMembership.#announceRefusal(ctx, resolution.refusedFilter);
         const divergences: FsDivergence[] = [...resolution.removed];
         const identities = new Map<string, Promise<string>>();
         for (const pathname of resolution.members) {

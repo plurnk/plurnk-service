@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
+import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { matchesGlob } from "node:path";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
@@ -52,16 +52,20 @@ export default class GitState {
         if (root === null) return null;
         let statusOutput: string;
         let repositoryRoot: string;
+        const options = { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() };
         try {
-            const options = { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() };
-            const [status, repository] = await Promise.all([
-                GitState.#execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], options),
-                GitState.#execFileP("git", ["rev-parse", "--show-toplevel"], options),
-            ]);
-            statusOutput = status.stdout;
-            repositoryRoot = repository.stdout.trim();
+            repositoryRoot = (await GitState.#execFileP("git", ["rev-parse", "--show-toplevel"], options)).stdout.trim();
         } catch {
             return null;  // not a git worktree, or git absent — fail closed, no status
+        }
+        // {§membership-git-hermetic} (#568): a supplied repository declaring a `filter.*` program is
+        // never status-refreshed automatically — it could run that program as the daemon. The
+        // membership pass that precedes this read announces the refusal once.
+        if ((await declaredFilterProgram(repositoryRoot, signal)) !== null) return null;
+        try {
+            statusOutput = (await GitState.#execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], options)).stdout;
+        } catch {
+            return null;  // the worktree vanished or git failed — fail closed, no status
         }
         const snapshot = GitState.#parse(statusOutput, root, repositoryRoot);
         await GitState.#markMembers(db, workspaceId, snapshot);

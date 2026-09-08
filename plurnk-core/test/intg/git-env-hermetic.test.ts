@@ -182,3 +182,101 @@ test("automatic inspection never runs a repository-supplied core.fsmonitor helpe
         await rm(base, { recursive: true, force: true });
     }
 });
+
+// {§membership-git-hermetic} (#568 residual): no key can pin off an arbitrary `filter.<name>` driver,
+// so a supplied repository declaring one is refused for automatic inspection — a warning-and-skip.
+test("automatic inspection refuses a supplied repository declaring a filter program — status and membership skip, one notice names the key", async () => {
+    const base = await mkdtemp(join(tmpdir(), "plurnk-filter-"));
+    const repo = join(base, "supplied");
+    const marker = join(base, "FILTER-RAN");
+    const db = await openMigrated();
+    const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
+    const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
+    try {
+        await mkdir(repo);
+        await git(["init", "-q"], repo);
+        await git(["config", "user.email", "s@plurnk.invalid"], repo);
+        await git(["config", "user.name", "s"], repo);
+        await writeFile(join(repo, ".gitattributes"), "*.md filter=marker\n");
+        await writeFile(join(repo, "tracked.md"), "# tracked\n");
+        await git(["add", ".gitattributes", "tracked.md"], repo);
+        await seed(repo);
+        // The hostile local config: a clean driver that leaves a marker OUTSIDE the repository.
+        const helper = join(base, "clean-helper.sh");
+        await writeFile(helper, `#!/bin/sh\ntouch "${marker}"\ncat\n`);
+        await chmod(helper, 0o755);
+        await git(["config", "filter.marker.clean", helper], repo);
+        await git(["config", "filter.marker.required", "true"], repo);
+
+        // A touched mapped file: its stat data no longer matches the index, so the next status
+        // refresh must re-hash it through the clean driver to decide whether it changed.
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        await writeFile(join(repo, "tracked.md"), "# touched\n");
+
+        // CONTROL: the very status command production runs, under the pinned env, DOES run the driver.
+        await execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], { cwd: repo, env: hermeticGitEnv() });
+        assert.ok(existsSync(marker), "control: `git status` on the supplied repository runs its clean driver — no key pins it off");
+        await rm(marker, { force: true });
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        await writeFile(join(repo, "tracked.md"), "# touched again\n");
+
+        // PRODUCTION: automatic inspection through the shared boundary refuses the repository.
+        const workspaceId = await insertWorkspace(db, `filter-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, repo);
+        process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
+        process.env.PLURNK_SERVICE_GIT_AUTO = "1";
+        assert.equal(await GitState.status(db, workspaceId, undefined), null, "status answers as for a non-repository");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const notices: Array<Record<string, unknown>> = [];
+        const ctx: PlurnkSchemeContext = {
+            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
+            writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+            weigh: (t: string) => Math.ceil(t.length / 4),
+            pushNotice: (notice) => { notices.push(notice as Record<string, unknown>); },
+        };
+        await GitMembership.indexGitMembership(ctx);
+        await GitMembership.indexGitMembership(ctx);
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "tracked.md" });
+        assert.equal(member, undefined, "no automatic membership from the refused repository");
+        assert.ok(!existsSync(marker), "neither status nor membership ran the repository-supplied driver");
+        assert.deepEqual(notices, [{
+            source: "engine:membership",
+            kind: "git_inspection_refused",
+            level: "warn",
+            message: "Automatic Git inspection is off for this repository: its config declares filter.marker.clean, a program git status could run. Git status and automatic Git membership are skipped; explicit git commands are unaffected.",
+        }], "one notice names the key, announced once across passes");
+
+        // CONTROL: an ordinary repository still indexes and answers status through the same boundary.
+        const plain = join(base, "plain");
+        await mkdir(plain);
+        await git(["init", "-q"], plain);
+        await git(["config", "user.email", "s@plurnk.invalid"], plain);
+        await git(["config", "user.name", "s"], plain);
+        await writeFile(join(plain, "ok.md"), "# ok\n");
+        await git(["add", "ok.md"], plain);
+        await seed(plain);
+        const plainWorkspace = await insertWorkspace(db, `plain-${crypto.randomUUID()}`);
+        await rootWorkspace(db, plainWorkspace, plain);
+        assert.deepEqual((await GitState.status(db, plainWorkspace, undefined))?.branch !== undefined, true, "an ordinary repository still answers status");
+        const plainWorker = await insertWorker(db, plainWorkspace);
+        const plainLoop = await insertLoop(db, plainWorker, 1);
+        const plainTurn = await insertTurn(db, plainLoop, 1, 102);
+        const plainNotices: unknown[] = [];
+        await GitMembership.indexGitMembership({
+            ...ctx, workspaceId: plainWorkspace, workerId: plainWorker, functionalityWorkerId: plainWorker, loopId: plainLoop, turnId: plainTurn,
+            pushNotice: (notice) => { plainNotices.push(notice); },
+        });
+        const plainMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: plainWorkspace, owner_id: await Owner.commonsId(db, plainWorkspace), scheme: "file", authority: "", pathname: "ok.md" });
+        assert.ok(plainMember, "an ordinary repository still indexes its tracked file");
+        assert.deepEqual(plainNotices, [], "no refusal notice for an ordinary repository");
+    } finally {
+        if (priorAllowed === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
+        else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
+        if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
+        else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
+        await db.close();
+        await rm(base, { recursive: true, force: true });
+    }
+});
