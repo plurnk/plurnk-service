@@ -37,14 +37,14 @@ test("core package projection retains runtime-loaded modules and rejects test he
     ]);
 });
 
-test("PDF package projection rejects fixture builders", () => {
+test("PDF package projection rejects the fixture builder", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-mimetypes-application-pdf", [
-        "dist/buildFormPdf.js",
-        "dist/buildTaggedPdf.d.ts",
+        "dist/buildPdf.js",
+        "dist/buildPdf.d.ts",
         "dist/index.js",
     ]), [
-        "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildFormPdf.js",
-        "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildTaggedPdf.d.ts",
+        "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildPdf.d.ts",
+        "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildPdf.js",
     ]);
 });
 

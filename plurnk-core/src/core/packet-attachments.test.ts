@@ -36,9 +36,18 @@ test("{§packet-attachment-parts} a visible READ of an image weighs the picture 
 
 test("{§packet-attachment-parts} a visible READ of a PDF weighs its pages and becomes a pdf attachment", () => {
     const rendered = PacketWire.renderLogWithAccounting([pdfRow()], weigh);
-    assert.equal(pdfWeight(3), 4500);
+    assert.equal(pdfWeight(3, 4096), 4500);
+    assert.equal(pdfWeight(null, 4096), 1024, "an unreadable page tree weighs by bytes");
     assert.deepEqual(rendered.attachments, [{ coordinate: "1/1/2", path: "file:///contract.pdf", scheme: "file", pathname: "/contract.pdf", mimetype: "application/pdf", kind: "pdf", pages: 3, weight: 4500 }]);
     assert.match(rendered.content, /"tokensAttachment":4500/);
+    const opaque = PacketWire.renderLogWithAccounting([readRow({
+        target: { kind: "url", raw: "file:///scan.pdf", scheme: "file", pathname: "/scan.pdf" },
+        tx: { target: { kind: "url", raw: "file:///scan.pdf", scheme: "file", pathname: "/scan.pdf" } },
+        rx: { content: "PDF document, 4096 bytes", mimetype: "text/plain", document: { mimetype: "application/pdf", pages: null, bytes: 4096 } },
+        mimetype_rx: "text/plain",
+    })], weigh);
+    assert.deepEqual(opaque.attachments, [{ coordinate: "1/1/2", path: "file:///scan.pdf", scheme: "file", pathname: "/scan.pdf", mimetype: "application/pdf", kind: "pdf", weight: 1024 }],
+        "a document whose page tree is unreadable still attaches, without a page count");
 });
 
 test("{§packet-attachment-parts} a delivered READ and a plain READ contribute no native content", () => {

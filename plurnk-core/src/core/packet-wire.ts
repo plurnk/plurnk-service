@@ -1048,10 +1048,14 @@ export default class PacketWire {
             const height = image.height as number;
             return { coordinate, path, scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
         }
-        const document = view?.document as { mimetype?: unknown; pages?: unknown } | undefined;
-        if (document !== undefined && typeof document.mimetype === "string" && Number.isSafeInteger(document.pages)) {
-            const pages = document.pages as number;
-            return { coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf", pages, weight: pdfWeight(pages) };
+        const document = view?.document as { mimetype?: unknown; pages?: unknown; bytes?: unknown } | undefined;
+        if (document !== undefined && typeof document.mimetype === "string" && Number.isSafeInteger(document.bytes)) {
+            const pages = Number.isSafeInteger(document.pages) ? document.pages as number : null;
+            return {
+                coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf",
+                ...(pages === null ? {} : { pages }),
+                weight: pdfWeight(pages, document.bytes as number),
+            };
         }
         return null;
     }

@@ -69,7 +69,7 @@ limit; it may not weaken the framework ceiling.
 
 §mimetype-image `@plurnk/plurnk-mimetypes-image` serves `image/png`, `image/jpeg`, `image/gif`, and `image/webp` as binary handlers that decode nothing: `validate` checks the header magic, `content` is the header's facts as one line (`PNG image, 640×480 px, 12345 bytes`), and `deepJson` is those facts (`format`, `width`, `height`, `bytes`). The picture itself is the service's to attach ({§packet-attachment-parts} in the core specification).
 
-§mimetype-pdf-facts `@plurnk/plurnk-mimetypes-application-pdf` reports `facts` beside its text channels: `pages` (the parsed page count; null when the document is over its cap or does not parse) and `bytes`. A document with no extractable text reads as its facts line (`PDF document, 3 pages, 12345 bytes`) rather than as nothing; every pdfjs parse works on its own copy of the input, so concurrent channels never detach one another's buffer. The document itself is the service's to attach ({§packet-attachment-parts} in the core specification).
+§mimetype-pdf-facts `@plurnk/plurnk-mimetypes-application-pdf` is a header-only owner, exactly as the image owner is: it validates the `%PDF-` magic, reports `facts` — `pages` (the root page tree's `/Count`; null when the tree sits inside a compressed object stream) and `bytes` — and reads as its facts line (`PDF document, 3 pages, 12345 bytes`). It extracts no text, renders nothing, indexes nothing, and carries no dependency; a model that needs the text runs the workspace's own tools through EXEC. The document itself is the service's to attach ({§packet-attachment-parts} in the core specification), weighed by pages when known and by bytes otherwise.
 
 ### §mimetype-lifecycle 1.2 Orchestrator lifecycle
 

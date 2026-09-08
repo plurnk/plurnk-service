@@ -145,7 +145,9 @@ test("an unsupported binary response returns an exact 415 without fabricating a 
     }
 });
 
-test("a direct readable PDF persists only derived Unicode plus projection evidence", async () => {
+// {§mimetype-pdf-facts} (#542) — a fetched PDF's readable body is its header facts, never extracted
+// text; the bytes ride the packet as a native document part on a route that accepts one.
+test("a direct readable PDF persists only its header facts plus projection evidence", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -164,7 +166,7 @@ test("a direct readable PDF persists only derived Unicode plus projection eviden
         assert.equal((await readHttp(http, statement(null, "/paper.pdf"), ctx)).status, 200);
         const entry = await handlerCtx.entries.read("/paper.pdf");
         assert.equal(entry.entry?.channels.body.mimetype, "text/markdown");
-        assert.match(entry.entry?.channels.body.content ?? "", /Hello, world!/);
+        assert.match(entry.entry?.channels.body.content ?? "", /^PDF document, 1 page, \d+ bytes$/u, "the readable body is the header facts, nothing extracted");
         assert.equal(entry.entry?.channels.body.state, "static");
         assert.match(entry.entry?.channels.header.content ?? "", /^content-type: application\/pdf$/m);
         assert.match(
@@ -174,7 +176,7 @@ test("a direct readable PDF persists only derived Unicode plus projection eviden
 
         const reread = await readHttp(http, statement({ marks: [1] }, "/paper.pdf"), ctx);
         assert.equal(reread.status, 200);
-        assert.match(reread.content ?? "", /Hello, world!/);
+        assert.match(reread.content ?? "", /^PDF document, 1 page, \d+ bytes$/u);
         assert.equal(reread.mimetype, "text/markdown");
     } finally {
         globalThis.fetch = originalFetch;

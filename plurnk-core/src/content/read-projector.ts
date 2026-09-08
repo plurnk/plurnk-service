@@ -22,20 +22,21 @@ const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
     return { mimetype: projection.mimetype, width: facts.width as number, height: facts.height as number, bytes: facts.bytes as number };
 };
 
-// {§packet-attachment-parts} — a projected PDF member names its document: source mimetype and the
-// handler's page count ({§mimetype-pdf-facts}); a document whose pages are unknown names nothing.
+// {§packet-attachment-parts} — a projected PDF member names its document: source mimetype, the
+// handler's page count when the page tree is readable ({§mimetype-pdf-facts}), and its size.
 // {§log-channel-miss-names-stream} — the stream address a log EXEC item recorded, when the scheme supplied it.
 const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
     const stream = attributes?.stream;
     return typeof stream === "string" ? stream : null;
 };
 
-const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; pages: number; bytes: number } | null => {
+const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; pages: number | null; bytes: number } | null => {
     const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { pages?: unknown; bytes?: unknown } } | undefined;
     if (projection === undefined || projection.mimetype !== "application/pdf") return null;
     const facts = projection.facts;
-    if (facts === undefined || !Number.isSafeInteger(facts.pages) || !Number.isSafeInteger(facts.bytes)) return null;
-    return { mimetype: projection.mimetype, pages: facts.pages as number, bytes: facts.bytes as number };
+    if (facts === undefined || !Number.isSafeInteger(facts.bytes)) return null;
+    const pages = Number.isSafeInteger(facts.pages) ? facts.pages as number : null;
+    return { mimetype: projection.mimetype, pages, bytes: facts.bytes as number };
 };
 
 export interface AnchoredReadResult extends EntryReadResult {

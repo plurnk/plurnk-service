@@ -132,6 +132,7 @@
         "@plurnk/plurnk-mimetypes-grammar-typescript": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-yaml": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-zig": "1.16.1",
+        "@plurnk/plurnk-mimetypes-application-pdf": "1.16.5",
         "@plurnk/plurnk-mimetypes-image": "1.16.5",
         "@plurnk/plurnk-mimetypes-text-csv": "1.16.5",
         "@plurnk/plurnk-mimetypes-text-diff": "1.16.5",

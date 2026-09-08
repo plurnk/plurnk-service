@@ -24,6 +24,7 @@ const serviceManifest = require("../../package.json") as {
     dependencies?: Record<string, string>;
 };
 const imagePackage = "@plurnk/plurnk-mimetypes-image";
+const pdfManifest = require("@plurnk/plurnk-mimetypes-application-pdf/package.json") as { dependencies?: Record<string, string> };
 const defaultHandlerPackages = Object.keys(serviceManifest.dependencies ?? {})
     .filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"))
     .flatMap((packageName) => {
@@ -131,9 +132,11 @@ test("discovery: every service-owned format-handler declaration is registered", 
     }
 });
 
-test("the default service installs its image owner without inference or optional artifact catalogs", () => {
+test("the default service installs its image and PDF owners without inference or optional artifact catalogs", () => {
     assert.equal(serviceManifest.dependencies?.[imagePackage], serviceManifest.version);
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], undefined);
+    // {§mimetype-pdf-facts} — the PDF owner is header-only and dependency-free, so it ships by default like the image owner (#542).
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], serviceManifest.version);
+    assert.deepEqual(pdfManifest.dependencies, undefined, "the PDF owner pulls no extraction or rendering stack");
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], undefined);
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
 });

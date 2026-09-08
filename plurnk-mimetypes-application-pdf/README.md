@@ -1,28 +1,17 @@
 # @plurnk/plurnk-mimetypes-application-pdf
 
-`application/pdf` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Binary content; extracts text via [pdfjs-dist](https://www.npmjs.com/package/pdfjs-dist).
+`application/pdf` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Binary content. Nothing is extracted or rendered: the readable body is the document's header facts, and the document itself rides the model packet as a native document part on a route whose model accepts one.
 
-This is an optional handler and is not part of the default service install.
-
-## install
-
-```sh
-npm i @plurnk/plurnk-mimetypes-application-pdf
-```
+Part of the default service install, exactly as the image handler is.
 
 ## what it does
 
-PDF is a binary mimetype — the package declares `plurnk.binary: true`, and the framework reads files as `Uint8Array` before passing to handler methods.
+- `validate(content)` checks the `%PDF-` header (a UTF-8 BOM before it is tolerated); throws `SyntaxError` on non-PDF input.
+- `facts(content)` reports `{ pages, bytes }` — `pages` is the root page tree's `/Count`, or `null` when the tree sits inside a compressed object stream.
+- `content(content)` / `summary(content)` are the same one line: `PDF document, 12 pages, 48213 bytes`.
+- `deepJson(content)` is the facts object.
 
-- `validate(content)` checks the `%PDF-` header; throws `SyntaxError` on non-PDF input.
-- `extractRaw(content)` surfaces the outline (bookmark TOC) as heading symbols plus the metadata Title; empty when the PDF carries neither.
-- `deepJson(content)` returns a document model — metadata, detect-only security signals (`hasJavaScript` / `hasEmbeddedFiles`, presence only, never executed), external links, and AcroForm fields; `null` on parse failure.
-- `toText(content)` extracts page text (joined with `\n\n`) for regex/glob queries and the model-facing readable body; page-count bounded by `PLURNK_MIMETYPES_PDF_MAX_PAGES` (unset → unbounded).
-- `query(content, ...)` runs JSONPath over the canonical `deepJson` document model, XPath over its framework projection, and regex/glob over `toText`.
-
-Resource caps are unbounded by default; set `PLURNK_MIMETYPES_PDF_MAX_BYTES` / `PLURNK_MIMETYPES_PDF_MAX_PAGES` to a positive integer to cap (malformed values fail hard). See `.env.defaults`.
-
-Implementation provenance: the hardened pdfjs loader follows [rummy.web/WebFetcher.js](https://github.com/possumtech/rummy.web), with `isEvalSupported: false` (no PDF JavaScript execution) and `verbosity: 0` (silences font-warning noise while extracting text without rendering glyphs).
+A `READ` of a PDF member delivers the bytes to the provider as a native document attachment when the route declares document input ({§packet-attachment-parts} in plurnk-core's SPEC); on a route that does not, the READ reports the attachment as unsupported exactly as an unsupported image does. A model that needs the text runs the workspace's own tools through `EXEC` (`pdftotext`, `pdfinfo`, …); the daemon does no extraction and no lexical indexing of PDF content.
 
 ## license
 

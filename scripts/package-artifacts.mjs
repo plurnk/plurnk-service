@@ -26,8 +26,7 @@ const projections = new Map([
     ["plurnk-mimetypes-application-pdf", {
         required: [],
         forbiddenPrefixes: [
-            "dist/buildFormPdf.",
-            "dist/buildTaggedPdf.",
+            "dist/buildPdf.",
         ],
     }],
 ]);

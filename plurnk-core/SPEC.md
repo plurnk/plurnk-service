@@ -1920,7 +1920,8 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
 - §packet-attachment-parts A successful READ of an attachable member carries projection facts with its
   result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
   `image: { mimetype, width, height, bytes }`, a PDF ({§mimetype-pdf-facts}) as
-  `document: { mimetype, pages, bytes }`. If the next model request's route declares that kind's modality
+  `document: { mimetype, pages, bytes }` (`pages` null when the page tree is unreadable; the
+  attachment then weighs by bytes and carries no page count). If the next model request's route declares that kind's modality
   ({§provider-input-modalities}), the READ contributes one native file part read from the scheme's bytes at
   request time. The ordered user content is the packet text followed by each native part and then the exact
   reactive sentence `<path> has been ejected from context. It must be READ again to retain it in context.`
@@ -2713,12 +2714,13 @@ freshness remains the owning family's concern.
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
-|           |                                    | `image` and every `grammar-{slug}` leaf in the framework's tree-sitter registry ({§mimetype-grammar-leaves}), all under `@plurnk/plurnk-mimetypes-*`.                   |
+|           |                                    | `image`, `application-pdf` (header-only, {§mimetype-pdf-facts}), and every `grammar-{slug}` leaf in the framework's tree-sitter registry ({§mimetype-grammar-leaves}), all under `@plurnk/plurnk-mimetypes-*`. |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 
-The independently published `application-pdf` handler and general `tokenizers`
-artifact are opt-in leaves. Installing either beside the service admits it
-through ordinary package resolution without changing the service manifest.
+The independently published `tokenizers` artifact is an opt-in leaf. Installing
+it beside the service admits it through ordinary package resolution without
+changing the service manifest. PDF extraction is not a leaf at all: a PDF is a
+native attachment like an image, and the daemon does no extraction (#542).
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
