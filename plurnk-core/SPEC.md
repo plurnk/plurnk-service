@@ -2026,6 +2026,18 @@ AST operands: `{ op: "MOVE", source: ResourceSelection, destination: ResourceSel
 - §move-relocation-deletes-source MOVE first performs the destination mutation under {§copy}, then removes only
   the selected source region or channel. A whole-channel MOVE deletes the
   source entry only when that was its final channel.
+- §move-decomposition **MOVE is COPY plus the source's own KILL.** A MOVE
+  reads its source exactly as COPY does, writes the destination, and then
+  retires the source through the source scheme's own KILL: an entry scheme
+  deletes the entry or edits the region out, and the **log** curates — a scoped
+  MOVE from a log region (`### MOVE_ (log:///1/5/3/READ) <123,456>
+  (worker://~/notes/Q4-insights.md)`) copies the readable lines and trims them
+  from the projection like the same scoped KILL; an unscoped MOVE retires the
+  row like an unscoped KILL. The recorded evidence is never written or erased
+  ({§log-readable-projection}), so relocating reasoning or results into a
+  private note is a first-class curation move, not a refused write. A stream's
+  KILL is process control, not content curation, and is not a MOVE source
+  removal; the log is never a MOVE or COPY destination.
 - §move-canonical-whole-source The canonical whole-content source scope
   `<1,-1>` resolves as a whole-channel selection for MOVE: it removes the
   selected channel and deletes the source entry when that was its final

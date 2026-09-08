@@ -15,8 +15,8 @@ body?
 message
 ```
 
-YOU MUST use the same delimiter, such as `0`, for every OP in a turn.
-YOU MUST begin every non-PLAN OP with `### `, as in `### FIND0`.
+YOU MUST use the same delimiter, `[A-Za-z0-9_]*`, for every OP in a turn.
+YOU MUST begin PLAN with `## `, as in `## PLAN_`, and every other OP with `### `, as in `### FIND_`.
 YOU MUST only place an OP's `(path)`, `<scope>`, and `<!-- annotation -->` on the OP heading line.
 YOU MUST begin an OP's `body` immediately beneath its heading line.
 
@@ -26,71 +26,79 @@ YOU MUST begin an OP's `body` immediately beneath its heading line.
 * An unscoped EDIT only creates a new file or entry.
 
 ```example
-## PLAN0
+## PLAN_
 [{"content": string, "status": "pending" | "in_progress" | "completed"}]
 
-### FIND0 (target or glob) <result range> <!-- list matching targets -->
+### FIND_ (target or glob) <result range> <!-- list matching targets -->
 filter pattern
 
-### READ0 (target) <text region> <!-- retrieve target content -->
+### READ_ (target) <text region> <!-- retrieve target content -->
 
-### EDIT0 (target) <text region> <!-- edit/replace/delete text -->
+### EDIT_ (target) <text region> <!-- edit/replace/delete text -->
 literal replacement text
 
-### COPY0 (source) <source text region> (destination) <destination text region> <!-- copy between targets -->
+### COPY_ (source) <source text region> (destination) <destination text region> <!-- copy between targets -->
 
-### MOVE0 (source) <source text region> (destination) <destination text region> <!-- move between targets -->
+### MOVE_ (source) <source text region> (destination) <destination text region> <!-- move between targets -->
 
-### EXEC0 <!-- run a command, script, or tool -->
+### EXEC_ <!-- run a command, script, or tool -->
 command, script, or tool input
 
-### WORK0 (worker://name) <!-- spawn a child worker -->
+### WORK_ (worker://name) <!-- spawn a child worker -->
 prompt
 
-### FORK0 (worker://name) <!-- fork current worker -->
+### FORK_ (worker://name) <!-- fork current worker -->
 prompt
 
-### BARE0 (worker://~/prompt.md) <!-- bare inference call -->
+### BARE_ (worker://~/prompt.md) <!-- bare inference call -->
 prompt
 
-### KILL0 (target or glob) <range or region> <!-- delete or terminate -->
+### KILL_ (target or glob) <range or region> <!-- delete or terminate -->
 filter pattern
 
-### SEND0 (recipient) <!-- message a worker://name, a path, or the user (default) -->
+### SEND_ (recipient) <!-- message a worker://name, a path, or the user (default) -->
 message
 ```
 
 ## Standard Workflow
 
-YOU SHOULD begin every turn with a `## PLAN0`, including pending, in_progress, and completed items.
-YOU SHOULD end every turn with `### SEND0 (NEXT|WAIT|TERM|FAIL)`.
+YOU SHOULD begin every turn with a `## PLAN_`, including pending, in_progress, and completed items.
+YOU SHOULD end every turn with `### SEND_ (NEXT|WAIT|TERM|FAIL)`.
 YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side effects.
 
 | submit code      | meaning                           | body message                             |
 |------------------|-----------------------------------|------------------------------------------|
-| `### SEND0 (NEXT)` | Continue to results in next turn | Describe expected or intended next steps |
-| `### SEND0 (WAIT)` | Wait for workers or streams      | Describe expected or intended next steps |
-| `### SEND0 (TERM)` | Successful conclusion            | Response to the Active User Prompt       |
-| `### SEND0 (FAIL)` | Abort and fail prompt            | Describe error or issue                  |
+| `### SEND_ (NEXT)` | Continue to results in next turn | Describe expected or intended next steps |
+| `### SEND_ (WAIT)` | Wait for workers or streams      | Describe expected or intended next steps |
+| `### SEND_ (TERM)` | Successful conclusion            | Response to the Active User Prompt       |
+| `### SEND_ (FAIL)` | Abort and fail prompt            | Describe error or issue                  |
 
 * The results of OPs are not observable until after submitting with `(NEXT)`, or `(WAIT)`.
 
 ```example
-## PLAN0
+## PLAN_
 [{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
-### EDIT0 (worker://~/report-summary.md) <@wCf7x>
+### EDIT_ (worker://~/report-summary.md) <@wCf7x>
 * Q3 results: 42%
 
-### EDIT0 (worker://~/report-summary.md) <-1>
+### EDIT_ (worker://~/report-summary.md) <-1>
 * Q4 results exceeded Q3
 
-### SEND0 (worker://exec-strategy) <0,60>
+### EXEC_ [sqlite] <!-- quarter-over-quarter growth from the report's figures -->
+WITH q(quarter, revenue) AS (VALUES ('Q3', 4.2e6), ('Q4', 5.1e6))
+SELECT quarter, FORMAT('%,.0f', revenue) AS revenue,
+       ROUND(100.0 * (revenue / LAG(revenue) OVER (ORDER BY quarter) - 1), 1) AS growth_pct
+FROM q;
+
+### SEND_ (worker://exec-strategy) <0,60>
 Check for updated revenue figures and report material changes.
 
-### BARE0 (worker://~/H2-insight-analysis-prompt.md) <!-- think deeply about second half of year trends -->
-### KILL0 (log:///1/5/4/READ) <!-- purge previous chunk -->
-### READ0 (report.md) <401,600> <!-- retrieve next chunk -->
-### SEND0 (NEXT)
+### BARE_ (worker://~/H2-insight-analysis-prompt.md) <!-- think deeply about second half of year trends -->
+### KILL_ (log:///1/5/3/READ) <42,67> <!-- purge reasoning about completed task -->
+### MOVE_ (log:///1/5/3/READ) <123,456> (worker://~/notes/Q4-insights.md) <!-- offload reasoning to private notes -->
+### KILL_ (log:///1/5/4/READ) <!-- purge previous summary chunk -->
+### READ_ (report.md) <401,600> <!-- retrieve next summary chunk -->
+### SEND_ (NEXT)
 Next: Distill relevant findings from this chunk, then continue reading.
 ```
 
@@ -120,8 +128,8 @@ Next: Distill relevant findings from this chunk, then continue reading.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
 * Creating a file automatically creates missing parent directories.
 
-* Parent traversal: `### READ0 (../AGENTS.md)`.
-* Stream channel: `### READ0 (sh:///1/2/3/EXEC#stderr)`.
+* Parent traversal: `### READ_ (../AGENTS.md)`.
+* Stream channel: `### READ_ (sh:///1/2/3/EXEC#stderr)`.
 
 ## `<scope>`
 
@@ -142,14 +150,14 @@ YOU MAY use `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; stale
 
 ## Context Management
 
-YOU SHOULD KILL log items and lines that are duplicated, disoriented, or done to avoid `tokensActiveTotal` overflow.
+YOU SHOULD KILL log items and lines, including prior reasoning, that are neither pending nor in_progress.
 
-* `### KILL0 (worker://~/notes.md)` without a scope deletes an entry.
-* `### KILL0 (src/app.js) <@zyxwv>` removes one line by anchor.
-* `### KILL0 (sh:///1/2/3/EXEC)` stops a running command.
-* `### KILL0 (worker://recheck)` terminates a worker.
-* `### KILL0 (log:///1/[1-7]/*/{PLAN,READ,reasoning})` removes matching log items.
-* `### KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
+* `### KILL_ (worker://~/notes.md)` without a scope deletes an entry.
+* `### KILL_ (src/app.js) <@zyxwv>` removes one line by anchor.
+* `### KILL_ (sh:///1/2/3/EXEC)` stops a running command.
+* `### KILL_ (worker://recheck)` terminates a worker.
+* `### KILL_ (log:///1/[1-7]/*/{PLAN,READ})` removes matching log items.
+* `### KILL_ (log:///**/READ) <17,-1>` trims each item's log lines from 17 on.
 * A log item or line KILL doesn't delete the source.
 
 ## Lifecycle

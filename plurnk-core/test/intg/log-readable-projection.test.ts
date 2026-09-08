@@ -52,12 +52,30 @@ test("{§log-readable-projection}: READ and COPY omit deliberate trims in origin
     assert.equal(found.status, 200);
     assert.equal(JSON.parse(found.content)[0].region.startLine, 4);
     assert.equal((await dispatch(`### READ_ (${target}) <3>`)).status, 204);
-    assert.equal((await dispatch(`### COPY_ (${target}) (log:///1/1/2/READ)`)).status, 400);
-    assert.equal((await dispatch(`### MOVE_ (${target}) (worker:///moved.txt)`)).status, 400);
-    const original = await db.log_read_by_coordinate.get<{ rx: string }>({
-        worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
-    });
-    assert.equal(JSON.parse(original!.rx).content, "one\ntwo\nsecret\nfour\nfive", "curation never rewrites recorded evidence");
+    assert.equal((await dispatch(`### COPY_ (${target}) (log:///1/1/2/READ)`)).status, 400, "the log is never a write target");
+    // {§move-decomposition}: MOVE from a log region is the COPY above plus the same scoped KILL —
+    // the destination receives the readable lines, the projection trims them, the evidence stays.
+    const moved = await dispatch(`### MOVE_ (${target}) <2,4> (worker:///moved.txt)`);
+    assert.equal(moved.status, 201, JSON.stringify(moved));
+    assert.deepEqual(
+        (moved.effects as Array<{ target: string; action: string }>).map(({ target: t, action }) => `${action} ${t}`),
+        ["create worker:///moved.txt", `update ${target}`],
+    );
+    assert.equal((await dispatch("### READ_ (worker:///moved.txt) <1,-1>")).content, "two\nfour", "the destination holds exactly the readable region");
+    assert.equal((await dispatch(`### READ_ (${target}) <1,-1>`)).content, "one\nfive", "the moved lines left the readable projection");
+    const whole = await dispatch(`### MOVE_ (${target}) (worker:///rest.txt)`);
+    assert.equal(whole.status, 201, JSON.stringify(whole));
+    assert.deepEqual(
+        (whole.effects as Array<{ target: string; action: string }>).map(({ target: t, action }) => `${action} ${t}`),
+        ["create worker:///rest.txt", `delete ${target}`],
+        "an unscoped MOVE retires the row exactly as an unscoped KILL does",
+    );
+    assert.equal((await dispatch("### READ_ (worker:///rest.txt) <1,-1>")).content, "one\nfive");
+    const original = (await db.test_log_entries_by_loop.all<{ sequence: number; rx: string; active: number }>({ loop_id: ids.loopId }))
+        .find((row) => row.sequence === 2);
+    assert.ok(original, "the recorded row is still there");
+    assert.equal(original.active, 0, "retired from the active projection");
+    assert.equal(JSON.parse(original.rx).content, "one\ntwo\nsecret\nfour\nfive", "curation never rewrites recorded evidence");
 });
 
 test("{§log-readable-projection}: FIND prices retained bodies consistently in rows and folders", async (t) => {

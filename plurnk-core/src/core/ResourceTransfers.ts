@@ -122,7 +122,10 @@ export default class ResourceTransfers {
         destination: MetadataResourceSelection;
         ctx: PlurnkSchemeContext;
     }): Promise<DispatchResult> {
-        const resolvedSource = await this.#selection.resolveResourceSelection(source, ctx);
+        // {§move-decomposition} — a MOVE reads its source exactly as COPY does and then retires
+        // it with the source scheme's own KILL: an entry scheme deletes or edits the entry, the
+        // log curates its projection. The recorded evidence is never a write target.
+        const resolvedSource = await this.#selection.resolveResourceSelection(source, ctx, "read");
         if (MutationEffects.isDispatchResult(resolvedSource)) return resolvedSource;
         const resolvedDestination = await this.#selection.resolveResourceSelection(destination, ctx);
         if (MutationEffects.isDispatchResult(resolvedDestination)) return resolvedDestination;
@@ -131,18 +134,20 @@ export default class ResourceTransfers {
 
         const handler = this.#schemes.get(resolvedSource.scheme, ctx.functionalityWorkerId);
         if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
-        const sourceBinding = await this.#resolveDataEntryAddress({
-            target: resolvedSource.target,
-            routedScheme: resolvedSource.scheme,
-            handler,
-            manifest: resolvedSource.manifest as SchemeManifest & { readonly category: "data" },
-            ctx,
-            access: "write",
-        });
-        if (sourceBinding.result !== null) return sourceBinding.result;
-        if (sourceBinding.address === null) return MutationEffects.failure(
-            "entry-not-found", 404, "The MOVE source could not be resolved for deletion.",
-        );
+        if (!ResourceTransfers.#curatedSource(resolvedSource)) {
+            const sourceBinding = await this.#resolveDataEntryAddress({
+                target: resolvedSource.target,
+                routedScheme: resolvedSource.scheme,
+                handler,
+                manifest: resolvedSource.manifest as SchemeManifest & { readonly category: "data" },
+                ctx,
+                access: "write",
+            });
+            if (sourceBinding.result !== null) return sourceBinding.result;
+            if (sourceBinding.address === null) return MutationEffects.failure(
+                "entry-not-found", 404, "The MOVE source could not be resolved for deletion.",
+            );
+        }
 
         if (MutationEffects.sameChannel(resolvedSource, resolvedDestination)) {
             const result = await this.moveWithinChannel(
@@ -280,6 +285,13 @@ export default class ResourceTransfers {
     }
 
 
+    // {§move-decomposition} — a logging scheme's KILL is content curation (the projection trims,
+    // the row is retired, the evidence stays), so it is a MOVE's source removal. A stream's KILL
+    // is process control and is not.
+    static #curatedSource(source: { readonly manifest: SchemeManifest }): boolean {
+        return source.manifest.category === "logging";
+    }
+
     async removeMoveSource(
         statement: MoveStatement,
         source: ResolvedResourceSelection,
@@ -290,6 +302,19 @@ export default class ResourceTransfers {
             source,
             source.lineMarker === null ? "delete" : "update",
         );
+        if (ResourceTransfers.#curatedSource(source)) {
+            const handler = this.#schemes.get(source.scheme, ctx.functionalityWorkerId) as
+                { kill?: (pathname: string, scope: LineMarker | null, ctx: SchemeCtxImpl) => Promise<DispatchResult> } | undefined;
+            if (handler?.kill === undefined) {
+                throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' curates nothing.`);
+            }
+            const curated = await handler.kill(
+                source.pathname,
+                source.lineMarker,
+                new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { ownerId: null }),
+            );
+            return MutationEffects.finalizeEffects(Results.assert(curated), source, [effect]);
+        }
         if (source.lineMarker === null) {
             const handler = this.#schemes.get(source.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
             if (handler === undefined) {
@@ -827,6 +852,7 @@ export default class ResourceTransfers {
                 lineMarker: deferred.lineMarker,
             },
             ctx,
+            "read",
         );
         if (MutationEffects.isDispatchResult(resolvedSource)) {
             return {
