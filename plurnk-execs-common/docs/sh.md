@@ -3,6 +3,12 @@
 A bare `EXEC` is the shell. The body is the command line, run via `sh -c`,
 character-perfect including whitespace. `[sh]` names the shell explicitly.
 
+```example
+### EXEC_ <!-- the body is the script itself: several lines, never fenced -->
+printf 'hello\n' > hello.txt
+wc -l hello.txt
+```
+
 ## Environment
 
 The command receives a **scoped** environment. Provider keys and every
@@ -16,13 +22,13 @@ write — or, in a workspace without one, the directory the shell would run in
 anyway. A `{cwd=<directory>}` block on the heading overrides it for its body:
 
 ```example
-### EXEC0 {cwd=./dir}
+### EXEC_ {cwd=./dir}
 pwd
 ```
 
 The receipt always names the directory the command ran in.
 
-A script target runs that script: `### EXEC0 (greet.sh)` runs it with an empty
+A script target runs that script: `### EXEC_ (greet.sh)` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
@@ -46,7 +52,7 @@ completion, the harness adds one `_plurnk` READ per channel: its first page
 address for more; the `log:///…/READ` item holds only its recorded page:
 
 ```example
-### READ0 (sh:///1/2/3/EXEC#stdout) <17,40>
+### READ_ (sh:///1/2/3/EXEC#stdout) <17,40>
 ```
 
 A nonzero exit closes with status 500; inspect both channels because either
@@ -57,16 +63,16 @@ may carry the useful diagnostic.
 For a long-running command, the `<L>` slot carries `<timeout, poll>` in minutes:
 
 ```example
-### EXEC0 <30>
+### EXEC_ <30>
 npm run build
 
-### EXEC0 <30,5>
+### EXEC_ <30,5>
 npm run e2e
 
-### EXEC0 <-1,5>
+### EXEC_ <-1,5>
 npm run test
 
-### EXEC0 <-1,0>
+### EXEC_ <-1,0>
 tail -f app.log
 ```
 

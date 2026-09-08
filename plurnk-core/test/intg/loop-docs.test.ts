@@ -114,7 +114,8 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
         const readme = await readFile(new URL("README.md", import.meta.resolve(`@plurnk/plurnk-execs-${runtime}/package.json`)), "utf8");
         const examples = [doc.content, readme].flatMap((content) => [...content.matchAll(/^```example\n([\s\S]*?)\n```/gm)]);
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
-        const execs = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN0\n[]\n${source}\n### SEND0 (NEXT)\nReview the results.`))
+        const laneOf = (source: string): string => /^#{2,3} [A-Z]+([A-Za-z0-9_]*)/m.exec(source)?.[1] ?? "0";
+        const execs = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN${laneOf(source)}\n[]\n${source}\n### SEND${laneOf(source)} (NEXT)\nReview the results.`))
             .filter((statement) => statement.op === "EXEC");
         assert.ok(execs.length > 0);
         assert.ok(execs.every(({ executor }) => executor === runtime), `${runtime} is the executor, never the input target`);
@@ -165,7 +166,9 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
         });
         assert.ok(doc, "the installed shell's documentation reaches the worker");
         const examples = [...doc.content.matchAll(/^```example\n([\s\S]*?)\n```/gm)];
-        const reads = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN0\n[]\n${source}\n### SEND0 (NEXT)\nReview the results.`))
+        // Examples carry their own lane ({§delimiter-discipline}); wrap each in a PLAN/SEND of that lane.
+        const laneOf = (source: string): string => /^#{2,3} [A-Z]+([A-Za-z0-9_]*)/m.exec(source)?.[1] ?? "0";
+        const reads = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN${laneOf(source)}\n[]\n${source}\n### SEND${laneOf(source)} (NEXT)\nReview the results.`))
             .filter((statement) => statement.op === "READ");
         assert.ok(reads.length > 0, "the doc demonstrates fetching beyond the terminal observation");
         for (const read of reads) {

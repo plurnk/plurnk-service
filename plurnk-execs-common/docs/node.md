@@ -2,6 +2,12 @@
 
 A JavaScript snippet, run via `node -e`. Node is the daemon's own runtime, so it's always available (no PATH probe).
 
+```example
+### EXEC_ [node] <!-- the body is the snippet, unfenced -->
+const os = require("node:os");
+console.log(JSON.stringify({ platform: os.platform(), cpus: os.cpus().length }));
+```
+
 ## Environment
 
 The same scoped environment as `sh`: the daemon's own secrets (`PLURNK_*`, provider keys) are stripped, so `process.env` inside the snippet sees the project's environment, not plurnk's.
@@ -21,7 +27,7 @@ with its stack on stderr.
 Runs in the workspace project root by default, or the daemon's own cwd in a
 workspace without one; a `{cwd=<directory>}` block on the heading selects
 another. The target is a script, never a command or a directory:
-`### EXEC0 [node] (tool.js)` runs that JavaScript file and receives the body as
+`### EXEC_ [node] (tool.js)` runs that JavaScript file and receives the body as
 stdin. `{args=["--format","json"]}` passes literal script arguments, also for
 `worker://` and `skill://` targets. Relative imports resolve from the script;
 ordinary relative filesystem paths resolve from cwd. The receipt names cwd

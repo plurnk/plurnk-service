@@ -5,7 +5,11 @@ that file and receives the body as stdin. Script arguments and working directory
 are optional header metadata:
 
 ```example
-### EXEC0 [python3] (tools/report.py) {args=["--help"]}
+### EXEC_ [python3] <!-- the body is the program, unfenced -->
+import json, sys
+print(json.dumps({"python": list(sys.version_info[:2])}))
+
+### EXEC_ [python3] (tools/report.py) {args=["--help"]}
 ```
 
 Each argument is a literal string, without shell expansion. `{cwd=<directory>}`

@@ -18,7 +18,17 @@ an entry rather than controlling that worker.
 Workers share project files and the commons. Own-space entries have separate
 ownership, not secrecy from other workers in the workspace; conversation logs
 remain owner-scoped. `_plurnk/` entries are generated and read-only even in your
-own space. EDIT creates or changes an entry, never a worker.
+own space. EDIT creates or changes an entry, never a worker. An unscoped EDIT
+creates the entry from its body, which is the content itself: several lines,
+never wrapped in a fence.
+
+```example
+### EDIT_ (worker://~/scratch/greet.py) <!-- create the entry from the body -->
+def greet(name):
+    return f"hello {name}"
+
+print(greet("world"))
+```
 
 Control addresses contain only scheme and authority: no trailing slash,
 userinfo, port, query, fragment, or `{metadata}` modifier.
@@ -34,7 +44,7 @@ Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
 as a new task, rather than interrupting an unfinished task:
 
 ```example
-### SEND0 (worker://reviewer) <0,60>
+### SEND_ (worker://reviewer) <0,60>
 Check for new messages and report relevant findings.
 ```
 
@@ -52,8 +62,8 @@ It receives no parent history or tools. Give it a prompt resource, an inline
 prompt, or both; resource text precedes an inline body with a blank line between.
 
 ```example
-### BARE0 (worker://~/question.md)
-### BARE0
+### BARE_ (worker://~/question.md)
+### BARE_
 What is the capital of Germany?
 ```
 
@@ -61,18 +71,18 @@ The resource supplies its complete current READ text, not a preview. Neither
 prompt form is truncated to fit; provider capacity still applies. A failed
 source read returns its error without making an inference call.
 Consecutive BARE calls run concurrently and settle before the turn continues.
-Their answers are ordinary BARE receipts, visible after `### SEND0 (NEXT)`.
+Their answers are ordinary BARE receipts, visible after `### SEND_ (NEXT)`.
 
 ## Lifecycle
 
-**Continue or wait.** You can keep doing useful work with `### SEND0 (NEXT)`
+**Continue or wait.** You can keep doing useful work with `### SEND_ (NEXT)`
 while children run. Use WAIT when you need their results before proceeding:
 
 ```example
-### WORK0 (worker://capital-checker)
+### WORK_ (worker://capital-checker)
 Find the capital of France from a primary source
 
-### SEND0 (WAIT)
+### SEND_ (WAIT)
 Awaiting capital-checker.
 ```
 
@@ -93,14 +103,14 @@ and FAIL abandons the task. An untimed WAIT with no remaining work concludes.
 
 Each child task's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
-failure preserves its status and Problem. `### READ0 (worker://capital-checker)`
+failure preserves its status and Problem. `### READ_ (worker://capital-checker)`
 collects the same result explicitly. While the child is running it returns
 `425`; submitting NEXT then waits for delivery rather than polling.
 A result does not imply that every task in that worker has finished.
 
-**Concluding with live workers.** `### SEND0 (TERM)` is refused (`409`) while you hold a live worker or
+**Concluding with live workers.** `### SEND_ (TERM)` is refused (`409`) while you hold a live worker or
 open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
-Either `### SEND0 (WAIT)` to await them or `### KILL0 (worker://<name>)` the ones you no longer need.
+Either `### SEND_ (WAIT)` to await them or `### KILL_ (worker://<name>)` the ones you no longer need.
 KILL settles before the turn's disposition; other live work or unobserved
 results can still prevent TERM.
 
