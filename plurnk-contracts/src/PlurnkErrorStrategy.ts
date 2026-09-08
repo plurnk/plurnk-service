@@ -64,8 +64,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (modeName === "SLOTS" && ch.startsWith("'[")) {
             const op = /^[A-Z]+/.exec(lexer.getOpenTag())?.[0] ?? "this";
             return op === "EXEC"
-                ? "malformed `[executor]` on EXEC - an executor name is letters, digits, `_`, `.`, `+`, or `-`, as in `### EXEC0 [python3] (tool.py)`"
-                : `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`### EXEC0 [python3] (tool.py)\`); ${op} takes \`(path)\``;
+                ? "malformed `[executor]` on EXEC - an executor name is letters, digits, `_`, `.`, `+`, or `-`, as in `### EXEC_ [python3] (tool.py)`"
+                : `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`### EXEC_ [python3] (tool.py)\`); ${op} takes \`(path)\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath redirect only once the heading has closed a `(target)` — before
@@ -168,7 +168,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #targetedMessage(tok: Token | null): string | null {
         // {§exec-executor-slot} — the executor slot leads an EXEC heading, once.
         if (tok?.type === plurnkParser.EXECUTOR) {
-            return "misplaced `[executor]` - it leads an EXEC heading, once, before the path: `### EXEC0 [python3] (tool.py)`";
+            return "misplaced `[executor]` - it leads an EXEC heading, once, before the path: `### EXEC_ [python3] (tool.py)`";
         }
         if (tok?.type !== plurnkParser.COMBINED_L_MARKER) return null;
         return COMBINED_ANCHOR_LINE_DIAGNOSTIC;

@@ -94,7 +94,7 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
         assert.equal(read.status, 200);
         const anchors = read.lineAnchors as string[];
         assert.ok(anchors.length >= 3);
-        const source = `## PLAN0\n[]\n### EDIT0 (${target}) <2>\nTWO\n### EDIT0 (file:///${target}) <${anchors[2]}>\nTHREE\n### SEND0 (NEXT)`;
+        const source = `## PLAN_\n[]\n### EDIT_ (${target}) <2>\nTWO\n### EDIT_ (file:///${target}) <${anchors[2]}>\nTHREE\n### SEND_ (NEXT)`;
         const first = deferred<number>();
         const second = deferred<number>();
         let firstId = 0;

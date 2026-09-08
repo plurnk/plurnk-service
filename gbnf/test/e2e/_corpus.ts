@@ -40,10 +40,10 @@ const CHANNEL = "<|channel>thought\nCheck the task.<channel|>\n";
 const THINK_TAIL = "Check the task.</think>\n";
 const REAL_PACKET =
     CHANNEL +
-    "## PLAN0\nFind and verify the answer.\n" +
-    "### FIND0 (known:///**)\n~capital of France\n" +
-    "### READ0 (plurnk:///manifest.json)\n$[?(@.channels.body)]\n" +
-    "### SEND0 (TERM)\nParis";
+    "## PLAN_\nFind and verify the answer.\n" +
+    "### FIND_ (known:///**)\n~capital of France\n" +
+    "### READ_ (plurnk:///manifest.json)\n$[?(@.channels.body)]\n" +
+    "### SEND_ (TERM)\nParis";
 
 export const CORPUS: Case[] = [
     // ---- controlled grammar: the verdict trichotomy, oracle-independent ----
@@ -62,10 +62,10 @@ export const CORPUS: Case[] = [
     { name: "plurnk/representative-turn", grammar: PLURNK_GBNF, input: REAL_PACKET, expect: "accept",
       note: "the current rail must admit its representative full turn" },
     { name: "plurnk/gemma-plan-read-send", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}## PLAN0\nRead the greeting.\n### READ0 (README.md)\n$.greeting\n### SEND0 (TERM)\ndone`, expect: "accept",
+      input: `${CHANNEL}## PLAN_\nRead the greeting.\n### READ_ (README.md)\n$.greeting\n### SEND_ (TERM)\ndone`, expect: "accept",
       note: "a well-formed turn: Harmony channel + PLAN + statement + terminal SEND" },
     { name: "plurnk/qwen-plan-read-send", grammar: PLURNK_QWEN_GBNF,
-      input: `${THINK_TAIL}## PLAN0\nRead the greeting.\n### READ0 (README.md)\n$.greeting\n### SEND0 (TERM)\ndone`, expect: "accept",
+      input: `${THINK_TAIL}## PLAN_\nRead the greeting.\n### READ_ (README.md)\n$.greeting\n### SEND_ (TERM)\ndone`, expect: "accept",
       note: "the Qwen rail begins at sampled token zero after the template-provided opener" },
     { name: "plurnk/prose", grammar: PLURNK_GBNF, input: "Sure! The capital of France is Paris.",
       expect: "reject", pos: 0, note: "natural-language prose is not a plurnk turn" },
@@ -74,24 +74,24 @@ export const CORPUS: Case[] = [
     { name: "plurnk/channel-only", grammar: PLURNK_GBNF, input: CHANNEL, expect: "incomplete", pos: CHANNEL.length,
       note: "the channel alone is a prefix; PLAN and a terminal SEND are still expected" },
     { name: "plurnk/alternate-lane-literal", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}## PLAN0\nStore the quoted section.\n\n### EDIT0 (worker:///quoted.md)\nquoted section:\n### READ2 (README.md)\nliteral\n\n### SEND0 (TERM)\ndone`, expect: "reject",
-      note: "the rail reserves every operation heading stem for lane 0; ANTLR alone admits alternate-lane literals" },
+      input: `${CHANNEL}## PLAN_\nStore the quoted section.\n\n### EDIT_ (worker:///quoted.md)\nquoted section:\n### READ2 (README.md)\nliteral\n\n### SEND_ (TERM)\ndone`, expect: "reject",
+      note: "the rail reserves every operation heading stem for lane `_`; ANTLR alone admits alternate-lane literals" },
     ...[
         { profile: "gemma", grammar: PLURNK_GBNF, prefix: CHANNEL },
         { profile: "qwen", grammar: PLURNK_QWEN_GBNF, prefix: THINK_TAIL },
     ].flatMap(({ profile, grammar, prefix }): Case[] => [
         { name: `plurnk/${profile}-inline-heading`, grammar,
-          input: `${prefix}## PLAN0\nQuote \`### READ0 (x)\`.\n### SEND0 (TERM)\nUse \`## PLAN0\` and \`### SEND2 (TERM)\` as examples.`, expect: "accept",
+          input: `${prefix}## PLAN_\nQuote \`### READ_ (x)\`.\n### SEND_ (TERM)\nUse \`## PLAN_\` and \`### SEND2 (TERM)\` as examples.`, expect: "accept",
           note: "inline quotations do not start new sections ({§rail-heading-boundaries})" },
         { name: `plurnk/${profile}-body-start-heading`, grammar,
-          input: `${prefix}## PLAN0\n### READ2 (x)\n### SEND0 (TERM)\nDone.`, expect: "reject",
+          input: `${prefix}## PLAN_\n### READ2 (x)\n### SEND_ (TERM)\nDone.`, expect: "reject",
           note: "the first body line is a structural boundary too" },
         { name: `plurnk/${profile}-long-turn`, grammar,
-          input: prefix + "## PLAN0\nCurate.\n" + "### KILL0 (log:///1/1/*/READ)\n".repeat(24)
-            + "### SEND0 (NEXT)\nContinue.\n" + "### READ0 (README.md)\n".repeat(24), expect: "accept",
+          input: prefix + "## PLAN_\nCurate.\n" + "### KILL_ (log:///1/1/*/READ)\n".repeat(24)
+            + "### SEND_ (NEXT)\nContinue.\n" + "### READ_ (README.md)\n".repeat(24), expect: "accept",
           note: "ordinary operations have no quota before or after disposition ({§gbnf-turn-shape})" },
         { name: `plurnk/${profile}-second-disposition`, grammar,
-          input: `${prefix}### SEND0 (TERM)\nDone.\n### KILL0 (log:///1/1/*/READ)\n### SEND0 (TERM)\nAgain.`, expect: "reject",
+          input: `${prefix}### SEND_ (TERM)\nDone.\n### KILL_ (log:///1/1/*/READ)\n### SEND_ (TERM)\nAgain.`, expect: "reject",
           note: "post-disposition work cannot introduce a second disposition" },
     ]),
 ];

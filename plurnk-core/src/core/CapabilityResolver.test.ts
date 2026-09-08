@@ -51,35 +51,35 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         source: string;
         expected: readonly CapabilityDescriptor[];
     }[] = [
-        { source: "## PLAN0\n[]", expected: [] },
-        { source: "### FIND0 (README.md)", expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
-        { source: "### READ0 (README.md)", expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
-        { source: "### EDIT0 (worker:///notes.md)\nreplacement", expected: [{ operation: "EDIT", scheme: "worker", access: "mutate", traits: [] }] },
+        { source: "## PLAN_\n[]", expected: [] },
+        { source: "### FIND_ (README.md)", expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
+        { source: "### READ_ (README.md)", expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
+        { source: "### EDIT_ (worker:///notes.md)\nreplacement", expected: [{ operation: "EDIT", scheme: "worker", access: "mutate", traits: [] }] },
         {
-            source: "### COPY0 (README.md) (worker:///copy.md)",
+            source: "### COPY_ (README.md) (worker:///copy.md)",
             expected: [
                 { operation: "COPY", scheme: "file", access: "observe", traits: [] },
                 { operation: "COPY", scheme: "worker", access: "mutate", traits: [] },
             ],
         },
         {
-            source: "### MOVE0 (README.md) (worker:///moved.md)",
+            source: "### MOVE_ (README.md) (worker:///moved.md)",
             expected: [
                 { operation: "MOVE", scheme: "file", access: "observe", traits: [] },
                 { operation: "MOVE", scheme: "file", access: "mutate", traits: [] },
                 { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
             ],
         },
-        { source: "### SEND0 (TERM)\ndone", expected: [] },
-        { source: "### EXEC0\ngit status --short", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
-        { source: "### BARE0\nWhat is 2 + 2?", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
-        { source: "### BARE0 (worker://~/prompt.md)", expected: [
+        { source: "### SEND_ (TERM)\ndone", expected: [] },
+        { source: "### EXEC_\ngit status --short", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
+        { source: "### BARE_\nWhat is 2 + 2?", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
+        { source: "### BARE_ (worker://~/prompt.md)", expected: [
             { operation: "BARE", access: "execute", traits: [] },
             { operation: "BARE", scheme: "worker", access: "observe", traits: [] },
         ] },
-        { source: "### WORK0 (worker://child)\nInvestigate.", expected: [{ operation: "WORK", scheme: "worker", access: "control", traits: [] }] },
-        { source: "### FORK0 (worker://child)\nInvestigate.", expected: [{ operation: "FORK", scheme: "worker", access: "control", traits: [] }] },
-        { source: "### KILL0 (README.md)", expected: [{ operation: "KILL", scheme: "file", access: "mutate", traits: [] }] },
+        { source: "### WORK_ (worker://child)\nInvestigate.", expected: [{ operation: "WORK", scheme: "worker", access: "control", traits: [] }] },
+        { source: "### FORK_ (worker://child)\nInvestigate.", expected: [{ operation: "FORK", scheme: "worker", access: "control", traits: [] }] },
+        { source: "### KILL_ (README.md)", expected: [{ operation: "KILL", scheme: "file", access: "mutate", traits: [] }] },
     ];
 
     const covered = new Set<string>();
@@ -93,15 +93,15 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
 
 test("{§capability-admission} classifies target-dependent control and curation routes", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("### SEND0 (worker://child)\nContinue."), 1),
+        resolver.descriptors(statement("### SEND_ (worker://child)\nContinue."), 1),
         [{ operation: "SEND", scheme: "worker", access: "control", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### KILL0 (worker://child)"), 1),
+        resolver.descriptors(statement("### KILL_ (worker://child)"), 1),
         [{ operation: "KILL", scheme: "worker", access: "control", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### KILL0 (log:///1/2/3)"), 1),
+        resolver.descriptors(statement("### KILL_ (log:///1/2/3)"), 1),
         [],
         "log curation remains available under every attenuation layer",
     );
@@ -109,42 +109,42 @@ test("{§capability-admission} classifies target-dependent control and curation 
 
 test("{§capability-admission} leaves unknown finite-tool targets to their runtime owner", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("### EXEC0 [tools] (known)\n{}"), 1),
+        resolver.descriptors(statement("### EXEC_ [tools] (known)\n{}"), 1),
         [{ operation: "EXEC", scheme: "exec", runtime: "tools", tool: "known", access: "execute", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### EXEC0 [tools] (unknown)\n{}"), 1),
+        resolver.descriptors(statement("### EXEC_ [tools] (unknown)\n{}"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### EXEC0 [tools]\n{}"), 1),
+        resolver.descriptors(statement("### EXEC_ [tools]\n{}"), 1),
         [],
     );
 });
 
 test("{§capability-admission} leaves every partially unresolved composed route to its ordinary owner", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("### COPY0 (unknown://source) (worker:///copy.md)"), 1),
+        resolver.descriptors(statement("### COPY_ (unknown://source) (worker:///copy.md)"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### COPY0 (README.md) (unknown://destination)"), 1),
+        resolver.descriptors(statement("### COPY_ (README.md) (unknown://destination)"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### MOVE0 (unknown://source) (worker:///moved.md)"), 1),
+        resolver.descriptors(statement("### MOVE_ (unknown://source) (worker:///moved.md)"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### EXEC0 [resource-tool] (unknown://source)\ntransform"), 1),
+        resolver.descriptors(statement("### EXEC_ [resource-tool] (unknown://source)\ntransform"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### EXEC0 [resource-tool]\ntransform"), 1),
+        resolver.descriptors(statement("### EXEC_ [resource-tool]\ntransform"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("### EXEC0 [optional-resource]\ntransform"), 1),
+        resolver.descriptors(statement("### EXEC_ [optional-resource]\ntransform"), 1),
         [{ operation: "EXEC", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
     );
 });
@@ -152,23 +152,23 @@ test("{§capability-admission} leaves every partially unresolved composed route 
 test("{§worker-generated-subtree} intrinsic mutations preserve each external transfer demand", () => {
     const own = "worker://~/_plurnk/reference.md";
     const external = "worker://~/notes.md";
-    assert.deepEqual(resolver.descriptors(statement(`### EDIT0 (${own})\nreference`), 1, "_plurnk"), []);
-    assert.deepEqual(resolver.descriptors(statement(`### COPY0 (${external}) (${own})`), 1, "_plurnk"), [
+    assert.deepEqual(resolver.descriptors(statement(`### EDIT_ (${own})\nreference`), 1, "_plurnk"), []);
+    assert.deepEqual(resolver.descriptors(statement(`### COPY_ (${external}) (${own})`), 1, "_plurnk"), [
         { operation: "COPY", scheme: "worker", access: "observe", traits: [] },
     ]);
-    assert.deepEqual(resolver.descriptors(statement(`### MOVE0 (${external}) (${own})`), 1, "_plurnk"), [
+    assert.deepEqual(resolver.descriptors(statement(`### MOVE_ (${external}) (${own})`), 1, "_plurnk"), [
         { operation: "MOVE", scheme: "worker", access: "observe", traits: [] },
         { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
     ]);
-    assert.deepEqual(resolver.descriptors(statement(`### MOVE0 (${own}) (${external})`), 1, "_plurnk"), [
+    assert.deepEqual(resolver.descriptors(statement(`### MOVE_ (${own}) (${external})`), 1, "_plurnk"), [
         { operation: "MOVE", scheme: "worker", access: "observe", traits: [] },
         { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
     ]);
     for (const path of [external, "worker://~/_plurnk-other/file", "file:///_plurnk/file"]) {
-        assert.equal(resolver.descriptors(statement(`### EDIT0 (${path})\ncontent`), 1, "_plurnk").length, 1, path);
+        assert.equal(resolver.descriptors(statement(`### EDIT_ (${path})\ncontent`), 1, "_plurnk").length, 1, path);
     }
     for (const writer of ["model", "client", "plugin"] as const) {
-        assert.equal(resolver.descriptors(statement(`### EDIT0 (${own})\ncontent`), 1, writer).length, 1, writer);
+        assert.equal(resolver.descriptors(statement(`### EDIT_ (${own})\ncontent`), 1, writer).length, 1, writer);
     }
 });
 

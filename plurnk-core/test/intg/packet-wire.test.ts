@@ -1155,7 +1155,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /### EDIT0 \(/);
+    assert.doesNotMatch(out, /### EDIT_ \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -1229,7 +1229,7 @@ test("a body-suppressed turnOps row renders meta-only without inventing an opera
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, initial_folded: [[1, -1]],
         attrs: { kind: "turnOps" },
-        rx: { content: "## PLAN0\nInitialize\n\n### SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "## PLAN_\nInitialize\n\n### SEND_ (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/ops\n\{"lines":5/, "the source row has a canonical /ops heading; model origin is the omitted default (#338)");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
@@ -1253,13 +1253,13 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "turnOps" },
-        rx: { content: "## PLAN0\nInitialize\n\n### SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "## PLAN_\nInitialize\n\n### SEND_ (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/ops$/m, "the heading owns the canonical address; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
-    assert.match(out, /1:## PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
-    assert.match(out, /4:### SEND0 \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
+    assert.match(out, /1:## PLAN_\n2:Initialize/, "the next model turn sees the prior PLAN section");
+    assert.match(out, /4:### SEND_ \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
 test("initialization renders its visible turnOps and its real kernel-authored operation outcomes", () => {
@@ -1275,7 +1275,7 @@ test("initialization renders its visible turnOps and its real kernel-authored op
         {
             coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
             tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
-            rx: { content: `## PLAN0\n${JSON.stringify(planValue("Discover the tooling available."))}\n### SEND0 (NEXT)\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
+            rx: { content: `## PLAN_\n${JSON.stringify(planValue("Discover the tooling available."))}\n### SEND_ (NEXT)\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/PLAN$/m, "the PLAN has an operation coordinate");

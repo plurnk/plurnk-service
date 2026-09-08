@@ -339,7 +339,7 @@ export default class AstBuilder {
         const found = ctx.EXECUTOR();
         const list = Array.isArray(found) ? found : found === null || found === undefined ? [] : [found];
         if (list.length > 1) {
-            throw new PlurnkParseError(pos.line, pos.column, "visitor", "`### EXEC0` accepts one `[executor]`");
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", "`### EXEC_` accepts one `[executor]`");
         }
         return list[0]?.getText().slice(1, -1) ?? null;
     }
@@ -478,7 +478,7 @@ export default class AstBuilder {
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `\`### EXEC0\` accepts ${slot} at most once`);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `\`### EXEC_\` accepts ${slot} at most once`);
             }
             return found[0] ?? null;
         };

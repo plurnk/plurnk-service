@@ -60,7 +60,7 @@ export default class DispatchAsPlurnk {
             ...statements,
             {
                 op: "SEND",
-                delimiter: "0",
+                delimiter: "_",
                 annotation: null,
                 status: 200,
                 target: null,

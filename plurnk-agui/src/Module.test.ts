@@ -614,7 +614,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "### EXEC0 (😀) <-1s,300>\nx";
+        const text = "### EXEC_ (😀) <-1s,300>\nx";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
@@ -694,7 +694,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             return event.value;
         };
 
-        const source = " \n### LOOK0 (worker:///x) <1-2>\n~needle\n";
+        const source = " \n### LOOK_ (worker:///x) <1-2>\n~needle\n";
         const admitted = await invoke(source);
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");
@@ -711,7 +711,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
 
-        const extra = await invoke("### LOOK0 (worker:///x)\n\n### LOOK0 (worker:///y)");
+        const extra = await invoke("### LOOK_ (worker:///x)\n\n### LOOK_ (worker:///y)");
         assert.equal(extra.ok, false);
         assert.equal(extra.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
@@ -719,13 +719,13 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
 
         for (const operation of ["READ", "EDIT"] as const) {
             const body = operation === "EDIT" ? "\nbad" : "";
-            const wrongOperation = await invoke(`### ${operation}0 (worker:///x)${body}`);
+            const wrongOperation = await invoke(`### ${operation}_ (worker:///x)${body}`);
             assert.equal(wrongOperation.ok, false);
             assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
-        const bounded = await invoke("text ### LOOK0 (worker:///x)");
+        const bounded = await invoke("text ### LOOK_ (worker:///x)");
         assert.equal(bounded.ok, false);
         assert.deepEqual(bounded.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
@@ -740,13 +740,13 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             retryable: false,
         });
 
-        const tailed = await invoke("### LOOK0 (worker:///x)\n\n### EDIT0 (worker:///y");
+        const tailed = await invoke("### LOOK_ (worker:///x)\n\n### EDIT_ (worker:///y");
         assert.equal(tailed.ok, false);
         assert.deepEqual(tailed.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `### EDIT0` opened at line 3 but never closed - add `)`",
+            detail: "target slot of `### EDIT_` opened at line 3 but never closed - add `)`",
             line: 3,
             column: 0,
             source: "grammar",
@@ -768,7 +768,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "### EDIT0 (worker:///ok)\nyes\n\n### EDIT0 (worker:///bad";
+        const text = "### EDIT_ (worker:///ok)\nyes\n\n### EDIT_ (worker:///bad";
         const events = await post(mod.address().port, {
             threadId: "parse-tail",
             runId: "parse-tail-run",
@@ -802,7 +802,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `### EDIT0` opened at line 4 but never closed - add `)`",
+            detail: "target slot of `### EDIT_` opened at line 4 but never closed - add `)`",
             line: 4,
             column: 0,
             source: "grammar",

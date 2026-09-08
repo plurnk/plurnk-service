@@ -21,7 +21,7 @@ const contentResponse = (content: string): MockResponse => ({
         // Turns lead with PLAN; the Engine re-parses the supplied content.
         content: content.startsWith("## PLAN")
             ? content
-            : `## PLAN0\nadmit the supplied turn\n\n${content}`,
+            : `## PLAN_\nadmit the supplied turn\n\n${content}`,
         reasoning: null,
     },
     assistantRaw: null,
@@ -29,14 +29,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("### SEND0 (TERM)\ndrained");
+const drainTurn = contentResponse("### SEND_ (TERM)\ndrained");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "## PLAN0\nreasoning\n\n### SEND0 (TERM)\nnoted";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("### SEND0") + 3)).length;
+const NOTICE_CONTENT = "## PLAN_\nreasoning\n\n### SEND_ (TERM)\nnoted";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("### SEND_") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -357,7 +357,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "## PLAN0\nedit the file\n\n### EDIT0 (src/example.ts<1,-1>)\nbody\n\n### SEND0 (TERM)\ndone";
+        const emission = "## PLAN_\nedit the file\n\n### EDIT_ (src/example.ts<1,-1>)\nbody\n\n### SEND_ (TERM)\ndone";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -435,29 +435,29 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
     } finally { await db.close(); }
 });
 
-// {§foreign-lane-advisory} — the numbered-ops failure (run94: EDIT1…EDIT23 inside a lane-0 turn) is
+// {§foreign-lane-advisory} — the numbered-ops failure (run94: EDIT1…EDIT23 inside a lane `_` turn) is
 // named on the next packet instead of being inferred from a giant receipt (#515).
 test("headings of another lane swallowed by a body surface as one parse advisory on the next packet", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const emission = [
-            "## PLAN0", "[{\"content\":\"write two notes\",\"status\":\"in_progress\"}]",
-            "### EDIT0 (worker://~/a.md) <!-- first note -->", "alpha",
+            "## PLAN_", "[{\"content\":\"write two notes\",\"status\":\"in_progress\"}]",
+            "### EDIT_ (worker://~/a.md) <!-- first note -->", "alpha",
             "### EDIT1 (worker://~/b.md) <!-- meant as a second op -->", "beta",
             "### EDIT1 (worker://~/c.md)", "gamma",
-            "### SEND0 (NEXT)", "continue",
+            "### SEND_ (NEXT)", "continue",
         ].join("\n");
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("## PLAN0\n[]\n### SEND0 (TERM)\ndone")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("## PLAN_\n[]\n### SEND_ (TERM)\ndone")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1, "the advisory never rejects the frame");
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");
-        assert.equal(edits.length, 1, "the lane rule is unchanged: the foreign headings stayed body text of EDIT0");
+        assert.equal(edits.length, 1, "the lane rule is unchanged: the foreign headings stayed body text of EDIT_");
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
         assert.match(
             String(notice),
-            /parse_advisory: 2 OP-shaped headings \(EDIT\) carrying suffix `1` were taken as body text of EDIT0; this turn's lane is `0`, and only headings carrying it are operations\. @ 5:0/,
+            /parse_advisory: 2 OP-shaped headings \(EDIT\) carrying suffix `1` were taken as body text of EDIT_; this turn's lane is `_`, and only headings carrying it are operations\. @ 5:0/,
             "the next packet names the count, the suffix, the swallowing op, and the lane",
         );
     } finally { await db.close(); }

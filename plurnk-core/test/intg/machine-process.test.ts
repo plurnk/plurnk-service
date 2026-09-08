@@ -350,7 +350,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             source: null,
             model_call_id: bareCall.id,
             op: "BARE",
-            delimiter: "0",
+            delimiter: "_",
             scheme: null,
             username: null,
             password: null,

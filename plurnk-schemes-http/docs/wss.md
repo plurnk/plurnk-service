@@ -11,11 +11,11 @@ that owner.
 
 | Operation                                      | Effect                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `### READ0 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
+| `### READ_ (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second READ of the same address              | Read the retained representation; reuse the existing owner without reconnecting         |
-| `### EDIT0 (wss://host/path)` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
-| `### SEND0 (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
-| `### KILL0 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
+| `### EDIT_ (wss://host/path)` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
+| `### SEND_ (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
+| `### KILL_ (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
 
 | Owner state  | Meaning                                              | EDIT or directed SEND                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |
@@ -36,8 +36,8 @@ the opening READ in one turn: operations execute in authored order. Only the
 turn's disposition SEND is deferred until the other operations have run.
 
 ```example
-### READ0 (wss://api.example.com/feed)
-### EDIT0 (wss://api.example.com/feed)
+### READ_ (wss://api.example.com/feed)
+### EDIT_ (wss://api.example.com/feed)
 {"type":"subscribe","channel":"updates"}
 ```
 

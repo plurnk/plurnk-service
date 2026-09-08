@@ -143,7 +143,7 @@ test("LineAnchors: identical neighborhoods share one anchor and resolve as ambig
 test("LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
     const statement: EditStatement = {
         op: "EDIT",
-        delimiter: "0",
+        delimiter: "_",
         annotation: null,
         target: null,
         metadata: null,

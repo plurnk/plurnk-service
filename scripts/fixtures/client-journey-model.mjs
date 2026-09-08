@@ -10,9 +10,9 @@ const journeys = Object.freeze({
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
             content: [
-                "## PLAN0",
+                "## PLAN_",
                 '[{"content":"Confirm the packed one-shot client path.","priority":"high","status":"completed"}]',
-                "### SEND0 (TERM)",
+                "### SEND_ (TERM)",
                 "The installed one-shot journey is complete.",
             ].join("\n"),
         }],
@@ -22,9 +22,9 @@ const journeys = Object.freeze({
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.",
             content: [
-                "## PLAN0",
+                "## PLAN_",
                 '[{"content":"Confirm the packed interactive terminal path.","priority":"high","status":"completed"}]',
-                "### SEND0 (TERM)",
+                "### SEND_ (TERM)",
                 "The installed interactive journey is complete.",
             ].join("\n"),
         }],
@@ -35,38 +35,38 @@ const journeys = Object.freeze({
             {
                 reasoning: "I will make one reviewed local change, then verify the settled result.",
                 content: [
-                    "## PLAN0",
+                    "## PLAN_",
                     '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"in_progress"}]',
-                    "### EXEC0",
+                    "### EXEC_",
                     "printf 'accepted\\n' > journey.txt",
-                    "### SEND0 (NEXT)",
+                    "### SEND_ (NEXT)",
                     "Next: Confirm the reviewed command completed.",
                 ].join("\n"),
             },
             {
                 reasoning: "The reviewed command succeeded, so I can conclude the requested journey.",
                 content: [
-                    "## PLAN0",
+                    "## PLAN_",
                     '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"completed"}]',
-                    "### SEND0 (TERM)",
+                    "### SEND_ (TERM)",
                     "The reviewed multiline journey is complete.",
                 ].join("\n"),
             },
             {
                 reasoning: "I will ask for the named fields and await the answer.",
                 content: [
-                    "## PLAN0", "[]", "### EXEC0 [question] (question)",
+                    "## PLAN_", "[]", "### EXEC_ [question] (question)",
                     JSON.stringify({ message: "Which branch details?", requestedSchema: {
                         type: "object", properties: {
                             branch: { type: "string" }, count: { type: "integer" }, notes: { type: "string" },
                         }, required: ["count"],
                     } }),
-                    "### SEND0 (WAIT)", "Awaiting branch details.",
+                    "### SEND_ (WAIT)", "Awaiting branch details.",
                 ].join("\n"),
             },
             {
                 reasoning: "The question result has arrived in the continued loop.",
-                content: "## PLAN0\n[]\n### SEND0 (TERM)\nThe named-field answer arrived.",
+                content: "## PLAN_\n[]\n### SEND_ (TERM)\nThe named-field answer arrived.",
             },
         ],
     },

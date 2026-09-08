@@ -18,7 +18,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const source = "## PLAN0\n[]\n### SEND0 (TERM)\ndone";
+    const source = "## PLAN_\n[]\n### SEND_ (TERM)\ndone";
     try {
         const workspaceId = await insertWorkspace(db, "unknown-source");
         const workerId = await insertWorker(db, workspaceId);
@@ -61,9 +61,9 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const sources = [
-        "## PLAN0\n[]\n### SEND0 (NEXT)\nContinue one.",
-        "## PLAN0\n[]\n### SEND0 (NEXT)\nContinue two.",
-        "## PLAN0\n[]\n### KILL0 (log:///1/[1-2]/*/ops)\n### SEND0 (NEXT)\nContinue three.",
+        "## PLAN_\n[]\n### SEND_ (NEXT)\nContinue one.",
+        "## PLAN_\n[]\n### SEND_ (NEXT)\nContinue two.",
+        "## PLAN_\n[]\n### KILL_ (log:///1/[1-2]/*/ops)\n### SEND_ (NEXT)\nContinue three.",
     ];
     const db = await openMigrated(dbPath);
     try {
@@ -158,9 +158,9 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
     const inferenceSource = [
-        "## PLAN0",
+        "## PLAN_",
         "* Preserve this exact admitted program.",
-        "### SEND0 (TERM)",
+        "### SEND_ (TERM)",
         "done",
     ].join("\n");
     let overflowSource = "";
@@ -212,7 +212,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         const sourceRow = initializationRows.find(({ op, attrs }) =>
             op === null && JSON.parse(attrs).kind === "turnOps");
         initializationSource = JSON.parse(sourceRow?.rx ?? "null").content;
-        assert.match(initializationSource, /^## PLAN0(?: <!--[^\n]*-->)?\n/);
+        assert.match(initializationSource, /^## PLAN_(?: <!--[^\n]*-->)?\n/);
         const overflowRows = await db.test_log_entries_by_turn.all<{
             op: string | null;
             attrs: string;
@@ -223,8 +223,8 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         const overflowTurnOps = overflowRows.find(({ op, attrs }) =>
             op === null && JSON.parse(attrs).kind === "turnOps");
         overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
-        assert.match(overflowSource, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n### KILL0 /, "the digest specimen is the actual admitted recovery program");
-        assert.match(overflowSource, /\n### SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
+        assert.match(overflowSource, /^## PLAN_\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n### KILL_ /, "the digest specimen is the actual admitted recovery program");
+        assert.match(overflowSource, /\n### SEND_ \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
         assert.equal(overflowTurnOps?.initial_folded, "[[1,-1]]", "the real recovery source is initially body-suppressed");
         assert.equal(overflowTurnOps?.folded, "[]", "initial suppression is not deliberate curation");
     } finally {

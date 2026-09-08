@@ -13,15 +13,15 @@ const bodyOf = (statement: ReturnType<typeof statements>[number]) =>
 
 test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exact section bodies", () => {
     const input = [
-        "## PLAN0",
+        "## PLAN_",
         '[{"content":"Update the note, then read it.","status":"in_progress"}]',
-        "### EDIT0 (worker:///note.md) <1,-1>",
+        "### EDIT_ (worker:///note.md) <1,-1>",
         "alpha",
         "beta",
         "",
-        "### READ0 (worker:///note.md)",
+        "### READ_ (worker:///note.md)",
         "",
-        "### SEND0 (NEXT)",
+        "### SEND_ (NEXT)",
         "Waiting for the read result.",
     ].join("\n");
 
@@ -30,10 +30,10 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
     assert.equal(result.unparsedTail, undefined);
     const parsed = statements(input);
     assert.deepEqual(parsed.map(({ op, delimiter }) => [op, delimiter]), [
-        ["PLAN", "0"],
-        ["EDIT", "0"],
-        ["READ", "0"],
-        ["SEND", "0"],
+        ["PLAN", "_"],
+        ["EDIT", "_"],
+        ["READ", "_"],
+        ["SEND", "_"],
     ]);
     assert.deepEqual(bodyOf(parsed[0]!), [{
             content: "Update the note, then read it.",
@@ -45,7 +45,7 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
 });
 
 test("{§section-boundary}: one separator line is structural and additional blank lines remain body content", () => {
-    const input = '## PLAN0\n[]\n### EDIT0 (worker:///note.md)\nalpha\n\n\n### SEND0 (TERM)\ndone';
+    const input = '## PLAN_\n[]\n### EDIT_ (worker:///note.md)\nalpha\n\n\n### SEND_ (TERM)\ndone';
     const parsed = statements(input);
     assert.equal(bodyOf(parsed[1]!), "alpha\n");
 });
@@ -55,9 +55,9 @@ test("{§delimiter-discipline}: differently delimited headings remain character-
         "## PLAN2",
         '[{"content":"Store a quoted turn.","status":"in_progress"}]',
         "### EDIT2 (worker:///quoted.plurnk)",
-        "## PLAN0",
+        "## PLAN_",
         '[{"content":"Answer from memory.","status":"in_progress"}]',
-        "### SEND0 (TERM)",
+        "### SEND_ (TERM)",
         "Paris.",
         "",
         "### SEND2 (TERM)",
@@ -66,19 +66,19 @@ test("{§delimiter-discipline}: differently delimited headings remain character-
     const parsed = statements(quoted);
     assert.equal(parsed.length, 3);
     assert.equal(parsed[1].op, "EDIT");
-    assert.equal(bodyOf(parsed[1]!), '## PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n### SEND0 (TERM)\nParis.');
+    assert.equal(bodyOf(parsed[1]!), '## PLAN_\n[{"content":"Answer from memory.","status":"in_progress"}]\n### SEND_ (TERM)\nParis.');
 });
 
 test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN wrapper", () => {
     const input = [
-        "## PLAN0",
+        "## PLAN_",
         '[{"content":"First.","status":"in_progress"}]',
-        "### SEND0 (TERM)",
+        "### SEND_ (TERM)",
         "One.",
         "",
-        "## PLAN0",
+        "## PLAN_",
         '[{"content":"Second.","status":"in_progress"}]',
-        "### SEND0 (TERM)",
+        "### SEND_ (TERM)",
         "Two.",
     ].join("\n");
     const result = PlurnkParser.parseLog(input);
@@ -111,8 +111,8 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
 
 test("{§send-mid-reservation}: one disposition may precede ordinary operations without absorbing them", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        for (const prefix of ["", "## PLAN0\n[]\n"]) {
-            const input = `${prefix}### SEND0 (${label})\nAnswer.\n### KILL0 (log:///3/3/1/READ)\n### READ0 (notes.md)\n### SEND0 (worker://reviewer)\nCheck this.`;
+        for (const prefix of ["", "## PLAN_\n[]\n"]) {
+            const input = `${prefix}### SEND_ (${label})\nAnswer.\n### KILL_ (log:///3/3/1/READ)\n### READ_ (notes.md)\n### SEND_ (worker://reviewer)\nCheck this.`;
             const result = PlurnkParser.parse(input);
             assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], label);
             assert.equal(result.unparsedTail, undefined);
@@ -148,7 +148,7 @@ test("{§tier-entrypoints}: saved turns retain post-disposition operations befor
 });
 
 test("{§tier-entrypoints}: client-only operations use H2 sections", () => {
-    const result = PlurnkParser.parseClient("### LOOK0 (worker:///note.md) <1,20>\n~recent thoughts");
+    const result = PlurnkParser.parseClient("### LOOK_ (worker:///note.md) <1,20>\n~recent thoughts");
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const item = result.items.find((candidate) => candidate.kind === "statement");
     assert.equal(item?.kind === "statement" ? item.statement.op : null, "LOOK");

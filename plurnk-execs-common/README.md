@@ -35,12 +35,12 @@ each string is passed literally, without shell expansion ({§executor-metadata})
 These options work for local, Worker, and Skill script targets alike.
 
 ```example
-### EXEC0 (./deploy.sh)
+### EXEC_ (./deploy.sh)
 yes
 yes
 no
 
-### EXEC0 [python3] (transform.py) {args=["--format","json"]}
+### EXEC_ [python3] (transform.py) {args=["--format","json"]}
 3
 1
 4

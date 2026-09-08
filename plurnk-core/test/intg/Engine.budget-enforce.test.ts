@@ -360,8 +360,8 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(turnOps?.initial_folded, "[[1,-1]]", "overflow turnOps are initially body-suppressed source evidence");
         assert.equal(turnOps?.folded, "[]", "initial suppression is not deliberate curation");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
-        assert.match(source, /\n### SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
+        assert.match(source, /^## PLAN_\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
+        assert.match(source, /\n### SEND_ \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
     } finally { await db.close(); }
 });
 

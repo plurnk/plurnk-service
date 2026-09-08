@@ -345,7 +345,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
-const packedTurnOps = '## PLAN0\n[{"content":"Exercise the installed digest.","status":"in_progress"}]\n### SEND0 (TERM)\ndone';
+const packedTurnOps = '## PLAN_\n[{"content":"Exercise the installed digest.","status":"in_progress"}]\n### SEND_ (TERM)\ndone';
 const digestFixture = new SqlRiteSync({
     path: migratedDb,
     dir: dirname(fileURLToPath(import.meta.url)),
@@ -466,35 +466,35 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     const anchorWorkspace = await aguiAction(address, "workspace.create", { name: "packed-anchor-range" });
     const sourceTarget = "worker:///installed.py";
     await aguiAction(address, "op.parse", {
-        text: `### EDIT0 (${sourceTarget})\ndef target():\n    return 1`,
+        text: `### EDIT_ (${sourceTarget})\ndef target():\n    return 1`,
     }, anchorWorkspace.name);
     const sourceLookup = (await aguiAction(address, "op.parse", {
-        text: `### READ0 (${sourceTarget})\n//function_definition`,
+        text: `### READ_ (${sourceTarget})\n//function_definition`,
     }, anchorWorkspace.name)).results[0];
     const sourceRead = (await aguiAction(address, "op.parse", {
-        text: `### READ0 (${sourceTarget}) <1,1,2,13>`,
+        text: `### READ_ (${sourceTarget}) <1,1,2,13>`,
     }, anchorWorkspace.name)).results[0];
     const anchorTarget = "worker:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     await aguiAction(address, "op.parse", {
-        text: `### EDIT0 (${anchorTarget})\n${anchorContent}`,
+        text: `### EDIT_ (${anchorTarget})\n${anchorContent}`,
     }, anchorWorkspace.name);
     const anchoredRead = (await aguiAction(address, "op.parse", {
-        text: `### READ0 (${anchorTarget})`,
+        text: `### READ_ (${anchorTarget})`,
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
     const applied = await aguiAction(address, "op.parse", {
-        text: `### EDIT0 (${anchorTarget}) <${one},${two}>`,
+        text: `### EDIT_ (${anchorTarget}) <${one},${two}>`,
     }, anchorWorkspace.name);
     const landed = (await aguiAction(address, "op.parse", {
-        text: `### READ0 (${anchorTarget})`,
+        text: `### READ_ (${anchorTarget})`,
     }, anchorWorkspace.name)).results[0];
     const [three, four, five, six, seven, eight] = landed.lineAnchors;
     const rejected = await aguiAction(address, "op.parse", {
-        text: `### EDIT0 (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>\nreplacement`,
+        text: `### EDIT_ (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>\nreplacement`,
     }, anchorWorkspace.name);
     const unchanged = (await aguiAction(address, "op.parse", {
-        text: `### READ0 (${anchorTarget})`,
+        text: `### READ_ (${anchorTarget})`,
     }, anchorWorkspace.name)).results[0];
     return {
         primary,
@@ -579,27 +579,27 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const afterDemand = markerCount(mcpStartMarker);
     await aguiAction(address, "worker.mcp.list", {}, attached.name);
     const skillCatalog = (await aguiAction(address, "op.parse", {
-        text: "### FIND0 (skill://*/SKILL.md) <1,-1>",
+        text: "### FIND_ (skill://*/SKILL.md) <1,-1>",
     }, attached.name)).results[0];
     const skillRead = (await aguiAction(address, "op.parse", {
-        text: "### READ0 (skill://inspect/SKILL.md) <1,-1>",
+        text: "### READ_ (skill://inspect/SKILL.md) <1,-1>",
     }, attached.name)).results[0];
     const ownSkillReads = [];
     for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/models.md"]) {
         ownSkillReads.push((await aguiAction(address, "op.parse", {
-            text: `### READ0 (skill://plurnk/${pathname}) <1,-1>`,
+            text: `### READ_ (skill://plurnk/${pathname}) <1,-1>`,
         }, attached.name)).results[0]);
     }
     await aguiAction(address, "worker.skills.disable", { alias: "plurnk" }, attached.name);
     const disabledSkillRead = (await aguiAction(address, "op.parse", {
-        text: "### READ0 (skill://plurnk/.env.defaults) <1,-1>",
+        text: "### READ_ (skill://plurnk/.env.defaults) <1,-1>",
     }, attached.name)).results[0];
     await aguiAction(address, "worker.skills.enable", { alias: "plurnk" }, attached.name);
     const proposed = await aguiRun(address, {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `### EXEC0 [node] (skill://inspect/scripts/main.mjs) {cwd=run directory} {args=${JSON.stringify(packedSkillArgs)}}\nraw stdin`,
+            text: `### EXEC_ [node] (skill://inspect/scripts/main.mjs) {cwd=run directory} {args=${JSON.stringify(packedSkillArgs)}}\nraw stdin`,
         },
     });
     const interrupts = proposed.events.find((event) => event.type === "RUN_FINISHED")?.outcome?.interrupts;
@@ -686,7 +686,7 @@ ok(
     "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
-    packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("EXEC0 [skills] (discover)") === true,
+    packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("EXEC_ [skills] (discover)") === true,
     "the packed Worker learns Skills management from the generated family manager, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);
@@ -719,13 +719,13 @@ const searchBoot = await bootStart({
 }, async (address) => {
     const workspace = await aguiAction(address, "workspace.create", { name: "installed-fulltext" });
     await aguiAction(address, "op.parse", {
-        text: "### EDIT0 (worker:///search.md)\nA reliable connection supports native search.",
+        text: "### EDIT_ (worker:///search.md)\nA reliable connection supports native search.",
     }, workspace.name);
     const found = await aguiAction(address, "op.parse", {
-        text: '### FIND0 (worker:///*.md)\n~"reliable connection"',
+        text: '### FIND_ (worker:///*.md)\n~"reliable connection"',
     }, workspace.name);
     const locations = await aguiAction(address, "op.parse", {
-        text: '### FIND0 (worker:///search.md)\n~"reliable connection"',
+        text: '### FIND_ (worker:///search.md)\n~"reliable connection"',
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
 });

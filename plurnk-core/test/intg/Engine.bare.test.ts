@@ -10,7 +10,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCa
 
 const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
     assistant: {
-        content: `## PLAN0\nUse isolated inference where it is sufficient.\n\n${operations}`,
+        content: `## PLAN_\nUse isolated inference where it is sufficient.\n\n${operations}`,
         reasoning: null,
     },
 });
@@ -183,10 +183,10 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                `### EDIT0 (worker://~/prompt.md)\n${prompt}`,
-                "### BARE0 (worker://~/prompt.md)",
-                "### BARE0 (worker://~/prompt.md)\nCompare these findings.",
-                "### SEND0 (NEXT)",
+                `### EDIT_ (worker://~/prompt.md)\n${prompt}`,
+                "### BARE_ (worker://~/prompt.md)",
+                "### BARE_ (worker://~/prompt.md)\nCompare these findings.",
+                "### SEND_ (NEXT)",
             ].join("\n"))] }),
         });
         assert.equal(result.status, 102);
@@ -206,9 +206,9 @@ test("{§bare-inference}: missing resources preserve the source error without ca
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "### BARE0 (worker://~/missing.md)\nDo not infer from this tail alone.",
-                "### BARE0\nsurvivor",
-                "### SEND0 (NEXT)",
+                "### BARE_ (worker://~/missing.md)\nDo not infer from this tail alone.",
+                "### BARE_\nsurvivor",
+                "### SEND_ (NEXT)",
             ].join("\n"))] }),
         });
         assert.deepEqual(child.completions, ["survivor"]);
@@ -245,10 +245,10 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
         await assert.rejects(engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child, signal: controller.signal,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "### BARE0\nfirst prompt",
-                "### BARE0 (interrupted-prompt:///question.md)",
-                "### BARE0\nlast prompt",
-                "### SEND0 (NEXT)",
+                "### BARE_\nfirst prompt",
+                "### BARE_ (interrupted-prompt:///question.md)",
+                "### BARE_\nlast prompt",
+                "### SEND_ (NEXT)",
             ].join("\n"))] }),
         }), (error: unknown) => error === cancellation);
         assert.equal(child.calls.length, 0);
@@ -275,9 +275,9 @@ for (const [denied, target] of [
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "### EDIT0 (worker://~/prompt.md)\nsecret prompt",
-                    `### BARE0${target}\ninline prompt`,
-                    "### SEND0 (NEXT)",
+                    "### EDIT_ (worker://~/prompt.md)\nsecret prompt",
+                    `### BARE_${target}\ninline prompt`,
+                    "### SEND_ (NEXT)",
                 ].join("\n"))] }),
             });
             assert.equal(child.calls.length, 0);
@@ -294,9 +294,9 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
         const first = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [],
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "### EDIT0 (worker://~/source.md)\nfirst\nsuperseded\nlast",
-                "### READ0 (worker://~/source.md) <1,-1>",
-                "### SEND0 (NEXT)",
+                "### EDIT_ (worker://~/source.md)\nfirst\nsuperseded\nlast",
+                "### READ_ (worker://~/source.md) <1,-1>",
+                "### SEND_ (NEXT)",
             ].join("\n"))] }),
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number }>({ turn_id: first.turnId });
@@ -309,9 +309,9 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
         const second = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                `### KILL0 (${address}) <2>`,
-                `### BARE0 (${address})`,
-                "### SEND0 (NEXT)",
+                `### KILL_ (${address}) <2>`,
+                `### BARE_ (${address})`,
+                "### SEND_ (NEXT)",
             ].join("\n"))] }),
         });
         assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
@@ -331,9 +331,9 @@ for (const [target, status, problem] of [
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "### EDIT0 (worker://~/prompt.md)\nsource prompt",
-                    `### BARE0${target === null ? "" : ` (${target})`}`,
-                    "### SEND0 (NEXT)",
+                    "### EDIT_ (worker://~/prompt.md)\nsource prompt",
+                    `### BARE_${target === null ? "" : ` (${target})`}`,
+                    "### SEND_ (NEXT)",
                 ].join("\n"))] }),
             });
             const [bare] = result.outcomes.filter(({ op }) => op === "BARE");
@@ -357,7 +357,7 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
         };
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("### BARE0\nbefore\n### EDIT0 (worker:///between)\nwritten\n### BARE0\nafter\n### SEND0 (NEXT)")] }),
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("### BARE_\nbefore\n### EDIT_ (worker:///between)\nwritten\n### BARE_\nafter\n### SEND_ (NEXT)")] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
@@ -373,9 +373,9 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
         const parent = new Mock({
             contextWindow: 32_768,
             responses: [mainResponse([
-                "### BARE0\nslow",
-                "### BARE0\nfast",
-                "### SEND0 (NEXT)\nObserve both responses next turn.",
+                "### BARE_\nslow",
+                "### BARE_\nfast",
+                "### SEND_ (NEXT)\nObserve both responses next turn.",
             ].join("\n\n"))],
         });
         const child = new BareWitness(2);
@@ -457,9 +457,9 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
         const parent = new Mock({
             contextWindow: 32_768,
             responses: [mainResponse([
-                "### BARE0\nfirst",
-                "### BARE0\nsecond",
-                "### SEND0 (NEXT)\ncontinue",
+                "### BARE_\nfirst",
+                "### BARE_\nsecond",
+                "### SEND_ (NEXT)\ncontinue",
             ].join("\n\n"))],
         });
         const child = new CancellingBareWitness(2);
@@ -493,9 +493,9 @@ test("one BARE provider failure is an ordered operation result and does not canc
         const parent = new Mock({
             contextWindow: 32_768,
             responses: [mainResponse([
-                "### BARE0\nfail",
-                "### BARE0\nok",
-                "### SEND0 (NEXT)\nInspect the isolated failure and success.",
+                "### BARE_\nfail",
+                "### BARE_\nok",
+                "### SEND_ (NEXT)\nInspect the isolated failure and success.",
             ].join("\n\n"))],
         });
         const child = new BareWitness(2, "fail");
@@ -527,7 +527,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("### BARE0\nquestion\n\n### SEND0 (TERM)\ndone")],
+            responses: [mainResponse("### BARE_\nquestion\n\n### SEND_ (TERM)\ndone")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
@@ -553,7 +553,7 @@ for (const label of ["NEXT", "WAIT", "TERM"] as const) {
             const result = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 32_768,
-                    responses: [mainResponse(`### SEND0 (${label})\nObserve the answer.\n### BARE0\nquestion`)],
+                    responses: [mainResponse(`### SEND_ (${label})\nObserve the answer.\n### BARE_\nquestion`)],
                 }),
                 childProvider: child,
                 workspaceId,

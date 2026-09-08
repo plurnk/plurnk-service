@@ -22,11 +22,11 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
     // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a child worker, then hibernate awaiting it.
-        makeMockResponse("### WORK0 (worker://worker)\ncompute the thing and finish\n\n### SEND0 (WAIT) <-1>\nspawned worker; waiting on it", 10),
+        makeMockResponse("### WORK_ (worker://worker)\ncompute the thing and finish\n\n### SEND_ (WAIT) <-1>\nspawned worker; waiting on it", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
-        makeMockResponse("### SEND0 (TERM)\nworker done", 10),
+        makeMockResponse("### SEND_ (TERM)\nworker done", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
-        makeMockResponse("### SEND0 (TERM)\nworker finished; all done", 10),
+        makeMockResponse("### SEND_ (TERM)\nworker finished; all done", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -52,9 +52,9 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
     // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### WORK0 (worker://doomed)\ntry the risky thing\n\n### SEND0 (WAIT) <-1>\nwaiting on doomed", 10),
-        makeMockResponse("### SEND0 (FAIL)\ndoomed gave up", 10),
-        makeMockResponse("### SEND0 (TERM)\ndoomed is done (failed); concluding", 10),
+        makeMockResponse("### WORK_ (worker://doomed)\ntry the risky thing\n\n### SEND_ (WAIT) <-1>\nwaiting on doomed", 10),
+        makeMockResponse("### SEND_ (FAIL)\ndoomed gave up", 10),
+        makeMockResponse("### SEND_ (TERM)\ndoomed is done (failed); concluding", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -70,11 +70,11 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### SEND0 (WAIT) <60,0>\nFirst task waits."),
-        makeMockResponse("### SEND0 (WAIT) <60,0>\nSecond task waits."),
-        makeMockResponse("### SEND0 (WAIT) <60,0>\nParent awaits results."),
-        makeMockResponse("### SEND0 (TERM)\nFirst task result: 42."),
-        makeMockResponse("### SEND0 (WAIT) <60,0>\nFirst result observed; second task remains."),
+        makeMockResponse("### SEND_ (WAIT) <60,0>\nFirst task waits."),
+        makeMockResponse("### SEND_ (WAIT) <60,0>\nSecond task waits."),
+        makeMockResponse("### SEND_ (WAIT) <60,0>\nParent awaits results."),
+        makeMockResponse("### SEND_ (TERM)\nFirst task result: 42."),
+        makeMockResponse("### SEND_ (WAIT) <60,0>\nFirst result observed; second task remains."),
     ] });
     try {
         await withDaemon(provider, async (db, daemon) => {
@@ -120,9 +120,9 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
 
 test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its waiting parent without a live child drain", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### SEND0 (WAIT) <60,0>\nChild waits."),
-        makeMockResponse("### SEND0 (WAIT) <60,0>\nParent awaits child."),
-        makeMockResponse("### SEND0 (TERM)\nChild cancellation observed."),
+        makeMockResponse("### SEND_ (WAIT) <60,0>\nChild waits."),
+        makeMockResponse("### SEND_ (WAIT) <60,0>\nParent awaits child."),
+        makeMockResponse("### SEND_ (TERM)\nChild cancellation observed."),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-parked-child" });
@@ -147,10 +147,10 @@ test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its wa
 
 test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### WORK0 (worker://stream-child)\nrun the empty failing stream and report its outcome\n\n### SEND0 (WAIT)\nwaiting on stream-child", 10),
-        makeMockResponse("### EXEC0 (emptyfail)\ngo\n\n### SEND0 (WAIT)\nwaiting for emptyfail", 10),
-        makeMockResponse("### SEND0 (FAIL)\nemptyfail failed with no output", 10),
-        makeMockResponse("### SEND0 (TERM)\nthe child reported the empty stream failure", 10),
+        makeMockResponse("### WORK_ (worker://stream-child)\nrun the empty failing stream and report its outcome\n\n### SEND_ (WAIT)\nwaiting on stream-child", 10),
+        makeMockResponse("### EXEC_ (emptyfail)\ngo\n\n### SEND_ (WAIT)\nwaiting for emptyfail", 10),
+        makeMockResponse("### SEND_ (FAIL)\nemptyfail failed with no output", 10),
+        makeMockResponse("### SEND_ (TERM)\nthe child reported the empty stream failure", 10),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
@@ -224,8 +224,8 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
         finally { if (args.workerId === childId) childSettled.resolve(); }
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### WORK0 (worker://child)\nkeep working until cancelled\n\n### SEND0 (FAIL)\nabandon this scope", 10),
-        makeMockResponse("### SEND0 (NEXT)\nstill working", 10),
+        makeMockResponse("### WORK_ (worker://child)\nkeep working until cancelled\n\n### SEND_ (FAIL)\nabandon this scope", 10),
+        makeMockResponse("### SEND_ (NEXT)\nstill working", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -261,11 +261,11 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
     // 8192 edge; grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake recursion, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### WORK0 (worker://child)\ndo subwork\n\n### SEND0 (WAIT) <-1>\nawaiting child", 10),       // parent t1
-        makeMockResponse("### WORK0 (worker://grandchild)\ndo leaf work\n\n### SEND0 (WAIT) <-1>\nawaiting grandchild", 10), // child t1
-        makeMockResponse("### SEND0 (TERM)\nleaf done", 10),                                                   // grandchild
-        makeMockResponse("### SEND0 (TERM)\nchild done", 10),                                                  // child t2 (woken)
-        makeMockResponse("### SEND0 (TERM)\nall done", 10),                                                    // parent t2 (woken)
+        makeMockResponse("### WORK_ (worker://child)\ndo subwork\n\n### SEND_ (WAIT) <-1>\nawaiting child", 10),       // parent t1
+        makeMockResponse("### WORK_ (worker://grandchild)\ndo leaf work\n\n### SEND_ (WAIT) <-1>\nawaiting grandchild", 10), // child t1
+        makeMockResponse("### SEND_ (TERM)\nleaf done", 10),                                                   // grandchild
+        makeMockResponse("### SEND_ (TERM)\nchild done", 10),                                                  // child t2 (woken)
+        makeMockResponse("### SEND_ (TERM)\nall done", 10),                                                    // parent t2 (woken)
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -281,11 +281,11 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     // 16384: the parent's woken turn carries the whole child history; generous headroom over the
     // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### WORK0 (worker://w1)\nfirst job\n\n### SEND0 (WAIT) <-1>\nawaiting w1", 10), // parent t1
-        makeMockResponse("### SEND0 (TERM)\nw1 done", 10),                                       // w1
-        makeMockResponse("### WORK0 (worker://w2)\nsecond job\n\n### SEND0 (WAIT) <-1>\nawaiting w2", 10),// parent t2 (woken by w1)
-        makeMockResponse("### SEND0 (TERM)\nw2 done", 10),                                       // w2
-        makeMockResponse("### SEND0 (TERM)\nboth done", 10),                                     // parent t3 (woken by w2)
+        makeMockResponse("### WORK_ (worker://w1)\nfirst job\n\n### SEND_ (WAIT) <-1>\nawaiting w1", 10), // parent t1
+        makeMockResponse("### SEND_ (TERM)\nw1 done", 10),                                       // w1
+        makeMockResponse("### WORK_ (worker://w2)\nsecond job\n\n### SEND_ (WAIT) <-1>\nawaiting w2", 10),// parent t2 (woken by w1)
+        makeMockResponse("### SEND_ (TERM)\nw2 done", 10),                                       // w2
+        makeMockResponse("### SEND_ (TERM)\nboth done", 10),                                     // parent t3 (woken by w2)
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -312,11 +312,11 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("### SEND0 (TERM)\nstanding by for the entry code", 10), // loop 1 — idle actor concludes
+        makeMockResponse("### SEND_ (TERM)\nstanding by for the entry code", 10), // loop 1 — idle actor concludes
     ] });
     const directRoute: ProviderSpec = { provider: "mocktest", model: `irc-${crypto.randomUUID()}` };
     const selected = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("### SEND0 (TERM)\nreceived the entry code and confirmed", 10),
+        makeMockResponse("### SEND_ (TERM)\nreceived the entry code and confirmed", 10),
     ] });
     ProviderInstantiate.registerInstance(selected, directRoute);
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -357,7 +357,7 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
 test("an idle join completes immediately through the real loop", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Turn 1: the joined task group is already empty, so the join completes.
-        makeMockResponse("### SEND0 (WAIT)\nnothing running; done for now", 10),
+        makeMockResponse("### SEND_ (WAIT)\nnothing running; done for now", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -385,20 +385,20 @@ test("spawn and fork carry the delegating loop's policy — an accepting parent'
     // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
-        makeMockResponse("### WORK0 (worker://worker)\nedit something and finish\n\n### FORK0 (worker://mirror)\nedit something and finish\n\n### SEND0 (WAIT) <-1>\ndelegated; waiting", 10),
+        makeMockResponse("### WORK_ (worker://worker)\nedit something and finish\n\n### FORK_ (worker://mirror)\nedit something and finish\n\n### SEND_ (WAIT) <-1>\ndelegated; waiting", 10),
         // Worker turn 1: a SIDE-EFFECTING op (proposes unless auto), then conclude.
-        makeMockResponse("### EDIT0 (worker:///from-worker)\npayload\n\n### SEND0 (TERM)\nworker done", 10),
+        makeMockResponse("### EDIT_ (worker:///from-worker)\npayload\n\n### SEND_ (TERM)\nworker done", 10),
         // Fork turn 1: same shape.
-        makeMockResponse("### EDIT0 (worker:///from-fork)\npayload\n\n### SEND0 (TERM)\nfork done", 10),
+        makeMockResponse("### EDIT_ (worker:///from-fork)\npayload\n\n### SEND_ (TERM)\nfork done", 10),
         // {§send-premature-terminate} — each child's [200] was refused over its unseen EDIT receipt, so
         // each takes one more turn; the parent wakes once per child conclusion. The mock is one queue
         // shared by all three workers, so every remaining emission is a wait that is valid for whoever
         // pulls it: a child with nothing to await completes its empty join, the parent waits on its
         // children and completes when both are done.
-        makeMockResponse("### SEND0 (WAIT) <-1>\nwaiting", 10),
-        makeMockResponse("### SEND0 (WAIT) <-1>\nwaiting", 10),
-        makeMockResponse("### SEND0 (WAIT) <-1>\nwaiting", 10),
-        makeMockResponse("### SEND0 (WAIT) <-1>\nwaiting", 10),
+        makeMockResponse("### SEND_ (WAIT) <-1>\nwaiting", 10),
+        makeMockResponse("### SEND_ (WAIT) <-1>\nwaiting", 10),
+        makeMockResponse("### SEND_ (WAIT) <-1>\nwaiting", 10),
+        makeMockResponse("### SEND_ (WAIT) <-1>\nwaiting", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -427,11 +427,11 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     // REAL child-wake: the parent blocks on a spawned child, the child's conclusion re-queues the parent
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("### WORK0 (worker://helper)\ndo a quick thing\n\n### SEND0 (WAIT)\nawaiting helper", 10), // parent — blocks on its child
-        makeMockResponse("### SEND0 (TERM)\nhelper done", 10),                    // helper — concludes, waking the parent
-        makeMockResponse("### SEND0 (TERM)\nhelper delivered; concluding", 10),   // parent — re-queued by the wake, concludes
-        makeMockResponse("### SEND0 (TERM)\ndone", 10),                           // buffer
-        makeMockResponse("### SEND0 (TERM)\ndone", 10),                           // buffer
+        makeMockResponse("### WORK_ (worker://helper)\ndo a quick thing\n\n### SEND_ (WAIT)\nawaiting helper", 10), // parent — blocks on its child
+        makeMockResponse("### SEND_ (TERM)\nhelper done", 10),                    // helper — concludes, waking the parent
+        makeMockResponse("### SEND_ (TERM)\nhelper delivered; concluding", 10),   // parent — re-queued by the wake, concludes
+        makeMockResponse("### SEND_ (TERM)\ndone", 10),                           // buffer
+        makeMockResponse("### SEND_ (TERM)\ndone", 10),                           // buffer
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -456,11 +456,11 @@ test("log-targeted KILL is recorded in the DB, dissolves after rendering once, a
     // Successful meta-operations are forensic but render-free; failures remain
     // visible error signals. {§log-kill-meta-operation}
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### EDIT0 (worker:///note)\nsome content worth folding\n\n### SEND0 (NEXT)\nwrote", 10),
+        makeMockResponse("### EDIT_ (worker:///note)\nsome content worth folding\n\n### SEND_ (NEXT)\nwrote", 10),
         // The phantom KILL fails (400) — {§send-premature-terminate} refuses the same-turn [200], so the
         // curation turn continues and the loop concludes NEXT turn, failure weighed.
-        makeMockResponse("### KILL0 (log:///1/2/1) <1,-1>\n\n### KILL0 (log:///9/9/9) <1,-1>\n\n### SEND0 (NEXT)\ncurated", 10),
-        makeMockResponse("### SEND0 (TERM)\nthe phantom KILL failed; curation done", 10),
+        makeMockResponse("### KILL_ (log:///1/2/1) <1,-1>\n\n### KILL_ (log:///9/9/9) <1,-1>\n\n### SEND_ (NEXT)\ncurated", 10),
+        makeMockResponse("### SEND_ (TERM)\nthe phantom KILL failed; curation done", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -215,7 +215,7 @@ const seedBareEvidence = async (
         source: null,
         model_call_id: modelCall.id,
         op: "BARE",
-        delimiter: "0",
+        delimiter: "_",
         signal: JSON.stringify(["+fact"]),
         scheme: null,
         username: null,

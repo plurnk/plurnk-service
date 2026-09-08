@@ -9,10 +9,10 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
 
 const response = (operation: string, disposition: string) => ({
-    assistant: { content: `## PLAN0\n[]\n${operation}\n### SEND0 ${disposition}`, reasoning: null },
+    assistant: { content: `## PLAN_\n[]\n${operation}\n### SEND_ ${disposition}`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const invalidFind = "### FIND0 (worker:///x)\n$fC";
+const invalidFind = "### FIND_ (worker:///x)\n$fC";
 
 test("{§loop-rail-continuity}: a resumed task retains its final-strike retrieval allowance", async (t) => {
     const db = await openMigrated();
@@ -27,7 +27,7 @@ test("{§loop-rail-continuity}: a resumed task retains its final-strike retrieva
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(invalidFind, "(NEXT)"),
         response(invalidFind, "(WAIT) <60>"),
-        response("### READ0 (worker:///answer)", "(TERM)\n42"),
+        response("### READ_ (worker:///answer)", "(TERM)\n42"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4, maxStrikes: 3,

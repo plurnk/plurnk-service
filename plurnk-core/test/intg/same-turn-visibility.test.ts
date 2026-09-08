@@ -8,14 +8,14 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         { assistant: { content: [
-            "## PLAN0",
+            "## PLAN_",
             "[]",
-            "### FIND0 (worker:///*)",
-            "### KILL0 (log:///1/2/*)",
-            "### SEND0 (NEXT)",
+            "### FIND_ (worker:///*)",
+            "### KILL_ (log:///1/2/*)",
+            "### SEND_ (NEXT)",
             "Continue after curating the observed pre-program row.",
         ].join("\n"), reasoning: null } },
-        { assistant: { content: "### SEND0 (TERM)\ndone", reasoning: null } },
+        { assistant: { content: "### SEND_ (TERM)\ndone", reasoning: null } },
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -53,8 +53,8 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; SEND[102] (a same-turn SEND[200] would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("## PLAN0\nwrite then find\n\n### EDIT0 (worker:///abs/module-loader-spec.md)\nthe spec body\n\n### FIND0 (worker:///**)\n\n### SEND0 (NEXT)\nwrote and listed", 10),
-        makeMockResponse("### SEND0 (TERM)\ndone", 10),
+        makeMockResponse("## PLAN_\nwrite then find\n\n### EDIT_ (worker:///abs/module-loader-spec.md)\nthe spec body\n\n### FIND_ (worker:///**)\n\n### SEND_ (NEXT)\nwrote and listed", 10),
+        makeMockResponse("### SEND_ (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -75,9 +75,9 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
 
 test("{§edit-execution}: each EDIT records its own revision; an earlier READ retains its snapshot", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## PLAN0\ncreate fixture\n\n### EDIT0 (worker:///mode.md)\none\ntwo\nthree\nfour\n\n### SEND0 (NEXT)\nfixture created", 10),
-        makeMockResponse("## PLAN0\nobserve the settled edits\n\n### READ0 (worker:///mode.md)\n\n### EDIT0 (worker:///mode.md) <4>\nFOUR\n\n### EDIT0 (worker:///mode.md) <2>\nTWO\n2.5\n\n### SEND0 (NEXT)\nmutated and observed", 10),
-        makeMockResponse("## PLAN0\nconclude\n\n### SEND0 (TERM)\ndone", 10),
+        makeMockResponse("## PLAN_\ncreate fixture\n\n### EDIT_ (worker:///mode.md)\none\ntwo\nthree\nfour\n\n### SEND_ (NEXT)\nfixture created", 10),
+        makeMockResponse("## PLAN_\nobserve the settled edits\n\n### READ_ (worker:///mode.md)\n\n### EDIT_ (worker:///mode.md) <4>\nFOUR\n\n### EDIT_ (worker:///mode.md) <2>\nTWO\n2.5\n\n### SEND_ (NEXT)\nmutated and observed", 10),
+        makeMockResponse("## PLAN_\nconclude\n\n### SEND_ (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -111,9 +111,9 @@ test("{§edit-execution}: each EDIT records its own revision; an earlier READ re
 
 test("{§edit-execution}: overlapping numeric EDITs apply to successive resource states", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### EDIT0 (worker:///atomic.md)\none\ntwo\nthree\n\n### SEND0 (NEXT)\nfixture", 10),
-        makeMockResponse("### EDIT0 (worker:///atomic.md) <1,2>\nchanged\n\n### EDIT0 (worker:///atomic.md) <2,3>\nalso changed\n\n### READ0 (worker:///atomic.md)\n\n### SEND0 (NEXT)\nchecked", 10),
-        makeMockResponse("### SEND0 (TERM)\ndone", 10),
+        makeMockResponse("### EDIT_ (worker:///atomic.md)\none\ntwo\nthree\n\n### SEND_ (NEXT)\nfixture", 10),
+        makeMockResponse("### EDIT_ (worker:///atomic.md) <1,2>\nchanged\n\n### EDIT_ (worker:///atomic.md) <2,3>\nalso changed\n\n### READ_ (worker:///atomic.md)\n\n### SEND_ (NEXT)\nchecked", 10),
+        makeMockResponse("### SEND_ (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -135,9 +135,9 @@ test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("worker:///anchored-range.md", content);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## PLAN0\ncreate the fixture\n\n### EDIT0 (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n\n### SEND0 (NEXT)\ncreated", 10),
-        makeMockResponse(`## PLAN0\ndelete the first two lines\n\n### EDIT0 (worker:///anchored-range.md) <${alpha},${beta}>\n\n### READ0 (worker:///anchored-range.md)\n\n### SEND0 (NEXT)\nverify`, 10),
-        makeMockResponse("## PLAN0\nconclude\n\n### SEND0 (TERM)\ndone", 10),
+        makeMockResponse("## PLAN_\ncreate the fixture\n\n### EDIT_ (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n\n### SEND_ (NEXT)\ncreated", 10),
+        makeMockResponse(`## PLAN_\ndelete the first two lines\n\n### EDIT_ (worker:///anchored-range.md) <${alpha},${beta}>\n\n### READ_ (worker:///anchored-range.md)\n\n### SEND_ (NEXT)\nverify`, 10),
+        makeMockResponse("## PLAN_\nconclude\n\n### SEND_ (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -159,9 +159,9 @@ test("{§edit-execution}: an invalid anchored EDIT leaves the earlier effect int
         content,
     );
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse(`## PLAN0\ncreate the fixture\n\n### EDIT0 (worker:///anchor-batch.md)\n${content}\n\n### SEND0 (NEXT)\ncreated`, 10),
-        makeMockResponse(`## PLAN0\nexercise one valid and one invalid anchored scope\n\n### EDIT0 (worker:///anchor-batch.md) <${one},${two}>\n\n### EDIT0 (worker:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>\nreplacement\n\n### READ0 (worker:///anchor-batch.md)\n\n### SEND0 (NEXT)\nverify`, 10),
-        makeMockResponse("## PLAN0\nconclude\n\n### SEND0 (TERM)\ndone", 10),
+        makeMockResponse(`## PLAN_\ncreate the fixture\n\n### EDIT_ (worker:///anchor-batch.md)\n${content}\n\n### SEND_ (NEXT)\ncreated`, 10),
+        makeMockResponse(`## PLAN_\nexercise one valid and one invalid anchored scope\n\n### EDIT_ (worker:///anchor-batch.md) <${one},${two}>\n\n### EDIT_ (worker:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>\nreplacement\n\n### READ_ (worker:///anchor-batch.md)\n\n### SEND_ (NEXT)\nverify`, 10),
+        makeMockResponse("## PLAN_\nconclude\n\n### SEND_ (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

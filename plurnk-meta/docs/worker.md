@@ -23,11 +23,10 @@ creates the entry from its body, which is the content itself: several lines,
 never wrapped in a fence.
 
 ```example
-### EDIT_ (worker://~/scratch/greet.py) <!-- create the entry from the body -->
-def greet(name):
-    return f"hello {name}"
+### EDIT_ (worker://~/scratch/greet.mjs) <!-- create the entry from the body -->
+export const greet = (name) => `hello ${name}`;
 
-print(greet("world"))
+console.log(greet("world"));
 ```
 
 Control addresses contain only scheme and authority: no trailing slash,

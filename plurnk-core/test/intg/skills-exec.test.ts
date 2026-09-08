@@ -28,8 +28,8 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     const installed = join(root, ".agents", "skills", "sample");
     await symlink(join(root, "versions", "first"), installed);
     const responses = [
-        { assistant: { content: "## PLAN0\n[]\n### READ0 (skill://sample/guide.md) <1,-1>\n### SEND0 (NEXT)\nInspect the source.", reasoning: null } },
-        { assistant: { content: "## PLAN0\n[]\n### SEND0 (TERM)\nDone.", reasoning: null } },
+        { assistant: { content: "## PLAN_\n[]\n### READ_ (skill://sample/guide.md) <1,-1>\n### SEND_ (NEXT)\nInspect the source.", reasoning: null } },
+        { assistant: { content: "## PLAN_\n[]\n### SEND_ (TERM)\nDone.", reasoning: null } },
     ];
     const provider = new PacketCapturingMock({ contextWindow: 32768, responses: [...responses, ...responses] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -56,9 +56,9 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
-            { assistant: { content: "## PLAN0\ncurate:\n\n### SEND0 (TERM)\nobserved.", reasoning: null } },
-            { assistant: { content: "## PLAN0\nInspect the newly installed skill.\n\n### READ0 (skill://review/SKILL.md) <1,-1>\n\n### SEND0 (NEXT)\nRead the skill.", reasoning: null } },
-            { assistant: { content: "## PLAN0\nThe skill is available.\n\n### SEND0 (TERM)\nobserved.", reasoning: null } },
+            { assistant: { content: "## PLAN_\ncurate:\n\n### SEND_ (TERM)\nobserved.", reasoning: null } },
+            { assistant: { content: "## PLAN_\nInspect the newly installed skill.\n\n### READ_ (skill://review/SKILL.md) <1,-1>\n\n### SEND_ (NEXT)\nRead the skill.", reasoning: null } },
+            { assistant: { content: "## PLAN_\nThe skill is available.\n\n### SEND_ (TERM)\nobserved.", reasoning: null } },
         ],
     });
     try {

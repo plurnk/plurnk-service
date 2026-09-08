@@ -42,7 +42,7 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.md");
-    assert.match(family!.content, /### EXEC0 \[gitea\] \(issue\/read\) <!-- List issues\. Schema: worker:\/\/~\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}/);
+    assert.match(family!.content, /### EXEC_ \[gitea\] \(issue\/read\) <!-- List issues\. Schema: worker:\/\/~\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}/);
     assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
     assert.ok(detail!.content.includes(description), "complete multiline description is preserved");
     assert.deepEqual(JSON.parse(detail!.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!), schema);

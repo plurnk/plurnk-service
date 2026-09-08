@@ -14,15 +14,15 @@ const statements = (source: string): PlurnkStatement[] => {
 
 test("operations retain authored order across mutations, observations and asynchronous dispatch", () => {
     const authored = statements([
-        "## PLAN0\nwork",
-        "### READ0 (notes.md)",
-        "### EXEC0\nnode verify.mjs",
-        "### EDIT0 (notes.md) <2>\nnew",
-        "### FIND0 (src/**)",
-        "### BARE0\nclassify this independently",
-        "### WORK0 (worker://reviewer)\nreview",
-        "### KILL0 (node:///3/1/2/EXEC)",
-        "### SEND0 (TERM)\ndone",
+        "## PLAN_\nwork",
+        "### READ_ (notes.md)",
+        "### EXEC_\nnode verify.mjs",
+        "### EDIT_ (notes.md) <2>\nnew",
+        "### FIND_ (src/**)",
+        "### BARE_\nclassify this independently",
+        "### WORK_ (worker://reviewer)\nreview",
+        "### KILL_ (node:///3/1/2/EXEC)",
+        "### SEND_ (TERM)\ndone",
     ].join("\n\n"));
 
     assert.deepEqual(
@@ -33,12 +33,12 @@ test("operations retain authored order across mutations, observations and asynch
 
 test("scheduling preserves operation identity and does not mutate its input", () => {
     const authored = statements([
-        "### EDIT0 (a.md) <1>\na",
-        "### COPY0 (b.md) (c.md)",
-        "### READ0 (a.md)",
-        "### READ0 (c.md)",
-        "### EXEC0\none",
-        "### SEND0 (worker://reviewer)\ntwo",
+        "### EDIT_ (a.md) <1>\na",
+        "### COPY_ (b.md) (c.md)",
+        "### READ_ (a.md)",
+        "### READ_ (c.md)",
+        "### EXEC_\none",
+        "### SEND_ (worker://reviewer)\ntwo",
     ].join("\n\n"));
 
     assert.deepEqual(scheduleTurnOps(authored), authored);
@@ -46,7 +46,7 @@ test("scheduling preserves operation identity and does not mutate its input", ()
 
 test("every disposition follows trailing operations without reordering those operations", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        const authored = statements(`## PLAN0\n[]\n### SEND0 (${label})\nDisposition.\n### SEND0 (worker://reviewer)\nMessage.\n### READ0 (notes.md)\n### KILL0 (log:///1/2/3/READ)`);
+        const authored = statements(`## PLAN_\n[]\n### SEND_ (${label})\nDisposition.\n### SEND_ (worker://reviewer)\nMessage.\n### READ_ (notes.md)\n### KILL_ (log:///1/2/3/READ)`);
         const disposition = authored[1];
         const scheduled = scheduleTurnOps(authored);
         assert.deepEqual(scheduled.map(({ op }) => op), ["PLAN", "SEND", "READ", "KILL", "SEND"], label);

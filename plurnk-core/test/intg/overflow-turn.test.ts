@@ -120,11 +120,11 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
         assert.equal(turnOps?.initial_folded, "[[1,-1]]", "the exact recovery program is born body-suppressed like every non-initialization turnOps");
         assert.equal(turnOps?.folded, "[]", "the recovery program itself is not trimmed");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
-        assert.match(recoverySource, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
-        assert.match(recoverySource, /\n### KILL0 /, "the source records the same ordinary scoped KILL operations");
+        assert.match(recoverySource, /^## PLAN_\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
+        assert.match(recoverySource, /\n### KILL_ /, "the source records the same ordinary scoped KILL operations");
         assert.match(
             recoverySource,
-            /\n### SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/,
+            /\n### SEND_ \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/,
             "the successor must dedicate its next turn to comprehensive bulk curation",
         );
 
@@ -166,10 +166,10 @@ test("overflow trims causal log bodies without erasing original occurrences or t
             content: longBody,
         });
         const source = [
-            "## PLAN0",
+            "## PLAN_",
             JSON.stringify(planValue("Retrieve and inspect the complete fixture.")),
-            "### READ0 (worker:///oversized.md) <1,-1>",
-            "### SEND0 (NEXT)",
+            "### READ_ (worker:///oversized.md) <1,-1>",
+            "### SEND_ (NEXT)",
             "Review the retrieved evidence.",
         ].join("\n");
         const first = await engine.runTurn({
@@ -258,10 +258,10 @@ test("overflow trims causal log bodies without erasing original occurrences or t
 
         const addresses = recoverable.map(addressOf);
         const recoverySource = [
-            "## PLAN0",
+            "## PLAN_",
             JSON.stringify(planValue("Inspect the trimmed log receipts and retrieve the source again if needed.")),
-            ...addresses.map((address) => `### READ0 (log:///${address.replace(/^\//, "")}) <1,-1>`),
-            "### SEND0 (NEXT)",
+            ...addresses.map((address) => `### READ_ (log:///${address.replace(/^\//, "")}) <1,-1>`),
+            "### SEND_ (NEXT)",
             "The trimmed log receipts contain no readable body.",
         ].join("\n");
         const reread = await engine.runTurn({

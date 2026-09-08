@@ -280,7 +280,7 @@ back onto the sampled text so the complete pre-projection response can be graded
 Neither body may contain its profile's opener or closer.
 `sep` is zero through seven whitespace characters. The projected PLURNK content
 is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
-may begin with `## PLAN0`, and every ordinary operation is a same-lane `### OP0`
+may begin with `## PLAN_`, and every ordinary operation is a same-lane `### OP0`
 section.
 `tail-0` admits any number of ordinary operations and exactly one
 disposition SEND, at any position after the optional PLAN. NEXT requires at
@@ -289,7 +289,7 @@ share the same operation grammar; a second disposition is not admitted.
 
 ```mermaid
 flowchart LR
-    sampled["Constrained sampled text<br/>profile reasoning bytes · sep · optional fence · PLAN0 turn"]
+    sampled["Constrained sampled text<br/>profile reasoning bytes · sep · optional fence · PLAN_ turn"]
     raw["Pre-projection response<br/>one complete reasoning envelope · PLURNK turn"]
     split["llama.cpp<br/>reasoning_format: auto"]
     reasoning["reasoning_content<br/>envelope body"]
@@ -310,7 +310,7 @@ it still contained the required reasoning envelope. Provider and core own the
 projection evidence and rail-verdict boundary; this package owns the sampled and
 response roots plus the parser/AstBuilder result.
 
-§rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `0`.
+§rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `_`.
 Reserved PLAN and operation stems are structural only at column zero, including
 the first body line. At those boundaries a non-`0` pseudo-heading cannot be
 swallowed as body text. Inline quotations and indented examples remain ordinary
@@ -371,7 +371,7 @@ The following constraints are structural:
   observed modifiers are a bounded hard error naming only the rejected slots.
 - An annotation follows every present modifier and appears at most once.
 - BARE, WORK, FORK, and KILL do not admit a scope slot.
-- An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
+- An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `_`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
 metadata, then scope, then annotation, with one ASCII space before every present modifier. Slot delimiters make
@@ -383,8 +383,8 @@ spacing and permutation are not second canonical spellings.
 
 §heading-inline-body Text that follows the last slot on a heading line — after
 horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
-`(`, or `<`, nor `{` after a target) — is the first body line: `### EXEC0 [crm] (crm_query) SELECT Id FROM Case` and
-`### FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
+`(`, or `<`, nor `{` after a target) — is the first body line: `### EXEC_ [crm] (crm_query) SELECT Id FROM Case` and
+`### FIND_ (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
 lost and the stored statement is canonical; the spelling is tolerated and announced:
 one warning-severity advisory follows the statement, naming the heading and the rule
 (body content goes immediately beneath the OP heading line), so the model learns
@@ -419,7 +419,7 @@ or safely execute understandable input:
 |---------------------------------------------------|---------------------------------------------------------------------|
 | Reordered admitted slots                          | Producers retain signal → target → metadata → scope order           |
 | Missing target on a generally targeted operation | AST carries `null`; the runtime rejects when the target is required |
-| A non-`0` PLAN lane                               | Model canon uses lane `0`                                           |
+| A non-`0` PLAN lane                               | Model canon uses lane `_`                                           |
 | KILL annotation body                              | AST preserves it; model teaching leaves the KILL section empty      |
 | Dash-separated or comma-space scope numbers       | Producers use adjacent comma-separated numbers                      |
 | Empty content where semantics require a body      | The empty section normalizes null; the operation owner rejects it   |
@@ -489,14 +489,14 @@ to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
 commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
-§exec-executor-slot An EXEC heading takes an optional `[executor]` slot before its path: `### EXEC0 [python3] (tools/report.py)`. The executor may also trail the path (`### EXEC0 (tools/report.py) [python3]`); either position binds the same AST, since no other slot after a path uses `[...]`. Canonical rendering leads with the executor. Two executors are the one rejected shape. The bracket names the registered executor that runs the program — a tool family, a language runtime, or the shell — and lexes as one `EXECUTOR` token only on an EXEC heading. The path names the program: a registered tool of that family, or a script file or entry. A bare `### EXEC0` is the shell running its body; with a path the body is the program's input. The AST carries `executor` (null for the shell) and `target` separately; the path is never split. Each of the executor, the path, and the `<timeout,poll>` scope appears at most once. Tool teaching, not the grammar, spells the registered executors; a `{cwd=…}` metadata block, interpreted by the executor, names the working directory.
+§exec-executor-slot An EXEC heading takes an optional `[executor]` slot before its path: `### EXEC_ [python3] (tools/report.py)`. The executor may also trail the path (`### EXEC_ (tools/report.py) [python3]`); either position binds the same AST, since no other slot after a path uses `[...]`. Canonical rendering leads with the executor. Two executors are the one rejected shape. The bracket names the registered executor that runs the program — a tool family, a language runtime, or the shell — and lexes as one `EXECUTOR` token only on an EXEC heading. The path names the program: a registered tool of that family, or a script file or entry. A bare `### EXEC_` is the shell running its body; with a path the body is the program's input. The AST carries `executor` (null for the shell) and `target` separately; the path is never split. Each of the executor, the path, and the `<timeout,poll>` scope appears at most once. Tool teaching, not the grammar, spells the registered executors; a `{cwd=…}` metadata block, interpreted by the executor, names the working directory.
 
 §send-label SEND's path slot carries either a turn label or a recipient. The four
 labels `(NEXT)`, `(WAIT)`, `(TERM)`, and `(FAIL)` lex as one `SEND_LABEL` token
 and make the SEND terminal: the AST `status` is 102, 202, 200, or 499 and `target`
 is null. A label SEND names no recipient; a label beside a recipient path is one
 error at the heading naming that rule. A SEND whose path is a recipient
-(`### SEND0 (worker://recheck)`, `(https://…)`, `(a2a://…)`), or whose path slot is
+(`### SEND_ (worker://recheck)`, `(https://…)`, `(a2a://…)`), or whose path slot is
 empty (the user), is a mid-turn message with `status` null. The GBNF rail spells a
 mid-turn recipient as a URL, so a constrained turn can never place a label mid-turn.
 
@@ -510,7 +510,7 @@ actors use `<delay[,interval]>` ({§worker-scheduled-send}). A targetless messag
 takes no scope. Scheduling does not change the message body or disposition.
 
 §kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
-anchored (`### KILL0 (log:///**/READ) <17,-1>`, `### KILL0 (worker:///notes.md)
+anchored (`### KILL_ (log:///**/READ) <17,-1>`, `### KILL_ (worker:///notes.md)
 <@aB3dE,@0Aa9Z>`), and an optional one-line matcher body that selects rows. The AST
 is `{ op: "KILL", target, lineMarker: TextLineMarker | null, body: MatcherBody | null }`.
 Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
@@ -688,7 +688,7 @@ visitor error and never falls back to glob matching.
   disposition signal, never by a whole-turn alternative), so one malformed heading costs one
   diagnostic and every later statement, the terminal SEND included, stands on its own. Any
   other second path slot names the one-slot rule.
-- §scope-slot-tolerance A line scope written inside a path slot (`### COPY0 (worker:///src.md<2,3>)`)
+- §scope-slot-tolerance A line scope written inside a path slot (`### COPY_ (worker:///src.md<2,3>)`)
   is read as `(worker:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
   before a slot's closing paren can only be a scope; every path slot of a statement is repaired
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
@@ -749,7 +749,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| `### SEND0 (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
+| `### SEND_ (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
 | Directed SEND         | Owner-defined numeric scope           | Worker actors schedule a task with `delay[,interval]` ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -797,41 +797,43 @@ Delimiter rules:
 - The H1 PLAN establishes the lane; every real H2 operation heading in that
   turn has the exact same delimiter.
 - An empty delimiter is accepted only by ANTLR ingestion. Canonical teaching and
-  the generated rail use `0` on PLAN and every operation.
+  the generated rail use `_` on PLAN and every operation: an arbitrary lane driven
+  home so it reads as official, chosen because it is neither a number a model
+  increments nor a character natural markdown puts after an OP name.
 - A body may contain any heading whose delimiter differs from the active lane.
 - §foreign-lane-advisory When a body swallows OP-shaped headings of another lane, the
   parser adds one warning advisory per statement and foreign suffix, positioned at
   the first swallowed heading: how many headings, which operations, which suffix,
   which statement took them as body, and the turn's lane. It is factual, never a
-  rejection or a rewrite: the model that numbered `EDIT1…EDIT23` inside a lane-`0`
+  rejection or a rewrite: the model that numbered `EDIT1…EDIT23` inside a lane `_`
   turn learns in one turn what it otherwise infers from a 1,136-line receipt, and
   the model that nested a quoted program on purpose reads a confirmation. Core
   publishes it like every parser warning, as a `parse_advisory` notice on the next
   packet (#515).
-- To carry a nested turn written with lane `0`, choose another delimiter for the
+- To carry a nested turn written with lane `_`, choose another delimiter for the
   outer turn and repeat it on every outer heading.
-- The GBNF deliberately emits only lane `0`. It cannot emit body content that
+- The GBNF deliberately emits only lane `_`. It cannot emit body content that
   contains a same-lane structural heading; unconstrained producers use another
   outer lane when that representation is required.
 
-Example — a lane-0 turn stored inside a lane-2 EDIT body:
+Example — a lane `_` turn stored inside a lane-2 EDIT body:
 
 ```example
 ## PLAN2
 [{"content":"Store the quoted turn.","status":"in_progress"}]
 
 ### EDIT2 (worker:///quoted.plurnk)
-## PLAN0
+## PLAN_
 [{"content":"Answer from memory.","status":"in_progress"}]
 
-### SEND0 (TERM)
+### SEND_ (TERM)
 Paris.
 
 ### SEND2 (TERM)
 Stored the quoted turn.
 ```
 
-The lane-0 headings are ordinary EDIT body text because the outer turn's
+The lane `_` headings are ordinary EDIT body text because the outer turn's
 structural lane is `2`. This rule belongs to section framing and applies to
 every operation, not to EDIT semantics.
 
@@ -940,7 +942,7 @@ possible. EOF is a valid body boundary. An unfinished signal, target, or metadat
 
 | Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
-| Heading marker              | `## PLAN0` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
+| Heading marker              | `## PLAN_` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
 | Between OP and delimiter       | Adjacent                              | Must remain adjacent                                      |
 | Before each modifier        | One ASCII space                       | Zero or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
@@ -1388,8 +1390,8 @@ diagnostics are:
   positions, EXEC/WAIT minutes, text coordinates, or no scope. Do not append advice for
   other operations or infer why the producer supplied the value. Spacing and
   boundary-loss diagnostics retain their own contracts.
-- §label-recipient-redirect **A label beside a recipient.** `### SEND0 (TERM)
-  (worker://parent)` and `### SEND0 (worker://parent) (TERM)` are one parser error at
+- §label-recipient-redirect **A label beside a recipient.** `### SEND_ (TERM)
+  (worker://parent)` and `### SEND_ (worker://parent) (TERM)` are one parser error at
   the heading: `a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient
   with its own SEND first` ({§send-label}).
 - §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
@@ -1422,7 +1424,7 @@ Examples of canonical hard facts:
 - `unrecognized character '<' in target`
 - `unrecognized character ':' in signal`
 - `unrecognized character 'X' in statement header`
-- `a turn must begin with \`## PLAN0\``
+- `a turn must begin with \`## PLAN_\``
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded
@@ -1457,6 +1459,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "target slot of `### READ0` opened at line 1 but never closed - add `)`"
+    "message": "target slot of `### READ_` opened at line 1 but never closed - add `)`"
 }
 ```

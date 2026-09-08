@@ -327,7 +327,7 @@ test("manifest: documentation is loaded verbatim from docs/https.md", async () =
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# https:\/\//);
     assert.match(Http.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}0 (`), `${op} remains illustrated in the discoverable reference`);
+    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}_ (`), `${op} remains illustrated in the discoverable reference`);
 });
 
 test("ready validates the fetch ceiling without making a provider request", async () => {

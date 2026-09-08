@@ -121,15 +121,15 @@ test("ordinary operation evidence redacts credential slots once before every dur
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
         const read = parseClientStatement(
-            "### READ0 (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) {Authorization: Bearer primary-header-secret} {X-Api-Key: secondary-header-secret}",
+            "### READ_ (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) {Authorization: Bearer primary-header-secret} {X-Api-Key: secondary-header-secret}",
             "READ",
         );
         const copy = parseClientStatement(
-            "### COPY0 (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)",
+            "### COPY_ (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)",
             "COPY",
         );
         const move = parseClientStatement(
-            "### MOVE0 (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)",
+            "### MOVE_ (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)",
             "MOVE",
         );
 

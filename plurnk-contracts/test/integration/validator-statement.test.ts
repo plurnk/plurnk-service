@@ -17,27 +17,27 @@ const validateRoundTrip = (input: string) => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: FIND with tag CSV, path, line marker, matcher", () => {
-    const r = validateRoundTrip("### FIND0 (known://docs) <1-20>\n*.xml");
+    const r = validateRoundTrip("### FIND_ (known://docs) <1-20>\n*.xml");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: READ with bare local path and empty body", () => {
-    const r = validateRoundTrip("### READ0 (config/foo.json)");
+    const r = validateRoundTrip("### READ_ (config/foo.json)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL with regex matcher", () => {
-    const r = validateRoundTrip("### KILL0 (known://**)\n/error|fail/i");
+    const r = validateRoundTrip("### KILL_ (known://**)\n/error|fail/i");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL with jsonpath matcher", () => {
-    const r = validateRoundTrip("### KILL0 (log://**)\n$.status");
+    const r = validateRoundTrip("### KILL_ (log://**)\n$.status");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL admits log-body line markers", () => {
-    const parsed = PlurnkParser.parseStatements("### KILL0 (log://**) <17,-1>");
+    const parsed = PlurnkParser.parseStatements("### KILL_ (log://**) <17,-1>");
     const item = parsed.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "KILL") assert.fail("expected KILL");
@@ -51,81 +51,81 @@ test("PlurnkStatement: KILL admits log-body line markers", () => {
 });
 
 test("PlurnkStatement: EDIT with raw markdown body", () => {
-    const r = validateRoundTrip("### EDIT0 (known://meaning)\nThe meaning of life is 42");
+    const r = validateRoundTrip("### EDIT_ (known://meaning)\nThe meaning of life is 42");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: EDIT with an anchored line scope", () => {
-    const r = validateRoundTrip("### EDIT0 (known://meaning) <@aZ09b>\nThe meaning of life is 42");
+    const r = validateRoundTrip("### EDIT_ (known://meaning) <@aZ09b>\nThe meaning of life is 42");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: COPY with destination resource selection", () => {
-    const r = validateRoundTrip("### COPY0 (known://draft) (known://archive/draft)");
+    const r = validateRoundTrip("### COPY_ (known://draft) (known://archive/draft)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: MOVE with destination resource selection", () => {
-    const r = validateRoundTrip("### MOVE0 (known://draft) (known://final)");
+    const r = validateRoundTrip("### MOVE_ (known://draft) (known://final)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: SEND with integer signal and JSON body", () => {
-    const r = validateRoundTrip('### SEND0 (TERM)\n{"answer":"Paris"}');
+    const r = validateRoundTrip('### SEND_ (TERM)\n{"answer":"Paris"}');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: SEND with plain text body", () => {
-    const r = validateRoundTrip("### SEND0 (NEXT)\nstill working");
+    const r = validateRoundTrip("### SEND_ (NEXT)\nstill working");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: EXEC with executor and code body", () => {
-    const r = validateRoundTrip("### EXEC0 (node/./)\nconsole.log(1)");
+    const r = validateRoundTrip("### EXEC_ (node/./)\nconsole.log(1)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 // {§bare-statement}
 test("PlurnkStatement: BARE carries inline or resource prompt input, but no scope", () => {
-    const parsed = validateRoundTrip("### BARE0\nWhat is the capital of Germany?");
+    const parsed = validateRoundTrip("### BARE_\nWhat is the capital of Germany?");
     assert.equal(parsed!.valid, true, JSON.stringify(parsed!.errors));
 
     const missing = baseFields("BARE");
     assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt" }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", target: { kind: "local", raw: "prompt.md" } }).valid, true);
-    const resource = validateRoundTrip("### BARE0 (worker://~/prompt.md)");
+    const resource = validateRoundTrip("### BARE_ (worker://~/prompt.md)");
     assert.equal(resource!.valid, true, JSON.stringify(resource!.errors));
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
 });
 
 test("PlurnkStatement parser preserves a decimal marker for runtime validation", () => {
-    const r = validateRoundTrip("### EDIT0 (known://plan) <2.5>\n- [ ] new step");
+    const r = validateRoundTrip("### EDIT_ (known://plan) <2.5>\n- [ ] new step");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: FIND with decimal threshold and semantic matcher", () => {
-    const r = validateRoundTrip("### FIND0 (known://**) <0.7>\n~territorial concessions");
+    const r = validateRoundTrip("### FIND_ (known://**) <0.7>\n~territorial concessions");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
-    const r = validateRoundTrip("### FIND0 (known://**) <0.7,10,20>\n~concessions");
+    const r = validateRoundTrip("### FIND_ (known://**) <0.7,10,20>\n~concessions");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: PLAN normalizes a tolerated plaintext body", () => {
-    const r = validateRoundTrip("## PLAN0\nDecompose the prompt; discover, record, deliver.");
+    const r = validateRoundTrip("## PLAN_\nDecompose the prompt; discover, record, deliver.");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL with bare target", () => {
-    const r = validateRoundTrip("### KILL0 (sh:///3/1/2)");
+    const r = validateRoundTrip("### KILL_ (sh:///3/1/2)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL with signal and annotation body", () => {
-    const r = validateRoundTrip("### KILL0 (sh:///3/1/2)\nrunaway; no output for 4 turns");
+    const r = validateRoundTrip("### KILL_ (sh:///3/1/2)\nrunaway; no output for 4 turns");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -310,11 +310,11 @@ test("PlurnkStatement: rejects extra property", () => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: round-trip survives slot-order permutation (path-first)", () => {
-    const r = validateRoundTrip("### FIND0 (known://docs) <1>\n*.xml");
+    const r = validateRoundTrip("### FIND_ (known://docs) <1>\n*.xml");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: round-trip survives slot-order permutation (L-first)", () => {
-    const r = validateRoundTrip("### FIND0 <1-5> (known://docs)\n*.xml");
+    const r = validateRoundTrip("### FIND_ <1-5> (known://docs)\n*.xml");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

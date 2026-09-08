@@ -85,7 +85,7 @@ const exampleSource = (
         ...(annotation === undefined ? [] : [annotationText(annotation)]),
         ...(schemaPath === undefined ? [] : [`Schema: worker://~${schemaPath}`]),
     ].join(" ");
-    const heading = `### EXEC0${executor}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
+    const heading = `### EXEC_${executor}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
     return invocation.example?.body === undefined
         ? heading
         : `${heading}\n${invocation.example.body}`;
@@ -107,7 +107,7 @@ const summaryWitness = (
     summary?: string,
 ): string => {
     const heading = exampleSource(runtime, invocation, exactTarget, summary)
-        .split("\n", 1)[0]!.replace(/^### EXEC0/u, "EXEC");
+        .split("\n", 1)[0]!.replace(/^### EXEC_/u, "EXEC");
     const input = exactTarget === undefined && invocation.inputSchema === undefined
         ? invocation.example?.body
         : invocationInput(invocation);
@@ -116,7 +116,7 @@ const summaryWitness = (
 
 const authoredSummary = (source: ToolSource, summary: string): string => {
     if (!summary.startsWith("EXEC ") || summary.includes("\\n")) return summary;
-    const { items } = PlurnkParser.parseStatements(summary.replace(/^EXEC/u, "### EXEC0"));
+    const { items } = PlurnkParser.parseStatements(summary.replace(/^EXEC/u, "### EXEC_"));
     const item = items[0];
     if (items.length !== 1 || item?.kind !== "statement" || item.statement.op !== "EXEC") return summary;
     const statement = item.statement;

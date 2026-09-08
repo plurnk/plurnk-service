@@ -239,7 +239,7 @@ test("manifest: documentation is loaded verbatim from docs/wss.md", async () => 
     assert.equal(Ws.manifest.documentation, fromFile);
     assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
     assert.match(Ws.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}0 (`), `${op} remains illustrated in the discoverable reference`);
+    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}_ (`), `${op} remains illustrated in the discoverable reference`);
 });
 
 test("READ: inbound frames stream into messages; socket close settles done", async () => {

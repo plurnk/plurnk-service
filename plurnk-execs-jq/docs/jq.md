@@ -3,13 +3,13 @@
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
 ```example
-### EXEC0 [jq]
+### EXEC_ [jq]
 [1,2,3] | add
 
-### EXEC0 [jq] (data.json)
+### EXEC_ [jq] (data.json)
 .users[].name
 
-### EXEC0 [jq] (sqlite:///1/2/3/EXEC#results)
+### EXEC_ [jq] (sqlite:///1/2/3/EXEC#results)
 .[] | .name
 ```
 

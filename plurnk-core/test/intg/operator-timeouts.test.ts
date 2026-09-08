@@ -76,7 +76,7 @@ test("{§operator-config-loop-timeout}: WAIT preserves one execution allowance a
         const loopId = await insertLoop(db, workerId, 1, "Wait, then finish the same assignment.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("### SEND0 (WAIT) <60>\nWait before continuing."),
+            makeMockResponse("### SEND_ (WAIT) <60>\nWait before continuing."),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {

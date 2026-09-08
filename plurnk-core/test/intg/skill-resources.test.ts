@@ -19,7 +19,7 @@ class CapturingMock extends Mock {
 }
 
 const turn = (ops: string, terminal = false) => ({
-    assistant: { content: `## PLAN0\n[]\n${ops}\n### SEND0 (${terminal ? "TERM" : "NEXT"})\n${terminal ? "Done." : "Inspect results."}`, reasoning: null },
+    assistant: { content: `## PLAN_\n[]\n${ops}\n### SEND_ (${terminal ? "TERM" : "NEXT"})\n${terminal ? "Done." : "Inspect results."}`, reasoning: null },
 });
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -84,8 +84,8 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         assert.match(String((await dispatch(readStmt(target))).content), /alpha current guidance/);
         await writeFile(join(root, ".agents", "skills", "alpha", "references", "guide.md"), "Changed on disk.\n");
         assert.match(String((await dispatch(readStmt(target))).content), /Changed on disk/);
-        for (const op of ["### EDIT0 (skill://alpha/references/guide.md) <1,-1>\nchanged", "### KILL0 (skill://alpha/references/guide.md)"]) {
-            const parsed = PlurnkParser.parse(`## PLAN0\n[]\n${op}`);
+        for (const op of ["### EDIT_ (skill://alpha/references/guide.md) <1,-1>\nchanged", "### KILL_ (skill://alpha/references/guide.md)"]) {
+            const parsed = PlurnkParser.parse(`## PLAN_\n[]\n${op}`);
             const item = parsed.items.find((item) => item.kind === "statement" && item.statement.op !== "PLAN");
             assert.ok(item?.kind === "statement");
             const result = await dispatch(item.statement);
@@ -129,8 +129,8 @@ for (const [proposals, withOptions] of [
             'console.log("NATIVE_EXEC_COMPLETE");',
         ].join("\n"));
         const provider = new CapturingMock({ contextWindow: 32768, responses: [
-            turn("### READ0 (skill://sample/scripts/main.mjs) <1,-1>"),
-            turn(`### EXEC0 [node] (skill://sample/scripts/main.mjs)${withOptions ? ` {cwd=output folder} {args=${JSON.stringify(argv)}}\n${stdin}` : ""}`),
+            turn("### READ_ (skill://sample/scripts/main.mjs) <1,-1>"),
+            turn(`### EXEC_ [node] (skill://sample/scripts/main.mjs)${withOptions ? ` {cwd=output folder} {args=${JSON.stringify(argv)}}\n${stdin}` : ""}`),
             turn("", true),
         ] });
         await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -161,7 +161,7 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
     await writeFile(join(dir, "SKILL.md"), "---\nname: sample\ndescription: Inspect an image\n---\nSee assets/image.png.\n");
     await writeFile(join(dir, "assets", "image.png"), PNG);
     const provider = new CapturingMock({ contextWindow: 32768, inputModalities: ["image"], responses: [
-        turn("### READ0 (skill://sample/assets/image.png#bytes) <1,3>"),
+        turn("### READ_ (skill://sample/assets/image.png#bytes) <1,3>"),
         turn(""),
         turn("", true),
     ] });
@@ -200,8 +200,8 @@ test("{§skills-functionality} a model discovers a skill and reads its original 
     await writeFile(join(dir, "references", "nested", "rules.md"), "NESTED_SENTINEL\n");
     await writeFile(join(dir, "assets", "sample.bin"), Buffer.from([0x00, 0xff, 0x81]));
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        turn("### READ0 (skill://sample/SKILL.md) <1,-1>"),
-        turn("### FIND0 (skill://sample/references/**) <1,-1>\n### READ0 (skill://sample/references/guide.md) <1,-1>\n### READ0 (skill://sample/references/nested/rules.md) <1,-1>\n### READ0 (skill://sample/assets/sample.bin) <1,-1>"),
+        turn("### READ_ (skill://sample/SKILL.md) <1,-1>"),
+        turn("### FIND_ (skill://sample/references/**) <1,-1>\n### READ_ (skill://sample/references/guide.md) <1,-1>\n### READ_ (skill://sample/references/nested/rules.md) <1,-1>\n### READ_ (skill://sample/assets/sample.bin) <1,-1>"),
         turn("", true),
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {

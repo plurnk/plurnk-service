@@ -130,7 +130,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // The slot contract, stated when a resource source cannot be read: the resource IS the
     // program and the body its stdin; a command belongs beneath a targetless heading.
     static sourceRecovery(source: string, upstream: unknown): string {
-        const contract = `\`### EXEC0 (${source})\` runs that resource as the program (its content is the program; the body is its stdin). To run a command in the workspace, write it beneath a targetless \`### EXEC0\`.`;
+        const contract = `\`### EXEC_ (${source})\` runs that resource as the program (its content is the program; the body is its stdin). To run a command in the workspace, write it beneath a targetless \`### EXEC_\`.`;
         return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
     }
 
@@ -146,7 +146,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         volatile: true,
         modelVisible: true,
         metadataModifier: true,
-        documentation: "Runs a registered executable tool — `### EXEC0 [executor] (program) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
+        documentation: "Runs a registered executable tool — `### EXEC_ [executor] (program) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -291,7 +291,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `### EXEC0 [runtime] (target)\nbody` → runtime-owned invocation buckets.
+    // `### EXEC_ [runtime] (target)\nbody` → runtime-owned invocation buckets.
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
@@ -313,7 +313,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 "scheme:exec",
                 "executor-not-registered",
                 400,
-                `\`[${runtime}]\` names no registered executor for this worker. Executors are taught under \`worker://~/_plurnk/tools/\`; a bare \`### EXEC0\` is the shell.`,
+                `\`[${runtime}]\` names no registered executor for this worker. Executors are taught under \`worker://~/_plurnk/tools/\`; a bare \`### EXEC_\` is the shell.`,
                 {},
                 {
                     requestedRuntime: runtime,
@@ -497,8 +497,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     : executors.availableRuntimes(core.functionalityWorkerId)
                         .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
                 const recovery = ownerRuntimes.length === 0
-                    ? "Name an existing script as the program, or place a shell command beneath a bare `### EXEC0`."
-                    : `Run the registered tool with \`### EXEC0 [${ownerRuntimes[0]}] (${target})\`.`;
+                    ? "Name an existing script as the program, or place a shell command beneath a bare `### EXEC_`."
+                    : `Run the registered tool with \`### EXEC_ [${ownerRuntimes[0]}] (${target})\`.`;
                 return refuse(
                     "target-not-found",
                     "The EXEC program does not resolve as a script or a registered tool for this executor.",

@@ -98,7 +98,7 @@ export default class PlurnkParser {
         for (const { at, error } of advisories.toReversed()) items.splice(at + 1, 0, { kind: "error", error });
     }
 
-    // {§scope-slot-tolerance} — `### COPY0 (worker:///src.md<2,3>)`: the line scope was written inside
+    // {§scope-slot-tolerance} — `### COPY_ (worker:///src.md<2,3>)`: the line scope was written inside
     // the path slot. `<` and `>` are not URI characters, so a `<...>` right before a slot's closing
     // paren can only be a scope: the heading is read as `(worker:///src.md) <2,3>` and the slip is a
     // warning advisory after its statement — the statement runs (#442, ruled 2026-08-30: accept with a
@@ -180,7 +180,7 @@ export default class PlurnkParser {
                 line: input.split("\n").length,
                 column: [...input.slice(input.lastIndexOf("\n") + 1)].length,
             };
-            const delimiter = statements[0]?.delimiter ?? "0";
+            const delimiter = statements[0]?.delimiter ?? "_";
             items.push({
                 kind: "error",
                 error: new PlurnkParseError(
@@ -201,7 +201,7 @@ export default class PlurnkParser {
     static #recoverTurnEnvelope(items: ParseItem<PlurnkStatement>[]): void {
         const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (sourceStatements.length === 0) return;
-        const delimiter = sourceStatements[0]?.delimiter ?? "0";
+        const delimiter = sourceStatements[0]?.delimiter ?? "_";
         const hasTerminalSend = sourceStatements.some(
             (statement) => statement.op === "SEND" && statement.status !== null,
         );

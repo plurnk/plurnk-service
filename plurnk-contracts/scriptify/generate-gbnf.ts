@@ -1,5 +1,5 @@
 // Generates the Gemma- and Qwen-template llama.cpp rails for canonical
-// lane-0 turns from one shared operation grammar.
+// lane `_` turns from one shared operation grammar.
 // ANTLR remains the accepted-language authority; this deliberately narrower
 // grammar makes useful, parseable local-model output likely and bounded.
 import { mkdir, writeFile } from "node:fs/promises";
@@ -129,19 +129,19 @@ export const buildModel = (): GModel => {
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
     const targetScope = (op: string, lineRule = "line-slot"): GSeq => [
-        lit(`### ${op}0`),
+        lit(`### ${op}_`),
         target[0],
         opt(ref(lineRule)),
     ];
     const transfer = (op: "COPY" | "MOVE"): GSeq => [
-        lit(`### ${op}0`),
+        lit(`### ${op}_`),
         target[0],
         opt(ref("text-line-slot")),
         target[0],
         opt(ref("text-line-slot")),
     ];
 
-    requiredBodySection(model, "plan", [lit("## PLAN0")]);
+    requiredBodySection(model, "plan", [lit("## PLAN_")]);
     optionalBodySection(model, "find", targetScope("FIND"), "pattern-body");
     optionalBodySection(model, "read", targetScope("READ", "text-line-slot"), "pattern-body");
     optionalBodySection(model, "edit", targetScope("EDIT", "text-line-slot"), "section-body");
@@ -149,25 +149,25 @@ export const buildModel = (): GModel => {
     emptySection(model, "move", transfer("MOVE"));
     // {§exec-executor-slot} — `[executor]` then the program path; a bare EXEC is the shell.
     optionalBodySection(model, "exec", [
-        lit("### EXEC0"),
+        lit("### EXEC_"),
         opt(ref("executor-slot")),
         opt(ref("exec-program")),
         opt(line[0]),
     ], "section-body");
-    requiredBodySection(model, "bare-inline", [lit("### BARE0")]);
-    optionalBodySection(model, "bare-resource", [lit("### BARE0"), target[0]], "section-body");
+    requiredBodySection(model, "bare-inline", [lit("### BARE_")]);
+    optionalBodySection(model, "bare-resource", [lit("### BARE_"), target[0]], "section-body");
     model.set("bare", [[ref("bare-inline")], [ref("bare-resource")]]);
-    requiredBodySection(model, "work", [lit("### WORK0"), target[0]]);
-    requiredBodySection(model, "fork", [lit("### FORK0"), target[0]]);
+    requiredBodySection(model, "work", [lit("### WORK_"), target[0]]);
+    requiredBodySection(model, "fork", [lit("### FORK_"), target[0]]);
     // {§kill-scope} — a KILL names its target, may scope lines of a log body or an entry, and
     // may select rows with a one-line matcher body.
-    optionalBodySection(model, "kill", [lit("### KILL0"), target[0], opt(ref("text-line-slot"))], "pattern-body");
+    optionalBodySection(model, "kill", [lit("### KILL_"), target[0], opt(ref("text-line-slot"))], "pattern-body");
 
     // A non-disposition SEND names a recipient URL, or none for the user. The
     // URL shape cannot consume the turn's one disposition label ({§send-label}).
     const sendMidHeaders: GSeq[] = [
-        [lit("### SEND0"), ref("recipient-slot"), opt(ref("park-slot"))],
-        [lit("### SEND0")],
+        [lit("### SEND_"), ref("recipient-slot"), opt(ref("park-slot"))],
+        [lit("### SEND_")],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
         [...header, opt(ref("annotation-slot")), lit("\n")],
@@ -178,7 +178,7 @@ export const buildModel = (): GModel => {
     // names no recipient and always carries a body ({§terminal-body-nonempty}).
     const final = (name: string, label: string, park: boolean): void => {
         model.set(name, [[
-            lit(`### SEND0 (${label})`),
+            lit(`### SEND_ (${label})`),
             ...(park ? [opt(ref("park-slot"))] : []),
             opt(ref("annotation-slot")),
             lit("\n"),
@@ -369,5 +369,5 @@ if (import.meta.main) {
         writeFile("dist/plurnk.gemma.gbnf", serializeGbnf(model, "root-gemma")),
         writeFile("dist/plurnk.qwen.gbnf", serializeGbnf(model, "root-qwen")),
     ]);
-    process.stderr.write("Generated dist/plurnk.{gemma,qwen}.gbnf from one shared PLAN0/OP0 turn grammar\n");
+    process.stderr.write("Generated dist/plurnk.{gemma,qwen}.gbnf from one shared PLAN_/OP_ turn grammar\n");
 }

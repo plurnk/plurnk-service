@@ -13,27 +13,27 @@ const fingerprint = (source: string, results?: readonly OperationResult[]) =>
 
 test("{§engine-cycle-evidence} every operational operand distinguishes activity", () => {
     for (const [first, second] of [
-        ["### EDIT0 (notes.md) <1>\none", "### EDIT0 (notes.md) <1>\ntwo"],
-        ["### EDIT0 (notes.md) <1>\none", "### EDIT0 (notes.md) <2>\none"],
-        ["### COPY0 (a) <1> (b) <0>", "### COPY0 (a) <1> (c) <0>"],
-        ["### MOVE0 (a) <1> (b) <0>", "### MOVE0 (a) <2> (b) <0>"],
-        ["### COPY0 (a) <1> (b) <0>", "### COPY0 (a) <1> (b) <-1>"],
-        ["### READ0 (https://example.test/) {accept=text/plain}", "### READ0 (https://example.test/) {accept=application/json}"],
-        ["### SEND0 (worker://child)\none", "### SEND0 (worker://child)\ntwo"],
-        ["### WORK0 (worker://child)\none", "### WORK0 (worker://child)\ntwo"],
-        ["### READ0 (a)\n### EDIT0 (b) <1>\nx", "### EDIT0 (b) <1>\nx\n### READ0 (a)"],
+        ["### EDIT_ (notes.md) <1>\none", "### EDIT_ (notes.md) <1>\ntwo"],
+        ["### EDIT_ (notes.md) <1>\none", "### EDIT_ (notes.md) <2>\none"],
+        ["### COPY_ (a) <1> (b) <0>", "### COPY_ (a) <1> (c) <0>"],
+        ["### MOVE_ (a) <1> (b) <0>", "### MOVE_ (a) <2> (b) <0>"],
+        ["### COPY_ (a) <1> (b) <0>", "### COPY_ (a) <1> (b) <-1>"],
+        ["### READ_ (https://example.test/) {accept=text/plain}", "### READ_ (https://example.test/) {accept=application/json}"],
+        ["### SEND_ (worker://child)\none", "### SEND_ (worker://child)\ntwo"],
+        ["### WORK_ (worker://child)\none", "### WORK_ (worker://child)\ntwo"],
+        ["### READ_ (a)\n### EDIT_ (b) <1>\nx", "### EDIT_ (b) <1>\nx\n### READ_ (a)"],
     ]) {
         assert.notEqual(fingerprint(first!), fingerprint(second!), `${first} differs from ${second}`);
     }
 });
 
 test("{§engine-cycle-evidence} framing prose and source decoration do not disguise a cycle", () => {
-    assert.equal(fingerprint("## PLAN0\n[]\n### READ0 (a) <1>\n### SEND0 (NEXT)\ncontinue"),
+    assert.equal(fingerprint("## PLAN_\n[]\n### READ_ (a) <1>\n### SEND_ (NEXT)\ncontinue"),
         fingerprint("\n## PLANx <!-- updated -->\nremember this\n### READx (a) <1> <!-- another annotation -->\n### SENDx (NEXT)\ncontinue differently"));
 });
 
 test("{§engine-cycle-evidence} changing observations distinguish otherwise identical requests", () => {
-    const source = "### READ0 (notes.md)";
+    const source = "### READ_ (notes.md)";
     assert.notEqual(fingerprint(source, [{ status: 200, content: "one" }]),
         fingerprint(source, [{ status: 200, content: "two" }]));
     assert.notEqual(fingerprint(source, [{ status: 200, content: "one" }]),
@@ -43,7 +43,7 @@ test("{§engine-cycle-evidence} changing observations distinguish otherwise iden
 });
 
 test("{§engine-cycle-evidence} engine-assigned problem instances do not conceal repeated failures", () => {
-    const source = "### READ0 (missing.md)";
+    const source = "### READ_ (missing.md)";
     const failure = (instance: string): OperationResult => ({
         status: 404,
         problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "No entry exists.", instance },
@@ -55,5 +55,5 @@ test("{§engine-cycle-evidence} engine-assigned problem instances do not conceal
 });
 
 test("{§engine-cycle-evidence} dispatch results must correspond to the executed statements", () => {
-    assert.throws(() => fingerprint("### READ0 (a)", []), /cycle evidence requires one result per executed operation/);
+    assert.throws(() => fingerprint("### READ_ (a)", []), /cycle evidence requires one result per executed operation/);
 });

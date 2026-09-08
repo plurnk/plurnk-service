@@ -77,8 +77,8 @@ test("{§plurnk-skill} Turn0 catalogs the skill; only a requested READ adds defa
         }
     }
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        { assistant: { content: "## PLAN0\n[]\n### READ0 (skill://plurnk/.env.defaults) <1,3>\n### SEND0 (NEXT)\nInspect the reference.", reasoning: null } },
-        { assistant: { content: "## PLAN0\n[]\n### SEND0 (TERM)\nReference received.", reasoning: null } },
+        { assistant: { content: "## PLAN_\n[]\n### READ_ (skill://plurnk/.env.defaults) <1,3>\n### SEND_ (NEXT)\nInspect the reference.", reasoning: null } },
+        { assistant: { content: "## PLAN_\n[]\n### SEND_ (TERM)\nReference received.", reasoning: null } },
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

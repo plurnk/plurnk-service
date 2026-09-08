@@ -124,7 +124,7 @@ export default class File extends CoreSchemeAdapterBase {
         modelVisible: true,
         folderScopes: true,
         textEditScopes: true,
-        documentation: "The project's workspace files (shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Existing non-members are invisible and cannot be clobbered; admitted absent paths may be created.\n\nThe EDIT body is the file text itself, several lines, never wrapped in a fence:\n\n```example\n### EDIT_ (src/greet.py) <!-- create the file from the body -->\ndef greet(name):\n    return f\"hello {name}\"\n\n\nprint(greet(\"world\"))\n```\n\nA scoped EDIT replaces the addressed lines: `### EDIT_ (src/greet.py) <@abcde>` with the replacement text as its body.",
+        documentation: "The project's workspace files (shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Existing non-members are invisible and cannot be clobbered; admitted absent paths may be created.\n\nThe EDIT body is the file text itself, several lines, never wrapped in a fence:\n\n```example\n### EDIT_ (src/greet.mjs) <!-- create the file from the body -->\nexport const greet = (name) => `hello ${name}`;\n\nconsole.log(greet(\"world\"));\n```\n\nA scoped EDIT replaces the addressed lines: `### EDIT_ (src/greet.mjs) <@abcde>` with the replacement text as its body.",
     };
 
     // {§fs-namei}/{§fs-canonical-name} — the ONE statement-normalizing seam: every model
@@ -229,7 +229,7 @@ export default class File extends CoreSchemeAdapterBase {
             fields,
             {
                 target: key,
-                recovery: "EDIT creates member files; admit an existing file with `### EXEC0 [members] (add)` and a `{\"glob\": \"<path>\"}` body.",
+                recovery: "EDIT creates member files; admit an existing file with `### EXEC_ [members] (add)` and a `{\"glob\": \"<path>\"}` body.",
                 retryable: false,
             },
         ) as SchemeResultBase;

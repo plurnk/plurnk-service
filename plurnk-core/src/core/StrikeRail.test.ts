@@ -26,7 +26,7 @@ test("EXEC bodies that share a long boilerplate prefix remain distinct cycle act
     // python3 preamble and different line ranges; a 64-character body prefix called that a cycle.
     const pager = (from: number, to: number): ExecStatement => ({
         op: "EXEC",
-        delimiter: "0",
+        delimiter: "_",
         annotation: null,
         metadata: null,
         executor: null,
@@ -42,7 +42,7 @@ test("EXEC bodies that share a long boilerplate prefix remain distinct cycle act
 test("distinct BARE prompts remain distinct cycle activities", () => {
     const statement = (body: string): BareStatement => ({
         op: "BARE",
-        delimiter: "0",
+        delimiter: "_",
         annotation: null,
         target: null,
         metadata: null,

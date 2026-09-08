@@ -35,7 +35,7 @@ export default class TurnOps {
         if (statements[0]?.op !== "PLAN" || statements.filter((statement) => statement.op === "SEND" && statement.status !== null).length !== 1) {
             throw new TypeError("An internal turnOps program must begin with PLAN and contain one disposition SEND.");
         }
-        const delimiter = statements[0].delimiter || "0";
+        const delimiter = statements[0].delimiter || "_";
         return statements.map((statement, index) => {
             const heading = statement.op === "PLAN"
                 ? `## PLAN${delimiter}`
@@ -71,7 +71,7 @@ export default class TurnOps {
             }
             if (item.kind === "text" && item.text.trim().length === 0) continue;
             // Warnings are advisories for a model reader ({§foreign-lane-advisory}: a materialized
-            // document quoting lane-`0` examples inside a `_plurnk` lane body earns one). An internal
+            // document quoting lane `_` examples inside a `_plurnk` lane body earns one). An internal
             // program has no reader to advise and nothing was mis-parsed; only hard errors reject it.
             if (item.kind === "error" && item.error.severity === "warning") continue;
             const error = item.kind === "error" ? item.error : null;

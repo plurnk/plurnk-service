@@ -194,7 +194,7 @@ test("{§op-execution-order}: create, launch, and delete are ordered without wai
     const gate = Promise.withResolvers<void>();
     const ctx = await wire(() => gate.promise);
     try {
-        const source = "## PLAN0\n[]\n### EDIT0 (worker:///script)\nsource code\n### EXEC0 [tool] (worker:///script)\n### KILL0 (worker:///script)\n### SEND0 (NEXT)";
+        const source = "## PLAN_\n[]\n### EDIT_ (worker:///script)\nsource code\n### EXEC_ [tool] (worker:///script)\n### KILL_ (worker:///script)\n### SEND_ (NEXT)";
         const result = await ctx.engine.runTurn({
             workspaceId: ctx.workspaceId, workerId: ctx.root.workerId, loopId: ctx.root.loopId,
             messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
@@ -477,8 +477,8 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
         // #425 F4 — the owning identity stays; the EXEC slot contract rides the recovery.
-        assert.match(String(writeonly.problem?.recovery), /^`### EXEC0 \(writeonly:\/\/\/item\)` runs that resource as the program/);
-        assert.match(String(writeonly.problem?.recovery), /targetless `### EXEC0`/);
+        assert.match(String(writeonly.problem?.recovery), /^`### EXEC_ \(writeonly:\/\/\/item\)` runs that resource as the program/);
+        assert.match(String(writeonly.problem?.recovery), /targetless `### EXEC_`/);
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);

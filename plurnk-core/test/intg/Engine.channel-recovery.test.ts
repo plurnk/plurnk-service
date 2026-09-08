@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const response = (operation: string, status = "NEXT") => ({
-    assistant: { content: `## PLAN0\n[]\n${operation}\n### SEND0 (${status})\nContinue.`, reasoning: null },
+    assistant: { content: `## PLAN_\n[]\n${operation}\n### SEND_ (${status})\nContinue.`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -18,19 +18,19 @@ test("{§channel-selection-missing} channel exploration across operation owners 
         const loopId = await insertLoop(db, workerId, 1, "Retrieve the retained text.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const misses = [
-            "### READ0 (worker:///note#stdout)",
-            "### FIND0 (worker:///note#stderr)",
-            "### COPY0 (worker:///note#results) (worker:///copy)",
-            "### COPY0 (worker:///note) (worker:///copy#results)",
-            "### MOVE0 (worker:///note#stdout) (worker:///moved)",
-            "### MOVE0 (worker:///note) (worker:///moved#stdout)",
-            "### EDIT0 (worker:///note#extra) <1>\nreplacement",
-            "### EDIT0 (worker:///note#constructor) <1>\nreplacement",
+            "### READ_ (worker:///note#stdout)",
+            "### FIND_ (worker:///note#stderr)",
+            "### COPY_ (worker:///note#results) (worker:///copy)",
+            "### COPY_ (worker:///note) (worker:///copy#results)",
+            "### MOVE_ (worker:///note#stdout) (worker:///moved)",
+            "### MOVE_ (worker:///note) (worker:///moved#stdout)",
+            "### EDIT_ (worker:///note#extra) <1>\nreplacement",
+            "### EDIT_ (worker:///note#constructor) <1>\nreplacement",
         ];
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response("### EDIT0 (worker:///note)\nretained text"),
+            response("### EDIT_ (worker:///note)\nretained text"),
             ...misses.map((operation) => response(operation)),
-            response("### READ0 (worker:///note)"),
+            response("### READ_ (worker:///note)"),
             response("", "TERM"),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 15 });

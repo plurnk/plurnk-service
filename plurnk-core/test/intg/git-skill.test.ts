@@ -20,7 +20,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `## PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `## PLAN_\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -29,7 +29,7 @@ const mockTurn = (dsl: string) => ({
 const runLoop = async (root: string) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
-        responses: [mockTurn("### FIND0 (skill://*/SKILL.md) <1,-1>\n\n### SEND0 (NEXT)\nlisting"), mockTurn("### SEND0 (TERM)\ndone")],
+        responses: [mockTurn("### FIND_ (skill://*/SKILL.md) <1,-1>\n\n### SEND_ (NEXT)\nlisting"), mockTurn("### SEND_ (TERM)\ndone")],
     });
     const rows = await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

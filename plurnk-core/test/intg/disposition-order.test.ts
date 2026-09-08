@@ -17,7 +17,7 @@ test("trailing log KILLs settle before TERM and preserve exact source rather tha
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("## PLAN0\n[]\n### EDIT0 (worker:///note.md)\nEvidence.\n### SEND0 (NEXT)\nReview.")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("## PLAN_\n[]\n### EDIT_ (worker:///note.md)\nEvidence.\n### SEND_ (NEXT)\nReview.")] }),
             workspaceId, workerId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
@@ -25,7 +25,7 @@ test("trailing log KILLs settle before TERM and preserve exact source rather tha
         assert.ok(plan);
         const turn = await db.test_latest_model_turn_in_loop.get<{ sequence: number }>({ loop_id: loopId });
         assert.ok(turn);
-        const source = `## PLAN0\n[]\n### SEND0 (TERM)\nAnswer.\n### KILL0 (log:///1/${turn.sequence}/${plan.sequence}/PLAN)`;
+        const source = `## PLAN_\n[]\n### SEND_ (TERM)\nAnswer.\n### KILL_ (log:///1/${turn.sequence}/${plan.sequence}/PLAN)`;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
@@ -51,7 +51,7 @@ test("NEXT authored first still waits for mutation and observation, including a 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "### SEND0 (NEXT)\nInspect results.\n### READ0 (worker:///note.md)\n### EDIT0 (worker:///note.md)\nCreated before READ.\n### FIND0 (worker:///*)\n/[/\n### KILL0 (log:///99/*/*)";
+        const source = "### SEND_ (NEXT)\nInspect results.\n### READ_ (worker:///note.md)\n### EDIT_ (worker:///note.md)\nCreated before READ.\n### FIND_ (worker:///*)\n/[/\n### KILL_ (log:///99/*/*)";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: result.turnId });
@@ -64,7 +64,7 @@ test("NEXT authored first still waits for mutation and observation, including a 
 });
 
 test("duplicate dispositions and unclosed trailing targets dispatch no part of the rejected attempt", async () => {
-    for (const tail of ["### SEND0 (TERM)\nContradiction.", "### READ0 (unfinished"]) {
+    for (const tail of ["### SEND_ (TERM)\nContradiction.", "### READ_ (unfinished"]) {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "rejected-disposition");
@@ -73,8 +73,8 @@ test("duplicate dispositions and unclosed trailing targets dispatch no part of t
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runTurn({
                 provider: new Mock({ contextWindow: 100_000, responses: [
-                    response(`### EDIT0 (worker:///must-not-exist)\nNo effect.\n### SEND0 (NEXT)\nContinue.\n${tail}`),
-                    response("### SEND0 (TERM)\nRecovered."),
+                    response(`### EDIT_ (worker:///must-not-exist)\nNo effect.\n### SEND_ (NEXT)\nContinue.\n${tail}`),
+                    response("### SEND_ (TERM)\nRecovered."),
                 ] }), workspaceId, workerId, loopId, messages: [],
             });
             assert.equal(result.status, 200);
@@ -87,7 +87,7 @@ test("duplicate dispositions and unclosed trailing targets dispatch no part of t
 });
 
 test("internal turn programs use the same disposition source-order contract", () => {
-    const source = "## PLAN0\n[]\n### SEND0 (NEXT)\nContinue.\n### KILL0 (log:///1/1/*)";
+    const source = "## PLAN_\n[]\n### SEND_ (NEXT)\nContinue.\n### KILL_ (log:///1/1/*)";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND", "KILL"]);
     assert.equal(TurnOps.renderInternal(statements), source);

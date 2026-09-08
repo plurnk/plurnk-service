@@ -24,7 +24,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
-    assert.match(content, /```example\n### EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
+    assert.match(content, /```example\n### EXEC_ \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
     assert.match(content, /^## Scope$/m);
 });
 
@@ -70,18 +70,18 @@ test("{§tools-resource-discovery} retains authored non-schema invocations and s
     );
     const family = resources[0]?.content ?? "";
     assert.match(family, /^## Summary\n\nUse enabled tools from the gitea MCP server\.$/m);
-    assert.match(family, /^## Tools\n\n```example\n### EXEC0[\s\S]*\n```$/m);
+    assert.match(family, /^## Tools\n\n```example\n### EXEC_[\s\S]*\n```$/m);
     assert.match(
         family,
-        /^### EXEC0 \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
+        /^### EXEC_ \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
         "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
         family,
-        /^### EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^### EXEC_ \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
     assert.doesNotMatch(family, /Schema: worker:/, "no schema is fabricated for authored signatures");
-    assert.doesNotMatch(family, /### FIND0/);
+    assert.doesNotMatch(family, /### FIND_/);
     assert.doesNotMatch(family, /tool_name/, "the family document cannot advertise a rejected generic target");
     // A tool's details are a SECTION of the family document, its headings demoted.
     assert.match(family, /^## `issue\/read`$/m);
@@ -136,7 +136,7 @@ test("{§tools-resource-discovery} keeps a concrete invocation's multiline body 
     const document = resources[0]!.content;
     const renderedSummary = document.split("## Summary\n\n")[1]!.split("\n\n")[0];
     assert.equal(renderedSummary, `${summary}\\n${body.replaceAll("\n", "\\n")}`);
-    assert.ok(document.includes(`### EXEC0 [fixture] (echo) <!-- Echo structured input. -->\n${body}`), "the full invocation retains its physical newlines");
+    assert.ok(document.includes(`### EXEC_ [fixture] (echo) <!-- Echo structured input. -->\n${body}`), "the full invocation retains its physical newlines");
 });
 
 test("{§functionality-model-projection} manager summaries advertise effective verbs in lifecycle order", () => {

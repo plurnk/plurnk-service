@@ -1,5 +1,5 @@
 // {§tools-resource-materialization} — a PLURNK_MCP_EXPANDED server is surveyed tool by tool at
-// turn 0: one FIND row per `### EXEC0` heading of its family document, each carrying the tool
+// turn 0: one FIND row per `### EXEC_` heading of its family document, each carrying the tool
 // heading, annotation, and signature as `matched`. The survey operation itself needs no
 // annotation because its target and tags name the family. No document is delivered unasked (#359).
 
@@ -19,7 +19,7 @@ const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-ser
 test("turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("### SEND0 (TERM)\nsurveyed")] });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("### SEND_ (TERM)\nsurveyed")] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
     daemon.registerModule(McpModule.init({
@@ -48,8 +48,8 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
             assert.match(String(survey.path), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.annotation, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"### EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. Schema: worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}"/, "one row per tool: heading, annotation, preview, schema link");
-            assert.match(log, /"matched":"### EXEC0 \[fixture\] \(fail\) /, "every tool is a row");
+            assert.match(log, /"matched":"### EXEC_ \[fixture\] \(echo\) <!-- Echo one message\. Schema: worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}"/, "one row per tool: heading, annotation, preview, schema link");
+            assert.match(log, /"matched":"### EXEC_ \[fixture\] \(fail\) /, "every tool is a row");
             assert.doesNotMatch(log, /"annotation":"enabled tools: /, "no redundant survey annotation is materialized");
             assert.doesNotMatch(log, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "schema documents are not individual Turn0 discovery rows");
         } finally {
@@ -66,8 +66,8 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
 test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
     const target = "worker://~/_plurnk/plurnk/mcp/add.md";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`## PLAN0\n[]\n### READ0 (${target}) <1,-1>\n### SEND0 (NEXT)\nRead the input schema.`),
-        makeMockResponse("## PLAN0\n[]\n### SEND0 (TERM)\nInspected."),
+        makeMockResponse(`## PLAN_\n[]\n### READ_ (${target}) <1,-1>\n### SEND_ (NEXT)\nRead the input schema.`),
+        makeMockResponse("## PLAN_\n[]\n### SEND_ (TERM)\nInspected."),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
@@ -89,7 +89,7 @@ test("{§functionality-model-projection} the model READs the complete installed 
         assert.equal(definition.properties.authorization.oneOf.length, 5);
         assert.ok(Object.values(definition.properties).every((field) => typeof (field as { description?: unknown }).description === "string"));
         assert.deepEqual(definition, Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json"));
-        assert.match(body, /### EXEC0 \[mcp\] \(add\)/, "the family's existing valid example remains on-demand");
+        assert.match(body, /### EXEC_ \[mcp\] \(add\)/, "the family's existing valid example remains on-demand");
     } finally {
         ws.close();
         await daemon.stop();

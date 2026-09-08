@@ -18,7 +18,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         const context = { workspaceId, workerId, loopId, messages: [] };
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "unfit" ? 500 : 16)}`).join("\n");
         const first = await engine.runTurn({ ...context, provider: providerWithCapacity(999_000, [{ assistant: {
-            content: "## PLAN0\n[]\n### EDIT0 (worker:///receipt.txt)\nPreserve this result.\n### READ0 (worker:///receipt.txt) <1,-1>\n### SEND0 (NEXT)\nContinue.", reasoning,
+            content: "## PLAN_\n[]\n### EDIT_ (worker:///receipt.txt)\nPreserve this result.\n### READ_ (worker:///receipt.txt) <1,-1>\n### SEND_ (NEXT)\nContinue.", reasoning,
         } }]) });
         const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
         const target = `reasoning://${resource.pathname}`;
@@ -30,8 +30,8 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         const capacity = mode === "fits" ? 999_000 : baseline.weight + 4000;
         const provider = providerWithCapacity(capacity, [{ assistant: {
             content: mode === "explicit"
-                ? `## PLAN0\n[]\n### READ0 (${target}) <1,-1> <!-- inspect selected reasoning -->\n### SEND0 (NEXT)\nReview.`
-                : "## PLAN0\n[]\n### SEND0 (TERM)\nRecovered.", reasoning: null,
+                ? `## PLAN_\n[]\n### READ_ (${target}) <1,-1> <!-- inspect selected reasoning -->\n### SEND_ (NEXT)\nReview.`
+                : "## PLAN_\n[]\n### SEND_ (TERM)\nRecovered.", reasoning: null,
         } }]);
         const build = PacketBuilder.prototype.buildRequestPacket;
         let candidate: Awaited<ReturnType<typeof build>> | undefined;
@@ -68,11 +68,11 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
             assert.equal(recovered.status, 200, JSON.stringify(recovered));
             assert.equal(provider.remaining, 0);
             assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).length, 1, "recovery does not redeliver the same source");
-            const exact = await engine.look({ ...context, statement: statement(`### READ0 (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>`) });
+            const exact = await engine.look({ ...context, statement: statement(`### READ_ (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>`) });
             assert.equal(exact.status, 204, "overflow trimmed the log receipt's readable body");
             assert.ok("content" in exact);
             assert.equal(exact.content, "");
-            const source = await engine.look({ ...context, statement: statement(`### READ0 (${target}) <1,-1>`) });
+            const source = await engine.look({ ...context, statement: statement(`### READ_ (${target}) <1,-1>`) });
             assert.equal(source.status, 200);
             assert.ok("content" in source);
             assert.equal(source.content, reasoning, "the read-only reasoning source remains independently retrievable");

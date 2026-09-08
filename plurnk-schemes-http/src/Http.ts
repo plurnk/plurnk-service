@@ -294,7 +294,7 @@ export default class Http implements SchemeHandler {
 
     // {§http-kill} — KILL follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
-    // spelling, `### KILL0 (https://…) {remote}`; any other metadata blocks are its headers.
+    // spelling, `### KILL_ (https://…) {remote}`; any other metadata blocks are its headers.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {
