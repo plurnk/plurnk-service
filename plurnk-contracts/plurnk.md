@@ -50,21 +50,22 @@ prompt
 ### FORK_ (worker://name) <!-- fork current worker -->
 prompt
 
-### BARE_ (worker://~/prompt.md) <!-- bare inference call -->
+### BARE_ <!-- bare inference call -->
 prompt
 
 ### KILL_ (target or glob) <range or region> <!-- delete or terminate -->
 filter pattern
 
-### SEND_ (recipient) <!-- message a worker://name, a path, or the user (default) -->
+### SEND_ (recipient) <!-- message a worker://name, a ws:// or a2a:// endpoint, or the user (default) -->
 message
 ```
 
 ## Standard Workflow
 
 YOU SHOULD begin every turn with a `## PLAN_`, including pending, in_progress, and completed items.
-YOU SHOULD end every turn with `### SEND_ (NEXT|WAIT|TERM|FAIL)`.
-YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side effects.
+YOU MUST end every turn with `### SEND_ (NEXT|WAIT|TERM|FAIL)`.
+YOU MUST NOT place an OP after it: the SEND and its message end the turn, so KILL and every other OP come before it.
+YOU MUST NOT `(TERM)` when the turn OPs contain delegation, streams, or side effects.
 
 | submit code      | meaning                           | body message                             |
 |------------------|-----------------------------------|------------------------------------------|
@@ -93,8 +94,7 @@ FROM q;
 ### SEND_ (worker://exec-strategy) <0,60>
 Check for updated revenue figures and report material changes.
 
-### BARE_ (worker://~/H2-insight-analysis-prompt.md) <!-- think deeply about second half of year trends -->
-### BARE_ <!-- an isolated question: the body is the whole prompt -->
+### BARE_ <!-- an isolated question -->
 Which Q4 revenue driver would a skeptical CFO question first, and why?
 
 ### KILL_ (log:///1/5/3/READ) <42,67> <!-- purge reasoning about completed task -->

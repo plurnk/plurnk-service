@@ -39,6 +39,7 @@ const CONTAINER_RULES = new Set<number>([
 
 export default class PlurnkParser {
     static readonly MISSING_SEND = "missing-terminal-send";
+    static readonly OPERATIONS_AFTER_DISPOSITION = "operations-after-disposition";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and
@@ -53,6 +54,7 @@ export default class PlurnkParser {
         if (result.unparsedTail === undefined) {
             PlurnkParser.#imperativeTurnShape(result.items, input);
             PlurnkParser.#recoverTurnEnvelope(result.items);
+            PlurnkParser.#dispositionEndsTurn(result.items);
         }
         PlurnkParser.#adviseForeignLaneHeadings(result.items);
         return result;
@@ -195,6 +197,64 @@ export default class PlurnkParser {
                 ),
             });
         }
+    }
+
+    // {§disposition-ends-turn} — the disposition SEND and its body end the turn. A rail that keeps
+    // generating past them wrote the next packet it expected and answered it (2026-09-08: 194, 434,
+    // and 35 repeated statements after a correct disposition, each executed, each a receipt row);
+    // nothing after the disposition is admitted. The statements are dropped, never executed, and
+    // the packet carries ONE hard diagnostic that counts them by OP and states the rule. Bounded
+    // diagnostics positioned after the disposition are about that dropped source and collapse into
+    // it; a second disposition stays the structural error it always was. parseLog is untouched:
+    // saved turns retain trailing operations as authored, so earlier history stays readable.
+    static readonly #DISPOSITION_LABEL: Record<number, string> = { 102: "NEXT", 200: "TERM", 202: "WAIT", 499: "FAIL" };
+    static #dispositionEndsTurn(items: ParseItem<PlurnkStatement>[]): void {
+        const at = items.findIndex((item) => item.kind === "statement" && item.statement.op === "SEND" && item.statement.status !== null);
+        if (at === -1) return;
+        const disposition = (items[at] as { statement: PlurnkStatement & { status: number; delimiter: string; position: Position } }).statement;
+        // A disposition the parser synthesized ({§turn-shape} recovery) closes the source; nothing authored follows it.
+        if (disposition.position.line === UNKNOWN_POSITION.line) return;
+        // The cut is the first trailing statement or the first hard bounded diagnostic past the
+        // disposition heading (a malformed trailing heading). The disposition's own advisories are
+        // spliced right after it and carry its line, so they stay.
+        const trailing = (item: ParseItem<PlurnkStatement>): boolean => item.kind === "statement"
+            || (item.kind === "error" && item.error.severity === "error" && item.error.code !== "invalid-turn-structure" && item.error.line > disposition.position.line);
+        const cut = items.findIndex((item, index) => index > at && trailing(item));
+        if (cut === -1) return;
+        const kept: ParseItem<PlurnkStatement>[] = items.slice(0, cut);
+        const counts = new Map<string, number>();
+        let malformed = 0;
+        let anchor: { line: number; column: number } | undefined;
+        for (const item of items.slice(cut)) {
+            if (item.kind === "statement") {
+                counts.set(item.statement.op, (counts.get(item.statement.op) ?? 0) + 1);
+                anchor ??= item.statement.position;
+            } else if (item.kind === "error") {
+                if (item.error.code === "invalid-turn-structure") { kept.push(item); continue; }
+                if (item.error.severity === "error") { malformed += 1; anchor ??= { line: item.error.line, column: item.error.column }; }
+            }
+        }
+        const dropped = [...counts.values()].reduce((sum, count) => sum + count, 0);
+        const parts: string[] = [];
+        if (dropped > 0) {
+            const byOp = [...counts].map(([op, count]) => `${op} ×${count}`).join(", ");
+            parts.push(dropped === 1 ? `1 operation after its body was not admitted (${byOp})` : `${dropped} operations after its body were not admitted (${byOp})`);
+        }
+        if (malformed > 0) parts.push(malformed === 1 ? "1 malformed heading after it was ignored" : `${malformed} malformed headings after it were ignored`);
+        const heading = `### SEND${disposition.delimiter} (${PlurnkParser.#DISPOSITION_LABEL[disposition.status] ?? disposition.status})`;
+        kept.push({
+            kind: "error",
+            error: new PlurnkParseError(
+                anchor?.line ?? disposition.position.line,
+                anchor?.column ?? 0,
+                "parser",
+                `The disposition \`${heading}\` ended the turn; ${parts.join(" and ")}. Every OP, including KILL, precedes the disposition SEND.`,
+                "error",
+                PlurnkParser.OPERATIONS_AFTER_DISPOSITION,
+            ),
+        });
+        items.length = 0;
+        items.push(...kept);
     }
 
     // A model emission with at least one valid operation remains a useful program when it

@@ -109,18 +109,24 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
     );
 });
 
-test("{§send-mid-reservation}: one disposition may precede ordinary operations without absorbing them", () => {
+test("{§disposition-ends-turn}: operations after the disposition are recognized as operations, dropped, and diagnosed once", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
         for (const prefix of ["", "## PLAN_\n[]\n"]) {
             const input = `${prefix}### SEND_ (${label})\nAnswer.\n### KILL_ (log:///3/3/1/READ)\n### READ_ (notes.md)\n### SEND_ (worker://reviewer)\nCheck this.`;
             const result = PlurnkParser.parse(input);
-            assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], label);
+            const errors = result.items.filter((item) => item.kind === "error");
+            assert.deepEqual(errors.map((item) => item.error.code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION], label);
+            assert.equal(
+                errors[0]!.error.message,
+                `The disposition \`### SEND_ (${label})\` ended the turn; 3 operations after its body were not admitted (KILL ×1, READ ×1, SEND ×1). Every OP, including KILL, precedes the disposition SEND.`,
+            );
+            // Anchored at the first dropped operation: the trailing headings were operations, never body text.
+            assert.equal(errors[0]!.error.line, prefix ? 5 : 3);
             assert.equal(result.unparsedTail, undefined);
             const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-            assert.deepEqual(ops.map(({ op }) => op), [...(prefix ? ["PLAN"] : []), "SEND", "KILL", "READ", "SEND"]);
-            const send = ops.find((op) => op.op === "SEND");
-            assert.equal(send?.body?.raw, "Answer.");
-            assert.equal(ops.at(-3)?.position.line, prefix ? 5 : 3);
+            assert.deepEqual(ops.map(({ op }) => op), [...(prefix ? ["PLAN"] : []), "SEND"]);
+            const send = ops.at(-1);
+            assert.equal(send?.op === "SEND" ? send.body?.raw : null, "Answer.");
         }
     }
 });
@@ -130,11 +136,15 @@ test("{§delimiter-discipline}: a disposition does not change its turn's delimit
     const parsed = PlurnkParser.parse(input);
     // {§foreign-lane-advisory} — the quoted lane-`other` headings are body text, and the parser says so
     // once as a warning; nothing hard is diagnosed.
+    // {§disposition-ends-turn} — the lane-`outer` KILL after the disposition is an operation of this turn (not
+    // body text), so it is dropped and diagnosed as one; the advisory about the quoted headings stands.
     const errors = parsed.items.filter((item) => item.kind === "error");
-    assert.deepEqual(errors.map((item) => item.error.severity), ["warning"]);
+    assert.deepEqual(errors.map((item) => item.error.severity), ["warning", "error"]);
     assert.match(errors[0]!.error.message, /2 OP-shaped headings \(KILL, PLAN\) carrying suffix `other` were taken as body text of SENDouter/u);
+    assert.equal(errors[1]!.error.code, PlurnkParser.OPERATIONS_AFTER_DISPOSITION);
+    assert.match(errors[1]!.error.message, /^The disposition `### SENDouter \(TERM\)` ended the turn; 1 operation after its body was not admitted \(KILL ×1\)\./u);
     const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(ops.map(({ op, delimiter }) => [op, delimiter]), [["PLAN", "outer"], ["SEND", "outer"], ["KILL", "outer"]]);
+    assert.deepEqual(ops.map(({ op, delimiter }) => [op, delimiter]), [["PLAN", "outer"], ["SEND", "outer"]]);
     const send = ops[1];
     assert.equal(send?.op === "SEND" ? send.body?.raw : null, "Quoted:\n### KILLother (notes.md)\n## PLANother\n[]");
 });

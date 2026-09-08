@@ -530,7 +530,7 @@ test("EOF terminates an outer plurnk fence after a complete turn", () => {
     );
 });
 
-test("EOF fence tolerance retains trailing operations but still diagnoses a missing disposition", () => {
+test("EOF fence tolerance diagnoses a missing disposition and drops an operation after the disposition", () => {
     const incomplete = PlurnkParser.parse([
         "```plurnk",
         section("PLAN", "", "inspect"),
@@ -545,20 +545,29 @@ test("EOF fence tolerance retains trailing operations but still diagnoses a miss
         "",
         section("READ", " (late.md)"),
     ].join("\n"));
-    assert.deepEqual(trailing.items.filter((item) => item.kind === "error"), []);
+    // {§disposition-ends-turn} — the late READ is recognized, dropped, and diagnosed once; the fence is unaffected.
+    assert.deepEqual(trailing.items.filter((item) => item.kind === "error").map((item) => item.error.code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
     assert.equal(trailing.unparsedTail, undefined);
-    assert.deepEqual(trailing.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["PLAN", "SEND", "READ"]);
+    assert.deepEqual(trailing.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["PLAN", "SEND"]);
 });
 
-test("a disposition SEND retains its own body before trailing operations", () => {
+test("{§disposition-ends-turn}: a disposition SEND keeps its own body and a trailing operation is dropped with one hard diagnostic", () => {
     const result = PlurnkParser.parse(sections(
         section("PLAN", "", "inspect"),
         section("SEND", " (TERM)", "done"),
         section("READ", " (late.md)"),
     ));
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    const errors = result.items.filter((item) => item.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0]!.error.severity, "error");
+    assert.equal(errors[0]!.error.code, PlurnkParser.OPERATIONS_AFTER_DISPOSITION);
+    assert.equal(errors[0]!.error.line, 7, "anchored at the first dropped operation");
+    assert.equal(
+        errors[0]!.error.message,
+        "The disposition `### SEND_ (TERM)` ended the turn; 1 operation after its body was not admitted (READ ×1). Every OP, including KILL, precedes the disposition SEND.",
+    );
     const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(ops.map(({ op }) => op), ["PLAN", "SEND", "READ"]);
+    assert.deepEqual(ops.map(({ op }) => op), ["PLAN", "SEND"]);
     assert.equal(ops[1]?.op === "SEND" ? ops[1].body?.raw : null, "done");
 });
 

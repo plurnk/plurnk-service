@@ -282,10 +282,12 @@ Neither body may contain its profile's opener or closer.
 is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
 may begin with `## PLAN_`, and every ordinary operation is a same-lane `### OP0`
 section.
-`tail-0` admits any number of ordinary operations and exactly one
-disposition SEND, at any position after the optional PLAN. NEXT requires at
-least one ordinary operation, before or after it. Post-disposition operations
-share the same operation grammar; a second disposition is not admitted.
+`tail-0` admits any number of ordinary operations followed by exactly one
+disposition SEND, whose body is the last sampled text of the turn
+({§disposition-ends-turn}): no statement follows it, so a rail that keeps
+generating can only lengthen that body, never emit another operation. NEXT
+requires at least one ordinary operation before it. A second disposition is not
+admitted.
 
 ```mermaid
 flowchart LR
@@ -859,11 +861,28 @@ the human is the native `question` EXEC tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation The four labels lex as one `SEND_LABEL` token
-  ({§send-label}). A turn admits exactly one disposition SEND regardless of
-  its authored position. Ordinary operations may precede or follow it; the
-  runtime executes the disposition last. A second disposition is a structural
+  ({§send-label}). A turn admits exactly one disposition SEND, and it ends the
+  turn ({§disposition-ends-turn}): ordinary operations precede it, and the
+  runtime executes it last. A second disposition is a structural
   error, not a choice between competing outcomes. GBNF uses the same rule and
   spells non-disposition SEND recipients as URLs, which no label is.
+- §disposition-ends-turn The disposition SEND and its body end a model turn.
+  `PlurnkParser.parse` admits no statement after them: trailing statements are
+  recognized as operations, dropped, never executed, and reported as one hard
+  diagnostic with `code: "operations-after-disposition"` anchored at the first
+  dropped heading. The message names the disposition heading, counts what was
+  dropped by OP (`3 operations after its body were not admitted (KILL ×1, READ ×1,
+  SEND ×1)`), and states the rule: `Every OP, including KILL, precedes the
+  disposition SEND.` Bounded hard diagnostics positioned after the disposition
+  belong to that dropped source and collapse into the same diagnostic as ignored
+  malformed headings; the disposition's own advisories and a second-disposition
+  structural error stand as before. A disposition the parser synthesized
+  ({§turn-shape}) closes the source and never has a tail. The GBNF rails derive
+  nothing after the disposition body ({§gbnf-turn-shape}). `parseLog` is
+  unchanged: saved turns retain trailing operations as authored, so history
+  written under the earlier shape stays readable. Origin: on a constrained weak
+  rail, three emissions in one night continued past a correct disposition into
+  the packet they expected next, executing 194, 302, and 481 operations.
 - A **non-disposition** SEND is comms: a recipient path or
   none, no label, empty body allowed.
 - §terminal-body-nonempty The GBNF rail requires a non-empty terminal SEND body — a constrained
@@ -977,7 +996,7 @@ express. Consumers never receive ANTLR parse-tree or token types.
 §turn-shape `PlurnkParser.parse` accepts exactly one model turn containing at
 least one parsed source operation. Canonical teaching may begin with PLAN
 (a SHOULD, never repeated mid-turn) and end with a label SEND; accepted source
-and GBNF place that sole disposition anywhere after the optional PLAN. A turn without
+and GBNF end the turn at that sole disposition ({§disposition-ends-turn}). A turn without
 a PLAN stands as written — no PLAN is synthesized and nothing is diagnosed. When
 no valid terminal SEND was parsed, the parser appends a bodyless terminal
 `SEND (NEXT)` with the first parsed operation's delimiter (including the empty delimiter),
@@ -985,8 +1004,8 @@ carrying {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
 stating the active delimiter and applied default. Alternate-delimiter headings
 remain body text; recovery does not reinterpret them as operations. The source text
 remains unchanged. The GBNF rail takes the same optional PLAN.
-The disposition does not close the source or change its delimiter. Bounded
-operation errors on either side retain valid siblings; duplicate dispositions,
+The disposition does not change the turn's delimiter. Bounded
+operation errors before the disposition retain valid siblings; duplicate dispositions,
 a second PLAN, and failed document boundaries are structural failures.
 Tolerated TEXT
 may appear only before the first operation; after that point, nonstructural text
@@ -1358,7 +1377,9 @@ parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
 turn-shape diagnostics. Missing PLAN is not diagnosed ({§turn-shape}). A missing
 terminal SEND carries the structured `code: "missing-terminal-send"`; consumers
-use that code, never message wording, to recognize envelope recovery. A failed
+use that code, never message wording, to recognize envelope recovery. Operations
+after the disposition carry `code: "operations-after-disposition"`
+({§disposition-ends-turn}). A failed
 document boundary carries `code: "invalid-turn-structure"`, which cannot be
 recovered as an individual failed operation. The missing-SEND message
 names the turn's actual lane, attributes the synthesized SEND to the parser, and

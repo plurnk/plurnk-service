@@ -31,6 +31,8 @@ turn
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
 // disposition SEND is recognized by its own label, never by a whole-turn
 // alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
+// Statements after the disposition stay recognizable here so that model admission
+// can drop them and name what it dropped ({§disposition-ends-turn}); saved logs keep them.
 modelTurn
     : planStatement midStatement* (sendStatement midStatement*)?
     | midStatement+ (sendStatement midStatement*)?

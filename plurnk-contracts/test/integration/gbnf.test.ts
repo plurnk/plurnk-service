@@ -190,21 +190,29 @@ test("GBNF root takes an optional PLAN first and requires one disposition SEND",
     assert.equal(derivesTurn(`${mid("READ", " (worker:///x)")}${terminal(102, "reading")}`), true, "a PLAN-less turn stands");
     assert.equal(derivesTurn(`${terminal(200, "Paris")}`), true, "a bare conclusion stands");
     assert.equal(derivesTurn(plan("incomplete")), false);
-    assert.equal(derivesTurn(`${turn("p", [], 200, "done")}\n### READ_ (worker:///late)\n`), true);
+    // {§disposition-ends-turn} — the disposition body is the last sampled text; an operation after it is not derivable.
+    assert.equal(derivesTurn(`${turn("p", [], 200, "done")}\n### READ_ (worker:///late)\n`), false);
 });
 
-test("both rails admit operations after any disposition without allowing a second disposition", () => {
+// {§disposition-ends-turn} — neither rail derives an operation after any disposition; the same operations
+// before it derive, and a second disposition never does.
+test("neither rail derives an operation after any disposition, nor a second disposition", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        const content = `${plan("curate")}### SEND_ (${label})\nAnswer.\n${mid("KILL", " (log:///3/3/1/READ)")}${mid("READ", " (notes.md)")}`;
-        assert.equal(derivesTurn(content), true, label);
-        assert.equal(derivesQwenTurn(content), true, label);
-        assert.equal(derivesTurn(`${content}### SEND_ (TERM)\nAgain.`), false, label);
-        assert.equal(derivesQwenTurn(`${content}### SEND_ (TERM)\nAgain.`), false, label);
+        const trailing = `${plan("curate")}### SEND_ (${label})\nAnswer.\n${mid("KILL", " (log:///3/3/1/READ)")}${mid("READ", " (notes.md)")}`;
+        assert.equal(derivesTurn(trailing), false, label);
+        assert.equal(derivesQwenTurn(trailing), false, label);
+        const closed = `${plan("curate")}${mid("KILL", " (log:///3/3/1/READ)")}${mid("READ", " (notes.md)")}### SEND_ (${label})\nAnswer.`;
+        assert.equal(derivesTurn(closed), true, label);
+        assert.equal(derivesQwenTurn(closed), true, label);
+        assert.equal(derivesTurn(`${closed}\n### SEND_ (TERM)\nAgain.`), false, label);
+        assert.equal(derivesQwenTurn(`${closed}\n### SEND_ (TERM)\nAgain.`), false, label);
     }
     assert.equal(derivesTurn(`${plan("idle")}### SEND_ (NEXT)\nNothing.`), false);
 });
 
-test("both rails admit long operation sequences on either side of the one disposition", () => {
+// {§disposition-ends-turn} — long sequences derive before the disposition only; the parser admits the
+// same set and drops what followed with one diagnostic.
+test("both rails admit long operation sequences before the one disposition and none after it", () => {
     for (const [before, after] of [[15, 0], [0, 15], [8, 8], [24, 24]]) {
         const operations = (count: number) => Array.from({ length: count }, (_, index) =>
             mid("KILL", ` (log:///1/${index + 1}/*/READ)`)).join("");
@@ -212,11 +220,14 @@ test("both rails admit long operation sequences on either side of the one dispos
             const content = plan("curate")
                 + operations(before) + `### SEND_ (${label})\nDone.`
                 + (after > 0 ? `\n${operations(after)}` : "");
-            assert.equal(derivesTurn(content), true, `${label}: ${before} before, ${after} after`);
-            assert.equal(derivesQwenTurn(content), true, `${label}: ${before} before, ${after} after`);
+            const derivable = after === 0 && !(label === "NEXT" && before === 0);
+            assert.equal(derivesTurn(content), derivable, `${label}: ${before} before, ${after} after`);
+            assert.equal(derivesQwenTurn(content), derivable, `${label}: ${before} before, ${after} after`);
             const parsed = PlurnkParser.parse(content);
-            assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
-            assert.equal(parsed.items.filter((item) => item.kind === "statement").length, before + after + 2);
+            const errors = parsed.items.filter((item) => item.kind === "error");
+            assert.deepEqual(errors.map((item) => item.error.code), after === 0 ? [] : [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
+            if (after > 0) assert.match(errors[0]!.error.message, new RegExp(`${after} operations after its body were not admitted \\(KILL ×${after}\\)`, "u"));
+            assert.equal(parsed.items.filter((item) => item.kind === "statement").length, before + 2);
             assert.equal(derivesTurn(`${content}\n${terminal(200, "Again.")}`), false);
             assert.equal(derivesQwenTurn(`${content}\n${terminal(200, "Again.")}`), false);
         }

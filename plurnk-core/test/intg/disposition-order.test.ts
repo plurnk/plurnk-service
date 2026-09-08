@@ -8,8 +8,8 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_help
 
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
-// {§op-execution-order} {§emission-admission}
-test("trailing log KILLs settle before TERM and preserve exact source rather than becoming answer text", async () => {
+// {§disposition-ends-turn} {§emission-admission}
+test("a KILL after TERM never executes: one diagnostic row, the TERM refused until observed, the source exact", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
@@ -30,9 +30,21 @@ test("trailing log KILLs settle before TERM and preserve exact source rather tha
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
         });
-        assert.equal(result.status, 200);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "KILL", "SEND"]);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; attrs: string }>({ turn_id: result.turnId });
+        // The dropped KILL is a same-turn failure the model has not seen, so the TERM is refused and the loop continues.
+        assert.equal(result.status, 102);
+        assert.deepEqual(result.outcomes, [
+            { op: "PLAN", status: 200, problemType: null },
+            { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
+            { op: "SEND", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
+        ]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; rx: string; attrs: string }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["PLAN", "error", "SEND"]);
+        const diagnostic = rows.find(({ op }) => op === "error");
+        assert.ok(diagnostic);
+        assert.equal(
+            JSON.parse(diagnostic.rx).problem.detail,
+            `The disposition \`### SEND_ (TERM)\` ended the turn; 1 operation after its body was not admitted (KILL ×1). Every OP, including KILL, precedes the disposition SEND.`,
+        );
         const send = rows.find(({ op }) => op === "SEND");
         assert.ok(send);
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");
@@ -40,11 +52,11 @@ test("trailing log KILLs settle before TERM and preserve exact source rather tha
         assert.ok(packet);
         assert.equal(JSON.parse(packet.packet).assistant.content, source);
         const retained = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
-        assert.equal(retained.find(({ id }) => id === plan.id)?.active, 0);
+        assert.equal(retained.find(({ id }) => id === plan.id)?.active, 1, "the KILL after the disposition never ran");
     } finally { await db.close(); }
 });
 
-test("NEXT authored first still waits for mutation and observation, including a bounded trailing error", async () => {
+test("NEXT authored first ends the turn: nothing after it executes, and one diagnostic counts what was dropped", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
@@ -55,11 +67,15 @@ test("NEXT authored first still waits for mutation and observation, including a 
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["READ", "EDIT", "KILL", "error", "SEND"]);
-        const read = rows.find(({ op }) => op === "READ");
-        assert.ok(read);
-        assert.equal(read.status_rx, 404, "READ cannot see a resource created later in the program");
-        assert.equal(rows.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length, 1);
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["error", "SEND"]);
+        const diagnostic = rows.find(({ op }) => op === "error");
+        assert.ok(diagnostic);
+        assert.equal(diagnostic.status_rx, 400);
+        assert.equal(
+            JSON.parse(diagnostic.rx).problem.detail,
+            `The disposition \`### SEND_ (NEXT)\` ended the turn; 3 operations after its body were not admitted (READ ×1, EDIT ×1, KILL ×1) and 1 malformed heading after it was ignored. Every OP, including KILL, precedes the disposition SEND.`,
+        );
+        assert.equal(rows.some(({ op }) => op === "EDIT" || op === "READ" || op === "KILL"), false, "nothing after the disposition ran");
     } finally { await db.close(); }
 });
 
@@ -86,9 +102,14 @@ test("duplicate dispositions and unclosed trailing targets dispatch no part of t
     }
 });
 
-test("internal turn programs use the same disposition source-order contract", () => {
-    const source = "## PLAN_\n[]\n### SEND_ (NEXT)\nContinue.\n### KILL_ (log:///1/1/*)";
+test("internal turn programs end at the disposition like model turns", () => {
+    const source = "## PLAN_\n[]\n### KILL_ (log:///1/1/*)\n### SEND_ (NEXT)\nContinue.";
     const statements = TurnOps.parseInternal(source);
-    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND", "KILL"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "KILL", "SEND"]);
     assert.equal(TurnOps.renderInternal(statements), source);
+    // {§disposition-ends-turn} — a program that authors an operation after its disposition is invalid turnOps.
+    assert.throws(
+        () => TurnOps.parseInternal("## PLAN_\n[]\n### SEND_ (NEXT)\nContinue.\n### KILL_ (log:///1/1/*)"),
+        { name: "SyntaxError", message: /Core generated invalid turnOps: The disposition `### SEND_ \(NEXT\)` ended the turn; 1 operation after its body was not admitted \(KILL ×1\)/u },
+    );
 });

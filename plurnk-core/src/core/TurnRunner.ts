@@ -1976,8 +1976,9 @@ export default class TurnRunner {
             && TERMINAL_SEND_SIGNALS.has(finalOp.status)
             ? finalOp
             : undefined;
-        // {§turn-shape} — bounded operation errors are recoverable on either side
-        // of the disposition; document-boundary failures still reject the program.
+        // {§turn-shape} — bounded operation errors before the disposition are recoverable, and
+        // the parser's own {§disposition-ends-turn} diagnostic (what followed the SEND was dropped)
+        // rides with them; document-boundary failures still reject the program.
         const recoverableParseErrors = terminalSend !== undefined && !hasUnparsedTail
             ? parseErrors.filter(
                 (error) =>

@@ -546,7 +546,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
 });
 
 for (const label of ["NEXT", "WAIT", "TERM"] as const) {
-    test(`{§bare-inference} {§op-execution-order}: BARE after ${label} settles before disposition and remains unseen retrieval`, async () => {
+    test(`{§bare-inference} {§disposition-ends-turn}: BARE after ${label} is dropped, never called, and diagnosed once`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
@@ -561,16 +561,16 @@ for (const label of ["NEXT", "WAIT", "TERM"] as const) {
                 loopId,
                 messages: [],
             });
-            assert.equal(result.status, 102, "the result needs a next packet, not a parked or completed loop");
-            assert.deepEqual(child.completions, ["question"]);
-            assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "BARE", "SEND"]);
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
-                { op: "BARE", status: 200, problemType: null },
+            assert.equal(result.status, 102, "the diagnostic is a same-turn failure the model sees in the next packet");
+            assert.deepEqual(child.completions, [], "no isolated call was made for the dropped BARE");
+            assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", null, "SEND"]);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === null), [
+                { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
             ]);
             assert.deepEqual(result.outcomes.filter(({ op }) => op === "SEND"), [
-                label === "TERM"
-                    ? { op: "SEND", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }
-                    : { op: "SEND", status: 102, problemType: null },
+                label === "NEXT"
+                    ? { op: "SEND", status: 102, problemType: null }
+                    : { op: "SEND", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
             ]);
         } finally {
             await db.close();

@@ -197,16 +197,16 @@ export const buildModel = (): GModel => {
         [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
     ]);
 
-    // {§gbnf-turn-shape} — NEXT needs work on either side; other dispositions
-    // may stand alone. Recursion imposes no ordinary-operation quota.
+    // {§gbnf-turn-shape} — NEXT needs work before it; other dispositions may stand
+    // alone. Recursion imposes no ordinary-operation quota. {§disposition-ends-turn} — the
+    // disposition's body is the turn's last sampled text: no statement follows it, so a rail
+    // that keeps generating can only lengthen that body, never emit another operation.
     for (const name of ["tail-0", "tail-work"]) {
         model.set(name, [
             [ref("statement"), ref("tail-work")],
             [ref(name === "tail-0" ? "send-final-first" : "send-final-any")],
-            [ref("send-final-any"), lit("\n"), ref("statement"), ref("post")],
         ]);
     }
-    model.set("post", [[], [ref("statement"), ref("post")]]);
 
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     const channelOpen = "<|channel>thought\n";
