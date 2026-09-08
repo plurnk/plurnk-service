@@ -20,12 +20,22 @@ discovery, projection, and authoring APIs without installing its leaf
 consumers. Direct users install the format handlers and artifacts they want;
 the default `@plurnk/plurnk-service` installation declares its standard set.
 
-The default service installs every supported Tree-sitter grammar. Direct
-framework consumers can install only the independent WASM leaves they need;
-discovery already carries their detection metadata.
+The default service installs every supported Tree-sitter grammar except the
+optional ones. Direct framework consumers can install only the independent WASM
+leaves they need; discovery already carries their detection metadata.
 
 ```sh
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
+```
+
+F# is optional: its leaf is twelve megabytes of wasm, twice any other. An
+operator who wants it installs both leaves beside the service, and ordinary
+package resolution admits them with no manifest change; until then `.fs`,
+`.fsx`, and `.fsi` degrade to plain-text coordinates like any language whose
+leaf is absent.
+
+```sh
+npm install @plurnk/plurnk-mimetypes-grammar-fsharp @plurnk/plurnk-mimetypes-grammar-fsharp-signature
 ```
 
 Third-party handler packages are independent in the same way: installing a leaf

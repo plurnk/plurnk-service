@@ -9,16 +9,30 @@ import {
 } from "./dependency-policy.mjs";
 
 describe("default grammar composition ({§default-plugin-ownership})", () => {
-    const dependencies = Object.fromEntries(TREE_SITTER_REGISTRY.map(({ slug }) =>
-        [`@plurnk/plurnk-mimetypes-grammar-${slug}`, "1.0.0"]));
+    const leaf = ({ slug }) => `@plurnk/plurnk-mimetypes-grammar-${slug}`;
+    const dependencies = Object.fromEntries(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map((entry) =>
+        [leaf(entry), "1.0.0"]));
+    const optionalLeaves = [...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(leaf))];
 
-    it("requires every registered grammar as a service runtime dependency", async () => {
+    it("requires every registered non-optional grammar as a service runtime dependency", async () => {
         const manifest = JSON.parse(await readFile(new URL("../plurnk-core/package.json", import.meta.url), "utf8"));
         assert.deepEqual(defaultGrammarViolations(manifest), []);
     });
 
-    it("accepts the complete registry including mimetype aliases sharing a leaf", () => {
+    it("accepts the complete default registry including mimetype aliases sharing a leaf", () => {
         assert.deepEqual(defaultGrammarViolations({ dependencies }), []);
+    });
+
+    it("refuses an optional grammar leaf in the default composition ({§mimetype-optional-grammars})", () => {
+        assert.ok(optionalLeaves.length > 0, "the registry declares at least one optional grammar");
+        assert.deepEqual(defaultGrammarViolations({
+            dependencies: { ...dependencies, ...Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) },
+        }), optionalLeaves.map((name) =>
+            `plurnk-core/package.json: dependencies.${name} is an optional grammar leaf and must not ship by default ({§mimetype-optional-grammars})`));
+    });
+
+    it("leaves an optional grammar to the operator: absent is not a violation", () => {
+        assert.deepEqual(defaultGrammarViolations({ dependencies, devDependencies: Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) }), []);
     });
 
     for (const section of ["devDependencies", "optionalDependencies", "peerDependencies"]) {

@@ -263,8 +263,9 @@ ok(
     "the mimetype framework contains no leaf-consumer dependency edges",
 );
 const mimetypeInventory = packedMimetypeInventory();
-const grammarSlugs = installedGrammars(sandbox);
-ok(grammarSlugs.length > 0, `all ${grammarSlugs.length} registered grammars parse and dispose; Python, JS, and TS provide definitions, call references, and XPath projections`);
+const { loaded: grammarSlugs, degraded: optionalGrammars } = installedGrammars(sandbox);
+ok(grammarSlugs.length > 0, `all ${grammarSlugs.length} default grammars parse and dispose; Python, JS, and TS provide definitions, call references, and XPath projections`);
+ok(optionalGrammars.includes("fsharp") && optionalGrammars.includes("fsharp-signature"), `the optional grammars (${optionalGrammars.join(", ")}) are absent from the default composition and degrade by name`);
 const imageRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-image");
 ok(existsSync(resolve(imageRoot, "package.json")), "the image handler ships in the clean service composition");
 for (const mimetype of ["image/png", "image/jpeg", "image/gif", "image/webp"]) {
@@ -297,20 +298,18 @@ ok(
     "the clean service reports the optional general tokenizer catalog honestly absent",
 );
 
+// {§mimetype-pdf-facts} (#542) — the PDF owner is a header-only leaf that ships by default like
+// the image owner; no extraction or rendering stack rides with it.
 const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
 const tokenizersRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-tokenizers");
-ok(!existsSync(pdfRoot), "the heavyweight PDF handler is absent from a clean service install");
+ok(existsSync(resolve(pdfRoot, "package.json")), "the header-only PDF owner ships in the clean service composition");
+ok(mimetypeInventory.owners["application/pdf"] === pdfPackage, "application/pdf is discovered from the packed PDF leaf");
+for (const heavy of ["pdfjs-dist", "@napi-rs/canvas"]) {
+    ok(!existsSync(resolve(mods, heavy)), `${heavy} is absent from a clean service install`);
+}
 ok(!existsSync(tokenizersRoot), "the general tokenizer vocabulary catalog is absent from a clean service install");
-ok(
-    !Object.values(mimetypeInventory.owners).includes(pdfPackage),
-    "a clean service does not advertise the uninstalled PDF handler",
-);
 
 process.stdout.write("-- optional mimetype lifecycle --\n");
-installPacked(tarballs, pdfPackage);
-ok(existsSync(resolve(pdfRoot, "package.json")), "the exact packed PDF leaf installs into the service-visible module graph");
-const pdfInventory = packedMimetypeInventory();
-ok(pdfInventory.owners["application/pdf"] === pdfPackage, "the installed PDF leaf is discovered without a service rebuild");
 installPacked(tarballs, tokenizersPackage);
 ok(existsSync(resolve(tokenizersRoot, "package.json")), "the optional general tokenizer catalog installs independently");
 ok(

@@ -866,6 +866,19 @@ manifest assembles leaves. `@plurnk/plurnk-service` owns its default set in
 registered source mimetype whether or not that leaf is installed. Missing
 grammar degradation does not substitute a different mimetype or body.
 
+§mimetype-optional-grammars **An optional grammar is a plugin, not a default.**
+A registry entry marked `optional: true` keeps its mapping, detection, and
+projection revision in the framework, but its leaf is not part of the composed
+service's default set: the service manifest must not depend on it, and an
+operator who wants the language installs the leaf beside the service
+(`npm i @plurnk/plurnk-mimetypes-grammar-<slug>`), after which ordinary package
+resolution admits it with no manifest change. Until then the language degrades
+exactly as any detected language with an absent leaf does — honest metadata,
+empty structural channels, `grammarMissing` naming the leaf, plain-text
+coordinates for READ and EDIT. F# (`fsharp`, `fsharp-signature`) is optional:
+its leaf is twelve megabytes of wasm, twice any other, for a niche audience
+(#541).
+
 ### §grammar-leaf-reproducibility 13.5 Reproducibility
 
 A grammar leaf owns one source identity and one build tool. `.grammar-source`

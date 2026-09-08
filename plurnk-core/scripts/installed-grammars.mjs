@@ -19,8 +19,22 @@ export function installedGrammars(cwd) {
         };
         const mimetypes = new Mimetypes({ discoverOptions: { cwd: process.cwd() } });
         const loaded = [];
+        const degraded = [];
         try {
-            for (const { mimetype, slug, extensions } of TREE_SITTER_REGISTRY) {
+            for (const { mimetype, slug, extensions, optional } of TREE_SITTER_REGISTRY) {
+                if (optional === true) {
+                    // {§mimetype-optional-grammars}: an optional leaf is absent from the default
+                    // composition and its language degrades honestly rather than failing.
+                    const result = await mimetypes.process({
+                        content: "\\n",
+                        ...(extensions.length ? { ext: extensions[0] } : { hint: mimetype }),
+                    }, { channels: ["symbols"] });
+                    assert.equal(result.ok, true, mimetype + " degrades");
+                    assert.equal(result.mimetype, mimetype, mimetype + " keeps its detected mimetype");
+                    assert.equal(result.grammarMissing, "@plurnk/plurnk-mimetypes-grammar-" + slug, mimetype + " names its absent leaf");
+                    degraded.push(slug);
+                    continue;
+                }
                 const result = await mimetypes.process({
                     content: sources[slug] ?? "\\n",
                     ...(extensions.length ? { ext: extensions[0] } : { hint: mimetype }),
@@ -39,6 +53,6 @@ export function installedGrammars(cwd) {
         } finally {
             await mimetypes.dispose();
         }
-        process.stdout.write(JSON.stringify([...new Set(loaded)].sort()));
+        process.stdout.write(JSON.stringify({ loaded: [...new Set(loaded)].sort(), degraded: [...new Set(degraded)].sort() }));
     `], { cwd, encoding: "utf8" }));
 }

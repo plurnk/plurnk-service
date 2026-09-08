@@ -110,8 +110,6 @@
         "@plurnk/plurnk-mimetypes-grammar-css": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-dart": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-elixir": "1.16.1",
-        "@plurnk/plurnk-mimetypes-grammar-fsharp": "1.16.1",
-        "@plurnk/plurnk-mimetypes-grammar-fsharp-signature": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-go": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-haskell": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-java": "1.16.1",

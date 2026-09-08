@@ -25,10 +25,18 @@ export const installScriptViolations = (report) => {
 export const workspaceNpmConfigViolations = (files) => files.map((file) =>
     `${file}: npm ignores workspace-local configuration; declare repository policy in the root .npmrc`);
 
-export const defaultGrammarViolations = (manifest) => [...new Set(TREE_SITTER_REGISTRY.map(({ slug }) =>
-    `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
-    .filter((name) => !Object.hasOwn(manifest.dependencies ?? {}, name))
-    .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§default-plugin-ownership}`);
+// {§mimetype-optional-grammars} — an optional grammar is neither required nor permitted in the
+// default set: the operator installs its leaf beside the service.
+export const defaultGrammarViolations = (manifest) => [
+    ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map(({ slug }) =>
+        `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
+        .filter((name) => !Object.hasOwn(manifest.dependencies ?? {}, name))
+        .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§default-plugin-ownership}`),
+    ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(({ slug }) =>
+        `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
+        .filter((name) => Object.hasOwn(manifest.dependencies ?? {}, name))
+        .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar leaf and must not ship by default ({§mimetype-optional-grammars})`),
+];
 
 if (import.meta.main) {
     const root = JSON.parse(await fs.readFile("package.json", "utf8"));

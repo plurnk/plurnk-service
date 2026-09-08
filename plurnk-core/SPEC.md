@@ -2696,10 +2696,12 @@ loading; their runtime dependency graphs contain no leaf consumers. A required
 default leaf missing from a service install is a broken install. A direct
 framework consumer may intentionally omit leaves and receives that framework's
 documented unavailable-capability behavior.
-Every grammar in the mimetype framework's registry is a required service
-runtime dependency. Installation coverage loads each grammar and verifies
+Every non-optional grammar in the mimetype framework's registry is a required
+service runtime dependency, and an optional one ({§mimetype-optional-grammars})
+must not be. Installation coverage loads each default grammar and verifies
 source definitions, references, structural projections, and teardown outside
-the checkout's development dependency graph.
+the checkout's development dependency graph, and proves each optional language
+degrades by name when its leaf is absent.
 
 §install-root-advisory-ownership **The composed service install owns
 third-party advisory detection.** Only that install resolves the default leaves
