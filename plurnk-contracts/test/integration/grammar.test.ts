@@ -397,7 +397,7 @@ test("{§parse-diagnostics}: missing SEND is located at authored EOF and names p
         assert.equal(diagnostics.length, 1, source);
         const error = diagnostics[0]!;
         assert.deepEqual({ line: error.line, column: error.column }, { line, column }, source);
-        assert.match(error.message, /; parser appended `### SEND_ \(NEXT\)`\.$/u);
+        assert.match(error.message, /; parser appended `### SEND_ \(NEXT\)`\. Every OP of a turn shares that one lane; end the turn with `### SEND_ \(NEXT\|WAIT\|TERM\|FAIL\)`\.$/u);
         assert.equal(error.severity, "error", "recovery still incurs the same strike");
         const terminal = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []).at(-1);
         assert.equal(terminal?.op, "SEND");
@@ -425,7 +425,7 @@ test("terminal recovery names the active delimiter and leaves nested headings as
         assert.equal(advisory!.error.severity, "warning");
         assert.match(advisory!.error.message, /1 OP-shaped heading \(SEND\) carrying suffix `other` were taken as body text of EDIT/u);
         assert.equal(terminal!.error.severity, "error");
-        assert.match(terminal!.error.message, /No terminal SEND matched delimiter/u);
+        assert.match(terminal!.error.message, /The turn ended without a terminal SEND in its lane/u);
         assert.ok(terminal!.error.message.includes(JSON.stringify(delimiter)));
         assert.ok(terminal!.error.message.includes(`### SEND${delimiter} (NEXT)`));
         assert.equal(terminal!.error.toJSON().code, "missing-terminal-send");
@@ -439,7 +439,7 @@ test("a mismatched SEND inside PLAN remains data and receives delimiter-aware re
     assert.equal(statements.at(-1)?.delimiter, "1");
     const error = result.items.find((item) => item.kind === "error");
     assert.equal(error?.kind === "error" ? error.error.code : null, "missing-terminal-send");
-    assert.match(error?.kind === "error" ? error.error.message : "", /delimiter "1".*SEND1/u);
+    assert.match(error?.kind === "error" ? error.error.message : "", /lane "1".*SEND1/u);
 });
 
 test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as written", () => {
@@ -469,7 +469,7 @@ test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as w
     }
     assert.match(
         missingSend.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
-        /No terminal SEND matched delimiter "_"/u,
+        /The turn ended without a terminal SEND in its lane "_"/u,
     );
 });
 

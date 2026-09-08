@@ -347,7 +347,7 @@ test("a valid operation with no PLAN or SEND is admitted once with recovered fra
         assert.deepEqual(
             diagnostics.map(({ message }) => message),
             [
-                "No terminal SEND matched delimiter \"_\"; parser appended `### SEND_ (NEXT)`.",
+                "The turn ended without a terminal SEND in its lane \"_\"; parser appended `### SEND_ (NEXT)`. Every OP of a turn shares that one lane; end the turn with `### SEND_ (NEXT|WAIT|TERM|FAIL)`.",
             ],
         );
         assert.deepEqual(diagnostics.map(({ line, column }) => ({ line, column })), [{ line: 2, column: 6 }]);
@@ -397,7 +397,7 @@ test("delimiter-aware terminal recovery is admitted once and reaches the next pa
         const errors = rows.filter(({ op }) => op === "error");
         assert.equal(errors.length, 1);
         const problem = JSON.parse(errors[0]!.rx).problem;
-        assert.match(problem.detail, /delimiter "1".*SEND1/u);
+        assert.match(problem.detail, /lane "1".*SEND1/u);
         assert.match(problem.detail, /parser appended/u);
         assert.deepEqual({ line: problem.line, column: problem.column }, { line: 5, column: 7 });
         assert.equal(problem.siblingsRetained, undefined, "envelope recovery is classified structurally, not by error wording");

@@ -187,7 +187,9 @@ export default class PlurnkParser {
                     position.line,
                     position.column,
                     "parser",
-                    `No terminal SEND matched delimiter ${JSON.stringify(delimiter)}; parser appended \`### SEND${delimiter} (NEXT)\`.`,
+                    // {§turn-shape} — the turn ended without its terminal SEND; say what was added and why
+                    // the lane matters, without inviting the model to change lanes (#574).
+                    `The turn ended without a terminal SEND in its lane ${JSON.stringify(delimiter)}; parser appended \`### SEND${delimiter} (NEXT)\`. Every OP of a turn shares that one lane; end the turn with \`### SEND${delimiter} (NEXT|WAIT|TERM|FAIL)\`.`,
                     "error",
                     PlurnkParser.MISSING_SEND,
                 ),
