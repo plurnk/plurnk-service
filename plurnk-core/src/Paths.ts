@@ -21,6 +21,7 @@ export default class Paths {
     // @plurnk/plurnk-meta; admission and projection remain core-owned.
     static readonly teachingRoot = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
 
+    static readonly packageRoot = Paths.#PACKAGE_ROOT;
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     static configuration = resolve(Paths.#PACKAGE_ROOT, "INSTALL.md");

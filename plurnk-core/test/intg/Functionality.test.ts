@@ -3,6 +3,9 @@
 // one durable Worker-owned state, one atomic publication.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PlurnkParser, Problems } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -101,6 +104,45 @@ const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
         };
     },
     teardown: async (snapshot) => { log.push(`teardown:${(snapshot as { aliases: string[] }).aliases.join(",")}`); },
+});
+
+test("{§functionality-document-body} an adapter's docs/<family>.md rides beneath the generated header; a wrong add example fails boot", async () => {
+    const docsDir = await mkdtemp(join(tmpdir(), "plurnk-fx-docs-"));
+    const db = await openMigrated();
+    try {
+        await mkdir(join(docsDir, "docs"));
+        await writeFile(join(docsDir, "docs", "fx.md"), "# fx\n\n## Choosing a fixture\n\nAuthored fixture teaching.\n");
+        const log: string[] = [];
+        const daemon = new Daemon({ db, provider: null });
+        daemon.registerModule({ setup: (seam: ModuleSetupSeam) => {
+            seam.registerFunctionalityAdapter({ ...fixtureAdapter(log), docsDir, example: { alias: "one", definition: { kind: "ok" } } });
+        } });
+        await daemon.start();
+        try {
+            const workspaceId = await insertWorkspace(db, `fx-docs-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId, null, "model", "model");
+            await daemon.invokeModuleAction("worker.fx.list", {}, workerContext(workspaceId, workerId));
+            const doc = (await daemon.engine.referenceEntries(workspaceId, workerId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
+            assert.ok(doc, "the family document is a reference entry");
+            assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\nEXEC [fx] ("), true, "the generated header owns the H1 and the summary");
+            assert.ok(doc.content.includes("## Tools"), "the generated verb table is present");
+            assert.ok(doc.content.endsWith("## Choosing a fixture\n\nAuthored fixture teaching."), `the authored body closes the document, its authoring title removed:\n${doc.content}`);
+            assert.equal((doc.content.match(/^# /gmu) ?? []).length, 1, "exactly one H1");
+        } finally {
+            await daemon.stop();
+        }
+
+        const wrong = new Daemon({ db, provider: null });
+        wrong.registerModule({ setup: (seam: ModuleSetupSeam) => {
+            seam.registerFunctionalityAdapter({ ...fixtureAdapter([]), example: { alias: "bogus", definition: { kind: "not-a-kind" } } });
+        } });
+        await assert.rejects(wrong.start(), /Functionality family 'fx' teaches an add example that violates its own definition schema/u,
+            "a taught example that lies about the schema fails boot, never the model");
+        await wrong.stop().catch(() => {});
+    } finally {
+        await db.close();
+        await rm(docsDir, { recursive: true, force: true });
+    }
 });
 
 const boot = async (db: Db, log: string[]): Promise<Daemon> => {

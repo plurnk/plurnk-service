@@ -68,7 +68,9 @@ test("{§functionality-model-projection} the family manager exposes exactly the 
     assert.deepEqual(FUNCTIONALITY_VERBS.map((verb) => manager.effect(verb)), ["read", "read", "host", "host", "host", "host"]);
     assert.equal(manager.effect("destroy"), "host", "an unregistered verb can never run ungated");
     assert.equal(manager.manifest.name, "fx");
-    assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.").invocation.target?.kind, "literal");
+    assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "").invocation.target?.kind, "literal");
+    assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "").details, undefined, "no doc file, no details slot");
+    assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "Authored body.").details, "Authored body.", "the family's doc-file body rides the runtime declaration's details");
 });
 
 test("{§functionality-model-projection} a verb runs through the coordinator as an operation and streams its JSON result", async () => {

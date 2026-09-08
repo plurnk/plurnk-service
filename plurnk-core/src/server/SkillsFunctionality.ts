@@ -20,6 +20,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
+import Paths from "../Paths.ts";
 import type {
     FunctionalityAdapter,
     FunctionalityDefinitionSource,
@@ -198,6 +199,8 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly namespaceOwner = SKILLS_OWNER;
     readonly summary = "Manage Agent Skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
+    readonly example = { alias: "sql-formatter", definition: { name: "sql-formatter", scope: "project", source: "example/skills" } };
+    readonly docsDir = Paths.packageRoot;
     readonly discovery = {
         details: "`query` searches the standard skills registry; `source` inspects one installer package reference (`owner/repo`, a git URL, or a local path). A candidate carries the exact definition to add.",
     };

@@ -9,6 +9,7 @@ export { default as RuntimeTag } from "./RuntimeTag.ts";
 export { default as RuntimeInvocation } from "./RuntimeInvocation.ts";
 export { default as RuntimeDeclaration } from "./RuntimeDeclaration.ts";
 export { default as RuntimeSummary } from "./RuntimeSummary.ts";
+export { default as DocFile } from "./DocFile.ts";
 
 // Discovery ({§executor-discovery}). The behavior lives on `Discover`; the
 // documented `discover()` entry is its `scan` static, re-exported here so the

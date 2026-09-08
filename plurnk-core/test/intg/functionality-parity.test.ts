@@ -48,6 +48,7 @@ interface Family {
     readonly discover: Readonly<Record<string, unknown>>;
     readonly collidingAlias?: string;          // a publication the host refuses
     readonly projectRoot?: string;             // the workspace's project root, when the family needs one
+    readonly teaching: RegExp;                 // a phrase only the family's authored docs/<family>.md body carries
     boot(db: Db, provider: Mock): Promise<{ daemon: Daemon }>;
     close(): Promise<void>;
 }
@@ -130,6 +131,7 @@ const skillsFamily = async (): Promise<Family> => {
     return {
         family: "skills",
         documentOf: doc,
+        teaching: /## Read before you install/u,
         service: { alias: "grep", definition: { name: "grep", scope: "project" }, probe: probe("grep") },
         addable: { alias: "extra", definition: { name: "extra", scope: "project", source: sourceA }, probe: probe("extra") },
         conflicting: { alias: "extra", definition: { name: "extra", scope: "global", source: sourceB }, probe: probe("extra") },
@@ -166,6 +168,7 @@ const mcpFamily = async (): Promise<Family> => {
     };
     return {
         family: "mcp",
+        teaching: /## discover, then add/u,
         documentOf: (alias) => `/_plurnk/tools/${alias}.md`,
         // `read` declares the probe tools read-effect so a client EXEC runs ungated; everything else proposes.
         service: { alias: "fixture", definition: { name: "fixture", transport: "stdio", command: process.execPath, args: [echo], read: ["echo"] }, probe: exec("fixture", "echo") },
@@ -198,6 +201,7 @@ const agentsFamily = async (): Promise<Family> => {
     return {
         family: "agents",
         documentOf: (alias) => `/_plurnk/agents/${alias}.md`,
+        teaching: /## Working with an added agent/u,
         service: { alias: "researcher", definition: { name: "researcher", url: agentA.baseUrl }, probe: send("researcher") },
         addable: { alias: "extra", definition: { name: "extra", url: agentA.baseUrl }, probe: send("extra") },
         conflicting: { alias: "extra", definition: { name: "extra", url: agentB.baseUrl }, probe: send("extra") },
@@ -310,6 +314,9 @@ const matrix = async (family: Family): Promise<void> => {
         const addDoc = references.find(({ pathname }) => pathname === `${managerPath}/add.md`)!;
         assert.ok(managerDoc && addDoc, "the manager catalog links to a materialized input schema");
         assert.ok(managerDoc.content.includes(`Schema: worker://~${managerPath}/add.md`));
+        // {§functionality-document-body} — the adapter package's docs/<family>.md rides beneath the generated header.
+        assert.match(managerDoc.content, family.teaching, `${family.family}.md carries its authored teaching body`);
+        assert.ok(managerDoc.content.indexOf("## Tools") < managerDoc.content.search(family.teaching), "the generated verb table precedes the authored body");
         const addSchema = JSON.parse(addDoc.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!);
         assert.deepEqual(addSchema.required, ["definition"], "alias remains optional as the coordinator actually admits it");
         assert.doesNotMatch(managerDoc.content, /\| Field \| Type \| Required \| Meaning \|/);

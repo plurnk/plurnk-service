@@ -52,7 +52,7 @@ export type FunctionalityTeaching = {
 const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =>
     value !== null && (FUNCTIONALITY_VERBS as readonly string[]).includes(value);
 
-export const functionalityRuntimeDecl = (family: string, summary: string): RuntimeDecl => ({
+export const functionalityRuntimeDecl = (family: string, summary: string, details: string): RuntimeDecl => ({
     name: family,
     glyph: "🧩",
     summary: { from: "tools", description: summary },
@@ -61,6 +61,7 @@ export const functionalityRuntimeDecl = (family: string, summary: string): Runti
         target: { role: "lifecycle verb", required: true, kind: "literal" },
         example: { target: "list" },
     },
+    ...(details.length === 0 ? {} : { details }),
 });
 
 export default class FunctionalityManager extends BaseExecutor {

@@ -5,6 +5,7 @@
 // per-Worker snapshot the `a2a` scheme resolves aliases against. The family is
 // not tagged `a2a` because every executor tag is also a scheme face and would
 // collide with the `a2a://` resource scheme.
+import { fileURLToPath } from "node:url";
 import type { AgentCard } from "@a2a-js/sdk";
 import type { Client } from "@a2a-js/sdk/client";
 import {
@@ -156,6 +157,7 @@ export default class A2aFunctionality {
     readonly summary = "Manage A2A agents";
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "planner", definition: { name: "planner", url: "https://agents.example.com/planner" } };
+    readonly docsDir = fileURLToPath(new URL("..", import.meta.url));
     readonly discovery = {
         details: "`source` is an agent's base URL; its Agent Card is fetched and returned as one inert candidate carrying the exact definition to add. An added agent is addressed as `a2a://<alias>`.",
     };

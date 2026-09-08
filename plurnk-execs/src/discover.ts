@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
 import type { PluginAttribution, PluginAttributionDeclaration } from "@plurnk/plurnk-meta";
+import DocFile from "./DocFile.ts";
 import Policy from "./policy.ts";
 import RuntimeDeclaration from "./RuntimeDeclaration.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
@@ -128,7 +129,7 @@ export default class Discover {
             const decl = RuntimeDeclaration.assert(raw, packageName);
             // A package doc file wins over inline details
             // ({§executor-runtime-declaration}).
-            const details = await Discover.#readDocFile(dir, decl.name) ?? decl.details ?? "";
+            const details = await DocFile.read(dir, decl.name) ?? decl.details ?? "";
             infos.push({
                 runtime: decl.name,
                 glyph: decl.glyph ?? "",
@@ -199,20 +200,5 @@ export default class Discover {
             throw new Error(`exec runtimes hook returned a non-array: ${packageName} -> ${rel}`);
         }
         return decls as RuntimeDecl[];
-    }
-
-    // A tag's supplemental detail file under the package's `docs/` folder — the
-    // convention's source of truth. Returns null when the package ships none.
-    static async #readDocFile(dir: string, tag: string): Promise<string | null> {
-        try {
-            const source = await fs.readFile(path.join(dir, "docs", `${tag}.md`), "utf-8");
-            const title = `# ${tag}`;
-            if (source === title || source === `${title}\n`) return "";
-            if (source.startsWith(`${title}\r\n`)) return source.slice(title.length + 2).replace(/^\r?\n/u, "");
-            if (source.startsWith(`${title}\n`)) return source.slice(title.length + 1).replace(/^\r?\n/u, "");
-            return source;
-        } catch {
-            return null;
-        }
     }
 }

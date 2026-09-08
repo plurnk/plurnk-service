@@ -5,6 +5,7 @@
 // per-Worker generated executor family whose host verbs propose. An explicit
 // client mutation and an accepted model proposal converge on `invoke`.
 import { Validator } from "@plurnk/plurnk-contracts";
+import { DocFile } from "@plurnk/plurnk-execs";
 import type {
     FunctionalityDefinitionState,
     FunctionalityDiscoverResult,
@@ -146,6 +147,13 @@ export default class Functionality {
             disable: ALIAS_INPUT,
             remove: ALIAS_INPUT,
         });
+        // {§functionality-model-projection} — the taught `add` example must satisfy the schema it teaches.
+        if (adapter.example !== undefined) {
+            const example = Validator.validateJsonSchemaInstance(schemas.add, adapter.example);
+            if (!example.valid) {
+                throw new Error(`Functionality family '${family}' teaches an add example that violates its own definition schema: ${JSON.stringify(example.errors)}`);
+            }
+        }
         this.#adapters.set(family, adapter);
         this.#owners.add(namespaceOwner);
         this.#schemas.set(family, schemas);
@@ -209,6 +217,21 @@ export default class Functionality {
 
     // {§functionality-documents} — the family-generated documents of every
     // published family for one Worker, addressed under its generated subtree.
+    // {§functionality-document-body} — read once per family from the adapter's package, the same
+    // `docs/<tag>.md` rule runtimes use. A family that ships no file has a header-only document.
+    #documentBodies = new Map<string, Promise<string>>();
+
+    #documentBody(adapter: FunctionalityAdapter): Promise<string> {
+        let body = this.#documentBodies.get(adapter.family);
+        if (body === undefined) {
+            body = adapter.docsDir === undefined
+                ? Promise.resolve("")
+                : DocFile.read(adapter.docsDir, adapter.family).then((text) => text ?? "");
+            this.#documentBodies.set(adapter.family, body);
+        }
+        return body;
+    }
+
     documents(workerId: number): Array<{ pathname: string; content: string }> {
         const out: Array<{ pathname: string; content: string }> = [];
         for (const [key, family] of this.#families) {
@@ -468,7 +491,7 @@ export default class Functionality {
         }
         const manager: RuntimeRegistration = {
             namespaceOwner: adapter.namespaceOwner,
-            decl: functionalityRuntimeDecl(adapter.family, adapter.summary),
+            decl: functionalityRuntimeDecl(adapter.family, adapter.summary, await this.#documentBody(adapter)),
             executor: new FunctionalityManager({
                 family: adapter.family, workspaceId: identity.workspaceId, workerId: identity.workerId, coordinator: this,
                 inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,

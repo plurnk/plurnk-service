@@ -3174,6 +3174,17 @@ the ordinary Exec proposal lifecycle. A verb's JSON outcome streams into the
 family's output entry. `ExecArgs` carries no Worker identity, which is why
 the manager is published per Worker rather than once.
 
+§functionality-document-body **A family's teaching is an authored file beneath
+its generated header.** The adapter names its package directory (`docsDir`);
+that package's `docs/<family>.md` is read once, by the same rule runtimes use
+for `docs/<tag>.md` ({§executor-discovery}: the authoring title `# <family>` is
+removed, the generated document owns the H1), and rides the family
+declaration's `details` beneath the Tools section. The header, verb table, and
+schema documents stay generated; no prose from the file enters the hot path.
+A family that ships no file has a header-only document. Registration also
+validates the adapter's taught `add` example against the `add` input schema it
+teaches, so a wrong example fails boot rather than the model.
+
 §functionality-model-mutation **An accepted mutation publishes at its turn
 boundary.** The verb runs inside the turn that raised it, which holds the
 workspace; the coordinator persists desired state and prepares immediately —
@@ -4365,6 +4376,12 @@ signature — one row per tool, paged like every survey. No document is delivere
 unasked.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
+
+§tool-document-header-only A registry-less runtime whose declaration carries no
+supplemental details (no `docs/<tag>.md`, no inline `details`) is a
+header-only document: its summary annotation ends with `(invocation only)`, so
+the catalog row that advertises it says so and the model is not invited to
+READ an empty room. Every runtime and family plurnk ships carries a body.
 
 §tools-summary-invocation A summary featuring one exact enabled tool invocation
 includes its compact input signature after literal `\n` when no example body is

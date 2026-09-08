@@ -152,6 +152,9 @@ export interface FunctionalityAdapter {
     // `add` example, and the family's own `discover` contract when the generic one does not fit.
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
+    // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
+    // authored teaching beneath the family document's generated header, by the runtime doc-file rule.
+    readonly docsDir?: string;
     available(identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
     discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkerCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityDefinitionSource>;

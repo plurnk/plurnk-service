@@ -139,9 +139,18 @@ test("{§tools-resource-discovery} keeps a concrete invocation's multiline body 
     assert.ok(document.includes(`### EXEC_ [fixture] (echo) <!-- Echo structured input. -->\n${body}`), "the full invocation retains its physical newlines");
 });
 
+test("{§tool-document-header-only} a registry-less runtime with no details is marked invocation-only in its summary", () => {
+    const invocation = { body: { role: "the program", required: false }, example: { body: "1+1" } };
+    const [bare] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "   ", registry: null });
+    assert.match(bare!.content, /^EXEC \[calc\] <!-- Evaluate calculations\. \(invocation only\) -->/mu, "the summary line, and so the catalog row, says the document is header-only");
+    const [taught] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "Set `scale` first.", registry: null });
+    assert.doesNotMatch(taught!.content, /invocation only/u, "a runtime with a body is not marked");
+    assert.ok(taught!.content.endsWith("Set `scale` first."), "the body closes the document");
+});
+
 test("{§functionality-model-projection} manager summaries advertise effective verbs in lifecycle order", () => {
     for (const verbs of [FUNCTIONALITY_VERBS, ["list", "discover"]]) {
-        const declaration = functionalityRuntimeDecl("mcp", "Manage MCP servers");
+        const declaration = functionalityRuntimeDecl("mcp", "Manage MCP servers", "");
         const [resource] = ToolResources.render({
             runtime: "mcp", ...declaration, details: "",
             registry: { tools: verbs.map((target) => ({

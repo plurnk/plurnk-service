@@ -14,6 +14,7 @@ import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
+import Paths from "../Paths.ts";
 import type {
     FunctionalityAdapter,
     FunctionalityCaller,
@@ -212,6 +213,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     readonly summary = "Manage file membership";
     readonly definitionSchema = DEFINITION;
     readonly example = { alias: "docs", definition: { glob: "docs/**" } };
+    readonly docsDir = Paths.packageRoot;
     readonly discovery = {
         signature: '{"query": string}',
         details: "A path answers why it is or is not visible — tracked, included by which pattern, a creation record, excluded by which `!glob`, ignored, untracked, or absent. A glob (or `!glob`) previews what `add` would include or exclude. Names only; nothing is added.",

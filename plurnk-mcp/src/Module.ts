@@ -4,6 +4,7 @@
 // with OAuth continuation, tool/resource publication, catalog refresh, and
 // teardown. The coordinator owns the lifecycle, durable Worker state, atomic
 // publication, and both the client and model projections.
+import { fileURLToPath } from "node:url";
 import type {
     RuntimeAvailability,
     RuntimeDecl,
@@ -113,6 +114,7 @@ interface FunctionalityAdapter {
     readonly definitionSchema: JsonSchema;
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
+    readonly docsDir?: string;
     available(identity: WorkerIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
     discover(query: FunctionalityDiscoverQuery, identity: WorkerIdentity): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkerIdentity): Promise<{ alias: string; definition: object }>;
@@ -376,6 +378,7 @@ export default class Module {
             summary: "Manage MCP servers",
             definitionSchema: MCP_DEFINITION,
             example: { alias: "files", definition: { name: "files", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "."] } },
+            docsDir: fileURLToPath(new URL("..", import.meta.url)),
             discovery: {
                 details: "`source` is one MCP server URL or command line; the server is inspected without being attached, and the candidate carries the exact definition to add.",
             },
