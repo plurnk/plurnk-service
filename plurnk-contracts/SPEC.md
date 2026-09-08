@@ -156,8 +156,8 @@ order-independent: a descriptor is admitted only when every layer admits it.
 No Worker or loop can restore service, workspace, or parent authority. A
 composed operation is admitted only when every routed demand survives. These
 descriptors govern routed external authority, not every grammar statement:
-log/program control such as PLAN, log KILL, and label or targetless SEND
-creates no capability demand. A known interactive runtime is represented by
+log/program control such as PLAN, log KILL, the native dispositions, and
+targetless SEND creates no capability demand. A known interactive runtime is represented by
 access class `interact`; scheme and runtime manifests contribute traits rather
 than hidden policy behavior.
 
@@ -244,7 +244,7 @@ provider rates or convert currencies while reading the projection.
 
 The parser returns ordered statement, error, and text items. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a
-boundary-destroying failure makes later input undefined. SEND operation codes
+boundary-destroying failure makes later input undefined. Operation status codes
 and parse diagnostics are separate contracts.
 
 ## 1.2 GBNF Generation Rail
@@ -625,7 +625,7 @@ visitor error and never falls back to glob matching.
 - §heading-boundary-recovery A column-0 heading is the trustworthy boundary. After a
   statement-level error the parser discards the rest of that statement and resumes at the
   next heading; the turn shape is decided locally (a turn disposition is recognized by its own
-  disposition signal, never by a whole-turn alternative), so one malformed heading costs one
+  token, never by a whole-turn alternative), so one malformed heading costs one
   diagnostic and every later statement, the turn disposition included, stands on its own. Any
   other second path slot names the one-slot rule.
 - §scope-slot-tolerance A line scope written inside a path slot (```` ```COPY (worker:///src.md<2,3>) ````)
@@ -745,7 +745,7 @@ npm test
 The inner shell example is EDIT content, not an EXEC invocation. The same
 rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
-## 9. SEND Codes
+## 9. Turn dispositions
 
 Native dispositions map to the existing HTTP-shaped lifecycle statuses:
 
@@ -869,10 +869,10 @@ the executable blocks themselves are the program.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn, bare with optional TEXT or inside one outer `example` (or `plurnk`) fence; omitted PLAN/SEND recover to defaults | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn with optional preamble TEXT and PLAN; an omitted disposition recovers to NEXT | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive PLAN-anchored turns           | `PlurnkStatement`     |
-| `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |
+| `PlurnkParser.parseClient`     | Executable blocks, including read-shaped LOOK/BUFF commands      | `ClientStatement`     |
 
 Every entry point returns ordered `statement`, `error`, and, where admitted,
 `text` items. When present, {§unparsed-tail-boundary} governs the result's item
