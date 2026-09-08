@@ -393,7 +393,9 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         for (const { effect, glob, source } of rows) {
             await this.#db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect, glob, source });
         }
-        await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
-        void this.#engine().warmWorkspaceDerivations(workspaceId).catch(() => {});
+        // One owner reconciles membership after a constraint change: the workspace warm, which
+        // coalesces with any pass already in flight and rescans once more after it — a detached
+        // pass that read the previous rows can no longer land its stale resolution last.
+        await this.#engine().warmWorkspaceDerivations(workspaceId);
     }
 }
