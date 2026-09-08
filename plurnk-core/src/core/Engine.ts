@@ -45,7 +45,7 @@ export type WorkspaceDerivationStatus = {
     total: number;
     percent: number;
     message: string;
-    level: "info" | "error";
+    level: "info" | "warn" | "error";
 };
 export type AcquireWorkspaceTurn = (workspaceId: number, workerId: number, signal?: AbortSignal) => Promise<() => void>;
 export type WorkspaceTurnStarting = (args: {
@@ -197,7 +197,7 @@ export default class Engine {
                                     total: notice.total,
                                     percent: notice.percent,
                                     message: notice.message ?? "Indexing repository search",
-                                    level: notice.level === "error" ? "error" : "info" });
+                                    level: notice.level });
                                 terminalPublished = notice.phase === "complete" || notice.phase === "failed";
                             }
                             current.pushNotice?.(notice);

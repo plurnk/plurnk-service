@@ -453,7 +453,7 @@ rejections and strict/non-strict optional-grammar behavior are unchanged.
 | `path`, `mimetype` | Supplied path (null for content-only input) and resolved MIME type; each bounded to 512 UTF-16 units, retaining both ends when shortened. |
 | Message | JSON-quoted source identity; control characters cannot manufacture diagnostic lines. No source bytes, request metadata, or environment values are added. |
 | `cause` | Exact original thrown value, retaining its type, stack and causal chain. Never mutate it or reuse another invocation's context. |
-| Consumers | Preserve the hard failure and cause; no duplicate wrapper, invalid-input classification, empty projection, or successful index disposition. |
+| Consumers | Preserve the failure and its cause; no duplicate wrapper, invalid-input classification, or successful index disposition. An indexing consumer may record it as that one member's terminal `failed` disposition carrying the exact cause (plurnk-core {§derivation-member-failure}) rather than failing the whole pass. |
 
 §mimetype-artifact-absence A fixed artifact is absent only when module
 resolution names that exact requested package as missing. A missing dependency,

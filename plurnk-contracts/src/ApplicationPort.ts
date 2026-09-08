@@ -210,7 +210,8 @@ export interface ApplicationPort {
         readonly total: number;
         readonly percent: number;
         readonly message: string;
-        readonly level: "info" | "error";
+        // {§notice-level}: the producer's level rides unchanged — `warn` when a completed pass carries failed members.
+        readonly level: "info" | "warn" | "error";
     } | null;
     look(args: {
         readonly workspaceId: number;

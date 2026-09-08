@@ -3757,7 +3757,24 @@ content the artifact does not describe.
 
 Every completed artifact records one terminal disposition: `indexed`, `excluded`
 (the configured search-exclusion table), `unsearchable` (empty or binary), or
-`failed` (only a typed {§mimetype-error-policy} invalid-source failure).
+`failed` (a typed {§mimetype-error-policy} invalid-source failure, or the
+handler's own defect on that one member — {§derivation-member-failure}).
+
+§derivation-member-failure **One member's derivation failure never ends the
+pass or the model's turn.** A handler defect on one member — a
+`MimetypeDerivationError` under {§mimetype-derivation-evidence}, the exception
+being a cancellation — is that member's terminal `failed` disposition, whose
+`reason` is the handler's invocation context followed by the exact original
+cause (`Mimetype derivation failed for "/x.js" ("text/javascript").
+RuntimeError: …`). The pass continues, attaches every other member, and
+completes; its terminal `search_progress` notice is `complete` at `level: warn`,
+naming the first failed member and carrying the count. A failed member is
+terminal for that exact content, handler revision, and configuration identity
+({§derivation-dedup-parallel}); a change to any of those derives it again.
+Everything that is not a handler's derivation of one member stays fatal to the
+pass exactly as before: a grammar that is not installed, an index-persistence
+or contract failure, and cancellation, each leaving the artifact `building` for
+retry.
 Cancellation and implementation, loading, database and index-persistence failures
 remain `building`, unattached, and retryable; Core never guesses that an arbitrary
 projection exception is bad content. The digest reports exceptional dispositions
@@ -4221,7 +4238,7 @@ retain distinct contracts and lifetimes.
 |---|---|---|
 | `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
-| `search_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info` except terminal failure | none |
+| `search_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info`, `warn` when a completed pass carries failed members ({§derivation-member-failure}), `error` on terminal failure | none |
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 

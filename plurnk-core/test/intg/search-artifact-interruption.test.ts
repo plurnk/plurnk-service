@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { inspect } from "node:util";
-import { BaseHandler, Mimetypes, MimetypeDerivationError, ParserCoordinateError } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, Mimetypes, ParserCoordinateError } from "@plurnk/plurnk-mimetypes";
+import { Mock } from "@plurnk/plurnk-providers";
 import type {
     Notice,
+    SendStatement,
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
@@ -11,7 +12,12 @@ import Worker from "../../src/schemes/Worker.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx, mimetypesFixture, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
+
+const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<unknown> => {
+    const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
+    return JSON.parse(row?.packet ?? "{}") as unknown;
+};
 
 
 const target: UrlPath = {
@@ -199,17 +205,15 @@ test("an internal projection defect propagates and leaves the artifact retryable
     }
 });
 
-test("{§mimetype-derivation-evidence} real handler failures name the indexed resource without losing fatal/retryable behavior", async () => {
-    const db = await openMigrated();
-    const failure = Object.freeze(new ParserCoordinateError("unaddressable native span"));
-    let broken = true;
+// A registry whose only handler crashes on content carrying `poison`; every other member derives.
+const failingMimetypes = (failure: Error, poison: string): Mimetypes => {
     class FailingHandler extends BaseHandler {
-        override extractRaw(): [] {
-            if (broken) throw failure;
+        override extractRaw(content: string | Uint8Array): [] {
+            if (String(content).includes(poison)) throw failure;
             return [];
         }
     }
-    const mimetypes = new Mimetypes({
+    return new Mimetypes({
         discovery: {
             registry: { byExtension: new Map([[".md", "text/markdown"]]), byFilename: new Map() },
             handlers: new Map([["text/markdown", {
@@ -220,30 +224,97 @@ test("{§mimetype-derivation-evidence} real handler failures name the indexed re
         },
         loader: async () => ({ default: FailingHandler }),
     });
+};
+
+test("{§derivation-member-failure} {§mimetype-derivation-evidence} a handler's defect on one member is that member's failed row, named by the completing notice", async () => {
+    const db = await openMigrated();
+    const failure = Object.freeze(new ParserCoordinateError("unaddressable native span"));
+    const mimetypes = failingMimetypes(failure, "interrupted");
+    const notices: Notice[] = [];
     try {
-        const workspaceId = await insertWorkspace(db, `diagnostic-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `member-failure-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
-        await assert.rejects(engine.warmWorkspaceDerivations(workspaceId), (error) => {
-            assert.ok(error instanceof MimetypeDerivationError);
-            assert.equal(error.path, "/interrupted.md");
-            assert.equal(error.mimetype, "text/markdown");
-            assert.equal(error.cause, failure, "Core preserves the framework's exact typed cause");
-            const diagnostic = inspect(error);
-            assert.match(diagnostic, /interrupted\.md/);
-            assert.match(diagnostic, /ParserCoordinateError: unaddressable native span/);
-            assert.ok(statement.body !== null, "the fixture owns source content to exclude");
-            assert.equal(diagnostic.includes(statement.body), false, "no source content is added to diagnostics");
-            return true;
+        await new Worker().edit({
+            ...statement,
+            target: { ...target, raw: "worker:///healthy.md", pathname: "/healthy.md" },
+            body: "a sibling the failing handler derives cleanly",
+        }, makeSchemeCtx({ db, workspaceId, workerId }));
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(), mimetypes,
+            noticeNotify: (_workspaceId, { notice }) => notices.push(notice as Notice),
         });
-        assert.deepEqual(await db.test_derivation_interruption_state.get({ workspace_id: workspaceId }),
-            { deep_hash: null, building: 1, complete: 0 }, "a parser defect is never recorded as bad external content");
-        broken = false;
+
         await engine.warmWorkspaceDerivations(workspaceId);
-        const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
-        assert.ok(state?.deep_hash, "the source can be derived after repairing the handler");
-        assert.deepEqual({ building: state?.building, complete: state?.complete }, { building: 0, complete: 1 });
+
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(disposition?.disposition, "failed", "the member's row reads failed");
+        assert.equal(
+            disposition?.reason,
+            'Mimetype derivation failed for "/interrupted.md" ("text/markdown"). ParserCoordinateError: unaddressable native span',
+            "the reason is the handler's invocation context plus the exact original cause",
+        );
+        assert.ok(statement.body !== null, "the fixture owns source content to exclude");
+        assert.equal(disposition?.reason.includes(statement.body), false, "no source content leaks into the reason");
+        const healthy = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/healthy.md" });
+        assert.equal(
+            (await db.test_derivation_disposition.get<{ disposition: string }>({ entry_id: healthy?.id ?? -1 }))?.disposition,
+            "indexed",
+            "the sibling member still attaches its own artifact",
+        );
+        assert.deepEqual(await db.test_derivation_state_counts.get({}), { building: 0, complete: 2 }, "the pass completes every member");
+
+        const terminal = notices.filter((n) => n.kind === "search_progress").at(-1);
+        assert.equal(terminal?.phase, "complete", "one member's defect never fails the pass");
+        assert.equal(terminal?.level, "warn", "a completed pass carrying a failed member is a warning, not an error");
+        assert.equal(
+            terminal?.message,
+            'Repository search index is ready; 1 of 2 derivations failed: "/interrupted.md" — Mimetype derivation failed for "/interrupted.md" ("text/markdown"). ParserCoordinateError: unaddressable native span',
+            "the completing notice names the failed member and carries the count",
+        );
+        assert.equal(engine.workspaceDerivationStatus(workspaceId)?.level, "warn", "the queryable terminal state keeps the producer's level");
+
+        // The failed disposition is terminal for this exact content and handler revision: a
+        // repaired handler alone re-derives nothing, exactly like a typed input failure.
+        await engine.warmWorkspaceDerivations(workspaceId);
+        assert.deepEqual(await db.test_derivation_state_counts.get({}), { building: 0, complete: 2 }, "a rerun attaches the same terminal artifacts");
+    } finally { await mimetypes.dispose(); await db.close(); }
+});
+
+test("{§derivation-member-failure} the model's turn proceeds past a member whose handler throws", async () => {
+    const db = await openMigrated();
+    const failure = Object.freeze(new RangeError("function signature mismatch"));
+    const mimetypes = failingMimetypes(failure, "interrupted");
+    try {
+        const workspaceId = await insertWorkspace(db, `member-failure-turn-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
+        const provider = new Mock({ contextWindow: 100000, responses: [{
+            assistant: {
+                content: "",
+                ops: [{ op: "SEND", annotation: null, delimiter: "", status: 200, target: null, metadata: null, lineMarker: null, body: { raw: "done", json: null }, position: { line: 1, column: 1 } } as SendStatement],
+                reasoning: null,
+            },
+        }] });
+
+        const turn = await engine.runTurn({
+            provider, workspaceId, workerId, loopId,
+            messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
+        });
+
+        assert.equal(turn.status, 200, "the turn reached the provider and concluded");
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(disposition?.disposition, "failed");
+        assert.match(disposition?.reason ?? "", /RangeError: function signature mismatch$/u, "the exact cause is the member's reason");
+        assert.match(
+            packetSection(await getPacket(db, turn.turnId), "notices"),
+            /search_progress: Repository search index is ready; 1 of \d+ derivations failed: "\/interrupted\.md" — Mimetype derivation failed for "\/interrupted\.md" \("text\/markdown"\)\. RangeError: function signature mismatch$/mu,
+            "the packet's notice names the failed member",
+        );
     } finally { await mimetypes.dispose(); await db.close(); }
 });
 

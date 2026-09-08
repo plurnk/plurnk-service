@@ -3,7 +3,7 @@
 // artifacts; FTS and graph relationships consume them uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
+import { MimetypeDerivationError, isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
 import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
@@ -47,7 +47,9 @@ type PendingDerivation = {
 };
 type DerivationCallbacks = {
     onNotice?: (notice: Notice) => void;
+    onMemberFailure?: (failure: MemberFailure) => void;
 };
+type MemberFailure = { path: string; reason: string };
 const NO_PROJECTION_IDENTITY = "projection:none";
 
 export default class SearchIndex {
@@ -132,13 +134,18 @@ export default class SearchIndex {
                 },
             );
         } catch (error) {
-            if (ctx.signal?.aborted === true || !isMimetypeInputError(error)) throw error;
+            if (ctx.signal?.aborted === true) throw error;
+            // {§derivation-member-failure}: a typed invalid-source rejection and a handler's own
+            // defect on this one member ({§mimetype-derivation-evidence}) are both that member's
+            // terminal disposition, never the pass's. Anything else thrown here — a grammar not
+            // installed, a contract violation outside the handler — stays fatal.
+            const handlerDefect = error instanceof MimetypeDerivationError;
+            if (!handlerDefect && !isMimetypeInputError(error)) throw error;
             await EntryGraph.populateFrom(db, derivationId, [], []);
             await EntryFts.index(db, derivationId, "");
-            await attachComplete(
-                searchExcluded === undefined ? "failed" : "excluded",
-                searchExcluded ?? (error instanceof Error ? error.message : String(error)),
-            );
+            const reason = searchExcluded ?? SearchIndex.#failureReason(error);
+            await attachComplete(searchExcluded === undefined ? "failed" : "excluded", reason);
+            if (handlerDefect && searchExcluded === undefined) callbacks.onMemberFailure?.({ path: r.pathname, reason });
             return;
         }
         ctx.signal?.throwIfAborted();
@@ -180,6 +187,15 @@ export default class SearchIndex {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
         }
         return configuredConcurrency === -1 ? cores : configuredConcurrency;
+    }
+
+    // The exact reason for a member's `failed` row: the handler's invocation context plus its
+    // original cause, or the typed rejection's own message.
+    static #failureReason(error: unknown): string {
+        if (!(error instanceof MimetypeDerivationError)) return error instanceof Error ? error.message : String(error);
+        const cause = error.cause;
+        const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+        return `${error.message} ${detail}`;
     }
 
     static async maintain(ctx: PlurnkSchemeContext): Promise<number> {
@@ -299,6 +315,7 @@ export default class SearchIndex {
         const total = pending.length;
         if (total === 0) return 0;
         let completed = 0;
+        const memberFailures: MemberFailure[] = [];
         const projectionNotices = new Set<string>();
         const forwardProjectionNotice = (notice: Notice): void => {
             const key = JSON.stringify(notice);
@@ -306,7 +323,7 @@ export default class SearchIndex {
             projectionNotices.add(key);
             ctx.pushNotice?.(notice);
         };
-        const publish = (phase: "preparing" | "indexing" | "complete" | "failed", message: string, level: "info" | "error" = "info"): void => {
+        const publish = (phase: "preparing" | "indexing" | "complete" | "failed", message: string, level: "info" | "warn" | "error" = "info"): void => {
             const terminal = phase === "complete";
             const current = terminal ? total : completed;
             const percent = terminal ? 100 : Math.floor((current / total) * 100);
@@ -341,6 +358,7 @@ export default class SearchIndex {
                         ctx.signal?.throwIfAborted();
                         await SearchIndex.#deriveOne(ctx, r, hash, searchExcluded, binary, {
                             onNotice: forwardProjectionNotice,
+                            onMemberFailure: (failure) => { memberFailures.push(failure); },
                         });
                         completed++;
                     }
@@ -368,7 +386,19 @@ export default class SearchIndex {
         heartbeat.unref();
         try {
             await workerPool([...groups.values()]);
-            publish("complete", "Repository search index is ready");
+            if (memberFailures.length === 0) {
+                publish("complete", "Repository search index is ready");
+            } else {
+                // {§derivation-member-failure}: the pass completes; the terminal notice names the
+                // first failed member and carries the count.
+                const [first] = memberFailures;
+                const rest = memberFailures.length - 1;
+                publish(
+                    "complete",
+                    `Repository search index is ready; ${memberFailures.length} of ${total} derivations failed: ${JSON.stringify(first!.path)} — ${first!.reason}${rest === 0 ? "" : ` (and ${rest} more)`}`,
+                    "warn",
+                );
+            }
             return total;
         } catch (error) {
             publish("failed", `Search indexing failed: ${error instanceof Error ? error.message : String(error)}`, "error");
