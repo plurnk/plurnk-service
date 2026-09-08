@@ -6,6 +6,7 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
+import { aliveChildren } from "./AguiPlus.ts";
 import type { TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
 import type {
@@ -27,6 +28,8 @@ interface Thread {
     openStreams: Set<number>;
     deferredFinish: AguiEvent[] | null;
     pendingTerminations: unknown[];
+    // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
+    children: number | null;
 }
 
 export type NotificationScope = "conversation" | "operation" | "result";
@@ -97,6 +100,7 @@ export default class Portal {
     #routeNotification(workspaceId: number, method: string, params: unknown): void {
         const entryId = (params as { entryId?: unknown }).entryId;
         for (const thread of this.#threads.get(workspaceId) ?? []) {
+            if (Portal.#touchesChildren(thread, method, params)) void this.#refreshChildren(workspaceId, thread);
             if (!Portal.#ownsNotification(thread, method, params)) continue;
             if (method === "loop/terminated") {
                 const loopId = (params as { loopId?: unknown }).loopId;
@@ -117,6 +121,30 @@ export default class Portal {
                 this.#finishThread(thread, deferred);
             }
         }
+    }
+
+    // {§agui-status-children} — the events after which the bound Worker's alive direct children may
+    // differ: another worker's loop concluded or began (it may be a child), or the bound Worker's
+    // own WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
+    static #touchesChildren(thread: Thread, method: string, params: unknown): boolean {
+        if (thread.notificationScope !== "conversation") return false;
+        const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown } };
+        if (method === "loop/terminated" || method === "loop/packet") {
+            return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
+        }
+        if (method === "log/entry") {
+            return payload.entry?.worker_id === thread.workerId
+                && (payload.entry.op === "WORK" || payload.entry.op === "FORK" || payload.entry.op === "KILL");
+        }
+        return false;
+    }
+
+    async #refreshChildren(workspaceId: number, thread: Thread): Promise<void> {
+        const rows = await this.#seam.listWorkers(workspaceId, { parentWorkerId: thread.workerId });
+        const children = aliveChildren(rows);
+        if (children === thread.children || !(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
+        thread.children = children;
+        thread.emit([{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/children", value: children }] }]);
     }
 
     static #ownsNotification(thread: Thread, method: string, params: unknown): boolean {
@@ -341,6 +369,7 @@ export default class Portal {
             openStreams: new Set(),
             deferredFinish: null,
             pendingTerminations: [],
+            children: null,
         };
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }

@@ -130,6 +130,16 @@ sequence.
   outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 
+§agui-status-children **Children are counted by the daemon, never inferred.** `status.children`
+is the bound Worker's alive direct children — `queued`, `running`, or `parked` under
+{§loop-lifecycle-vocabulary}; a parked child still owes a result and is exactly the one a user
+hops to. The module computes it from `ApplicationPort.listWorkers({ parentWorkerId })` for every
+snapshot and whole-gauge replacement, and republishes `STATE_DELTA /plurnk/status/children` only
+when the count changes: after another worker's `loop/terminated` or `loop/packet`, or after the
+bound Worker's own `WORK`, `FORK`, or `KILL` row lands. Clients render the number as their child
+indicator and never poll the directory to keep it honest (topology is navigation, not a dashboard:
+the client hops to a child rather than watching it).
+
 §agui-numbers-passthrough **Gauge numbers pass through verbatim.** The module
 never recomputes the daemon's gauge or promotes accounting into application
 state paths that could be mistaken for standard AG-UI fields.
@@ -142,6 +152,7 @@ state paths that could be mistaken for standard AG-UI fields.
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
 | `snapshot.plurnk.status.{scheduledAt,intervalMinutes,recurrenceId}` | {§application-loop-observation} | Scheduled-task timing, initialized to `null` when absent. Packet deltas refresh it and clear an ordinary task's absent timing. |
+| `snapshot.plurnk.status.children` | `ApplicationPort.listWorkers({ parentWorkerId })` | The bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result. Computed by the daemon for every snapshot and whole-gauge replacement, and republished as `STATE_DELTA /plurnk/status/children` only when it changes: after another worker's `loop/terminated` or `loop/packet` (it may be a child), or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands (it spawned or killed one). Clients render the number and never poll the directory for it ({§agui-status-children}). |
 | `STATE_DELTA /plurnk/status/*`               | packet, termination, and derivation events | Replaceable lifecycle, packet chronology, and transient activity. Reattachment snapshots carry current derivation activity through the same projection, without polling or duplicate routine Notices. Clients never reconstruct packet count from row or STEP traffic. |
 | `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |

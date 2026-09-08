@@ -14,7 +14,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
-import { derivationActivity, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, derivationActivity, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { Validator, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -333,14 +333,16 @@ export default class Module {
     }
 
     async #workerStatus(workspaceId: number, workerId: number): Promise<AguiStatusState> {
-        const [{ model }, loops] = await Promise.all([
+        const [{ model }, loops, children] = await Promise.all([
             this.#seam.readWorkerModel({ workspaceId, workerId }),
             this.#seam.listWorkerLoops({ workspaceId, workerId }),
+            this.#seam.listWorkers(workspaceId, { parentWorkerId: workerId }),
         ]);
         return statusState(
             model,
             loops.at(-1) ?? null,
             derivationActivity(this.#seam.workspaceDerivationStatus(workspaceId)),
+            aliveChildren(children),
         );
     }
 

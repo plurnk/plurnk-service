@@ -18,8 +18,7 @@ import {
     resolutionFromResume,
     stateDelta,
     stateSnapshot,
-    statusState,
-} from "./AguiPlus.ts";
+    statusState, aliveChildren } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
 import { DEFAULT_LOOP_POLICY, type ClientInteractionProjection } from "@plurnk/plurnk-contracts";
 
@@ -177,6 +176,7 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         scheduledAt: null,
         intervalMinutes: null,
         recurrenceId: null,
+        children: 0,
     });
     assert.deepEqual(statusState(null, null), {
         lifecycle: "idle",
@@ -187,7 +187,14 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         scheduledAt: null,
         intervalMinutes: null,
         recurrenceId: null,
+        children: 0,
     });
+    // {§agui-status-children} — alive means still owing a result: queued, running, or parked.
+    assert.equal(aliveChildren([
+        { lifecycle: "queued" }, { lifecycle: "running" }, { lifecycle: "parked" },
+        { lifecycle: "completed" }, { lifecycle: "failed" }, { lifecycle: "idle" },
+    ]), 3);
+    assert.equal(statusState(null, null, null, 3).children, 3);
 });
 
 test("derivation activity carries live work into the initial status snapshot and clears completion", () => {

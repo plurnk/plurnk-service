@@ -150,7 +150,14 @@ export interface AguiStatusState {
     readonly scheduledAt: string | null;
     readonly intervalMinutes: number | null;
     readonly recurrenceId: number | null;
+    // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
+    readonly children: number;
 }
+
+// {§agui-status-children} — a child that still owes a result is alive; one that concluded is not.
+export const ALIVE_LIFECYCLES: ReadonlySet<LoopLifecycle> = new Set<LoopLifecycle>(["queued", "running", "parked"]);
+export const aliveChildren = (rows: readonly { readonly lifecycle: LoopLifecycle }[]): number =>
+    rows.filter(({ lifecycle }) => ALIVE_LIFECYCLES.has(lifecycle)).length;
 
 export const derivationActivity = (value: unknown): AguiStatusActivity | null => {
     if (value === null) return null;
@@ -170,6 +177,7 @@ export const statusState = (
     model: ModelRoute | null,
     loop: ApplicationLoopProjection | null,
     activity: AguiStatusActivity | null = null,
+    children = 0,
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
@@ -180,6 +188,7 @@ export const statusState = (
     scheduledAt: loop?.scheduledAt ?? null,
     intervalMinutes: loop?.intervalMinutes ?? null,
     recurrenceId: loop?.recurrenceId ?? null,
+    children,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

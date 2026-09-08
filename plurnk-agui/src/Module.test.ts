@@ -440,6 +440,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             scheduledAt: null,
             intervalMinutes: null,
             recurrenceId: null,
+            children: 0,
             activity: {
                 kind: "derivation",
                 phase: "indexing",
