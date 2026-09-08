@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { PlurnkParser, PLURNK_OPS } from "../../src/index.ts";
 
 const teaching = readFileSync(new URL("../../plurnk.md", import.meta.url), "utf8");
+const policy = readFileSync(new URL("../../../plurnk-meta/POLICY.md", import.meta.url), "utf8");
 
 test("concrete compact examples in plurnk.md parse as one clean operation", () => {
     const examples = [...teaching.matchAll(/^[*|].*?(```[A-Z]+[^`\n]*```)/gm)].map((match) => match[1]!);
@@ -17,10 +18,10 @@ test("concrete compact examples in plurnk.md parse as one clean operation", () =
     }
 });
 
-test("the complete workflow example parses as an executable turn", () => {
-    const workflow = [...teaching.matchAll(/^````example\n([\s\S]*?)\n````$/gm)]
+test("the complete policy workflow example parses as an executable turn", () => {
+    const workflow = [...policy.matchAll(/^````example\n([\s\S]*?)\n````$/gm)]
         .map((match) => match[1]!.trim()).find((source) => source.startsWith("```EDIT "));
-    assert.ok(workflow, "the reference includes a workflow");
+    assert.ok(workflow, "the default policy includes a workflow");
     const parsed = PlurnkParser.parse(workflow);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     assert.equal(parsed.unparsedTail, undefined);

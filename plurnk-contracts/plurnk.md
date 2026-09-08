@@ -86,12 +86,12 @@ filter pattern?
 ```
 ````
 
-* ```` ```KILL (worker://~/notes.md)``` ```` without a scope deletes an entry.
-* ```` ```KILL (src/app.js) <@zyxwv>``` ```` removes one line by hash anchor.
-* ```` ```KILL (sh:///1/2/3/EXEC)``` ```` stops a running command.
-* ```` ```KILL (worker://recheck)``` ```` terminates a worker.
-* ```` ```KILL (log:///1/[1-7]/*/{NEXT,READ})``` ```` removes matching log items.
-* ```` ```KILL (log:///**/READ) <17,-1>``` ```` trims each item's log lines from 17 on.
+* ```KILL (worker://~/notes.md)``` without a scope deletes an entry.
+* ```KILL (src/app.js) <@zyxwv>``` removes one line by hash anchor.
+* ```KILL (sh:///1/2/3/EXEC)``` stops a running command.
+* ```KILL (worker://recheck)``` terminates a worker.
+* ```KILL (log:///1/[1-7]/*/{NEXT,READ})``` removes matching log items.
+* ```KILL (log:///**/READ) <17,-1>``` trims each item's log lines from 17 on.
 * A log item or line KILL doesn't delete the source.
 
 ### NEXT - Continue to act on results in next turn.
@@ -128,7 +128,7 @@ message
 ```
 ````
 
-* Do not DONE unless all results, workers, and streams are already retrieved or resolved.
+* Do not use DONE unless all results, workers, and streams are already retrieved or resolved.
 
 ## Pattern Filtering
 
@@ -175,46 +175,3 @@ message
 * The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
 YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.
-
-## Example Turn
-
-````example
-
-```EDIT (worker://~/report-summary.md) <@wCf7x>
-* Q3 results: 42%
-```
-
-```EDIT (worker://~/report-summary.md) <-1>
-* Q4 results exceeded Q3
-```
-
-```sqlite <!-- quarter-over-quarter growth from the report's figures -->
-WITH q(quarter, revenue) AS (VALUES ('Q3', 4.2e6), ('Q4', 5.1e6))
-SELECT
-    quarter, FORMAT('%,.0f', revenue) AS revenue,
-    ROUND(100.0 * (revenue / LAG(revenue) OVER (ORDER BY quarter) - 1), 1) AS growth_pct
-FROM q;
-```
-
-```SEND (worker://exec-strategy) <0,60>
-Check for updated revenue figures and report material changes.
-```
-
-```KILL (log:///1/5/3/READ) <42,67> <!-- purge reasoning about completed task -->```
-
-```MOVE (log:///1/5/3/READ) <123,456> (worker://~/notes/Q4-insights.md) <!-- offload reasoning to private notes -->```
-
-```BARE (worker://~/notes/Q4-insights.md) <!-- focused analysis, no log or tools needed -->
-Review for grammar and style.
-```
-
-```KILL (log:///1/5/4/READ) <!-- purge previous summary chunk -->```
-
-```READ (report.md) <401,600> <!-- retrieve next summary chunk -->```
-
-```NEXT
-[{"content":"Update the private summary with relevant findings from report.md.","status":"in_progress"},
- {"content":"Distill findings from this chunk, then continue reading.","status":"pending"}]
-```
-
-````
