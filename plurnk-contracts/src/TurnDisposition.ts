@@ -1,4 +1,5 @@
-import type { DispositionStatement } from "./types.generated.ts";
+import type { ContinuationStatement, DispositionStatement } from "./types.generated.ts";
+import PlanValue from "./PlanValue.ts";
 
 // {§turn-disposition} — numeric lifecycle outcomes are derived, not model operands.
 export default class TurnDisposition {
@@ -10,6 +11,20 @@ export default class TurnDisposition {
 
     static is(statement: { op: string }): statement is DispositionStatement {
         return TurnDisposition.isOp(statement.op);
+    }
+
+    static isContinuationOp(op: string): op is ContinuationStatement["op"] {
+        return op === "NEXT" || op === "WAIT";
+    }
+
+    static isContinuation(statement: { op: string }): statement is ContinuationStatement {
+        return TurnDisposition.isContinuationOp(statement.op);
+    }
+
+    static bodyText(statement: DispositionStatement): string {
+        return TurnDisposition.isContinuation(statement)
+            ? PlanValue.render(statement.body)
+            : statement.body?.raw ?? "";
     }
 
     static status(op: DispositionStatement["op"]): 102 | 202 | 200 | 499 {

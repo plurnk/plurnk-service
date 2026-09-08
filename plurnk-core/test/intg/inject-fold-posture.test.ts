@@ -7,7 +7,7 @@ import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNo
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
-    makeMockResponse("```PLAN\nhold\n```\n\n```EXEC\necho hold\n```\n\n```NEXT\nworking\n```", 10),
+    makeMockResponse("\n```EXEC\necho hold\n```\n\n```NEXT\nworking\n```", 10),
     makeMockResponse("```DONE\ndone\n```", 10),
     makeMockResponse("```DONE\ndone again\n```", 10),
 ] });

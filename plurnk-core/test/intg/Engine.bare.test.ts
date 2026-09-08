@@ -10,10 +10,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCa
 
 const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
     assistant: {
-        content: `\`\`\`PLAN
-Use isolated inference where it is sufficient.
-\`\`\`
-${operations}
+        content: `${operations}
 `,
         reasoning: null,
     },
@@ -203,7 +200,7 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
             [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
         ]);
         assert.equal(child.maxActive, 2);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "EDIT", "BARE", "BARE", "NEXT"], "source reads do not mint extra log receipts");
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "NEXT"], "source reads do not mint extra log receipts");
     } finally { await db.close(); }
 });
 
@@ -389,7 +386,7 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
         assert.deepEqual(child.completions, ["before", "after"]);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "BARE", "EDIT", "BARE", "NEXT"]);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "NEXT"]);
     } finally { await db.close(); }
 });
 
@@ -619,7 +616,7 @@ question
             });
             assert.equal(result.status, 102, "the diagnostic is a same-turn failure the model sees in the next packet");
             assert.deepEqual(child.completions, [], "no isolated call was made for the dropped BARE");
-            assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", null, label]);
+            assert.deepEqual(result.outcomes.map(({ op }) => op), [null, label]);
             assert.deepEqual(result.outcomes.filter(({ op }) => op === null), [
                 { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
             ]);

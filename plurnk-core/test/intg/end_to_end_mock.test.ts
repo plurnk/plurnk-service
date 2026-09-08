@@ -1,7 +1,8 @@
+import { dispositionStmt } from "./_dsl.ts";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, DispositionStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, PlurnkStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -21,12 +22,6 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
     target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
-});
-
-const dispositionStmt = (op: DispositionStatement["op"], body: string): DispositionStatement => ({
-    metadata: null,
-    op, annotation: null, target: null, lineMarker: null,
-    body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 
 const response = (ops: PlurnkStatement[], content: string = ""): MockResponse => ({

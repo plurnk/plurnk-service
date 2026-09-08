@@ -168,7 +168,7 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("```PLAN\nAsk the isolated factual question.\n```\n\n```BARE\nWhat is the capital of Germany?\n```\n\n```NEXT\nReview the answer.\n```"),
+            makeMockResponse("\n```BARE\nWhat is the capital of Germany?\n```\n\n```NEXT\nReview the answer.\n```"),
             makeMockResponse("```DONE\nThe isolated answer was reviewed.\n```"),
         ],
     });

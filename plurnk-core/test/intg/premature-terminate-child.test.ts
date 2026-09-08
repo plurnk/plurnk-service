@@ -180,7 +180,7 @@ test("model NEXT with WAIT timing retains valid work and exposes a recoverable p
         const loopId = await insertLoop(db, workerId, 1, "read the note");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "```PLAN\n[]\n```\n```READ (worker:///note.txt)```\n```NEXT <-1>\nstanding by\n```";
+        const content = "```READ (worker:///note.txt)```\n```NEXT <-1>\nstanding by\n```";
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
             workspaceId, workerId, loopId,
@@ -447,7 +447,7 @@ test("{§send-final-strike-retrieval}: changing retrieval targets still allows c
 
 test("a retrieval refusal grants no exemption from the ordinary idle-turn rail", async () => {
     // The next packet already contains the retrieval result and directs the model to review it
-    // before concluding. PLAN + NEXT performs no work and remains an ordinary idle strike.
+    // before concluding. NEXT with an inventory performs no work and remains an ordinary idle strike.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `grace-${crypto.randomUUID()}`);
@@ -455,16 +455,7 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
         const loopId = await insertLoop(db, workerId, 1, "go");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const planStmt = {
-            op: "PLAN", annotation: null, target: null,
-            metadata: null, lineMarker: null,
-            body: [{
-                content: "Wait for the retrieval result.",
-                status: "in_progress",
-            }],
-            position: { line: 1, column: 1 },
-        } as const;
-        const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, dispositionStmt("NEXT", "waiting")] } });
+        const idle = () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("NEXT", "Wait for the retrieval result.")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [
             { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), dispositionStmt("DONE", "Hi")] } },
             idle(), idle(), idle(), idle(),

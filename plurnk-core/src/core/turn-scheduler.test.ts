@@ -14,9 +14,6 @@ const statements = (source: string): PlurnkStatement[] => {
 
 test("operations retain authored order across mutations, observations and asynchronous dispatch", () => {
     const authored = statements([
-        "```PLAN",
-        "work",
-        "```",
         "",
         "```READ (notes.md)```",
         "```EXEC",
@@ -44,7 +41,7 @@ test("operations retain authored order across mutations, observations and asynch
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(({ op }) => op),
-        ["PLAN", "READ", "EXEC", "EDIT", "FIND", "BARE", "WORK", "KILL", "DONE"],
+        ["READ", "EXEC", "EDIT", "FIND", "BARE", "WORK", "KILL", "DONE"],
     );
 });
 
@@ -71,10 +68,7 @@ test("scheduling preserves operation identity and does not mutate its input", ()
 
 test("every disposition follows trailing operations without reordering those operations", () => {
     for (const label of ["NEXT", "WAIT", "DONE", "FAIL"]) {
-        const authored = statements(`\`\`\`PLAN
-[]
-\`\`\`
-\`\`\`${label}
+        const authored = statements(`\`\`\`${label}
 Disposition.
 \`\`\`
 \`\`\`SEND (worker://reviewer)
@@ -82,10 +76,10 @@ Message.
 \`\`\`
 \`\`\`READ (notes.md)\`\`\`
 \`\`\`KILL (log:///1/2/3/READ)\`\`\``);
-        const disposition = authored[1];
+        const disposition = authored[0];
         const scheduled = scheduleTurnOps(authored);
-        assert.deepEqual(scheduled.map(({ op }) => op), ["PLAN", "SEND", "READ", "KILL", label], label);
+        assert.deepEqual(scheduled.map(({ op }) => op), ["SEND", "READ", "KILL", label], label);
         assert.equal(scheduled.at(-1), disposition, label);
-        assert.equal(authored[1], disposition, "scheduling never rewrites authored order");
+        assert.equal(authored[0], disposition, "scheduling never rewrites authored order");
     }
 });

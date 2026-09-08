@@ -28,10 +28,7 @@ const htmlPage = (): string => [
 ].join("\n");
 
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+    const found = PlurnkParser.parse(`${dsl}`).items.find(
         (item) => item.kind === "statement" && item.statement.op === "READ",
     );
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
@@ -186,10 +183,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
         }) as typeof fetch;
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
-            const found = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+            const found = PlurnkParser.parse(`${dsl}`).items.find(
                 (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("```READ") ? "READ" : "FIND"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);

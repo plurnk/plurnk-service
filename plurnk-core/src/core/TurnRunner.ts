@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, CopyStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, CopyStatement, ReadStatement, UrlPath, FindStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -732,21 +732,8 @@ export default class TurnRunner {
         }
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
-        // example itself: an ordinary PLAN, the actual orienting operations,
-        // and an ordinary NEXT.
+        // example itself: the actual orienting operations and an ordinary NEXT.
         if (initializationTurn !== null) {
-            const plan: PlanStatement = {
-                op: "PLAN", annotation: null,
-                target: null, metadata: null, lineMarker: null,
-                body: [
-                    {
-                        content: "Discover the tooling available and survey the workspace file root.",
-                        status: "in_progress",
-                    },
-                ],
-                position: UNKNOWN_POSITION,
-            };
-            initializationStatements.push(plan);
             // {§worker-initialization-entry} — the prompt is archived into the
             // worker's private space: the worked COPY specimen, and the private
             // space shown as scratch. An append onto an absent entry creates it.
@@ -977,7 +964,7 @@ export default class TurnRunner {
             }
             const send: DispositionStatement = {
                 op: "NEXT", annotation: null, target: null, metadata: null, lineMarker: null,
-                body: { raw: "Next: Address the prompt.", json: null },
+                body: [{ content: "Address the prompt.", status: "pending" }],
                 position: UNKNOWN_POSITION,
             };
             initializationStatements.push(send);
@@ -1155,7 +1142,6 @@ export default class TurnRunner {
             const kills = await OverflowTurn.plan(this.#db, loopId, turnId);
             await Turn.becomeOverflow(this.#db, turnId);
             const source = TurnOps.renderInternal([
-                OverflowTurn.planStatement(),
                 ...kills.map(({ statement }) => statement),
                 OverflowTurn.sendStatement(),
             ]);
@@ -1908,9 +1894,7 @@ export default class TurnRunner {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
-        // PLAN is an ordinary op — emitted by the model, dispatched, and passed to the
-        // client as a log entry. No special hoisting into the reasoning field. Only
-        // structured operations are executable; interstitial text is not an operation.
+        // Only structured operations are executable; interstitial text is not an operation.
         // Full PlurnkParseError context is preserved on rejected attempt evidence;
         // warnings remain admissible Notices. {§parse-diagnostics}
         const parseErrors: ParseErrorInfo[] = [];
@@ -1964,7 +1948,6 @@ export default class TurnRunner {
             }
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
-        const plan = ops[0]?.op === "PLAN" ? ops[0] : undefined;
         const dispositions = ops.filter(TurnDisposition.is);
         const finalOp = dispositions.length === 1 ? dispositions[0] : undefined;
         const terminalSend = finalOp;
@@ -1974,12 +1957,7 @@ export default class TurnRunner {
         const recoverableParseErrors = terminalSend !== undefined && !hasUnparsedTail
             ? parseErrors.filter(
                 (error) =>
-                    error.code !== "invalid-turn-structure" && (
-                        error.code === PlurnkParser.MISSING_DISPOSITION
-                        || (
-                            (plan === undefined || comparePosition(error, plan.position) > 0)
-                        )
-                    ),
+                    error.code !== "invalid-turn-structure",
             ).toSorted(comparePosition)
             : [];
         const emissionValid = preParsedOps !== undefined

@@ -7,10 +7,7 @@ import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const turn = (operation: string, status = "NEXT") => ({
-    assistant: { content: `\`\`\`PLAN
-[]
-\`\`\`
-${operation}
+    assistant: { content: `${operation}
 \`\`\`${status}
 Continue.
 \`\`\``, reasoning: null },

@@ -9,7 +9,7 @@ import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 
 const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => {
     const parsed = PlurnkParser.parse([
-        PlurnkParser.frame("PLAN", "[]"), source, PlurnkParser.frame("NEXT", null),
+        source, PlurnkParser.frame("NEXT", null),
     ].join("\n"));
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === op,
@@ -77,7 +77,7 @@ test("{§safe-uri-target-groups}: ambiguous or ineligible targets remain one exa
         parseOp("```READ (worker:///a local.md)```", "READ"),
         parseOp("```READ (https://example.com/a,b)```", "READ"),
         parseOp("```READ (worker:///notes%20and%20plans.md)```", "READ"),
-        parseOp("```KILL (log:///1/1/*/{PLAN,READ})```", "KILL"),
+        parseOp("```KILL (log:///1/1/*/{NEXT,READ})```", "KILL"),
         parseOp("```KILL (worker:///a local.md)```", "KILL"),
         parseOp("```FIND (worker:///a worker:///b)```", "FIND"),
         parseOp("```EDIT (worker:///a worker:///b)\nreplacement\n```", "EDIT"),

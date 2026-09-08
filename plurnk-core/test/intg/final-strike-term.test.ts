@@ -27,10 +27,7 @@ const fixture = async (t: TestContext) => {
 
 const response = (operation: string, disposition = "DONE", body = "The answer is 42.") => ({
     assistant: {
-        content: `\`\`\`PLAN
-[]
-\`\`\`
-${operation}
+        content: `${operation}
 \`\`\`${disposition}
 ${body}
 \`\`\``,

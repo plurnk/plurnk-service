@@ -199,9 +199,9 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                     op: string | null; initial_folded: string; folded: string; attrs: string;
                 }>({ turn_id: matEdit.turn_id });
                 const adminOps = adminRows.map(({ op }) => op);
-                assert.equal(adminOps[0], "PLAN");
-                assert.ok(adminOps.slice(1, -2).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-2), ["DONE", null], "the exact PLAN…SEND program remains durable without a redundant self-KILL");
+                assert.equal(adminOps[0], "EDIT");
+                assert.ok(adminOps.slice(0, -2).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
+                assert.deepEqual(adminOps.slice(-2), ["DONE", null], "the exact disposition-ended program remains durable without a redundant self-KILL");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const turnOps = adminRows.find(({ op }) => op === null);
                 assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");

@@ -42,7 +42,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
             assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
         } finally {
             clearTimeout(timer);
-            send("</think>```PLAN\n[]\n```\n```DONE\nDone.\n```", "stop");
+            send("</think>```DONE\nDone.\n```", "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -116,10 +116,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         // Finish in a different order from admission while all three streams overlap.
         for (const index of [1, 2, 0]) {
             const { name } = workers[index]!;
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`PLAN
-[]
-\`\`\`
-\`\`\`DONE
+            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`DONE
 ONLY_${name}
 \`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,

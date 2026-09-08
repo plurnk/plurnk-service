@@ -1,13 +1,12 @@
 // Producer-neutral runtime entry point ({§actor-boundary-doc-injection}). The
 // harness opens an administrative loop and durable `_plurnk` turn in the
-// addressed worker, then admits a real PLAN…SEND program through the same turn
+// addressed worker, then admits a real operation program through the same turn
 // executor used by model and recovery programs. Generated state and its causal
 // evidence therefore share one owner; neither is a hidden write or a kernel
 // mirror.
 
 import {
     UNKNOWN_POSITION,
-    type PlanStatement,
     type PlurnkStatement,
     type DispositionStatement,
 } from "@plurnk/plurnk-contracts";
@@ -44,19 +43,10 @@ export default class DispatchAsPlurnk {
         });
         let turnOpen = true;
         const program: PlurnkStatement[] = [
-            {
-                op: "PLAN",
-                annotation: null,
-                target: null,
-                metadata: null,
-                lineMarker: null,
-                body: [{ content: summary, status: "in_progress" }],
-                position: UNKNOWN_POSITION,
-            } satisfies PlanStatement,
             ...statements,
             {
                 op: "DONE",
-                annotation: null,
+                annotation: summary,
                 target: null,
                 metadata: null,
                 lineMarker: null,

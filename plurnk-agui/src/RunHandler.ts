@@ -322,8 +322,10 @@ export default class RunHandler {
 
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {
         const durableMessageIds = new Set(history.flatMap((entry) =>
-            entry.origin === "model" && (entry.op === "SEND" || typeof entry.op === "string" && TurnDisposition.isOp(entry.op))
-                ? [String(entry.coordinate ?? entry.id)]
+            entry.origin === "model" && typeof entry.op === "string" && TurnDisposition.isContinuationOp(entry.op)
+                ? [`${input.threadId}/plan`]
+                : entry.origin === "model" && (entry.op === "SEND" || typeof entry.op === "string" && TurnDisposition.isOp(entry.op))
+                    ? [String(entry.coordinate ?? entry.id)]
                 : []));
         return input.messages.some(({ id }) => durableMessageIds.has(id));
     }

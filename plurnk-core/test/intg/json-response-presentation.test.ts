@@ -24,11 +24,8 @@ test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted 
         : new Response(source, { headers: { "content-type": "application/json", "cache-control": "max-age=600" } }));
     let sequence = 0;
     const dispatch = async (dsl: string) => {
-        const parsed = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`);
-        const item = parsed.items.find((item) => item.kind === "statement" && item.statement.op !== "PLAN");
+        const parsed = PlurnkParser.parse(`${dsl}`);
+        const item = parsed.items.find((item) => item.kind === "statement");
         assert.equal(item?.kind, "statement", dsl);
         if (item?.kind !== "statement") throw new Error("operation did not parse");
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "client", statement: item.statement });

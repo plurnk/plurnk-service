@@ -28,7 +28,7 @@ test("line number tracks the offending prose block", () => {
 });
 
 test("operation names in Markdown headings are ordinary documentation", () => {
-    assert.deepEqual(linter.lint("## PLAN\n\nDescribe the plan.\n\n### READ\n\nDescribe reading."), []);
+    assert.deepEqual(linter.lint("## NEXT\n\nDescribe continuation.\n\n### READ\n\nDescribe reading."), []);
 });
 
 test("a longer fence preserves nested programs as literal body text", () => {
@@ -54,7 +54,7 @@ test("an unfinished modifier in an op fence surfaces the parser-owned tail diagn
 });
 
 test("native and named-executor blocks pass op-syntax", () => {
-    const source = "```PLAN\n[]\n```\n\n```READ (file.md) <5>```\n\n```gitea (list_issues)\n{\"repo_id\": 42}\n```";
+    const source = "```READ (file.md) <5>```\n\n```gitea (list_issues)\n{\"repo_id\": 42}\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 
@@ -77,6 +77,6 @@ test("a semicolon-welded clause pair warns under the run-on length", () => {
 });
 
 test("short atomic sentences do not warn", () => {
-    const source = "Open every turn with a PLAN. Conclude with a SEND. Keep it short.";
+    const source = "Continue with NEXT. Conclude with DONE. Keep it short.";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "run-on"), []);
 });

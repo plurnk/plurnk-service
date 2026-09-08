@@ -37,10 +37,7 @@ const response = (
     capacity: ProviderResponse["capacity"],
     grammar?: string,
 ): ProviderResponse => {
-    const turn = content.startsWith("```PLAN") ? content : `\`\`\`PLAN
-[]
-\`\`\`
-${content}`;
+    const turn = content.startsWith("```PLAN") ? content : `${content}`;
     return {
         assistant: {
             content: turn,

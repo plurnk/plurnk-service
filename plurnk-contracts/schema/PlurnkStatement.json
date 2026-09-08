@@ -38,9 +38,6 @@
             "$ref": "#/$defs/KillStatement"
         },
         {
-            "$ref": "#/$defs/PlanStatement"
-        },
-        {
             "$ref": "#/$defs/DispositionStatement"
         }
     ],
@@ -432,42 +429,6 @@
                 }
             }
         },
-        "PlanStatement": {
-            "type": "object",
-            "required": [
-                "op",
-                "annotation",
-                "metadata",
-                "target",
-                "lineMarker",
-                "body",
-                "position"
-            ],
-            "additionalProperties": false,
-            "properties": {
-                "op": {
-                    "const": "PLAN"
-                },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
-                },
-                "metadata": {
-                    "type": "null"
-                },
-                "target": {
-                    "type": "null"
-                },
-                "lineMarker": {
-                    "type": "null"
-                },
-                "body": {
-                    "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"
-                },
-                "position": {
-                    "$ref": "#/$defs/PositionRef"
-                }
-            }
-        },
         "KillStatement": {
             "type": "object",
             "required": [
@@ -581,12 +542,30 @@
             }
         },
         "DispositionStatement": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/ContinuationStatement"
+                },
+                {
+                    "$ref": "#/$defs/ConclusionStatement"
+                }
+            ]
+        },
+        "ContinuationStatement": {
             "type": "object",
             "if": {
-                "properties": { "op": { "const": "WAIT" } }
+                "properties": {
+                    "op": {
+                        "const": "WAIT"
+                    }
+                }
             },
             "else": {
-                "properties": { "lineMarker": { "type": "null" } }
+                "properties": {
+                    "lineMarker": {
+                        "type": "null"
+                    }
+                }
             },
             "required": [
                 "op",
@@ -602,7 +581,44 @@
                 "op": {
                     "enum": [
                         "NEXT",
-                        "WAIT",
+                        "WAIT"
+                    ]
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "metadata": {
+                    "type": "null"
+                },
+                "target": {
+                    "type": "null"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
+            }
+        },
+        "ConclusionStatement": {
+            "type": "object",
+            "required": [
+                "op",
+                "annotation",
+                "metadata",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "op": {
+                    "enum": [
                         "DONE",
                         "FAIL"
                     ]
@@ -617,7 +633,7 @@
                     "type": "null"
                 },
                 "lineMarker": {
-                    "$ref": "#/$defs/LineMarkerOrNull"
+                    "type": "null"
                 },
                 "body": {
                     "$ref": "#/$defs/SendBodyOrNull"

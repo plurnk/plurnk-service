@@ -1,3 +1,4 @@
+import { dispositionStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -5,7 +6,7 @@ import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
 test("input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
@@ -31,13 +32,6 @@ test("input capacity subtracts the total output budget once; reasoning is only i
         KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
         await db.close();
     }
-});
-
-const dispositionStmt = (op: DispositionStatement["op"], body: string): DispositionStatement => ({
-    metadata: null,
-    op, annotation: null, target: null,
-    lineMarker: null, body: { raw: body, json: null },
-    position: { line: 1, column: 1 },
 });
 
 const response = (ops: PlurnkStatement[]): MockResponse => ({

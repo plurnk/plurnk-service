@@ -179,7 +179,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization.filter(({ path }) => !String(path).endsWith("/ops"));
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
+            ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
             "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
         );
         assert.deepEqual(

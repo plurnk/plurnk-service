@@ -38,7 +38,6 @@ export default class StrikeRail {
             throw new Error("cycle evidence requires one result per executed operation");
         }
         const activity = ops.flatMap((statement, index) => {
-            if (statement.op === "PLAN") return [];
             const disposition = TurnDisposition.is(statement);
             const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
                 !SOURCE_DECORATION.has(key) && !(disposition && key === "body")));

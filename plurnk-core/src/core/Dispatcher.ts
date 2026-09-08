@@ -509,8 +509,6 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.edit(this.#scopedEntryEdits.get(statement)!, schemeCtx, context.editSequence);
                 } else if (statement.op === "KILL") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
-                } else if (statement.op === "PLAN") {
-                    result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
                     // EXEC routes unconditionally to its operation owner after
                     // the shared capability resolver admits its runtime/tool.
@@ -1099,14 +1097,6 @@ export default class Dispatcher {
                 ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
             },
         });
-    }
-
-    // PLAN — the model's task inventory. An ordinary op: dispatched like any
-    // other, logged, and broadcast to the client as a log entry — but a pure no-op for
-    // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
-    #handlePlan(statement: PlurnkStatement): DispatchResult {
-        if (statement.op !== "PLAN") throw new Error("unreachable");
-        return { status: 200 };
     }
 
     // {§bare-inference} Reuse exact READ projection without its log/presentation layer.

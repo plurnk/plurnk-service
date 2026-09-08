@@ -12,8 +12,8 @@
 import { after } from "node:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import Owner from "../src/core/Owner.ts";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -46,7 +46,7 @@ export interface LiveWorkspace {
 // Every live/demo worker is a self-contained benchmark artifact. The filesystem
 // allocates a unique, human-readable directory; nothing counts, reuses, moves,
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
-const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname, "../../../..", "benchmarks");
+const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? join(homedir(), "benchmarks");
 
 // A test-file process owns one plugin generation, matching production's long-lived daemon
 // lifetime without coupling its independent workspace databases. Reconstructing a host-sized

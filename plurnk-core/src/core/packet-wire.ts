@@ -883,7 +883,7 @@ export default class PacketWire {
             }
 
             // The canonical full body is shared with log READ, log FIND,
-            // and search derivation. READ/FIND own selection bounds, PLAN is
+            // and search derivation. READ/FIND own selection bounds, NEXT/WAIT carry
             // task inventory, and prompt rows share their packet
             // allowance. Structured mutation receipts own their join bound;
             // every remaining body uses the ordinary fixed preview.
@@ -896,7 +896,7 @@ export default class PacketWire {
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
             const previewExempt = op === "READ"
                 || op === "FIND"
-                || op === "PLAN"
+                || op === "NEXT" || op === "WAIT"
                 || structuredMutationReceipt;
             const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;

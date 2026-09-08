@@ -15,7 +15,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithC
 
 const indexingTurn = {
     assistant: {
-        content: "```PLAN\nfinish indexing\n```\n\n```DONE\ndone\n```",
+        content: "\n```DONE\ndone\n```",
         reasoning: null,
     },
 };

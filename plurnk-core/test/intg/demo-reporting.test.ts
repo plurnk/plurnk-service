@@ -33,7 +33,7 @@ test("{§packet-assembly} the advisory floor instrument measures a real initial 
         });
         assert.doesNotMatch(stdout, /floor report unavailable/);
         assert.match(stdout, /log rows\s+: [1-9]\d* rows, [1-9]\d* tok active, [1-9]\d* metadata/);
-        assert.match(stdout, /by op\s+: .*PLAN \d+.*NEXT \d+/);
+        assert.match(stdout, /by op\s+: .*COPY \d+.*NEXT \d+/);
         if (items === "0") assert.doesNotMatch(stdout, /FIND \d+/, "disabled survey contributes no FIND weight");
         else assert.match(stdout, /FIND [1-9]\d*/, "enabled survey contributes its measured FIND weight");
         assert.match(stdout, /FLOOR \(approx\): ~[1-9]\d* tok/);

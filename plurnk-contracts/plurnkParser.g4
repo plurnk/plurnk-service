@@ -9,7 +9,7 @@ document
     : modelTurnContent EOF
     ;
 
-// PLAN separates saved turns; a disposition need not be their last statement.
+// Each disposition ends one saved turn.
 log
     : turnContent+ EOF
     ;
@@ -22,19 +22,18 @@ modelTurnContent
     : TEXT* modelTurn
     ;
 
-// {§turn-shape} — PLAN is a SHOULD: a turn may open with any operation.
+// {§turn-shape} — turns contain ordinary operations followed by a disposition.
 turn
-    : planStatement? midStatement* dispositionStatement midStatement*
+    : midStatement* dispositionStatement
     ;
 
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
 // disposition is recognized by its own token, never by a whole-turn
 // alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
 // Statements after the disposition stay recognizable here so that model admission
-// can drop them and name what it dropped ({§disposition-ends-turn}); saved logs keep them.
+// can drop them and name what it dropped ({§disposition-ends-turn}).
 modelTurn
-    : planStatement midStatement* (dispositionStatement midStatement*)?
-    | midStatement+ (dispositionStatement midStatement*)?
+    : midStatement+ (dispositionStatement midStatement*)?
     | dispositionStatement midStatement*
     ;
 
@@ -65,7 +64,6 @@ statement
     | workStatement
     | forkStatement
     | killStatement
-    | planStatement
     ;
 
 midStatement
@@ -99,7 +97,6 @@ workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
 forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;
 // KILL takes a scope ({§kill-scope}): lines of a log body or of an entry.
 killStatement : OPEN_KILL slotModifiers? opAnnotation? statementEnd ;
-planStatement : OPEN_PLAN slotModifiers? opAnnotation? statementEnd ;
 lookStatement : OPEN_LOOK slotModifiers? opAnnotation? statementEnd ;
 buffStatement : OPEN_BUFF slotModifiers? opAnnotation? statementEnd ;
 

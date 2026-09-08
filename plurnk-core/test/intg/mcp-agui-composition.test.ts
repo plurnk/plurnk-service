@@ -93,9 +93,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         contextWindow: 1_000_000,
         responses: [
             makeMockResponse([
-                "```PLAN",
-                "Inspect the newly attached tool family.",
-                "```",
                 "",
                 "```READ (worker://~/_plurnk/tools/fixture.md) <1,-1>```",
                 "```NEXT",
@@ -103,9 +100,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "```",
             ].join("\n")),
             makeMockResponse([
-                "```PLAN",
-                "Read the selected echo invocation contract.",
-                "```",
                 "",
                 "```READ (worker://~/_plurnk/tools/fixture/echo.md) <1,-1>```",
                 "```NEXT",
@@ -113,9 +107,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "```",
             ].join("\n")),
             makeMockResponse([
-                "```PLAN",
-                "Exercise argument validation before the successful observation.",
-                "```",
                 "",
                 "```fixture (echo)",
                 "hello from MCP",
@@ -126,9 +117,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "```",
             ].join("\n")),
             makeMockResponse([
-                "```PLAN",
-                "The first invocation failed validation; curate its delivered receipt and retry with the documented object.",
-                "```",
                 "",
                 "```KILL (log:///**/READ)```",
                 "```fixture (echo)",
@@ -140,9 +128,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "```",
             ].join("\n")),
             makeMockResponse([
-                "```PLAN",
-                "Confirm that the curated failure remains available from its source stream.",
-                "```",
                 "",
                 "```FIND (fixture:///**) <1,-1>",
                 "invalid-tool-arguments",
@@ -154,9 +139,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             ].join("\n")),
             makeMockResponse("```DONE\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n```"),
             makeMockResponse([
-                "```PLAN",
-                "Inspect the reviewed host tool before exercising it.",
-                "```",
                 "",
                 "```READ (worker://~/_plurnk/tools/fixture.md) <1,-1>```",
                 "```NEXT",
@@ -164,9 +146,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "```",
             ].join("\n")),
             makeMockResponse([
-                "```PLAN",
-                "Exercise the documented host tool and observe its reported failure.",
-                "```",
                 "",
                 "```fixture (fail)```",
                 "```NEXT",
@@ -447,9 +426,6 @@ test(
             contextWindow: 1_000_000,
             responses: [
                 makeMockResponse([
-                    "```PLAN",
-                    "Inspect the enabled Kubernetes tool family.",
-                    "```",
                     "",
                     "```READ (worker://~/_plurnk/tools/kubernetes.md) <1,-1>```",
                     "```NEXT",
@@ -457,9 +433,6 @@ test(
                     "```",
                 ].join("\n")),
                 makeMockResponse([
-                    "```PLAN",
-                    "Inspect the selected Kubernetes tool contract before calling it.",
-                    "```",
                     "",
                     "```READ (worker://~/_plurnk/tools/kubernetes/configuration_view.md) <1,-1>```",
                     "```NEXT",
@@ -467,9 +440,6 @@ test(
                     "```",
                 ].join("\n")),
                 makeMockResponse([
-                    "```PLAN",
-                    "Call the documented Kubernetes tool and inspect its result.",
-                    "```",
                     "",
                     "```kubernetes (configuration_view)",
                     "{\"minified\":true}",
@@ -481,9 +451,6 @@ test(
                 ].join("\n")),
                 makeMockResponse("```DONE\nThe current Kubernetes context is specimen.\n```"),
                 makeMockResponse([
-                    "```PLAN",
-                    "Inspect the remote HTTP tool family.",
-                    "```",
                     "",
                     "```READ (worker://~/_plurnk/tools/goji.md) <1,-1>```",
                     "```NEXT",
@@ -491,9 +458,6 @@ test(
                     "```",
                 ].join("\n")),
                 makeMockResponse([
-                    "```PLAN",
-                    "Inspect the selected GOJI tool contract.",
-                    "```",
                     "",
                     "```READ (worker://~/_plurnk/tools/goji/goji_explain_term.md) <1,-1>```",
                     "```NEXT",
@@ -501,9 +465,6 @@ test(
                     "```",
                 ].join("\n")),
                 makeMockResponse([
-                    "```PLAN",
-                    "Use the documented remote HTTP tool and resource, then report both observations.",
-                    "```",
                     "",
                     "```goji (goji_explain_term)",
                     "{\"term\":\"AEO\"}",

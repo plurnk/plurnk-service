@@ -54,10 +54,7 @@ const statement = (
 
 const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
     const modifiers = metadata.map((block) => ` {${block}}`).join("");
-    const parsed = PlurnkParser.parse(`\`\`\`PLAN
-acquire the addressed representation
-\`\`\`
-
+    const parsed = PlurnkParser.parse(`
 \`\`\`READ (${target})${modifiers}\`\`\`
 \`\`\`NEXT
 acquisition pending

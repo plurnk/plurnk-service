@@ -20,7 +20,6 @@ import type {
     MoveStatement,
     ResourceSelection,
     ParsedPath,
-    PlanStatement,
     PlurnkStatement,
     Position,
     ReadStatement,
@@ -55,7 +54,6 @@ import {
     LineMarkerContext,
     MetadataContext,
     DispositionStatementContext,
-    PlanStatementContext,
     SendStatementContext,
     TargetContext,
     TargetWithMetadataContext,
@@ -109,9 +107,8 @@ export default class AstBuilder {
     static #JSONPATH = new JSONPathEnvironment();
     static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 
-    static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
-        // PLAN, disposition and SEND contexts can arrive without a statement wrapper.
-        if (ctx instanceof PlanStatementContext) return AstBuilder.#buildPlan(ctx);
+    static build(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
+        // Disposition and SEND contexts can arrive without a statement wrapper.
         if (ctx instanceof DispositionStatementContext) return AstBuilder.#buildDisposition(ctx);
         if (ctx instanceof SendStatementContext) return AstBuilder.#buildSend(ctx);
         const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
@@ -125,10 +122,7 @@ export default class AstBuilder {
         const work = ctx.workStatement(); if (work) return AstBuilder.#buildWork(work);
         const fork = ctx.forkStatement(); if (fork) return AstBuilder.#buildFork(fork);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
-        // `midStatement` has no planStatement alternative (PLAN is never a mid-op); only the
-        // full `statement` rule does.
-        if ("planStatement" in ctx) {
-            const plan = ctx.planStatement(); if (plan) return AstBuilder.#buildPlan(plan);
+        if ("dispositionStatement" in ctx) {
             const disposition = ctx.dispositionStatement(); if (disposition) return AstBuilder.#buildDisposition(disposition);
         }
         throw new Error("statement context has no recognized alternative");
@@ -273,12 +267,23 @@ export default class AstBuilder {
         const op = (ctx.start?.text ?? "").replace(/^`+/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const raw = AstBuilder.#bodyTextOf(ctx);
+        if (TurnDisposition.isContinuationOp(op)) {
+            return {
+                op,
+                annotation: AstBuilder.#annotationOf(ctx),
+                target: null,
+                metadata: null,
+                lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
+                body: PlanValue.admit(raw ?? ""),
+                position,
+            };
+        }
         return {
             op,
             annotation: AstBuilder.#annotationOf(ctx),
             target: null,
             metadata: null,
-            lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
+            lineMarker: null,
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };
@@ -330,39 +335,6 @@ export default class AstBuilder {
             body: AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
-    }
-
-    static #buildPlan(ctx: PlanStatementContext): PlanStatement {
-        const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
-        const rejected = [
-            slots.target !== null ? "(path)" : null,
-            slots.metadata !== null ? "{metadata}" : null,
-            slots.lineMarker !== null ? "<scope>" : null,
-        ].filter((slot): slot is string => slot !== null);
-        if (rejected.length > 0) {
-            throw new PlurnkParseError(
-                position.line,
-                position.column,
-                "visitor",
-                `PLAN does not accept ${AstBuilder.#joinTerms(rejected)}.`,
-            );
-        }
-        return {
-            op: "PLAN",
-            annotation: AstBuilder.#annotationOf(ctx),
-            target: null,
-            metadata: null,
-            lineMarker: null,
-            body: PlanValue.admit(AstBuilder.#requiredBodyTextOf(ctx)),
-            position,
-        };
-    }
-
-    static #joinTerms(terms: readonly string[]): string {
-        if (terms.length < 2) return terms[0] ?? "";
-        if (terms.length === 2) return `${terms[0]} and ${terms[1]}`;
-        return `${terms.slice(0, -1).join(", ")}, and ${terms.at(-1)}`;
     }
 
     static #buildKill(ctx: KillStatementContext): KillStatement {

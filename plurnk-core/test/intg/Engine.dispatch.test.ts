@@ -3,7 +3,7 @@ import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import { PlanValue } from "@plurnk/plurnk-contracts";
-import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, ContinuationStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
@@ -44,9 +44,9 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; bo
     position: { line: 1, column: 1 },
 });
 
-const planStmt = (opts: { body?: string | null }): PlanStatement => ({
+const continuationStmt = (opts: { body?: string | null }): ContinuationStatement => ({
     metadata: null,
-    op: "PLAN", annotation: null,
+    op: "NEXT", annotation: null,
     target: null,
     lineMarker: null,
     body: PlanValue.admit(opts.body ?? ""),
@@ -164,10 +164,10 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     try {
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
         const plan = await engine.dispatch({
-            statement: planStmt({ body: "obsolete goals to curate away" }),
+            statement: continuationStmt({ body: "obsolete goals to curate away" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(plan.status, 200);
+        assert.equal(plan.status, 102);
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
@@ -207,20 +207,20 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survives into tx", async () => {
+test("Engine.dispatch: NEXT is a continuation whose canonical Plurnk value survives into tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
-            statement: planStmt({ body: JSON.stringify([{
+            statement: continuationStmt({ body: JSON.stringify([{
                 content: "The capital of France remains unverified.",
                 status: "pending",
             }]) }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(plan.status, 200);
+        assert.equal(plan.status, 102);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
-        if (log === undefined) throw new Error("PLAN log_entry not found");
-        assert.equal(log.op, "PLAN");
+        if (log === undefined) throw new Error("NEXT log_entry not found");
+        assert.equal(log.op, "NEXT");
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
@@ -237,14 +237,14 @@ const setup = async () => {
     const engine = new Engine({ db, schemes });
     return { db, engine, env };
 };
-test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row (#335)", async () => {
-    // PLAN log bodies project line-per-entry JSONL, so the model's ordinary
+test("Engine.dispatch: a KILL line scope trims one entry of a projected NEXT row (#335)", async () => {
+    // NEXT log bodies project line-per-entry JSONL, so the model's ordinary
     // KILL <line> scope reaches individual plan items — the ruled alternative
-    // to spooky automatic suppression of superseded PLANs.
+    // to spooky automatic suppression of superseded NEXTs.
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: planStmt({ body: JSON.stringify([
+            statement: continuationStmt({ body: JSON.stringify([
                 { content: "Verify the finding.", status: "pending" },
                 { content: "Done: the finished action.", status: "completed" },
                 { content: "Next: the open inquiry.", status: "in_progress" },
@@ -252,7 +252,7 @@ test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row
             ...env, sequence: 1, origin: "model",
         });
         const curated = await engine.dispatch({
-            statement: killStmt({ target: urlPath("log", "/1/1/1/PLAN"), marker: { marks: [2, 2] } }),
+            statement: killStmt({ target: urlPath("log", "/1/1/1/NEXT"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(curated.status, 200);

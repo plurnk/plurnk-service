@@ -8,7 +8,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 test("FIND over an exec stream channel answers the match instead of throwing on the default channel", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```EXEC\nprintf 'alpha\\nbeta\\n'\n```\n\n```WAIT <5>\nwaiting\n```", 10),
-        makeMockResponse("```FIND (sh:///1/2/3/EXEC#stdout)\n/beta/\n```\n\n```NEXT\nlooking\n```", 10),
+        makeMockResponse("```FIND (sh:///1/2/2/EXEC#stdout)\n/beta/\n```\n\n```NEXT\nlooking\n```", 10),
         makeMockResponse("```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

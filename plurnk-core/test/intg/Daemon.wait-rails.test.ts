@@ -8,10 +8,7 @@ import { withDaemon } from "./_rpc.ts";
 
 const invalidFind = "```FIND (worker:///x)\n$fC\n```";
 const response = (dsl: string) => ({
-    assistant: { content: `\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`, reasoning: null },
+    assistant: { content: `${dsl}`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 

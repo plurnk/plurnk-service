@@ -58,7 +58,7 @@ export default class TurnDispositionHandler {
     }): Promise<DispatchResult> {
         const { workerId, loopId, turnId } = ctx;
         const status = TurnDisposition.status(statement.op);
-        const raw = statement.body === null ? "" : statement.body.raw;
+        const raw = TurnDisposition.bodyText(statement);
 
         // {§park-202-only} applies to direct AST producers as well as parsed programs.
         if (statement.op !== "WAIT" && statement.lineMarker !== null) {
@@ -122,7 +122,7 @@ export default class TurnDispositionHandler {
             // immediately; it never parks and needs no corrective model turn.
             const finished = await this.#lifecycle.finish(
                 loopId,
-                TerminalResult.success(raw),
+                TerminalResult.success(raw, "application/json"),
             );
             return {
                 status: finished !== null ? 200 : await this.#lifecycle.status(loopId),

@@ -3,20 +3,17 @@ import assert from "node:assert/strict";
 import { AcpPlanValue, PlanValue, PlurnkParser, Validator } from "../../src/index.ts";
 
 const parsePlan = (body: string) => {
-    const parsed = PlurnkParser.parse(`\`\`\`PLAN
+    const parsed = PlurnkParser.parse(`\`\`\`WAIT
 ${body}
-\`\`\`
-\`\`\`DONE
-done
 \`\`\``);
     const errors = parsed.items.filter((item) => item.kind === "error");
     const plan = parsed.items.find(
-        (item) => item.kind === "statement" && item.statement.op === "PLAN",
+        (item) => item.kind === "statement" && item.statement.op === "WAIT",
     );
     return {
         parsed,
         errors,
-        plan: plan?.kind === "statement" && plan.statement.op === "PLAN" ? plan.statement : undefined,
+        plan: plan?.kind === "statement" && plan.statement.op === "WAIT" ? plan.statement : undefined,
     };
 };
 

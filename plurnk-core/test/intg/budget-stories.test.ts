@@ -26,13 +26,13 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Plan, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, dispositionStmt, planValue } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, dispositionStmt, } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat visible READ
 const TINY = 2;         // absolute wall far below any packet → irreducible overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
-const OVERFLOW_PLAN = planValue("Automatically KILL log bodies newly active at token-budget overflow.");
+const OVERFLOW_PLAN = [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "pending" }];
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
@@ -79,8 +79,8 @@ const overflowPlan = async (db: Db, turnId: number): Promise<Plan> => {
         "the recovery has an explicit producer and purpose",
     );
     const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId });
-    const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
-    assert.ok(plan, "the packetless recovery turn contains its actual PLAN operation");
+    const plan = rows.find((row) => row.op === "NEXT" && row.origin === "_plurnk");
+    assert.ok(plan, "the packetless recovery turn contains its actual NEXT inventory");
     return (JSON.parse(plan.tx) as { body: Plan }).body;
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
@@ -308,7 +308,7 @@ test("the overflow recovery records its automatic suppression as ordinary `_plur
 });
 
 // 10 — the hard-413 Problem owns exact ruler pressure while the ordinary
-// recovery PLAN remains terse and the rejected candidate remains unstored.
+// recovery inventory remains terse and the rejected candidate remains unstored.
 test("budget: the irreducible hard-413 Problem reports a positive overshoot honestly", async () => {
     const db = await openMigrated();
     try {

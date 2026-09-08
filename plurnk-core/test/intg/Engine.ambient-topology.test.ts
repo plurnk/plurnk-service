@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import {
     PlanValue,
     type KillStatement,
-    type PlanStatement,
+    type ContinuationStatement,
     type ReadStatement,
     type DispositionStatement,
     type UrlPath,
@@ -39,15 +39,15 @@ const continueResponse = () => ({
             metadata: null,
             target: null,
             lineMarker: null,
-            body: { raw: "continue", json: null },
+            body: PlanValue.admit("continue"),
             position: { line: 1, column: 1 },
         } as DispositionStatement],
     },
 });
 
-const plan = (body: string): PlanStatement => ({
+const plan = (body: string): ContinuationStatement => ({
     metadata: null,
-    op: "PLAN",
+    op: "NEXT",
     annotation: null,
     target: null,
     lineMarker: null,
@@ -119,7 +119,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
             turnId: childTurn,
             sequence: 1,
             origin: "model",
-        })).status, 200);
+        })).status, 102);
         assert.equal((await engine.dispatch({
             statement: read(path("missing", "/evidence")),
             workspaceId,
@@ -144,7 +144,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
 
         assert.deepEqual(
             (await observedFromChild(parent)).map(({ op }) => op),
-            ["PLAN", "READ"],
+            ["NEXT", "READ"],
             "the parent receives every final op-bearing child activity in causal order",
         );
         assert.ok(
@@ -271,8 +271,8 @@ test("a fork inherits parent activity pending at its snapshot but not later sibl
             .filter(({ origin, source }) => origin === "_plurnk" && source === "worker://sibling")
             .map(({ op }) => op);
 
-        assert.deepEqual(await childOps(branch), ["PLAN"], "the branch receives only the pending parent event inside its fork boundary");
-        assert.deepEqual(await childOps(parent), ["PLAN", "READ"], "the parent independently receives both child events");
+        assert.deepEqual(await childOps(branch), ["NEXT"], "the branch receives only the pending parent event inside its fork boundary");
+        assert.deepEqual(await childOps(parent), ["NEXT", "READ"], "the parent independently receives both child events");
     } finally {
         await db.close();
     }

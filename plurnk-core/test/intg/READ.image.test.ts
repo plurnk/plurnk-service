@@ -18,10 +18,7 @@ process.env.PLURNK_SERVICE_PROVIDER_RECOVERY = "1000";
 process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "1";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 

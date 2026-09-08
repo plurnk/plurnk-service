@@ -1,7 +1,7 @@
 lexer grammar plurnkLexer;
 
 tokens {
-    OPEN_PLAN, OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
+    OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
     OPEN_SEND, OPEN_NEXT, OPEN_WAIT, OPEN_DONE, OPEN_FAIL,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     OPEN_LOOK, OPEN_BUFF,
@@ -24,7 +24,7 @@ private inlineBody: boolean = false;
 private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
 
 private static readonly OPERATIONS: Readonly<Record<string, number>> = {
-    PLAN: plurnkLexer.OPEN_PLAN, FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
+    FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
     EDIT: plurnkLexer.OPEN_EDIT, COPY: plurnkLexer.OPEN_COPY, MOVE: plurnkLexer.OPEN_MOVE,
     SEND: plurnkLexer.OPEN_SEND, EXEC: plurnkLexer.OPEN_EXEC, BARE: plurnkLexer.OPEN_BARE,
     NEXT: plurnkLexer.OPEN_NEXT, WAIT: plurnkLexer.OPEN_WAIT,

@@ -39,7 +39,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_WORK]: "operation fence header",
         [plurnkParser.OPEN_FORK]: "operation fence header",
         [plurnkParser.OPEN_KILL]: "operation fence header",
-        [plurnkParser.OPEN_PLAN]: "PLAN fence header",
         [plurnkParser.OPEN_LOOK]: "client operation fence header",
         [plurnkParser.OPEN_BUFF]: "client operation fence header",
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
@@ -60,8 +59,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const context = PlurnkErrorStrategy.#LEXER_MODE_CONTEXT[modeName] ?? "between statements";
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
         if (modeName === "SLOTS" && ch.startsWith("'[")) {
-            return lexer.getOpenOp() === "PLAN"
-                ? "PLAN takes no modifiers; its body begins below the header"
+            return ["NEXT", "WAIT"].includes(lexer.getOpenOp())
+                ? `${lexer.getOpenOp()}'s body begins below the header`
                 : "unexpected bracket modifier; the fence name selects the executor";
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
@@ -174,7 +173,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     // {§matcher-prefix-claims} Recovery resumes at the next top-level operation fence;
     // later statements, including the disposition, are judged independently.
     static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
-        plurnkParser.OPEN_PLAN, plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
+        plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
         plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE,
         plurnkParser.OPEN_SEND, plurnkParser.OPEN_NEXT, plurnkParser.OPEN_WAIT, plurnkParser.OPEN_DONE, plurnkParser.OPEN_FAIL,
         plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,

@@ -7,8 +7,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("{§send-premature-terminate}: an EDIT receipt blocks same-turn 200 until the next packet shows it", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```PLAN\nwrite then conclude\n```\n\n```EDIT (worker:///notes.md)\nhello\n```\n\n```DONE\ndone\n```", 10),
-        makeMockResponse("```PLAN\nthe edit receipt is in the log; concluding\n```\n\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///notes.md)\nhello\n```\n\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

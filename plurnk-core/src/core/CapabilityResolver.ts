@@ -56,8 +56,6 @@ export default class CapabilityResolver {
                 : [];
 
         switch (statement.op) {
-            case "PLAN":
-                return [];
             case "FIND":
             case "READ":
                 return demands(describe(statement.op, "observe", statement.target));

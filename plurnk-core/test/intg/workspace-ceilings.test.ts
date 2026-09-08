@@ -82,7 +82,7 @@ test("maxCommands:0 admits PLAN + the terminal SEND, drops every action", async 
                     .map((e) => (e as { entry: { op: string; origin: string } }).entry)
                     .filter((e) => e.origin === "model")
                     .map((e) => e.op);
-                assert.deepEqual(modelOps, ["PLAN", "DONE"], "only PLAN + the terminal SEND dispatched — every action capped out");
+                assert.deepEqual(modelOps, ["DONE"], "only PLAN + the terminal SEND dispatched — every action capped out");
                 assert.equal(await entryId(db, "/a.md"), undefined, "the first EDIT action never landed at maxCommands:0");
                 assert.equal(await entryId(db, "/b.md"), undefined, "the second EDIT action never landed");
             } finally { ws.close(); }

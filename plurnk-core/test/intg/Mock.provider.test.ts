@@ -1,14 +1,9 @@
+import { dispositionStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { EditStatement, PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-
-const dispositionStmt = (op: DispositionStatement["op"], body: string): DispositionStatement => ({
-    metadata: null,
-    op, annotation: null, target: null, lineMarker: null,
-    body: { raw: body, json: null }, position: { line: 1, column: 1 },
-});
 
 const editStmt = (target: string, body: string): EditStatement => ({
     metadata: null,

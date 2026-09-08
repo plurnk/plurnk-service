@@ -137,7 +137,6 @@ export const buildModel = (): GModel => {
         opt(ref("text-line-slot")),
     ];
 
-    fencedSection(model, "plan", [[lit("PLAN")]], { body: "required" });
     fencedSection(model, "find", [targetScope("FIND")], { matcher: true });
     fencedSection(model, "read", [targetScope("READ", "text-line-slot")], { matcher: true });
     fencedSection(model, "edit", [targetScope("EDIT", "text-line-slot")]);
@@ -214,8 +213,7 @@ export const buildModel = (): GModel => {
     // {§gbnf-turn-shape} — the same rule as the gemma channel: no empty-thought exit.
     model.set("rz-think-first", [[cls([[0x30, 0x39], [0x41, 0x5A], [0x61, 0x7A]])]]);
     model.set("qwen-tail", [[ref("rz-think-first"), ref("rz-think-b0"), lit(thinkClose)]]);
-    // {§turn-shape} — PLAN is a SHOULD on the rail as in the parser.
-    model.set("turn", [[ref("plan"), ref("block-sep"), ref("tail-0")], [ref("tail-0")]]);
+    model.set("turn", [[ref("tail-0")]]);
     model.set("root-gemma", [[ref("channel"), ref("sep"), ref("turn")]]);
     model.set("root-qwen", [[ref("qwen-tail"), ref("sep"), ref("turn")]]);
     model.set("root-qwen-response", [[lit(thinkOpen), ref("root-qwen")]]);

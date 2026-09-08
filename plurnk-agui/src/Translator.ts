@@ -2,7 +2,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
-//   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the latest journal installment)
+//   log/entry op=NEXT/WAIT (model) → ACTIVITY_SNAPSHOT (the latest task inventory)
 //   log/entry op=SEND  (model)  → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
 //                                 (assistant speech; the signal rides plurnk.send)
 //   log/entry actionless model source → no conversational event (encrypted reasoning may
@@ -130,7 +130,7 @@ export default class Translator {
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        const planProjection = e.op === "PLAN"
+        const planProjection = typeof e.op === "string" && TurnDisposition.isContinuationOp(e.op)
             ? Translator.#projectPlanTransaction(e.tx)
             : null;
         const clientEntry = planProjection === null
@@ -148,7 +148,7 @@ export default class Translator {
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-row-channel} — the complete client-facing row rides plurnk.row alongside the core projection:
         // fold state, durable tags, curation weight, coordinates — everything the TUI/nvim render that
-        // the core vocabulary can't hold. PLAN bodies use the same ACP projection as PLAN activity;
+        // the core vocabulary can't hold. Continuation bodies use the same ACP projection as PLAN activity;
         // native extensions do not cross this standards boundary. Rich clients render from
         // plurnk.row; generic clients never see the difference.
         const row = { type: EventType.CUSTOM, name: "plurnk.row", value: clientEntry } as const;
@@ -168,28 +168,23 @@ export default class Translator {
             return events;
         }
         const id = e.coordinate ?? String(e.id);
-        if (planProjection !== null) {
-            events.push({
-                type: EventType.ACTIVITY_SNAPSHOT,
-                messageId: this.#planMessageId,
-                activityType: "PLAN",
-                content: planProjection.plan,
-                replace: true,
-            });
-            return events;
-        }
         if ((e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op))) {
             const text = Translator.#txBody(e.tx);
-            if (typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
-            const streamed = typeof e.turn_id === "number"
-                ? this.#completedReasoning.get(e.turn_id) ?? []
-                : [];
-            const durableReasoning = typeof e.reasoning === "string" ? e.reasoning : "";
-            const alreadyDelivered = durableReasoning.length > 0
-                && streamed.some((value) => value === durableReasoning || value.endsWith(durableReasoning));
-            if (!alreadyDelivered) events.push(...Translator.#readableReasoningEvents(id, e.reasoning));
-            if (typeof e.turn_id === "number") this.#completedReasoning.delete(e.turn_id);
+            if (planProjection === null && typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
+            events.push(...Translator.#readableReasoningEvents(id,
+                Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
             events.push(row);
+            if (planProjection !== null) {
+                events.push({
+                    type: EventType.ACTIVITY_SNAPSHOT,
+                    messageId: this.#planMessageId,
+                    activityType: "PLAN",
+                    content: planProjection.plan,
+                    replace: true,
+                });
+                events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
+                return events;
+            }
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
             if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
@@ -320,7 +315,7 @@ export default class Translator {
         return events;
     }
 
-    // {§agui-replay} — the workspace log as AG-UI history: model PLANs retain their
+    // {§agui-replay} — the workspace log as AG-UI history: model inventories retain their
     // activity identity and model SENDs become assistant messages. Everything else
     // stays reachable through live plurnk.row rendering. Wire rows arrive as the
     // log.read projection (tx parsed).
@@ -330,6 +325,7 @@ export default class Translator {
         let currentPlanPosition = 0;
         const assistantByTurn = new Map<number, { message: AssistantMessage; sequence: number }>();
         const encryptedByTurn = new Map<number, string[]>();
+        const deliveredReasoning = new Map<number, string[]>();
         const chronological = entries.toSorted((left, right) => {
             const leftId = typeof left.id === "number" ? left.id : Number.MAX_SAFE_INTEGER;
             const rightId = typeof right.id === "number" ? right.id : Number.MAX_SAFE_INTEGER;
@@ -343,7 +339,11 @@ export default class Translator {
             }
             if (e.origin !== "model") continue;
             const text = Translator.#txBody(e.tx);
-            if (e.op === "PLAN") {
+            if (e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
+                const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
+                if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
+            }
+            if (typeof e.op === "string" && TurnDisposition.isContinuationOp(e.op)) {
                 currentPlan = {
                     id: this.#planMessageId,
                     role: "activity",
@@ -351,12 +351,9 @@ export default class Translator {
                     content: Translator.#txPlan(e.tx),
                 };
                 currentPlanPosition = messages.length;
+                continue;
             }
             if ((e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op))) {
-                const reasoning = typeof e.reasoning === "string" ? e.reasoning : "";
-                if (reasoning.length > 0) {
-                    messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
-                }
                 const message: AssistantMessage = { id, role: "assistant", content: text };
                 messages.push(message);
                 if (typeof e.turn_id === "number") {
@@ -439,9 +436,17 @@ export default class Translator {
         return events;
     }
 
-    // {§agui-readable-reasoning} A completed provider response is already one
-    // atomic value when core surfaces it. Preserve it as one standard reasoning
-    // message immediately before the paired SEND speech.
+    static #claimReasoning(delivered: Map<number, string[]>, turnId: unknown, value: unknown): string {
+        if (typeof value !== "string" || value.length === 0) return "";
+        if (typeof turnId !== "number") return value;
+        const prior = delivered.get(turnId) ?? [];
+        if (prior.some((text) => text === value || text.endsWith(value))) return "";
+        delivered.set(turnId, [...prior, value]);
+        return value;
+    }
+
+    // {§agui-readable-reasoning} Durable reasoning precedes the turn's first
+    // speech or inventory projection when live delivery has not already supplied it.
     static #readableReasoningEvents(sendId: string, value: unknown): AguiEvent[] {
         if (typeof value !== "string" || value.length === 0) return [];
         const messageId = `${sendId}/reasoning`;
@@ -486,18 +491,18 @@ export default class Translator {
             try {
                 parsed = JSON.parse(tx);
             } catch (error) {
-                throw new TypeError("A PLAN log row carries malformed transaction JSON.", { cause: error });
+                throw new TypeError("A continuation log row carries malformed transaction JSON.", { cause: error });
             }
         }
         if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-            throw new TypeError("A PLAN log row carries a noncanonical transaction.");
+            throw new TypeError("A continuation log row carries a noncanonical transaction.");
         }
         const transaction = parsed as Record<string, unknown>;
         try {
             const plan = AcpPlanValue.project(transaction.body);
             return { plan, tx: { ...transaction, body: plan } };
         } catch (error) {
-            throw new TypeError("A PLAN log row carries a noncanonical Plurnk Plan body.", { cause: error });
+            throw new TypeError("A continuation log row carries a noncanonical Plurnk Plan body.", { cause: error });
         }
     }
 

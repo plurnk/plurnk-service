@@ -1,3 +1,4 @@
+import { dispositionStmt } from "./_dsl.ts";
 // SPEC {§decisions} architectural-decision contract tests.
 //
 //   The built core passes: git-substrate membership ({§membership-git-membership}), the
@@ -14,7 +15,7 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlurnkStatement, DispositionStatement, ReadStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, ReadStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -31,13 +32,6 @@ import {
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
     lookThroughScheme("file", null, statement, ctx);
-
-const dispositionStmt = (op: DispositionStatement["op"]): DispositionStatement => ({
-    metadata: null,
-    op, annotation: null, target: null,
-    lineMarker: null, body: { raw: "", json: null },
-    position: { line: 1, column: 1 },
-});
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,

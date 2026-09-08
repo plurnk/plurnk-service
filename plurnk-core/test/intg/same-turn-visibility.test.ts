@@ -8,9 +8,6 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         { assistant: { content: [
-            "```PLAN",
-            "[]",
-            "```",
             "```FIND (worker:///*)```",
             "```KILL (log:///1/2/*)```",
             "```NEXT",
@@ -32,12 +29,12 @@ test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot
                 active: 0 | 1;
                 attrs: string;
             }>({ loop_id: result.loopId });
-            const firstModelTurnId = rows.find(({ origin, op }) => origin === "model" && op === "PLAN")?.turn_id;
+            const firstModelTurnId = rows.find(({ origin, op }) => origin === "model" && op === "FIND")?.turn_id;
             assert.ok(firstModelTurnId !== undefined);
             const firstModelTurn = rows.filter(({ turn_id }) => turn_id === firstModelTurnId);
             const prompt = firstModelTurn.find(({ op }) => op === "prompt");
             assert.equal(prompt?.active, 0, "the pre-program prompt row was in the selected snapshot");
-            for (const op of ["PLAN", "FIND", "KILL", "NEXT"] as const) {
+            for (const op of ["FIND", "KILL", "NEXT"] as const) {
                 assert.equal(
                     firstModelTurn.find((row) => row.op === op)?.active,
                     1,
@@ -55,7 +52,7 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; NEXT (a same-turn DONE would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("```PLAN\nwrite then find\n```\n\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///**)```\n```NEXT\nwrote and listed\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///**)```\n```NEXT\nwrote and listed\n```", 10),
         makeMockResponse("```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -77,9 +74,9 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
 
 test("{§edit-execution}: each EDIT records its own revision; an earlier READ retains its snapshot", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```PLAN\ncreate fixture\n```\n\n```EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n```\n\n```NEXT\nfixture created\n```", 10),
-        makeMockResponse("```PLAN\nobserve the settled edits\n```\n\n```READ (worker:///mode.md)```\n```EDIT (worker:///mode.md) <4>\nFOUR\n```\n\n```EDIT (worker:///mode.md) <2>\nTWO\n2.5\n```\n\n```NEXT\nmutated and observed\n```", 10),
-        makeMockResponse("```PLAN\nconclude\n```\n\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n```\n\n```NEXT\nfixture created\n```", 10),
+        makeMockResponse("\n```READ (worker:///mode.md)```\n```EDIT (worker:///mode.md) <4>\nFOUR\n```\n\n```EDIT (worker:///mode.md) <2>\nTWO\n2.5\n```\n\n```NEXT\nmutated and observed\n```", 10),
+        makeMockResponse("\n```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -137,17 +134,14 @@ test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("worker:///anchored-range.md", content);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```PLAN\ncreate the fixture\n```\n\n```EDIT (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n```\n\n```NEXT\ncreated\n```", 10),
-        makeMockResponse(`\`\`\`PLAN
-delete the first two lines
-\`\`\`
-
+        makeMockResponse("\n```EDIT (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n```\n\n```NEXT\ncreated\n```", 10),
+        makeMockResponse(`
 \`\`\`EDIT (worker:///anchored-range.md) <${alpha},${beta}>\`\`\`
 \`\`\`READ (worker:///anchored-range.md)\`\`\`
 \`\`\`NEXT
 verify
 \`\`\``, 10),
-        makeMockResponse("```PLAN\nconclude\n```\n\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -169,10 +163,7 @@ test("{§edit-execution}: an invalid anchored EDIT leaves the earlier effect int
         content,
     );
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse(`\`\`\`PLAN
-create the fixture
-\`\`\`
-
+        makeMockResponse(`
 \`\`\`EDIT (worker:///anchor-batch.md)
 ${content}
 \`\`\`
@@ -180,10 +171,7 @@ ${content}
 \`\`\`NEXT
 created
 \`\`\``, 10),
-        makeMockResponse(`\`\`\`PLAN
-exercise one valid and one invalid anchored scope
-\`\`\`
-
+        makeMockResponse(`
 \`\`\`EDIT (worker:///anchor-batch.md) <${one},${two}>\`\`\`
 \`\`\`EDIT (worker:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>
 replacement
@@ -193,7 +181,7 @@ replacement
 \`\`\`NEXT
 verify
 \`\`\``, 10),
-        makeMockResponse("```PLAN\nconclude\n```\n\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```DONE\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

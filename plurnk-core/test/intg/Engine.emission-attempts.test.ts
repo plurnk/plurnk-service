@@ -37,10 +37,7 @@ const estimatedCost = (usage: ProviderUsage) => ({
 
 const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
     assistant: {
-        content: `\`\`\`PLAN
-complete the task
-\`\`\`
-
+        content: `
 \`\`\`DONE
 ${body}
 \`\`\``,
@@ -51,10 +48,7 @@ ${body}
 
 const continuing = (body = "continue"): MockResponse => ({
     assistant: {
-        content: `\`\`\`PLAN
-continue the task
-\`\`\`
-
+        content: `
 \`\`\`FIND (log:///**) <1,1>\`\`\`
 \`\`\`NEXT
 ${body}
@@ -150,7 +144,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
                         },
                     );
                 }
-                const content = "```PLAN\ncomplete the task\n```\n\n```DONE\nrecovered\n```";
+                const content = "\n```DONE\nrecovered\n```";
                 const body = [
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
@@ -223,7 +217,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
 test("separator-free provider preamble does not reject a complete model turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "harmless status.```PLAN\ncomplete the task\n```\n\n```DONE\ndone\n```";
+        const content = "harmless status.```DONE\ndone\n```";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(content)],
@@ -259,7 +253,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
             contextWindow: 100_000,
             responses: [
                 invalid("prose without a turn", requestUsage(10, 2, 1, 4)),
-                invalid("```PLAN\nstarted\n```\n```READ (worker:///broken", requestUsage(20, 3, 2, 5)),
+                invalid("```READ (worker:///broken", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -308,7 +302,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "```PLAN\ncomplete the task\n```\n\n```DONE\naccepted\n```");
+        assert.equal(packet.assistant?.content, "\n```DONE\naccepted\n```");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|worker:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
@@ -391,7 +385,7 @@ test("a valid operation with no PLAN or SEND is admitted once with recovered fra
 test("a literal nested disposition cannot conclude a turn; the missing SEND recovery reaches the next packet", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const source = "````PLAN\nExample for later:\n```READ (package.json)```\n```NEXT\ninspect\n```\n````";
+        const source = "````EDIT (worker:///example.md)\nExample for later:\n```READ (package.json)```\n```NEXT\ninspect\n```\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(source), valid()],
@@ -401,7 +395,7 @@ test("a literal nested disposition cannot conclude a turn; the missing SEND reco
             messages: [{ role: "user", content: "inspect" }],
         });
         assert.equal(first.status, 102);
-        assert.equal(first.emissionAttempts, 1, "a diagnostic wording change cannot reject the admitted PLAN");
+        assert.equal(first.emissionAttempts, 1, "a diagnostic wording change cannot reject the admitted EDIT");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: first.turnId });
         assert.equal(attempts[0]?.accepted, 1);
         assert.equal(JSON.parse(attempts[0]!.parse_errors)[0].code, "missing-turn-disposition");
@@ -480,14 +474,11 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const rejectedPrefix = [
-            "```PLAN",
-            "inspect first",
-            "```",
             "",
             "```READ (worker:///missing)```",
             "```EDIT (worker:///notes.md",
         ].join("\n");
-        const accepted = "```PLAN\ncomplete despite the cap\n```\n\n```DONE\ndone\n```";
+        const accepted = "\n```DONE\ndone\n```";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -528,8 +519,8 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
             { accepted: 1, finish_reason: "length" },
         ]);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
-            message: "target slot of `EDIT` opened at line 6 but never closed - add `)`",
-            line: 6,
+            message: "target slot of `EDIT` opened at line 3 but never closed - add `)`",
+            line: 3,
             column: 0,
             source: "grammar",
         }], "the rejected attempt preserves one tail fact and no recovered-tail diagnostics");
@@ -550,18 +541,15 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
     }
 });
 
-test("{§plan-slotless}: a malformed PLAN defaults empty while valid sibling operations dispatch", async () => {
+test("{§plan-slotless}: a malformed continuation heading preserves siblings without authorizing completion", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const rejected = [
-            "```PLAN [{\"content\":\"keep",
-            "this\",\"status\":\"pending\"}]",
-            "```",
             "```EDIT (worker:///proof.md)",
-            "must not be written",
+            "the valid sibling is written",
             "```",
-            "```DONE",
-            "must not conclude",
+            "```NEXT [{\"content\":\"keep",
+            "this\",\"status\":\"pending\"}]",
             "```",
         ].join("\n");
         const provider = new AttemptWitness({
@@ -577,7 +565,7 @@ test("{§plan-slotless}: a malformed PLAN defaults empty while valid sibling ope
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        assert.equal(result.status, 102, "the visible PLAN failure prevents same-turn completion");
+        assert.equal(result.status, 102, "the visible heading failure prevents same-turn completion");
         assert.equal(result.emissionAttempts, 1);
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
@@ -585,9 +573,9 @@ test("{§plan-slotless}: a malformed PLAN defaults empty while valid sibling ope
         }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const parseErrors = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string; line: number; source: string }>;
-        assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed PLAN heading");
-        assert.equal(parseErrors[0]?.message, "PLAN takes no modifiers; its body begins below the header");
-        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 1, source: "lexer" });
+        assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation heading");
+        assert.equal(parseErrors[0]?.message, "NEXT's body begins below the header");
+        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "lexer" });
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
             turn_id: result.turnId,
@@ -598,7 +586,7 @@ test("{§plan-slotless}: a malformed PLAN defaults empty while valid sibling ope
             scheme: "worker",
             name: "body",
         });
-        assert.equal(landed?.content, "must not be written");
+        assert.equal(landed?.content, "the valid sibling is written");
     } finally {
         await db.close();
     }
@@ -608,9 +596,6 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const malformed = [
-            "```PLAN",
-            "inspect relevant modules",
-            "```",
             "",
             "```FIND (worker:///x)",
             "$fC",
@@ -624,7 +609,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
             contextWindow: 100_000,
             responses: [
                 invalid(malformed),
-                invalid("```PLAN\nweigh the failed operation\n```\n\n```FAIL\nthe matcher was malformed\n```"),
+                invalid("\n```FAIL\nthe matcher was malformed\n```"),
             ],
         });
 
@@ -662,13 +647,12 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
-                { op: "PLAN", status_rx: 200 },
                 { op: "error", status_rx: 400 },
                 { op: "NEXT", status_rx: 102 },
             ],
             "the recovered failure is committed before the turn disposition",
         );
-        const syntaxFailure = JSON.parse(authored[1]!.rx) as {
+        const syntaxFailure = JSON.parse(authored[0]!.rx) as {
             problem?: {
                 type?: string;
                 detail?: string;
@@ -682,7 +666,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
             "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax",
         );
         assert.match(syntaxFailure.problem?.detail ?? "", /not a valid jsonpath/i);
-        assert.equal(syntaxFailure.problem?.line, 5);
+        assert.equal(syntaxFailure.problem?.line, 2);
         assert.equal(syntaxFailure.problem?.source, "visitor");
         assert.equal(syntaxFailure.problem?.siblingsRetained, true);
         assert.equal("recovery" in (syntaxFailure.problem ?? {}), false);
@@ -725,7 +709,7 @@ ${renderedRead}
 \`\`\``,
                     "```NEXT\ninspect the result\n```",
                 ].join("\n\n")),
-                invalid("```PLAN\nreview the diagnostic\n```\n\n```FAIL\ndone\n```"),
+                invalid("\n```FAIL\ndone\n```"),
             ],
         });
 
@@ -790,9 +774,6 @@ test("a bounded malformed operation prevents same-turn completion until the mode
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    "```PLAN",
-                    "search and conclude",
-                    "```",
                     "",
                     "```FIND (**)",
                     "/unterminated[",
@@ -834,7 +815,6 @@ test("a bounded malformed operation prevents same-turn completion until the mode
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
-                { op: "PLAN", status_rx: 200 },
                 { op: "error", status_rx: 400 },
                 { op: "DONE", status_rx: 409 },
             ],
@@ -857,9 +837,6 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid([
-                "```PLAN",
-                "copy the selected source lines",
-                "```",
                 "```COPY (worker:///src.md) <2,3> (worker:///slice.md) <0>:```",
                 "```NEXT",
                 "inspect the copy result",
@@ -905,22 +882,20 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
     }
 });
 
-test("a second PLAN destroys the single-turn boundary and retries wholesale", async () => {
+test("duplicate dispositions destroy the single-turn boundary and retry wholesale", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    "```PLAN",
-                    "conclude too early",
-                    "```",
                     "```DONE",
                     "done",
                     "```",
-                    "```PLAN",
-                    "Another turn cannot begin here.",
+                    "```NEXT",
+                    "[]",
                     "```",
+                    "",
                     "```EDIT (worker:///must-not-exist)",
                     "value",
                     "```",
@@ -930,7 +905,7 @@ test("a second PLAN destroys the single-turn boundary and retries wholesale", as
                     "```DONE",
                     "done",
                     "```",
-                    "```PLAN",
+                    "```NEXT",
                     "Another turn cannot begin here.",
                     "```",
                     "```EDIT (worker:///must-not-exist)",
@@ -970,9 +945,6 @@ test("a second PLAN destroys the single-turn boundary and retries wholesale", as
 test("{§invalid-emission-attempts} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     const latestRejected = [
-        "```PLAN",
-        "inspect the source",
-        "```",
         "",
         "```READ (file:///main.go",
         "",
@@ -1018,11 +990,11 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
         assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3]!, /1:```PLAN\\n2:inspect the source/);
+        assert.match(provider.packets[3]!, /2:```READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
         // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
         assert.match(provider.packets[3]!, /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[4]!, /1:```PLAN\\n2:inspect the source/, "the rejected emission is projected only into its recovery packet");
+        assert.doesNotMatch(provider.packets[4]!, /2:```READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1082,7 +1054,7 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "```PLAN\nconclude\n```\n\n```DONE\ndone\n```", reasoning: null } },
+            { assistant: { content: "\n```DONE\ndone\n```", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1098,7 +1070,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "```PLAN\nconclude\n```\n\n```DONE\nnever reached\n```", reasoning: null } },
+            { assistant: { content: "\n```DONE\nnever reached\n```", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1115,15 +1087,12 @@ test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const cut = { assistant: { content: "no ops here at all", reasoning: null } };
-        const good = (body: string) => ({ assistant: { content: `\`\`\`PLAN
-continue
-\`\`\`
-
+        const good = (body: string) => ({ assistant: { content: `
 \`\`\`FIND (log:///**) <1,1>\`\`\`
 \`\`\`NEXT
 ${body}
 \`\`\``, reasoning: null } });
-        const done = { assistant: { content: "```PLAN\nconclude\n```\n\n```DONE\nfinished\n```", reasoning: null } };
+        const done = { assistant: { content: "\n```DONE\nfinished\n```", reasoning: null } };
         // Two exhaustions (3 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
@@ -1193,7 +1162,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         );
         assert.equal(
             await readFile(join(digestDir, "packet001.assistant.md"), "utf8"),
-            "```PLAN\ncomplete the task\n```\n\n```DONE\naccepted bytes\n```",
+            "\n```DONE\naccepted bytes\n```",
         );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /rejected-emissions=1\/2/);
@@ -1421,7 +1390,7 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
 test("#161 {§provider-recovery}: a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "```PLAN\nlooks complete\n```\n\n```DONE\nmust never dispatch\n```";
+        const content = "\n```DONE\nmust never dispatch\n```";
         const requestAccounting: ProviderRequestAccounting = {
             provider: "provider:mock",
             model: "interrupted-model",
@@ -1610,13 +1579,13 @@ test("a valid turn with a failed operation remains recoverable and model-visible
             responses: [
                 {
                     assistant: {
-                        content: "```PLAN\nattempt the edit\n```\n\n```EDIT (sealed:///x)\nvalue\n```\n\n```DONE\ndone\n```",
+                        content: "\n```EDIT (sealed:///x)\nvalue\n```\n\n```DONE\ndone\n```",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "```PLAN\nweigh the failure\n```\n\n```FAIL\ncannot write that resource\n```",
+                        content: "\n```FAIL\ncannot write that resource\n```",
                         reasoning: null,
                     },
                 },
@@ -1648,7 +1617,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
             contextWindow: 100_000,
             responses: [
                 { assistant: { content: "```PLAN\nbig write, cut mid-wo\n```", reasoning: null, finishReason: "length" } },
-                { assistant: { content: "```PLAN\nfollow-up\n```\n\n```DONE\ndone\n```", reasoning: null, finishReason: "stop" } },
+                { assistant: { content: "\n```DONE\ndone\n```", reasoning: null, finishReason: "stop" } },
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] });

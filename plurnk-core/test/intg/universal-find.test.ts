@@ -67,10 +67,7 @@ class PreparedDataScheme implements SchemeHandler {
 }
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {
@@ -80,10 +77,7 @@ ${dsl}`).items.find(
 };
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -95,10 +89,7 @@ ${dsl}`).items.find(
 
 
 const parseSend = (dsl: string): SendStatement => {
-    const item = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "SEND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "SEND") {

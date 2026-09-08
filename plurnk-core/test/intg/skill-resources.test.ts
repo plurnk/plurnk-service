@@ -19,10 +19,7 @@ class CapturingMock extends Mock {
 }
 
 const turn = (ops: string, terminal = false) => ({
-    assistant: { content: `\`\`\`PLAN
-[]
-\`\`\`
-${ops}
+    assistant: { content: `${ops}
 \`\`\`${terminal ? "DONE" : "NEXT"}
 ${terminal ? "Done." : "Inspect results."}
 \`\`\``, reasoning: null },
@@ -92,7 +89,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         assert.match(String((await dispatch(readStmt(target))).content), /Changed on disk/);
         for (const op of ["```EDIT (skill://alpha/references/guide.md) <1,-1>\nchanged\n```", "```KILL (skill://alpha/references/guide.md)```"]) {
             const parsed = PlurnkParser.parseStatements(op);
-            const item = parsed.items.find((item) => item.kind === "statement" && item.statement.op !== "PLAN");
+            const item = parsed.items.find((item) => item.kind === "statement");
             assert.ok(item?.kind === "statement");
             const result = await dispatch(item.statement);
             assert.equal(result.status, 403, JSON.stringify(result));

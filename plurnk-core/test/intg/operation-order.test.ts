@@ -117,10 +117,7 @@ for (const origin of ["client", "_plurnk"] as const) {
             const env = await seedEnvelope(db, `ordered-${origin}`, { producer: origin });
             env.turnId = (await Turn.open(db, { loopId: env.loopId, producer: origin, kind: "operation" })).id;
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const source = `\`\`\`PLAN
-[]
-\`\`\`
-\`\`\`EDIT (${target})
+            const source = `\`\`\`EDIT (${target})
 ${content}
 \`\`\`
 \`\`\`READ (${target}) <1,-1>\`\`\`
@@ -139,7 +136,7 @@ TWO
             else assert.equal((await execution).status, 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
-                failOnOperationError ? ["PLAN", "EDIT", "READ", "EDIT"] : ["PLAN", "EDIT", "READ", "EDIT", "EDIT", "NEXT"]);
+                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", "NEXT"]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
             assert.equal(JSON.parse(rows.find(({ op }) => op === null)!.rx).content, source, "the submitted program remains durable even when execution stops at an error");
             const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/ordered.md", name: "body" });

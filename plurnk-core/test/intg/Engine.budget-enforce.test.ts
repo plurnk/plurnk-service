@@ -11,17 +11,11 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, packetSection } from "./_helpers.ts";
-import { killStmt, planValue, urlPath } from "./_dsl.ts";
+import { dispositionStmt, killStmt, urlPath } from "./_dsl.ts";
 import OverflowTurn from "../../src/core/OverflowTurn.ts";
-
-const dispositionStmt = (op: DispositionStatement["op"], body: string): DispositionStatement => ({
-    metadata: null,
-    op, annotation: null, target: null,
-    lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
-});
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
@@ -191,15 +185,13 @@ test("on overflow the prior turn's log-entry bodies are suppressed at their coor
     } finally { await db.close(); }
 });
 
-test("a PLAN row at the newest boundary follows the same whole-body overflow suppression", async () => {
+test("a WAIT inventory at the newest boundary follows the same whole-body overflow suppression", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
-        // Turn 1 emits PLAN + SEND under a WIDE ceiling. Turn 2 under TINY
-        // overflows: PLAN is evidence from the same causal turn, not a protected
-        // packet surface, so it remains addressable but is suppressed with its peers.
-        const planStmt = {
-            op: "PLAN", annotation: null, target: null, metadata: null,
+        // Continuation inventory is evidence from the causal turn, not a protected packet surface.
+        const inventory = {
+            op: "WAIT", annotation: null, target: null, metadata: null,
             lineMarker: null,
             body: [{
                 content: "Read the document, then answer.",
@@ -208,15 +200,15 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow sup
             position: { line: 1, column: 1 },
         } as PlurnkStatement;
         const engine = plainEngine(db);
-        const wideP = mockAt(4096, [response([planStmt, dispositionStmt("DONE", "ok")])]);
+        const wideP = mockAt(4096, [response([inventory])]);
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 2 && r.op === "PLAN" && r.folded === "[]"), "the first model turn's PLAN landed visible");
+        assert.ok(before.some((r) => r.turn_seq === 2 && r.op === "WAIT" && r.folded === "[]"), "the first model turn's WAIT inventory landed visible");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; pathname: string | null; weight: number }>({ worker_id: workerId });
-        const plan = after.find((r) => r.turn_seq === 2 && r.op === "PLAN");
-        assert.equal(plan?.folded, "[[1,-1]]", "the PLAN body is forensically retained and genuinely suppressed");
+        const plan = after.find((r) => r.turn_seq === 2 && r.op === "WAIT");
+        assert.equal(plan?.folded, "[[1,-1]]", "the inventory body is forensically retained and genuinely suppressed");
         const suppressed = after.filter((r) => r.turn_seq === 2 && r.weight > 0);
         assert.ok(suppressed.length > 0 && suppressed.every((r) => r.folded === "[[1,-1]]"), "the complete causal turn is suppressed under one rule");
     } finally { await db.close(); }
@@ -348,11 +340,11 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
             folded: string;
             initial_folded: string;
         }>({ turn_id: recoveryTurnId });
-        const plan = rows.find(({ op }) => op === "PLAN");
+        const plan = rows.find(({ op }) => op === "NEXT");
         assert.equal(plan?.origin, "_plurnk");
         assert.deepEqual(
             (JSON.parse(plan!.tx) as { body: unknown }).body,
-            planValue("Automatically KILL log bodies newly active at token-budget overflow."),
+            [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "pending" }],
         );
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
@@ -360,8 +352,8 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(turnOps?.initial_folded, "[[1,-1]]", "overflow turnOps are initially body-suppressed source evidence");
         assert.equal(turnOps?.folded, "[]", "initial suppression is not deliberate curation");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^```PLAN\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
-        assert.match(source, /\n```NEXT\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.\n```$/);
+        assert.match(source, /^```KILL /);
+        assert.match(source, /\n```NEXT\n\[\{"content":"Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"pending"}\]\n```$/);
     } finally { await db.close(); }
 });
 

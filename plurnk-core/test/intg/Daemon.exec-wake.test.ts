@@ -28,14 +28,9 @@ done
 \`\`\``;
 
 const mockResponse = (dsl: string) => {
-    // {§emission-admission}: Engine re-parses this content, so it includes the PLAN anchor.
-    const turn = dsl.startsWith("```PLAN") ? dsl : `\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`;
     return {
         assistant: {
-            content: turn,
+            content: dsl,
             reasoning: null,
             usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
         },
@@ -67,6 +62,15 @@ test("{§worker-lifecycle-wake-liveness}: cancelling one stream wakes its still-
 });
 
 test("{§notifications-stream-concluded}: a pending completion wake is not reported as an executed resume", async (t) => {
+    const parked = Promise.withResolvers<void>();
+    const ensureDrain = DrainSupervisor.prototype.ensureDrain;
+    t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (
+        this: DrainSupervisor, ...args: Parameters<typeof ensureDrain>
+    ) {
+        const started = await ensureDrain.apply(this, args);
+        void started?.drainPromise.then(() => parked.resolve(), parked.reject);
+        return started;
+    });
     const release = Promise.withResolvers<void>();
     const settled = Promise.withResolvers<void>();
     const settle = DrainSupervisor.prototype.settleCompletionWake;
@@ -92,6 +96,9 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
             assert.equal((attached.result as { id: number }).id, workspaceId);
             const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Await the command.", policy: { proposals: "accept" } });
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+            // The database transition precedes drain teardown. Exercise a settled
+            // park, not a completion racing the still-active drain.
+            await parked.promise;
             const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
             assert.equal(subscriptions.length, 1);
             await daemon.engine.cancelSubscription(subscriptions[0]!.id);

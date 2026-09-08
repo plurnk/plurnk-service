@@ -20,13 +20,12 @@ import {
 } from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
-// `midStatement` (mid-turn ops) each wrap one op; PLAN and the turn disposition attach as direct
-// `planStatement`/`dispositionStatement` children of a turn; `clientStatement` wraps one op in the
+// `midStatement` (mid-turn ops) each wrap one op; the turn disposition attaches as a direct
+// `dispositionStatement` child of a turn; `clientStatement` wraps one op in the
 // client tier.
 const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_statement,
     plurnkParser.RULE_midStatement,
-    plurnkParser.RULE_planStatement,
     plurnkParser.RULE_dispositionStatement,
     plurnkParser.RULE_clientStatement,
 ]);
@@ -77,7 +76,7 @@ export default class PlurnkParser {
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
             }
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
-            const body = statement.op === "PLAN" ? PlanValue.stringify(statement.body)
+            const body = TurnDisposition.isContinuation(statement) ? PlanValue.stringify(statement.body)
                 : statement.op === "COPY" || statement.op === "MOVE" || statement.body === null ? null
                 : typeof statement.body === "string" ? statement.body : statement.body.raw;
             const header = `${name}${modifiers.length === 0 ? "" : ` ${modifiers.join(" ")}`}`;
@@ -85,8 +84,7 @@ export default class PlurnkParser {
         }).join("\n");
     }
 
-    // Parse one model turn. Canonical PLAN/disposition framing stays strict in teaching and
-    // generation; a source operation lets ingestion recover either omitted boundary.
+    // Parse one model turn. A source operation lets ingestion recover an omitted disposition.
     // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
@@ -103,10 +101,10 @@ export default class PlurnkParser {
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
 
     // Replace ANTLR's generic structure errors with the exact envelope default when the
-    // canonical PLAN...disposition shape is cleanly incomplete. The parser admits the useful
+    // operation/disposition shape is cleanly incomplete. The parser admits the useful
     // operations and core records this hard diagnostic as the turn's strike. {§turn-shape}
     static #imperativeTurnShape(items: ParseItem<any>[], input: string): void {
-        // {§turn-shape} — PLAN is a SHOULD; only the turn disposition is structural. A
+        // {§turn-shape} — only the turn disposition is structural. A
         // recipient SEND does not satisfy it ({§turn-disposition}).
         const hasDisposition = items.some(
             (i: any) => i.kind === "statement" && TurnDisposition.is(i.statement),
@@ -134,7 +132,7 @@ export default class PlurnkParser {
         }
         // Only add the anchor imperative when the shape is CLEANLY incomplete. If a bounded lexer
         // or visitor error is present, the turn derailed within an operation, so the
-        // missing PLAN/disposition is a parse artifact, not the real fix - that specific bounded error
+        // missing disposition is a parse artifact, not the real fix - that specific bounded error
         // is the actionable guidance, and an imperative would mislead.
         const hasSpecificError = items.some(
             (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
@@ -216,17 +214,17 @@ export default class PlurnkParser {
     static #recoverTurnEnvelope(items: ParseItem<PlurnkStatement>[]): void {
         const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (sourceStatements.length === 0) return;
-        const hasTerminalSend = sourceStatements.some(
+        const hasDisposition = sourceStatements.some(
             (statement) => TurnDisposition.is(statement),
         );
-        if (!hasTerminalSend) {
+        if (!hasDisposition) {
             const disposition: DispositionStatement = {
                 op: "NEXT",
                 annotation: null,
                 target: null,
                 metadata: null,
                 lineMarker: null,
-                body: null,
+                body: [],
                 position: UNKNOWN_POSITION,
             };
             const lastStatement = items.findLastIndex((item) => item.kind === "statement");
@@ -264,7 +262,7 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
 
-    // Parse saved turns in source order; PLAN separates them. Each turn
+    // Parse saved turns in source order; dispositions separate them. Each turn
     // requires a disposition, including when ordinary operations follow it.
     static parseLog(input: string): ParseResult {
         return PlurnkParser.#run(input, (parser) => parser.log());
@@ -378,7 +376,7 @@ export default class PlurnkParser {
                     items.push({ kind: "error", error: errForStatement });
                 } else if ((c.getChildCount?.() ?? 0) === 0) {
                     // A phantom statement context synthesized during error recovery (e.g. a
-                    // PLAN slot the parser opened then failed to fill on bare text): zero tokens
+                    // a required slot the parser opened then failed to fill): zero tokens
                     // matched, so its opening terminal is null and building it would null-deref.
                     // The real failure is already recorded; skip the zero-token recovery node.
                 } else {

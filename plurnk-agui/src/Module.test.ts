@@ -732,7 +732,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "unexpected text outside an operation block; expected PLAN fence header or operation fence header or client operation fence header",
+            detail: "unexpected text outside an operation block; expected operation fence header or client operation fence header",
             line: 1,
             column: 0,
             source: "parser",
@@ -1560,8 +1560,8 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     worker_id: 20,
                     loop_id: 9,
                     turn_id: 12,
-                    coordinate: "1/12/1/PLAN",
-                    op: "PLAN",
+                    coordinate: "1/12/1/NEXT",
+                    op: "NEXT",
                     origin: "model",
                     tx: { body: [{ content: "Await approval.", status: "in_progress" }] },
                 },
@@ -1669,7 +1669,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 0, coordinate: "1/1/0/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 0, rx: { content: "original question", mimetype: "text/markdown" } },
-        { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
+        { id: 1, coordinate: "1/1/1/NEXT", op: "NEXT", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
             { content: "Inspect, repair, and verify.", status: "in_progress" },
         ] } },
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
@@ -1716,7 +1716,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         reads.push(args);
         return [
             { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
-            { id: 2, coordinate: "1/1/2/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
+            { id: 2, coordinate: "1/1/2/NEXT", op: "NEXT", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
                 { content: "Answer the prior question.", status: "completed" },
             ] } },
             { id: 3, coordinate: "1/1/3/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
@@ -1861,7 +1861,7 @@ test("the official AG-UI client keeps the accepted current user message after au
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 3, coordinate: "1/1/3/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
-        { id: 2, coordinate: "1/1/2/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
+        { id: 2, coordinate: "1/1/2/NEXT", op: "NEXT", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
             { content: "Answer the prior question.", status: "completed" },
         ] } },
         { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
@@ -2409,8 +2409,8 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
                 worker_id: 20,
                 loop_id: 9,
                 turn_id: 12,
-                coordinate: "1/12/1/PLAN",
-                op: "PLAN",
+                coordinate: "1/12/1/NEXT",
+                op: "NEXT",
                 origin: "model",
                 tx: { body: [{ content: "Attempt the run.", status: "in_progress" }] },
             },

@@ -17,21 +17,18 @@ test("a KILL after TERM never executes: one diagnostic row, the TERM refused unt
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("```PLAN\n[]\n```\n```EDIT (worker:///note.md)\nEvidence.\n```\n```NEXT\nReview.\n```")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```EDIT (worker:///note.md)\nEvidence.\n```\n```NEXT\nReview.\n```")] }),
             workspaceId, workerId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
-        const plan = originalRows.find(({ op }) => op === "PLAN");
+        const plan = originalRows.find(({ op }) => op === "NEXT");
         assert.ok(plan);
         const turn = await db.test_latest_model_turn_in_loop.get<{ sequence: number }>({ loop_id: loopId });
         assert.ok(turn);
-        const source = `\`\`\`PLAN
-[]
-\`\`\`
-\`\`\`DONE
+        const source = `\`\`\`DONE
 Answer.
 \`\`\`
-\`\`\`KILL (log:///1/${turn.sequence}/${plan.sequence}/PLAN)\`\`\``;
+\`\`\`KILL (log:///1/${turn.sequence}/${plan.sequence}/NEXT)\`\`\``;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
@@ -39,12 +36,11 @@ Answer.
         // The dropped KILL is a same-turn failure the model has not seen, so the TERM is refused and the loop continues.
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes, [
-            { op: "PLAN", status: 200, problemType: null },
             { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
             { op: "DONE", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
         ]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; rx: string; attrs: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["PLAN", "error", "DONE"]);
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["error", "DONE"]);
         const diagnostic = rows.find(({ op }) => op === "error");
         assert.ok(diagnostic);
         assert.equal(
@@ -115,13 +111,13 @@ ${tail}`),
 });
 
 test("internal turn programs end at the disposition like model turns", () => {
-    const source = "```PLAN\n[]\n```\n```KILL (log:///1/1/*)```\n```NEXT\nContinue.\n```";
+    const source = "```KILL (log:///1/1/*)```\n```NEXT\n[{\"content\":\"Continue.\",\"status\":\"pending\"}]\n```";
     const statements = TurnOps.parseInternal(source);
-    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "KILL", "NEXT"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "NEXT"]);
     assert.equal(TurnOps.renderInternal(statements), source);
     // {§disposition-ends-turn} — a program that authors an operation after its disposition is invalid turnOps.
     assert.throws(
-        () => TurnOps.parseInternal("```PLAN\n[]\n```\n```NEXT\nContinue.\n```\n```KILL (log:///1/1/*)```"),
+        () => TurnOps.parseInternal("```NEXT\nContinue.\n```\n```KILL (log:///1/1/*)```"),
         { name: "SyntaxError", message: /Core generated invalid turnOps: The disposition `NEXT` ended the turn; 1 operation after its body was not admitted \(KILL ×1\)/u },
     );
 });

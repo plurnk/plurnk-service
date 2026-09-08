@@ -344,7 +344,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
-const packedTurnOps = "```PLAN\n[{\"content\":\"Exercise the installed digest.\",\"status\":\"in_progress\"}]\n```\n```DONE\ndone\n```";
+const packedTurnOps = "```DONE\ndone\n```";
 const digestFixture = new SqlRiteSync({
     path: migratedDb,
     dir: dirname(fileURLToPath(import.meta.url)),

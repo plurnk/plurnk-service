@@ -19,15 +19,13 @@ test("concrete compact examples in plurnk.md parse as one clean operation", () =
 
 test("the complete workflow example parses as an executable turn", () => {
     const workflow = [...teaching.matchAll(/^````example\n([\s\S]*?)\n````$/gm)]
-        .map((match) => match[1]!.trim()).find((source) => source.startsWith("```PLAN\n"));
+        .map((match) => match[1]!.trim()).find((source) => source.startsWith("```EDIT "));
     assert.ok(workflow, "the reference includes a workflow");
-    const start = workflow.search(/^```PLAN\n/m);
-    assert.ok(start >= 0, "the workflow demonstrates a complete turn");
-    const parsed = PlurnkParser.parse(workflow.slice(start));
+    const parsed = PlurnkParser.parse(workflow);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     assert.equal(parsed.unparsedTail, undefined);
     const statements = parsed.items.filter((item) => item.kind === "statement");
-    assert.equal(statements[0]?.statement.op, "PLAN");
+    assert.equal(statements[0]?.statement.op, "EDIT");
     assert.equal(statements.at(-1)?.statement.op, "NEXT");
     assert.ok(statements.some(({ statement }) => statement.op === "EXEC"), "the turn composes native OPs and named executors");
 });

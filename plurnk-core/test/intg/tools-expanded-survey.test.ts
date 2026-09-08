@@ -66,14 +66,11 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
 test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
     const target = "worker://~/_plurnk/plurnk/mcp/add.md";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`\`\`\`PLAN
-[]
-\`\`\`
-\`\`\`READ (${target}) <1,-1>\`\`\`
+        makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
 \`\`\`NEXT
 Read the input schema.
 \`\`\``),
-        makeMockResponse("```PLAN\n[]\n```\n```DONE\nInspected.\n```"),
+        makeMockResponse("```DONE\nInspected.\n```"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });

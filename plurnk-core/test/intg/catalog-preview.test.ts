@@ -185,7 +185,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT", null],
+                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT", null],
                     "the initialization records every operation outcome beside its exact turnOps",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -194,17 +194,15 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
                 assert.ok(turn?.completed_at !== null, "completed NEXT is distinct from an open turn");
-                const plan = JSON.parse(initializationRows[0]!.tx) as { annotation: string | null; body: Array<{ content: string; status: string }> };
+                const plan = JSON.parse(initializationRows.find(({ op }) => op === "NEXT")!.tx) as { body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
-                        content: "Discover the tooling available and survey the workspace file root.",
-                        status: "in_progress",
+                        content: "Address the prompt.",
+                        status: "pending",
                     },
                 ]);
                 const program = JSON.parse(initializationRows.find(({ op }) => op === null)!.rx) as { content: string };
-                assert.match(program.content, /^```PLAN\n\[/, "initialization demonstrates an ordinary structured task plan");
-                const send = JSON.parse(initializationRows.find(({ op }) => op === "NEXT")!.tx) as { body: { raw: string } };
-                assert.match(send.body.raw, /Address the prompt/);
+                assert.match(program.content, /\n```NEXT\n\[/, "initialization ends with an ordinary continuation inventory");
             } finally { ws.close(); }
         });
     } finally {
@@ -301,8 +299,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
-                    "the initialization outcomes contain the prompt archive and the eight surveys between PLAN and SEND",
+                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
+                    "the initialization outcomes contain the prompt archive, eight surveys, and NEXT",
                 );
                 const turnOps = initializationRows.find(({ op }) => op === null);
                 assert.equal(turnOps?.origin, "_plurnk");
@@ -310,7 +308,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^```PLAN\n[\s\S]*\n```NEXT\nNext: Address the prompt\.\n```$/,
+                    /^```COPY[^\n]*\n[\s\S]*\n```NEXT\n\[{"content":"Address the prompt\.","status":"pending"}\]\n```$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

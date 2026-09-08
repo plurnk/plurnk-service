@@ -64,7 +64,7 @@ class PacketCapturingMock extends Mock {
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(input);
-    const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
+    const item = parsed.items.find((x) => x.kind === "statement");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
 };

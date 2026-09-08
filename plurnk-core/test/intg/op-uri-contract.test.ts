@@ -32,10 +32,7 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse one op the way production does, so a bare path carries its REAL parsed shape
 // (LocalPath {kind:"local"}) — the exact thing the model emits, not a hand-built UrlPath.
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
-    const found = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
+    const found = PlurnkParser.parse(`${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
     if (found === undefined) throw new Error(`no ${op} parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: T }).statement;
 };

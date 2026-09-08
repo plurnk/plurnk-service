@@ -172,7 +172,7 @@ test("PlurnkStatement: SEND rejects string signal", () => {
 });
 
 test("PlurnkStatement: WAIT accepts a terminal wait scope", () => {
-    const stmt = { ...baseFields("WAIT"), lineMarker: { marks: [30] } };
+    const stmt = { ...baseFields("WAIT"), body: [], lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });

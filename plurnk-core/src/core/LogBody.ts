@@ -192,7 +192,7 @@ export default class LogBody {
             return { ...presentation, startLine: 1 };
         }
 
-        if (row.op === "PLAN") {
+        if (row.op !== null && TurnDisposition.isContinuationOp(row.op)) {
             const body = tx !== null && typeof tx === "object"
                 ? (tx as { body?: unknown }).body
                 : undefined;
@@ -200,7 +200,7 @@ export default class LogBody {
             try {
                 content = PlanValue.render(body);
             } catch (error) {
-                throw new TypeError("A durable PLAN row carries a noncanonical Plurnk Plan body.", { cause: error });
+                throw new TypeError(`A durable ${row.op} row carries a noncanonical Plurnk Plan body.`, { cause: error });
             }
             return {
                 content,

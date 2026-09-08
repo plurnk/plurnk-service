@@ -10,14 +10,6 @@ body?
 
 * Plurnk Harness contains several internal helper OPs.
 
-### PLAN - Track pending, in_progress, and completed steps.
-
-````syntax
-```PLAN
-[{"content": string, "status": "pending" | "in_progress" | "completed"}]
-```
-````
-
 ### FIND - List matching results by pattern search.
 
 ````syntax
@@ -98,7 +90,7 @@ filter pattern?
 * ```` ```KILL (src/app.js) <@zyxwv>``` ```` removes one line by hash anchor.
 * ```` ```KILL (sh:///1/2/3/EXEC)``` ```` stops a running command.
 * ```` ```KILL (worker://recheck)``` ```` terminates a worker.
-* ```` ```KILL (log:///1/[1-7]/*/{PLAN,READ})``` ```` removes matching log items.
+* ```` ```KILL (log:///1/[1-7]/*/{NEXT,READ})``` ```` removes matching log items.
 * ```` ```KILL (log:///**/READ) <17,-1>``` ```` trims each item's log lines from 17 on.
 * A log item or line KILL doesn't delete the source.
 
@@ -106,7 +98,7 @@ filter pattern?
 
 ````syntax
 ```NEXT
-message
+[{"content": string, "status": "pending" | "in_progress" | "completed"}]
 ```
 ````
 
@@ -116,7 +108,7 @@ message
 
 ````syntax
 ```WAIT
-message
+[{"content": string, "status": "pending" | "in_progress" | "completed"}]
 ```
 ````
 
@@ -188,10 +180,6 @@ YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT
 
 ````example
 
-```PLAN
-[{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
-```
-
 ```EDIT (worker://~/report-summary.md) <@wCf7x>
 * Q3 results: 42%
 ```
@@ -225,7 +213,8 @@ Review for grammar and style.
 ```READ (report.md) <401,600> <!-- retrieve next summary chunk -->```
 
 ```NEXT
-Distill relevant findings from this chunk, then continue reading.
+[{"content":"Update the private summary with relevant findings from report.md.","status":"in_progress"},
+ {"content":"Distill findings from this chunk, then continue reading.","status":"pending"}]
 ```
 
 ````

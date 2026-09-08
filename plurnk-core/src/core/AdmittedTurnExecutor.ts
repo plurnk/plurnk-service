@@ -95,7 +95,7 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        // {§turn-shape} — PLAN is a SHOULD; one disposition concludes the admitted program.
+        // {§turn-shape} — one disposition concludes the admitted program.
         const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions[0];
         if (dispositions.length !== 1 || finalOp === undefined) {
@@ -106,9 +106,9 @@ export default class AdmittedTurnExecutor {
         let turnStatus: number = dispositionSignal;
         let steerStruck = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
-        const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND" && !TurnDisposition.is(statement)).length
+        const middleCount = statements.filter((statement) => statement.op !== "SEND" && !TurnDisposition.is(statement)).length
             + recoverableParseErrors.length;
-        if (enforceIdle && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && middleCount === 0) {
+        if (enforceIdle && finalOp.op === "NEXT" && middleCount === 0) {
             // {§send-idle-turn} — an empty (NEXT) while the worker holds a live stream or child is a
             // mis-spelled wait, not idleness: it parks as (WAIT) and no strike (#441). The correction
             // rides the SEND row's annotation — a park drops transient notices, the row survives the
@@ -125,8 +125,7 @@ export default class AdmittedTurnExecutor {
         const turnStatements = sendOp === finalOp ? statements : statements.map((statement) => statement === finalOp ? sendOp : statement);
 
         let realCommands = 0;
-        const admitted = turnStatements.filter((statement) => statement.op === "PLAN"
-            || statement === sendOp
+        const admitted = turnStatements.filter((statement) => statement === sendOp
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({

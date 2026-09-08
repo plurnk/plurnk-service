@@ -1066,7 +1066,7 @@ test("an already-drained join is a normal deliverable", async () => {
         const reader = await insertWorker(db, workspaceId);
         const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 200);
-        assert.equal(String(collected.content), "Standing by for user input", "the model's terminal body is the deliverable");
+        assert.equal(String(collected.content), '[{"content":"Standing by for user input","status":"in_progress"}]', "the model's terminal body is the deliverable");
     } finally { await db.close(); }
 });
 

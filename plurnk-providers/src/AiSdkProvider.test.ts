@@ -1251,7 +1251,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
 });
 
 test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-projection tagged sentence", async () => {
-    const content = "<think>🧠reason</think>```PLAN```\n```DONE\ndone\n```";
+    const content = "<think>🧠reason</think>```DONE\ndone\n```";
     const config = {
         ...injectedBase,
         contextWindow: 640,
@@ -1269,7 +1269,7 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
     });
 
     assert.equal(response.assistant.reasoning, "🧠reason");
-    assert.equal(response.assistant.content, "```PLAN```\n```DONE\ndone\n```");
+    assert.equal(response.assistant.content, "```DONE\ndone\n```");
     assert.deepEqual(response.grammarEvidence, {
         input: content,
         contentStart: [..."<think>🧠reason</think>"].length,
@@ -2070,7 +2070,7 @@ test("generate fail-hards on a missing or empty workerId", async () => {
     await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /workerId is required/);
 });
 
-test("messages pass through verbatim — the provider injects no turn (PLAN lives in the grammar, never a provider prefill)", async () => {
+test("messages pass through verbatim — the provider injects no turn (turn structure belongs to the grammar, never provider prefill)", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "out" } }] }]);
     const input = [{ role: "user" as const, content: "hi" }];

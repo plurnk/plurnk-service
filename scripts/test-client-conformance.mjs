@@ -313,10 +313,10 @@ try {
         || cliRecord.finalStatus !== 200
         || cliRecord.workspace?.name !== "installed-cli"
         || cliRecord.turnCount !== 2
-        || JSON.stringify(modelOps) !== JSON.stringify(["PLAN", "DONE"])) {
+        || JSON.stringify(modelOps) !== JSON.stringify(["DONE"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
-    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + model PLAN/DONE\n");
+    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + model DONE\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-tui",
@@ -338,7 +338,7 @@ try {
     // accounting, the gauge's model, the ant (the daemon's alive-children count, {§agui-status-children}),
     // the workspace, and the conversation worker.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️ completed · 2 turns · \d+ms · ↓400 ↑80 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜0 · installed-tui ·[\s\S]{0,220}?worker:\/\/tui-worker\//);
+    await tui.waitFor(/⏹️ completed · 3 turns · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜0 · installed-tui ·[\s\S]{0,220}?worker:\/\/tui-worker\//);
     const tuiOutput = tui.output();
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI PLAN");

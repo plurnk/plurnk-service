@@ -44,9 +44,6 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         contextWindow: 100_000,
         responses: [
             makeMockResponse([
-                "```PLAN",
-                "[{\"content\":\"Delegate the comparison to the configured remote agent.\",\"status\":\"in_progress\"}]",
-                "```",
                 "```SEND (a2a://remote)",
                 "Compare mangoes and pineapples in one concise sentence.",
                 "```",
@@ -176,9 +173,6 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async () => {
     const [callerDb, agentDb] = await Promise.all([openMigrated(), openMigrated()]);
     const delegate = (fruit: string) => makeMockResponse([
-        "```PLAN",
-        "[{\"content\":\"Delegate the comparison to the configured remote agent.\",\"status\":\"in_progress\"}]",
-        "```",
         "```SEND (a2a://remote)",
         "Compare " + (fruit) + " in one concise sentence.",
         "```",

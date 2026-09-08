@@ -77,10 +77,10 @@ test("fenced operations: an unfinished block never admits its contents as an exe
 });
 
 test("fenced operations: closed malformed blocks do not discard later valid operations", () => {
-    const result = PlurnkParser.parse("```PLAN\n[]\n```\n```FIND (src/**) <~retry>\n```\n```READ (a.txt)```\n```NEXT\nInspect the results.\n```");
+    const result = PlurnkParser.parse("```FIND (src/**) <~retry>\n```\n```READ (a.txt)```\n```NEXT\nInspect the results.\n```");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
-    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["PLAN", "READ", "NEXT"]);
+    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "NEXT"]);
 });
 
 test("fenced operations: a message may contain literal executable examples without dispatching them", () => {
@@ -94,7 +94,7 @@ test("fenced operations: a message may contain literal executable examples witho
 });
 
 test("fenced operations: canonical serialization retains bodies, operands, and executor selection without suffix state", () => {
-    const before = statements('```PLAN\n[]\n```\n```gitea (issue_list)\n{"issue_id":42}\n```\n```COPY (a) <@abcde> (b) <0>```\n````EDIT (README.md) <1,-1>\n```sh\necho hello\n```\n\n````');
+    const before = statements("```gitea (issue_list)\n{\"issue_id\":42}\n```\n```COPY (a) <@abcde> (b) <0>```\n````EDIT (README.md) <1,-1>\n```sh\necho hello\n```\n\n````");
     const rendered = PlurnkParser.stringify(before);
     const after = statements(rendered);
     const withoutPosition = (ops: typeof before) => ops.map((op) => ({ ...op, position: null }));

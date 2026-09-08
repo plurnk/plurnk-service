@@ -11,7 +11,6 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithC
 
 const response = (operation: string, disposition: string) => ({
     assistant: { content: [
-        PlurnkParser.frame("PLAN", "[]"),
         operation,
         PlurnkParser.frame(disposition.split("\n")[0], disposition.includes("\n") ? disposition.slice(disposition.indexOf("\n") + 1) : null),
     ].join("\n"), reasoning: null },

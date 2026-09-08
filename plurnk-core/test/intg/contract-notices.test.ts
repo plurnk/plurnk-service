@@ -21,10 +21,7 @@ const contentResponse = (content: string): MockResponse => ({
         // Turns lead with PLAN; the Engine re-parses the supplied content.
         content: content.startsWith("```PLAN")
             ? content
-            : `\`\`\`PLAN
-admit the supplied turn
-\`\`\`
-${content}
+            : `${content}
 `,
         reasoning: null,
     },
@@ -39,7 +36,7 @@ const drainTurn = contentResponse("```DONE\ndrained\n```");
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "```PLAN\nreasoning\n```\n\n```DONE\nnoted\n```";
+const NOTICE_CONTENT = "\n```DONE\nnoted\n```";
 const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("```DONE") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
@@ -101,7 +98,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* grammar_unenforced: decode escaped into a discarded channel @ 5:3",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 2:3",
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -112,7 +109,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 5:3$/m);
+        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 2:3$/m);
 
         // The mirror body is ALWAYS suppressed — even on the NOTICE turn;
         // the model READs the row at the cited line when it cares.
@@ -361,7 +358,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "```PLAN\nedit the file\n```\n\n```EDIT (src/example.ts<1,-1>)\nbody\n```\n\n```DONE\ndone\n```";
+        const emission = "\n```EDIT (src/example.ts<1,-1>)\nbody\n```\n\n```DONE\ndone\n```";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -383,7 +380,7 @@ test("a parser warning remains advisory while the independently invalid mutation
         assert.match(String(advisories[0]!.payload.notice.message), /The scope was inside the target slot; it was applied as the operation scope\./);
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 5, column: 23 },
+            { type: "content-offset", line: 2, column: 23 },
             "the Notice retains the parser's typed source position",
         );
         const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{
@@ -427,14 +424,14 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const liveNotice = liveParse[0].payload.notice;
         assert.equal(liveNotice.source, "provider:mock");
         assert.equal(liveNotice.kind, "grammar_unenforced");
-        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 5, column: 3 });
+        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 2, column: 3 });
 
         // Model side: the notice drains once as a bounded projection.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* grammar_unenforced: decode escaped into a discarded channel @ 5:3",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 2:3",
         );
     } finally { await db.close(); }
 });
@@ -443,9 +440,6 @@ test("{§fence-boundary}: literal programs inside a longer fence produce no spur
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const emission = [
-            "```PLAN",
-            "[{\"content\":\"write two notes\",\"status\":\"in_progress\"}]",
-            "```",
             "````EDIT (worker://~/a.md) <!-- first note -->",
             "alpha",
             "```EDIT (worker://~/b.md) <!-- literal example -->",
@@ -459,7 +453,7 @@ test("{§fence-boundary}: literal programs inside a longer fence produce no spur
             "continue",
             "```",
         ].join("\n");
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```PLAN\n[]\n```\n```DONE\ndone\n```")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```DONE\ndone\n```")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");

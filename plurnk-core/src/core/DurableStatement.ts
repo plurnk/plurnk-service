@@ -13,7 +13,7 @@ export default class DurableStatement {
     static readonly #REDACTED = "__redacted__";
 
     static project(statement: PlurnkStatement): PlurnkStatement {
-        if (statement.op === "BARE" || statement.op === "PLAN" || TurnDisposition.is(statement)) return statement;
+        if (statement.op === "BARE" || TurnDisposition.is(statement)) return statement;
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return {
                 ...statement,

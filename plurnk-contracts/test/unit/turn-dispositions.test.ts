@@ -4,15 +4,16 @@ import { PlurnkParser, Validator } from "../../src/index.ts";
 
 for (const op of ["NEXT", "WAIT", "DONE", "FAIL"]) {
     test(`standalone ${op} is the durable operation, not an executor or SEND alias`, () => {
-        const result = PlurnkParser.parse(`\`\`\`PLAN\n[]\n\`\`\`\n\`\`\`READ (notes.md)\`\`\`\n\`\`\`${op}\nmessage\n\`\`\``);
+        const result = PlurnkParser.parse(`\`\`\`READ (notes.md)\`\`\`
+\`\`\`${op}\nmessage\n\`\`\``);
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
         const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(statements.map((statement) => statement.op), ["PLAN", "READ", op]);
+        assert.deepEqual(statements.map((statement) => statement.op), ["READ", op]);
         const last = statements.at(-1)!;
         assert.equal(Object.hasOwn(last, "status"), false, "the operation determines disposition; no contradictory status operand");
         assert.equal(Validator.validatePlurnkStatement(last).valid, true);
         const again = PlurnkParser.parseStatements(PlurnkParser.stringify(statements));
-        assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["PLAN", "READ", op]);
+        assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", op]);
     });
 }
 
@@ -38,8 +39,9 @@ test("WAIT alone carries numeric parking scope; DONE has no resource operand", (
         assert.equal(statement.statement.op, "WAIT");
         assert.deepEqual(statement.statement.lineMarker, { marks: [5, 1] });
         for (const op of ["NEXT", "DONE", "FAIL"]) {
-            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, op }).valid, false, `${op} cannot carry WAIT timing through the wire schema`);
-            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, op, lineMarker: null }).valid, true);
+            const body = op === "NEXT" ? [] : { raw: "finished", json: null };
+            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, op, body }).valid, false, `${op} cannot carry WAIT timing through the wire schema`);
+            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, op, body, lineMarker: null }).valid, true);
         }
     }
     const invalid = PlurnkParser.parseStatements("```DONE (notes.md)\ncomplete\n```");

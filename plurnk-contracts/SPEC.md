@@ -156,7 +156,7 @@ order-independent: a descriptor is admitted only when every layer admits it.
 No Worker or loop can restore service, workspace, or parent authority. A
 composed operation is admitted only when every routed demand survives. These
 descriptors govern routed external authority, not every grammar statement:
-log/program control such as PLAN, log KILL, the native dispositions, and
+log/program control such as log KILL, the native dispositions, and
 targetless SEND creates no capability demand. A known interactive runtime is represented by
 access class `interact`; scheme and runtime manifests contribute traits rather
 than hidden policy behavior.
@@ -255,7 +255,7 @@ another parser or a semantic guarantee. The complete build generates both;
 they are not source-controlled. Source and differential tests exercise the
 generator, and packed-artifact coverage verifies its exports.
 
-§gbnf-turn-shape Both profiles generate an optional PLAN block, ordinary
+§gbnf-turn-shape Both profiles generate ordinary
 operation blocks, and one disposition block ending the turn. NEXT requires
 at least one ordinary operation. The rail uses matching three- or four-backtick
 fences; ANTLR also admits longer matching fences. There is no
@@ -307,7 +307,7 @@ Inside an open body, no header is executable. An unfinished block establishes
 admissible.
 
 §empty-section Both the compact bodyless form and an empty multiline block
-normalize optional bodies to null. PLAN normalizes an empty body to `[]`
+normalize optional bodies to null. NEXT and WAIT normalize an empty body to `[]`
 under {§plan-value}. Closing fences are required even for bodyless operations.
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
@@ -332,8 +332,8 @@ operand. ANTLR accepts adjacent slots and the admitted target/scope
 permutations without making them distinct canonical forms. Each slot appears
 at most once, except metadata blocks attached to their owning target.
 
-§plan-slotless PLAN accepts no target, metadata, or scope. Rejected modifiers
-produce a bounded error naming only those modifiers.
+§plan-slotless NEXT and WAIT accept no target or metadata. WAIT alone accepts
+its lifecycle timing scope. Their inventory bodies begin below the header.
 
 §heading-inline-body Nonempty body text belongs below the fence header.
 The ingester tolerates body text after horizontal whitespace on the header,
@@ -358,7 +358,7 @@ to metadata. An unfinished block or multiline metadata loses its boundary.
 
 | Element | Shape or role |
 |---|---|
-| Native OP | `PLAN FIND READ EDIT COPY MOVE SEND EXEC BARE WORK FORK KILL NEXT WAIT DONE FAIL` |
+| Native OP | `FIND READ EDIT COPY MOVE SEND EXEC BARE WORK FORK KILL NEXT WAIT DONE FAIL` |
 | Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
 | Fence | Three or more backticks, matched by exact count |
 | `(path)` | Local path, URI, program or tool name; §5 |
@@ -373,7 +373,6 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 
 | OP   | `(path)`                                     | `<scope>`                       | `body`                         |
 |------|----------------------------------------------|---------------------------------|--------------------------------|
-| PLAN | none                                         | none                            | required Plurnk Plan JSON array |
 | FIND | required target or glob                      | optional result range           | optional matcher               |
 | READ | required target                              | optional text region            | empty                          |
 | EDIT | required file or entry                       | required for an existing target | literal text                   |
@@ -385,14 +384,15 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
 | SEND | optional recipient | optional recipient timing | message |
-| NEXT, DONE, FAIL | none | none | user-facing message |
-| WAIT | none | optional timeout and poll | user-facing message |
+| NEXT | none | none | Plurnk Plan JSON array |
+| WAIT | none | optional timeout and poll | Plurnk Plan JSON array |
+| DONE, FAIL | none | none | user-facing message |
 
 §operation-code-polymorphism Operation-result statuses and turn dispositions are
 distinct facts. NEXT, WAIT, DONE, and FAIL derive their requested lifecycle
 outcome from the operation name; SEND and KILL carry no disposition operand.
 
-§plan-value **PLAN carries the model's task inventory.**
+§plan-value **NEXT and WAIT carry the model's task inventory.**
 Finished actions are `completed`, open work is `pending`, and active work is
 `in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — strips unknown
 entry keys, and validates
@@ -401,13 +401,16 @@ the canonical bare array: every entry has string `content` and `status` in
 malformed-JSON, or otherwise invalid body becomes one `in_progress`
 entry whose content is the exact authored body; admission performs no partial
 repair or list inference. An empty body becomes the planless `[]`
-value. Each PLAN is one complete semantic value;
-prior PLANs remain ordinary curatable log items. The exact `turnOps`
+value. Each continuation body is one complete semantic value;
+prior inventories remain ordinary curatable log items. The exact `turnOps`
 source remains forensic program evidence, while the normalized array is the sole
 semantic value used by AST, persistence, durable log bodies, and model-packet
-materialization. PLAN is public log content—not
-provider reasoning—and Plurnk initially mints no `_meta` values. Dispatch records
-the canonical value and has no other runtime effect.
+materialization. The inventory is public log content—not
+provider reasoning—and Plurnk initially mints no `_meta` values. There is no
+PLAN operation or separate inventory row. Inventory statuses do not create
+runtime obligations or change NEXT/WAIT transitions. An empty-join WAIT preserves
+its canonical inventory as its successful terminal result, with JSON mimetype;
+it does not mark entries completed or discard the body.
 
 §plan-acp-projection **Only an ACP-facing boundary projects the model-native
 Plan.** It constructs ACP's `{ "entries": [...] }` Plan object from the internal
@@ -531,7 +534,8 @@ Mutation semantics:
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |
-| PLAN | Status of durable complete-Plan logging                                           |
+| NEXT / WAIT | Continuation inventory and lifecycle disposition                          |
+| DONE / FAIL | Terminal result                                                          |
 
 §find-result-unit For FIND, authored target shape fixes the paginated result
 unit. An exact target with a matcher pages flat match locations; a glob or
@@ -782,9 +786,8 @@ disposition. The shape rules ARE structural:
   malformed headings; the disposition's own advisories and a second-disposition
   structural error stand as before. A disposition the parser synthesized
   ({§turn-shape}) closes the source and never has a tail. The GBNF rails derive
-  nothing after the disposition body ({§gbnf-turn-shape}). `parseLog` is
-  unchanged: saved turns retain trailing operations as authored, so history
-  written under the earlier shape stays readable. Origin: on a constrained weak
+  nothing after the disposition body ({§gbnf-turn-shape}). Saved turns use
+  the same disposition boundary. Origin: on a constrained weak
   rail, three emissions in one night continued past a correct disposition into
   the packet they expected next, executing 194, 302, and 481 operations.
 - SEND is communication: an optional recipient path and an optional body.
@@ -796,7 +799,7 @@ disposition. The shape rules ARE structural:
   GBNF-strict / ANTLR-tolerant split.
 - §no-idle-102 A **zero-statement turn may not conclude `(NEXT)`** — "continue"
   with nothing submitted is a spin. GBNF requires at least one non-disposition
-  operation on either side of NEXT. The other three stay legal bare (a zero-op
+  operation before NEXT. The other three stay legal bare (a zero-op
   `(WAIT)` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
   downstream validation — survives the rail by nature; the engine's
@@ -853,15 +856,14 @@ types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts one operation-bearing model turn.
-PLAN is optional and is not synthesized or diagnosed when absent. One
-disposition ends the turn ({§disposition-ends-turn}). If complete valid
-operations omit it, the parser appends a bodyless NEXT with
+One disposition ends the turn ({§disposition-ends-turn}). If complete valid
+operations omit it, the parser appends NEXT with an empty inventory (`[]`),
 `UNKNOWN_POSITION` and one hard `missing-turn-disposition` diagnostic; the raw
 source is unchanged. Unfinished blocks never receive inferred closers.
-Bounded operation errors retain valid siblings. Duplicate dispositions,
-repeated PLAN, and failed document boundaries remain structural failures.
+Bounded operation errors retain valid siblings. Duplicate dispositions
+and failed document boundaries remain structural failures.
 
-`parseLog` reads consecutive saved turns separated by their PLAN anchors and
+`parseLog` reads consecutive saved turns separated by their dispositions and
 requires their dispositions. There is no outer Markdown program wrapper;
 the executable blocks themselves are the program.
 
@@ -869,9 +871,9 @@ the executable blocks themselves are the program.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn with optional preamble TEXT and PLAN; an omitted disposition recovers to NEXT | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn with optional preamble TEXT; an omitted disposition recovers to NEXT | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
-| `PlurnkParser.parseLog`        | One or more consecutive PLAN-anchored turns           | `PlurnkStatement`     |
+| `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including read-shaped LOOK/BUFF commands      | `ClientStatement`     |
 
 Every entry point returns ordered `statement`, `error`, and, where admitted,
@@ -1219,7 +1221,7 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
-turn-shape diagnostics. Missing PLAN is not diagnosed ({§turn-shape}). A missing
+turn-shape diagnostics ({§turn-shape}). A missing
 turn disposition carries the structured `code: "missing-turn-disposition"`; consumers
 use that code, never message wording, to recognize envelope recovery. Operations
 after the disposition carry `code: "operations-after-disposition"`
@@ -1283,7 +1285,7 @@ Examples of canonical hard facts:
 - `unrecognized character '<' in target`
 - `unexpected bracket modifier; the fence name selects the executor`
 - `unrecognized character 'X' in statement header`
-- `PLAN takes no modifiers; its body begins below the header`
+- `NEXT's body begins below the header`
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded

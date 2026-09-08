@@ -23,7 +23,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "```PLAN\ncurate:\n```\n\n```DONE\nobserved.\n```",
+                    content: "\n```DONE\nobserved.\n```",
                     reasoning: null,
                 },
             }],
@@ -82,14 +82,14 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         // The parse is synchronous and ends before model dispatch.
         const parse = turnChildren.find((s) => s.name === "contracts.parse");
         assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
-        assert.ok((parse.attributes.statements as number) >= 2, "parse records the emitted statement count");
+        assert.equal(parse.attributes.statements, 1, "parse records the single emitted disposition");
 
         const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
         const ops = dispatches.map((s) => s.attributes.op);
-        assert.equal(ops.filter((op) => op === "PLAN").length, 2, "initialization and inference each dispatch their real PLAN");
+        assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
         assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "initialization and inference each dispatch their real SEND");
         assert.ok(
-            ops.filter((op) => op !== "PLAN" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "FIND" || op === "COPY"),
+            ops.filter((op) => typeof op !== "string" || !TurnDisposition.isOp(op)).every((op) => op === "FIND" || op === "COPY"),
             `the remaining initialization operations are the prompt-archive COPY and catalog FINDs; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {

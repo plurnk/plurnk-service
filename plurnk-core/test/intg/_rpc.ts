@@ -169,11 +169,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
     const statements = result.items
         .filter((i) => i.kind === "statement")
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
-    // Fail-hard ONLY when nothing parsed: zero statements alongside an error means the input
-    // didn't parse at all (e.g. a bare statement with no PLAN heading), which silently
-    // returned [] and let callers build phantom-empty turns. A
-    // trailing "incomplete turn" error WITH real statements (a partial turn — PLAN + ops, no
-    // terminal SEND) is a legitimate fixture; return the statements.
+    // Recovery fixtures may omit a disposition, but must contain an executable operation.
     if (statements.length === 0 && result.items.some((i) => i.kind === "error")) {
         throw new Error(`parseDsl: DSL produced no statements: ${JSON.stringify(text)}`);
     }
@@ -181,12 +177,9 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 };
 
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
-    // Every fixture turn leads with PLAN. The mock emits what a
-    // compliant model emits; PLAN and SEND flow through as ordinary dispatched ops.
-    const turn = dsl.startsWith("```PLAN") ? dsl : `${PlurnkParser.frame("PLAN", "[]")}\n${dsl}`;
     return {
         assistant: {
-            content: turn, ops: parseDsl(turn), reasoning: null,
+            content: dsl, ops: parseDsl(dsl), reasoning: null,
         },
         usage: {
             inputTokens: 0,

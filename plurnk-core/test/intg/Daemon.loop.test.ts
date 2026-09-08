@@ -185,29 +185,24 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 false,
                 "initialization has no synthetic actionless receipt",
             );
-            assert.equal(initialization[0]?.op, "PLAN", "the real initialization PLAN streams first");
+            assert.equal(initialization[0]?.op, "COPY", "the real initialization archives the prompt first");
             assert.equal(initialization.at(-1)?.op, "NEXT", "the real initialization SEND streams last");
             const authored = captured.filter((event) => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return entry.op === "prompt" || entry.origin === "model";
             });
-            // {§send-premature-terminate} — the EDIT receipt forces a second turn: its PLAN and SEND stream too.
-            assert.equal(authored.length, 6, "prompt plus PLAN, EDIT, SEND, then the observation turn's PLAN and SEND stream independently of initialization operations");
+            // {§send-premature-terminate} — the EDIT receipt forces a second turn.
+            assert.equal(authored.length, 4, "prompt, EDIT, refused DONE, and the observation turn's DONE stream independently of initialization operations");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "prompt");
             assert.equal(prompt.entry.origin, "_plurnk");
-            // PLAN leads every model turn (grammar 0.70) — dispatched + broadcast to the
-            // client as an ordinary log op (this is the "pass PLAN along" behavior).
-            const plan = authored[1] as { entry: { op: string; origin: string } };
-            assert.equal(plan.entry.op, "PLAN");
-            assert.equal(plan.entry.origin, "model");
-            const first = authored[2] as { entry: { op: string; origin: string } };
+            const first = authored[1] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");
-            const second = authored[3] as { entry: { op: string; status_rx: number } };
+            const second = authored[2] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "DONE");
             assert.equal(second.entry.status_rx, 409, "the same-turn [200] is refused over the unseen EDIT receipt ({§send-premature-terminate})");
-            const concluding = authored[5] as { entry: { op: string; status_rx: number } };
+            const concluding = authored[3] as { entry: { op: string; status_rx: number } };
             assert.equal(concluding.entry.op, "DONE");
             assert.equal(concluding.entry.status_rx, 200, "the observation turn concludes");
         } finally { ws.close(); }

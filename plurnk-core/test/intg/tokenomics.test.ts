@@ -5,7 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { planValue, dispositionStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 // {§tokenomics}: entry and log content-depth is stamped at write time in the
@@ -195,13 +195,13 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
             "the failed recovery remains an explicit _plurnk overflow turn",
         );
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
-        const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
-        assert.ok(plan, "the recovery records its actual PLAN operation");
+        const plan = rows.find((row) => row.op === "NEXT" && row.origin === "_plurnk");
+        assert.ok(plan, "the recovery records its actual NEXT inventory");
         const body = (JSON.parse(plan.tx) as { body: unknown }).body;
         assert.deepEqual(
             body,
-            planValue("Automatically KILL log bodies newly active at token-budget overflow."),
-            "the recovery PLAN states the ordinary curation action without simulating a packet account",
+            [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "pending" }],
+            "the recovery inventory states the ordinary curation action without simulating a packet account",
         );
         const problem = result.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal admission failure owns exact pressure evidence");

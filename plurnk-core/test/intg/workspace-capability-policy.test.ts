@@ -146,7 +146,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null }>({ loop_id: loopId });
         const harnessOps = rows.filter(({ origin }) => origin === "_plurnk").map(({ op }) => op);
-        assert.equal(harnessOps.includes("PLAN"), true);
+        assert.equal(harnessOps.includes("PLAN"), false);
         assert.equal(harnessOps.includes("NEXT"), true);
         assert.deepEqual(
             harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),

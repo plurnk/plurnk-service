@@ -1,7 +1,8 @@
+import { dispositionStmt } from "./_dsl.ts";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlanValue, type EditStatement, type LineMarker, type PlanStatement, type PlurnkStatement, type ReadStatement, type DispositionStatement, type UrlPath } from "@plurnk/plurnk-contracts";
+import { type EditStatement, type LineMarker, type PlurnkStatement, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import type { ReasoningEventNotify, ReasoningEventPayload } from "../../src/core/ReasoningEvent.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
@@ -32,27 +33,10 @@ const editStmt = (pathname: string, body: string, marker: LineMarker | null = fu
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
-const dispositionStmt = (op: DispositionStatement["op"], body: string): DispositionStatement => ({
-    metadata: null,
-    op, annotation: null, target: null,
-    lineMarker: null, body: { raw: body, json: null },
-    position: { line: 1, column: 1 },
-});
-
-const planStmt = (body: string): PlanStatement => ({
-    metadata: null,
-    op: "PLAN", annotation: null, target: null,
-    lineMarker: null, body: PlanValue.admit(body), position: { line: 1, column: 1 },
-});
-
 // A response with content but NO pre-parsed ops, so the engine runs the parser.
 const contentResp = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
-        // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
-        content: content.startsWith("```PLAN") ? content : `\`\`\`PLAN
-[]
-\`\`\`
-${content}`,
+        content,
         reasoning: null,
     },
     usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
@@ -130,9 +114,6 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const source = [
-            "```PLAN",
-            "* Preserve this exact admitted program.",
-            "```",
             "```DONE",
             "done",
             "```",
@@ -174,10 +155,10 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
         assert.equal(initializationSource?.initial_folded, "[]", "Turn 0 turnOps are initially visible");
         assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are untrimmed");
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^```PLAN(?: <!--[^\n]*-->)?\n/);
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n```NEXT\nNext: Address the prompt\.\n```$/);
-        assert.ok(initializationRows.some(({ op }) => op === "PLAN"), "the raw turn does not replace PLAN's result row");
-        assert.ok(initializationRows.some(({ op }) => op === "NEXT"), "the raw turn does not replace SEND's result row");
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^```/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n```NEXT\n\[.*"Address the prompt\.".*\]\n```$/s);
+        assert.equal(initializationRows.some(({ op }) => op === "PLAN"), false);
+        assert.ok(initializationRows.some(({ op }) => op === "NEXT"), "the raw turn does not replace NEXT's result row");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
         const inferenceSource = inferenceRows.find(({ op }) => op === null);
@@ -186,7 +167,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(inferenceSource?.initial_folded, "[[1,-1]]", "ordinary model turnOps are born body-suppressed");
         assert.equal(inferenceSource?.folded, "[]", "ordinary model turnOps are still READable");
         assert.equal(JSON.parse(inferenceSource?.rx ?? "null").content, source, "turnOps preserve exact admitted source");
-        assert.ok(inferenceRows.some(({ op }) => op === "PLAN"));
+        assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
         assert.ok(inferenceRows.some(({ op }) => op === "DONE"));
     } finally { await db.close(); }
 });
@@ -1036,38 +1017,36 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // non-executable, while the DONE after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "Just thinking out loud here.\n```PLAN\n[]\n```\n```DONE\ndone\n```", reasoning: null } }],
+            responses: [{ assistant: { content: "Just thinking out loud here.\n\n```DONE\ndone\n```", reasoning: null } }],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
-            { op: "PLAN", status: 200, problemType: null },
             { op: "DONE", status: 200, problemType: null },
-        ], "PLAN and the SEND after the prose parse and dispatch");
+        ], "the disposition after the prose parses and dispatches");
         assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: PLAN dispatches as an ordinary durable complete-Plan op", async () => {
+test("Engine.runTurn: NEXT carries a durable inventory separate from provider reasoning", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([planStmt("FIND before READ — the current plan"), dispositionStmt("DONE", "done")], "", 10)],
+            responses: [response([editStmt("/note", "finding"), dispositionStmt("NEXT", "Review the edit result.")], "", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND are outcomes.
         assert.deepEqual(result.outcomes, [
-            { op: "PLAN", status: 200, problemType: null },
-            { op: "DONE", status: 200, problemType: null },
-        ], "PLAN dispatched as a log op, then the SEND");
-        // The PLAN body is a real log row passed to the client, separate from provider reasoning.
-        const ops = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });
-        assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as a durable op");
+            { op: "EDIT", status: 201, problemType: null },
+            { op: "NEXT", status: 102, problemType: null },
+        ]);
+        const ops = await db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: loopId });
+        assert.ok(ops.some((row) => row.op === "NEXT" && JSON.parse(row.tx).body.some((item: { content: string }) => item.content === "Review the edit result.")));
+        assert.equal(ops.some((row) => row.op === "PLAN"), false);
     } finally { await db.close(); }
 });

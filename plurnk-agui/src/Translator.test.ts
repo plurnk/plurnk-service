@@ -27,7 +27,7 @@ const acpPlan = (content: string) => ({ entries: [{ content, priority: "medium",
 
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: plan("orient") }) })); // consume the turn boundary
+    tr.logEntry(entry({ op: "NEXT", tx: JSON.stringify({ body: plan("orient") }) })); // consume the turn boundary
     const events = tr.logEntry(entry({ op: "READ", scheme: "known", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200, tags: ["research"] }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]);
     assert.equal((events[0] as { name: string }).name, "plurnk.row", "the full-fidelity row channel leads every projection ({§agui-row-channel})");
@@ -39,10 +39,10 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.match(args.delta, /known:\/\/\/notes\.md/, "the target rides the args");
 });
 
-test("PLAN is one canonical replacement activity; SEND is assistant speech with the signal on plurnk.send", () => {
+test("NEXT inventory is one replacement PLAN activity; SEND is assistant speech", () => {
     const tr = t();
-    const events = tr.logEntry(entry({ op: "PLAN", coordinate: "1/1/3/PLAN", tx: JSON.stringify({ body: plan("do the thing") }) }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "ACTIVITY_SNAPSHOT"]);
+    const events = tr.logEntry(entry({ op: "NEXT", coordinate: "1/1/3/NEXT", tx: JSON.stringify({ body: plan("do the thing") }) }));
+    assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "CUSTOM", "ACTIVITY_SNAPSHOT", "CUSTOM"]);
     assert.deepEqual(events[2], {
         type: "ACTIVITY_SNAPSHOT",
         messageId: "th-1/plan",
@@ -51,6 +51,7 @@ test("PLAN is one canonical replacement activity; SEND is assistant speech with 
         replace: true,
     });
     assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(events[2]), "PLAN uses the standard AG-UI activity event");
+    assert.equal((events[3] as { name: string }).name, "plurnk.send", "the continuation still signals lifecycle without speaking its inventory");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     const custom = send[4] as { name: string; value: { signal: unknown } };
@@ -65,7 +66,7 @@ test("{§agui-plan-activity}: task status and content survive standards projecti
         { content: "Review the changes.", status: "pending" },
         { content: "Run the focused tests.", status: "in_progress" },
     ];
-    const events = tr.logEntry(entry({ op: "PLAN", tx: { body: native } }));
+    const events = tr.logEntry(entry({ op: "NEXT", tx: { body: native } }));
     const activity = events.find((event) => event.type === "ACTIVITY_SNAPSHOT");
     const row = events.find((event) => event.type === "CUSTOM") as {
         name?: string;
@@ -95,7 +96,7 @@ test("{§agui-plan-activity}: task status and content survive standards projecti
         replace: true,
     });
     assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(activity));
-    const ambient = tr.logEntry(entry({ op: "PLAN", origin: "_plurnk", tx: { body: native } }));
+    const ambient = tr.logEntry(entry({ op: "NEXT", origin: "_plurnk", tx: { body: native } }));
     assert.equal(ambient.length, 2, "a harness PLAN projects onto both rich-client channels");
     const ambientRow = ambient[0] as { value?: { tx?: { body?: unknown } } };
     assert.deepEqual(ambientRow.value?.tx?.body, row?.value?.tx?.body, "ambient PLAN rows use the same standards projection");
@@ -167,6 +168,34 @@ test("live provider reasoning projects ordered deltas before SEND without duplic
     } as never));
     assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the matching durable projection is replay authority, not a second live message");
 });
+
+for (const streamed of [false, true]) {
+    test(`{§agui-readable-reasoning}: SEND and WAIT share one reasoning projection across interrupts (streamed=${streamed})`, () => {
+        let tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 10 });
+        const rows = [
+            entry({ id: 10, op: "SEND", turn_id: 7, coordinate: "1/7/1/SEND", tx: { body: "progress" }, reasoning: "checked the evidence" }),
+            entry({ id: 11, op: "SEND", turn_id: 7, coordinate: "1/7/2/SEND", tx: { body: "answer" }, reasoning: "checked the evidence" }),
+            entry({ id: 12, op: "WAIT", turn_id: 7, coordinate: "1/7/3/WAIT", tx: { body: plan("recorded") }, reasoning: "checked the evidence" }),
+            entry({ id: 13, op: "DONE", turn_id: 8, coordinate: "1/8/1/DONE", tx: { body: "done" }, reasoning: "checked the evidence" }),
+        ];
+        const events = streamed ? [
+            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
+            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" }),
+            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }),
+        ] : [];
+        events.push(...tr.logEntry(rows[0]!));
+        tr = new Translator({ threadId: "th", runId: "resumed", continuation: tr.interrupt().continuation });
+        for (const row of rows.slice(1)) events.push(...tr.logEntry(row));
+        assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 2,
+            "one reasoning value per turn, including when a later turn repeats the same text");
+        assert.equal(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").length, 3);
+        assert.equal(events.filter(({ type }) => type === "ACTIVITY_SNAPSHOT").length, 1);
+        const snapshot = tr.replay(rows.map(({ entry }) => entry)).find(({ type }) => type === "MESSAGES_SNAPSHOT");
+        assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
+        assert.equal(snapshot.messages.filter(({ role }) => role === "reasoning").length, 2,
+            "replay also projects the admitted reasoning once per turn");
+    });
+}
 
 test("a retried physical request receives a separate reasoning message instead of splicing attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
@@ -257,7 +286,7 @@ test("readable reasoning identity is turn-specific and absent evidence invents n
 
 test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit nothing", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: { body: plan("orient") } }));
+    tr.logEntry(entry({ op: "NEXT", tx: { body: plan("orient") } }));
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
@@ -369,10 +398,10 @@ test("malformed and unknown reasoning carriers are ignored", () => {
 
 test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
     const tr = t();
-    const first = tr.logEntry(entry({ op: "PLAN", turn_id: 1, tx: { body: plan("first") } }));
-    assert.equal(first[1]?.type, "STEP_STARTED");
-    const second = tr.logEntry(entry({ op: "PLAN", turn_id: 2, tx: { body: plan("second") } }));
-    assert.deepEqual(second.slice(1, 3).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
+    const first = tr.logEntry(entry({ op: "NEXT", turn_id: 1, tx: { body: plan("first") } }));
+    assert.equal(first[0]?.type, "STEP_STARTED");
+    const second = tr.logEntry(entry({ op: "NEXT", turn_id: 2, tx: { body: plan("second") } }));
+    assert.deepEqual(second.slice(0, 2).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
     const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
     const done = tr.terminated(term);
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
@@ -481,7 +510,7 @@ test("a failed termination without a Problem is rejected instead of synthesized 
 
 test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
-    const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: plan("mine") }), ...( { worker_id: 2 } as object) } as never });
+    const own = tr.logEntry({ entry: { id: 1, op: "NEXT", origin: "model", turn_id: 1, tx: JSON.stringify({ body: plan("mine") }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "ACTIVITY_SNAPSHOT"), "the thread's model worker projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
@@ -507,12 +536,12 @@ test("the newest-first workspace log replays user prompts, PLAN, SEND, and singu
             { id: "b", subtype: "message", encrypted: [{ data: "B" }] },
         ] } },
         { id: 5, op: "SEND", origin: "model", coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
-        { id: 4, op: "PLAN", origin: "model", coordinate: "1/2/1/PLAN", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
+        { id: 4, op: "NEXT", origin: "model", coordinate: "1/2/1/NEXT", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
         { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
         ] } },
         { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
-        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
+        { id: 1, op: "NEXT", origin: "model", coordinate: "1/1/1/NEXT", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
         { id: 0, op: "prompt", origin: "_plurnk", coordinate: "1/1/0/prompt", rx: { content: "What is the answer?", mimetype: "text/markdown" } },
     ], { id: "current-user", role: "user", content: "Continue." });
     assert.equal(events.length, 1);
@@ -531,7 +560,7 @@ test("the newest-first workspace log replays user prompts, PLAN, SEND, and singu
 
 test("an interrupt closes the current AG-UI step and its resume Run reopens the continued Plurnk turn", () => {
     const interrupted = t();
-    interrupted.logEntry(entry({ op: "PLAN", turn_id: 7, tx: { body: plan("wait for approval") } }));
+    interrupted.logEntry(entry({ op: "NEXT", turn_id: 7, tx: { body: plan("wait for approval") } }));
 
     const paused = interrupted.interrupt();
     assert.deepEqual(paused.events, [{ type: "STEP_FINISHED", stepName: "turn-7" }]);

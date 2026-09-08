@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { rm } from "node:fs/promises";
 import { Mock } from "@plurnk/plurnk-providers";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
 import { connect, rpcCall, withDaemon, waitForDb } from "./_rpc.ts";
@@ -39,6 +42,10 @@ test("{§live-harness-deadline}: failed workspace startup still stops, closes an
     await assert.rejects(liveWorkspace({ name: "harness-startup-failure" }), (error) => error === failure);
     assert.equal(stopped.mock.callCount(), 1);
     assert.equal(digested.mock.callCount(), 1, "the closed database remains a diagnostic artifact");
+    const { dbPath } = digested.mock.calls[0]!.arguments[0]!;
+    t.after(() => rm(dirname(dbPath), { recursive: true, force: true }));
+    assert.equal(dirname(dirname(dbPath)), process.env.PLURNK_BENCHMARKS ?? join(homedir(), "benchmarks"),
+        "live evidence stays in the configured or home benchmark directory, independent of checkout depth");
 });
 
 test("{§methods-loop-cancel}: the live harness preserves caller cancellation and stops inference", async (t) => {

@@ -200,10 +200,7 @@ class IndependentChannelScheme implements SchemeHandler {
 }
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -213,10 +210,7 @@ ${dsl}`).items.find(
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {

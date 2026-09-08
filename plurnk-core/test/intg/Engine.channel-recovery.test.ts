@@ -6,10 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const response = (operation: string, status = "NEXT") => ({
-    assistant: { content: `\`\`\`PLAN
-[]
-\`\`\`
-${operation}
+    assistant: { content: `${operation}
 \`\`\`${status}
 Continue.
 \`\`\``, reasoning: null },

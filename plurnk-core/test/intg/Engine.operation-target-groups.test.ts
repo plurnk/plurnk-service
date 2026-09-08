@@ -87,9 +87,6 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response([
-                "```PLAN",
-                "Read both resources.",
-                "```",
                 "",
                 "```READ (worker:///alpha.md worker:///beta.md)```",
                 "```NEXT",
@@ -134,9 +131,6 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response([
-                "```PLAN",
-                "Curate both completed reads.",
-                "```",
                 "",
                 "```KILL (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>```",
                 "```NEXT",
@@ -175,9 +169,6 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
         const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
         const source = [
-            "```PLAN",
-            "Retire the selected history.",
-            "```",
             "",
             "```KILL (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)```",
             "```NEXT",

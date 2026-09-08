@@ -14,10 +14,7 @@ import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForD
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `\`\`\`PLAN
-[]
-\`\`\`
-${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 

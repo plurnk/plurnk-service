@@ -51,7 +51,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         source: string;
         expected: readonly CapabilityDescriptor[];
     }[] = [
-        { source: "```PLAN\n[]\n```", expected: [] },
+        { source: "```NEXT\n[]\n```", expected: [] },
         { source: "```FIND (README.md)```", expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
         { source: "```READ (README.md)```", expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
         { source: "```EDIT (worker:///notes.md)\nreplacement\n```", expected: [{ operation: "EDIT", scheme: "worker", access: "mutate", traits: [] }] },
