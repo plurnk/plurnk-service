@@ -128,7 +128,11 @@ test("{§send-mid-reservation}: one disposition may precede ordinary operations 
 test("{§delimiter-discipline}: a disposition does not change its turn's delimiter", () => {
     const input = "## PLANouter\n[]\n### SENDouter (TERM)\nQuoted:\n### KILLother (notes.md)\n## PLANother\n[]\n### KILLouter (log:///1/2/3/READ)";
     const parsed = PlurnkParser.parse(input);
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
+    // {§foreign-lane-advisory} — the quoted lane-`other` headings are body text, and the parser says so
+    // once as a warning; nothing hard is diagnosed.
+    const errors = parsed.items.filter((item) => item.kind === "error");
+    assert.deepEqual(errors.map((item) => item.error.severity), ["warning"]);
+    assert.match(errors[0]!.error.message, /2 OP-shaped headings \(KILL, PLAN\) carrying suffix `other` were taken as body text of SENDouter/u);
     const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(ops.map(({ op, delimiter }) => [op, delimiter]), [["PLAN", "outer"], ["SEND", "outer"], ["KILL", "outer"]]);
     const send = ops[1];

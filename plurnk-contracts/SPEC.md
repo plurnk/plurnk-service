@@ -799,6 +799,15 @@ Delimiter rules:
 - An empty delimiter is accepted only by ANTLR ingestion. Canonical teaching and
   the generated rail use `0` on PLAN and every operation.
 - A body may contain any heading whose delimiter differs from the active lane.
+- §foreign-lane-advisory When a body swallows OP-shaped headings of another lane, the
+  parser adds one warning advisory per statement and foreign suffix, positioned at
+  the first swallowed heading: how many headings, which operations, which suffix,
+  which statement took them as body, and the turn's lane. It is factual, never a
+  rejection or a rewrite: the model that numbered `EDIT1…EDIT23` inside a lane-`0`
+  turn learns in one turn what it otherwise infers from a 1,136-line receipt, and
+  the model that nested a quoted program on purpose reads a confirmation. Core
+  publishes it like every parser warning, as a `parse_advisory` notice on the next
+  packet (#515).
 - To carry a nested turn written with lane `0`, choose another delimiter for the
   outer turn and repeat it on every outer heading.
 - The GBNF deliberately emits only lane `0`. It cannot emit body content that

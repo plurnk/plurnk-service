@@ -418,11 +418,17 @@ test("terminal recovery names the active delimiter and leaves nested headings as
         assert.equal(edit?.op === "EDIT" ? edit.body : null, "### SENDother (TERM)\nquoted text");
         assert.equal(statements.at(-1)?.delimiter, delimiter);
         const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1);
-        assert.match(errors[0]!.error.message, /No terminal SEND matched delimiter/u);
-        assert.ok(errors[0]!.error.message.includes(JSON.stringify(delimiter)));
-        assert.ok(errors[0]!.error.message.includes(`### SEND${delimiter} (NEXT)`));
-        assert.equal(errors[0]!.error.toJSON().code, "missing-terminal-send");
+        // {§foreign-lane-advisory} — the swallowed `### SENDother` is named as body text (a warning that
+        // follows its EDIT), and the missing terminal SEND is still the one hard diagnostic.
+        assert.equal(errors.length, 2);
+        const [advisory, terminal] = errors;
+        assert.equal(advisory!.error.severity, "warning");
+        assert.match(advisory!.error.message, /1 OP-shaped heading \(SEND\) carrying suffix `other` were taken as body text of EDIT/u);
+        assert.equal(terminal!.error.severity, "error");
+        assert.match(terminal!.error.message, /No terminal SEND matched delimiter/u);
+        assert.ok(terminal!.error.message.includes(JSON.stringify(delimiter)));
+        assert.ok(terminal!.error.message.includes(`### SEND${delimiter} (NEXT)`));
+        assert.equal(terminal!.error.toJSON().code, "missing-terminal-send");
     }
 });
 

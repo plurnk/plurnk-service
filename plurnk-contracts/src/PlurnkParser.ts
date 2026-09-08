@@ -54,7 +54,48 @@ export default class PlurnkParser {
             PlurnkParser.#imperativeTurnShape(result.items, input);
             PlurnkParser.#recoverTurnEnvelope(result.items);
         }
+        PlurnkParser.#adviseForeignLaneHeadings(result.items);
         return result;
+    }
+
+    // {§foreign-lane-advisory} — under {§lane-match} a heading whose suffix differs from the turn's
+    // lane is body text, by design. When a body swallows OP-shaped headings, say so once, factually,
+    // right after the statement that swallowed them: the model that numbered `EDIT1…EDIT23` learns in
+    // one turn what it otherwise infers from a 1,136-line receipt; the model that nested a quoted
+    // program on purpose reads a confirmation. Nothing is accepted, rewritten, or rejected (#515).
+    static readonly #OP_SHAPED_HEADING = /^#{2,3} (PLAN|FIND|READ|EDIT|COPY|MOVE|EXEC|WORK|FORK|BARE|KILL|SEND)([A-Za-z0-9_]*)(?=\s|$)/u;
+    static #adviseForeignLaneHeadings(items: ParseItem<any>[]): void {
+        const advisories: Array<{ at: number; error: PlurnkParseError }> = [];
+        items.forEach((item, index) => {
+            if (item.kind !== "statement") return;
+            const statement = item.statement as { op: string; delimiter?: string; body?: string | { raw?: string } | null; position?: Position };
+            const body = typeof statement.body === "string" ? statement.body : statement.body?.raw;
+            if (typeof body !== "string" || statement.position === undefined) return;
+            const lane = statement.delimiter ?? "";
+            const swallowed = new Map<string, { count: number; ops: Set<string>; line: number }>();
+            body.split("\n").forEach((text, offset) => {
+                const match = PlurnkParser.#OP_SHAPED_HEADING.exec(text);
+                if (match === null || match[2] === lane) return;
+                const entry = swallowed.get(match[2]) ?? { count: 0, ops: new Set<string>(), line: statement.position!.line + 1 + offset };
+                entry.count += 1;
+                entry.ops.add(match[1]);
+                swallowed.set(match[2], entry);
+            });
+            for (const [suffix, entry] of swallowed) {
+                const plural = entry.count === 1 ? "heading" : "headings";
+                const shown = suffix === "" ? "no suffix" : `suffix \`${suffix}\``;
+                const laneShown = lane === "" ? "no suffix" : `\`${lane}\``;
+                advisories.push({ at: index, error: new PlurnkParseError(
+                    entry.line,
+                    0,
+                    "parser",
+                    `${entry.count} OP-shaped ${plural} (${[...entry.ops].join(", ")}) carrying ${shown} were taken as body text of ${statement.op}${lane}; this turn's lane is ${laneShown}, and only headings carrying it are operations.`,
+                    "warning",
+                ) });
+            }
+        });
+        // Splice from the end so earlier indices stay valid; an advisory follows its statement.
+        for (const { at, error } of advisories.toReversed()) items.splice(at + 1, 0, { kind: "error", error });
     }
 
     // {§scope-slot-tolerance} — `### COPY0 (worker:///src.md<2,3>)`: the line scope was written inside

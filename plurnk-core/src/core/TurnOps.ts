@@ -70,6 +70,10 @@ export default class TurnOps {
                 continue;
             }
             if (item.kind === "text" && item.text.trim().length === 0) continue;
+            // Warnings are advisories for a model reader ({§foreign-lane-advisory}: a materialized
+            // document quoting lane-`0` examples inside a `_plurnk` lane body earns one). An internal
+            // program has no reader to advise and nothing was mis-parsed; only hard errors reject it.
+            if (item.kind === "error" && item.error.severity === "warning") continue;
             const error = item.kind === "error" ? item.error : null;
             failures.push(error instanceof PlurnkParseError ? error.message : "unparsed text");
         }
