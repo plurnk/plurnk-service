@@ -386,7 +386,7 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
         const abandoned = sends.find(({ status_rx }) => status_rx === 499);
         assert.ok(abandoned);
         const problem = (JSON.parse(abandoned.rx) as { problem?: Record<string, unknown> }).problem;
-        assert.equal(problem?.detail, "The task inventory ended with failed items.");
+        assert.equal(problem?.detail, "All tasks in the final inventory failed.");
         assert.equal(problem?.reason, "abandoning");
         assert.doesNotMatch(String(problem?.detail), /abandoning/, "the authored SEND body is not duplicated into Problem prose");
     } finally { await db.close(); }
@@ -424,32 +424,37 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
     } finally { await db.close(); }
 });
 
-test("{§send-final-strike-retrieval}: changing retrieval targets still allows completion at the existing strike limit", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        const paths = Array.from({ length: 10 }, (_, index) => `/page-${index}.html`);
-        for (const pathname of paths) {
-            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname, channel: "body", content: `<h1>${pathname}</h1>`, mimetype: "text/html", state: "static" });
-        }
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: paths.map((pathname) => ({
-                assistant: { content: "", reasoning: null, ops: [readStmt(knownPath(pathname)), sendStmt(null, `read ${pathname}`), dispositionStmt("completed", `read ${pathname}`)] },
-            })),
-        });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
+for (const statuses of [["completed"], ["failed", "completed"]] as const) {
+    test(`{§send-final-strike-retrieval}: ${statuses.join(" + ")} allows completion at the existing strike limit`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "go");
+            const paths = Array.from({ length: 10 }, (_, index) => `/page-${index}.html`);
+            for (const pathname of paths) {
+                await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname, channel: "body", content: `<h1>${pathname}</h1>`, mimetype: "text/html", state: "static" });
+            }
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+            const provider = new Mock({
+                contextWindow: 100000,
+                responses: paths.map((pathname) => ({
+                    assistant: { content: "", reasoning: null, ops: [
+                        readStmt(knownPath(pathname)), sendStmt(null, `read ${pathname}`),
+                        { ...dispositionStmt("completed"), body: statuses.map((status) => ({ content: `read ${pathname}`, status })) },
+                    ] },
+                })),
+            });
+            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
 
-        assert.equal(result.result.status, 200, "the last retrieval-only TERM is accepted independently of cycle detection");
-        assert.equal(result.result.content, "read /page-0.html\n\nread /page-1.html\n\nread /page-2.html", "delivered responses survive refused completion attempts");
-        assert.equal(result.turnIds.length, 4, "initialization, two refusals, and the accepted conclusion form the chronology");
-        const refusals = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 2, "earlier correction receipts remain unchanged");
-    } finally { await db.close(); }
-});
+            assert.equal(result.result.status, 200, "the final-strike completion TASK is accepted independently of cycle detection");
+            assert.equal(result.result.content, "read /page-0.html\n\nread /page-1.html\n\nread /page-2.html", "delivered responses survive refused completion attempts");
+            assert.equal(result.turnIds.length, 4, "initialization, two refusals, and the accepted conclusion form the chronology");
+            const refusals = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
+            assert.equal(refusals.filter((r) => r.status_rx === 409).length, 2, "earlier correction receipts remain unchanged");
+        } finally { await db.close(); }
+    });
+}
 
 test("{§inventory-only-turn} a retrieval refusal does not make subsequent inventory-only turns invalid", async () => {
     const db = await openMigrated();

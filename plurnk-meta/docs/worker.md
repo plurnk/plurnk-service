@@ -47,7 +47,7 @@ Check for new messages and report relevant findings.
 `<60>` runs once after an hour; `<0,60>` starts immediately and repeats hourly.
 Delay is nonnegative; an interval is positive. Occurrences never overlap; missed
 ticks coalesce without a backlog. Each occurrence uses the original instruction
-and policy with fresh task limits. Success permits the next occurrence; a failed inventory or
+and policy with fresh task limits. Success permits the next occurrence; an all-failed inventory or
 an engine failure ends the recurrence. KILL cancels current and future tasks.
 Queued future tasks remain live worker obligations, visible with their due times.
 
@@ -94,8 +94,8 @@ neither a deadline nor a poll repeats a message or command.
 A wake ends that wait. Submit another waiting inventory to wait again. Waking
 retains the loop's prompts, turn allowance, and remaining execution time;
 parked time does not consume execution time. An untimed wait without live work
-continues; only an all-completed inventory claims success. A terminal inventory
-containing a failed item concludes unsuccessfully.
+continues. A terminal inventory with at least one completed item claims success;
+a nonempty all-failed inventory concludes unsuccessfully.
 
 Each child task's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
@@ -104,7 +104,7 @@ collects the same result explicitly. While the child is running it returns
 `425`; the inventory still chooses whether to continue or wait.
 A result does not imply that every task in that worker has finished.
 
-**Concluding with live workers.** An all-completed TASK is refused (`409`) while you hold a live worker or
+**Concluding with live workers.** A completion TASK is refused (`409`) while you hold a live worker or
 open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
 Await them with a waiting inventory or ```` ```KILL (worker://<name>) ```` the ones you no longer need.
 KILL settles before the turn's disposition; other live work or unobserved

@@ -9,8 +9,8 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_help
 
 const task = (status: string, scope = "") => `\`\`\`TASK${scope}\n${JSON.stringify([{ content: "Address the prompt.", status }])}\n\`\`\``;
 const send = (body: string, target = "") => `\`\`\`SEND${target}\n${body}\n\`\`\``;
-const response = (content: string) => ({
-    assistant: { content, reasoning: null },
+const response = (content: string, reasoning: string | null = null) => ({
+    assistant: { content, reasoning },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -79,29 +79,74 @@ test("{§join-blocking-collect} a not-ready READ does not override an in_progres
     assert.equal(await new LoopLifecycle(db).status(loopId), 202);
 });
 
-for (const terminal of ["completed", "failed"] as const) {
-    test(`{§loop-response-messages} ${terminal} preserves every targetless SEND despite curation`, async (t) => {
+for (const [statuses, expectedStatus] of [
+    [["completed"], 200],
+    [["failed"], 499],
+    [["failed", "failed"], 499],
+    [["completed", "failed"], 200],
+    [["failed", "completed"], 200],
+] as const) {
+    test(`{§loop-response-messages} ${statuses.join(" + ")} preserves every targetless SEND despite curation`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "response-evidence");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Answer in two parts.");
+        const inventory = statuses.map((status, index) => ({ content: `Task ${index + 1}`, status }));
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(`${send("First.")}\n${task("in_progress")}`),
-            response(`\`\`\`KILL (log:///1/2/*/SEND)\`\`\`\n${send("Second.")}\n${task(terminal)}`),
+            response(`\`\`\`KILL (log:///1/2/*/SEND)\`\`\`\n${send("Second.")}\n\`\`\`TASK\n${JSON.stringify(inventory)}\n\`\`\``),
         ] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3,
         });
-        assert.equal(result.result.status, terminal === "completed" ? 200 : 499);
+        assert.equal(result.result.status, expectedStatus);
         assert.equal(result.result.content, "First.\n\nSecond.");
         assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "First.\n\nSecond.");
-        const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string }>({ loop_id: loopId });
         assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200), "the earlier SEND was actually curated");
+        assert.deepEqual(JSON.parse(rows.findLast(({ op }) => op === "TASK")!.tx).body, inventory,
+            "the loop outcome does not rewrite individual task outcomes");
         assert.equal(provider.received.length, 2, "final housekeeping requires no extra inference");
-        if (terminal === "failed") assert.equal(result.result.problem?.detail, "The task inventory ended with failed items.");
+        if (expectedStatus === 499) assert.equal(result.result.problem?.detail, "All tasks in the final inventory failed.");
+        else assert.equal(result.result.problem, undefined);
     });
 }
+
+test("{§task-inventory-intent} an observed cleanup failure does not invalidate completed work", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "cleanup-outcome");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "Deliver the project brief.");
+    const inventory = [
+        { content: "Read the project codename.", status: "completed" },
+        { content: "Read the database host and TODO.", status: "completed" },
+        { content: "Deliver the project brief.", status: "completed" },
+        { content: "Clean up reasoning log item.", status: "failed" },
+    ];
+    const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        response(`${send(brief)}\n${task("in_progress")}`, "The requested project brief is ready."),
+        response(`\`\`\`KILL (reasoning:///1/2/1) <1,-1>\`\`\`\n${task("completed")}`),
+        response(`\`\`\`TASK\n${JSON.stringify(inventory)}\n\`\`\``),
+    ] });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
+        workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4,
+    });
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string; rx: string }>({ loop_id: loopId });
+    const denied = rows.find(({ op }) => op === "KILL");
+    assert.equal(denied?.status_rx, 403, "the read-only reasoning source remains protected");
+    assert.equal(JSON.parse(denied!.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
+    assert.ok(rows.some(({ op, status_rx }) => op === "TASK" && status_rx === 409),
+        "the failed operation still requires observation before completion");
+    assert.equal(provider.received.length, 3);
+    assert.equal(result.result.status, 200);
+    assert.equal(result.result.problem, undefined);
+    assert.equal(result.result.content, brief, "the earlier delivered answer survives the recovery turn");
+    assert.equal(await new LoopLifecycle(db).status(loopId), 200);
+    assert.deepEqual(JSON.parse(rows.findLast(({ op }) => op === "TASK")!.tx).body, inventory);
+});
 
 test("{§loop-response-messages} cancellation preserves delivered messages but not TASK text", async (t) => {
     const db = await openMigrated();
@@ -123,6 +168,34 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     assert.equal(cancelled.loops[0].result.content, "Update delivered.");
     assert.equal((await lifecycle.result(loopId))?.content, "Update delivered.");
     assert.equal(cancelled.loops[0].result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
+});
+
+test("{§send-premature-terminate} mixed terminal outcomes cannot abandon a live child", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "mixed-outcomes-live-child");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "Wait for the delegated result.");
+    const childId = await insertWorker(db, workspaceId, workerId, "child");
+    const childLoopId = await insertLoop(db, childId, 1, "Finish the delegated work.");
+    const inventory = [
+        { content: "Prepare the report.", status: "completed" },
+        { content: "Optional check failed.", status: "failed" },
+    ];
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        response(`\`\`\`TASK\n${JSON.stringify(inventory)}\n\`\`\``),
+    ] });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
+        workspaceId, workerId, loopId, provider, messages: [],
+    });
+    assert.equal(result.status, 102);
+    assert.equal(result.steerStruck, true);
+    assert.equal(await new LoopLifecycle(db).status(loopId), 102);
+    assert.equal(await new LoopLifecycle(db).status(childLoopId), 102, "a mixed inventory does not cancel its child");
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
+    const refused = rows.findLast(({ op }) => op === "TASK");
+    assert.equal(refused?.status_rx, 409);
+    assert.equal(JSON.parse(refused!.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/work-remains");
 });
 
 test("{§loop-response-messages} completion without SEND does not invent an answer from task text", async (t) => {

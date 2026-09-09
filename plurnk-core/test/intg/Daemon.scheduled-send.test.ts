@@ -83,10 +83,16 @@ function nextTermination(daemon: Daemon, workerId: number): Promise<{ loopId: nu
     });
 }
 
-for (const recurring of [false, true]) {
-    test(`{§worker-scheduled-send}: ${recurring ? "recurrence" : "one-shot"} survives restart and runs once when due`, async (t) => {
+for (const [recurring, statuses] of [
+    [false, ["completed"]],
+    [true, ["completed"]],
+    [false, ["failed", "completed"]],
+    [true, ["failed", "completed"]],
+] as const) {
+    test(`{§worker-scheduled-send}: ${recurring ? "recurrence" : "one-shot"} with ${statuses.join(" + ")} survives restart and runs once when due`, async (t) => {
+        const inventory = statuses.map((status, index) => ({ content: `Check ${index + 1}`, status }));
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("```SEND\nChecked the latest revenue figures.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse(`\`\`\`SEND\nChecked the latest revenue figures.\n\`\`\`\n\`\`\`TASK\n${JSON.stringify(inventory)}\n\`\`\``),
             makeMockResponse("```SEND\nThe next check failed; stop the assignment.\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {

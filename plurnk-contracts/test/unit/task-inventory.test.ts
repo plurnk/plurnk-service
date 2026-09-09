@@ -10,9 +10,14 @@ test("{§task-inventory-intent} the native inventory determines one outcome irre
         [["pending"], "pending"],
         [["completed"], "complete"],
         [["failed"], "fail"],
-        [["completed", "failed"], "fail"],
+        [["completed", "completed"], "complete"],
+        [["failed", "failed"], "fail"],
+        [["completed", "failed"], "complete"],
+        [["failed", "completed", "failed"], "complete"],
         [["failed", "pending"], "pending"],
+        [["failed", "pending", "completed"], "pending"],
         [["waiting", "pending", "failed"], "wait"],
+        [["waiting", "pending", "failed", "completed"], "wait"],
         [["in_progress", "pending", "waiting", "failed", "completed"], "continue"],
     ] as const;
     for (const [statuses, expected] of cases) {

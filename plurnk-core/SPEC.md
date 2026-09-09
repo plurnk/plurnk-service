@@ -775,7 +775,7 @@ ordinary arrival semantics. Timing is whole minutes, not text coordinates.
   provider inference or Worker Functionality before eligibility. Due tasks are
   claimed in queue order; an earlier future task cannot block ready work.
 - A recurrence has at most one unfinished occurrence. A successful terminal
-  transition atomically queues its successor; failed inventory, engine failure, and
+  transition atomically queues its successor; all-failed inventory, engine failure, and
   cancellation queue none. Continuing or waiting TASKs retain the same occurrence and limits.
 - At first claim, overdue ticks coalesce into the latest due cadence slot. There is
   no catch-up backlog. Each occurrence has its own loop/turn/execution limits
@@ -800,10 +800,10 @@ stateDiagram-v2
     Queued --> Running: due claim; coalesce elapsed ticks
     Running --> Parked: TASK waiting
     Parked --> Queued: same occurrence wakes
-    Running --> Success: TASK all completed
+    Running --> Success: TASK terminal with at least one completed item
     Success --> Queued: atomic successor for recurrence
     Success --> [*]: one-shot
-    Running --> Failed: TASK terminal with failed items, or engine failure
+    Running --> Failed: TASK all failed, or engine failure
     Queued --> Cancelled: KILL
     Parked --> Cancelled: KILL
     Running --> Cancelled: KILL
@@ -1022,7 +1022,7 @@ boundary.
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. An already-active worker needs no injected prompt or second wake because its next packet reads the durable terminal state. A concluded worker receives no synthetic loop from ambient stream closure. The result remains available in the stream's own state under every case.
 - §worker-lifecycle-child-wake **Each child task completion notifies its parent.** Terminal-task publication, including failure and cancellation of a parked task, notifies the direct parent without injecting a prompt. Other unfinished tasks or streams in that child remain independent obligations; they cannot suppress notification. The parent's eligible waits requeue in place under {§loop-wake-identity} and the bounded {§worker-optimistic-settlement} opportunity. Durable revisioning covers completion-before-park and restart; drain teardown and whole-worker quiescence are not completion identities.
 - §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before its turn disposition; separately, a stream or direct-child conclusion persists and publishes immediately but holds eligible parked loops' `202→100` requeues while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces conclusions within that window into at most one requeue per eligible loop. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. A conclusion that lands after provider dispatch begins retains its next wake, while poll, park-deadline, prompt, and operator wakes never open this hold. Only packet/provider dispatch waits: terminal state, client events, cancellation, and child execution do not. One redaction-safe span records elapsed time, quiescence versus deadline, and conclusion count without entering the packet.
-- §worker-lifecycle-idle-is-concluded **No implicit completion.** A waiting inventory without a finite deadline, positive poll or live obligation continues under {§wait-obligation-matrix}. Only an all-completed inventory claims success. A concluded worker retains durable history; a later addressed arrival starts a new loop.
+- §worker-lifecycle-idle-is-concluded **No implicit completion.** A waiting inventory without a finite deadline, positive poll or live obligation continues under {§wait-obligation-matrix}. Only a terminal inventory with at least one completed task claims success. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation. Wake selection rechecks shutdown and worker cancellation before requeuing each parked loop.
 - §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation preserves its requested deadline and observation interval. An unseen completion requeues it; an untimed join whose obligations vanished also requeues. Otherwise a future timed wait remains parked and an expired due time wakes it through the same guarded scheduler. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
@@ -2170,7 +2170,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
 | complete | Model fired an operation other than SEND/TASK/KILL, or has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
 | complete | No blocking obligation, or administrative producer | 200 | None |
-| fail | Always | 499; cancel unresolved descendant scope | `The task inventory ended with failed items.` |
+| fail | Always | 499; cancel unresolved descendant scope | `All tasks in the final inventory failed.` |
 
 A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
@@ -2227,9 +2227,9 @@ violations follow the current admission and strike contracts
   `streams`, `workers`, `receipts`, `failed-stream-results`, and
   `worker-results`; it never embeds commands, stream handles, result bodies, or
   a presumed recovery. The pending kind changes the factual Problem class, not
-  rail accounting. A terminal inventory containing `failed` deliberately abandons regardless.
+  rail accounting. A nonempty all-`failed` inventory deliberately abandons regardless.
 - §send-final-strike-retrieval **Receipt-only completion at the final strike.**
-  If refusing a model's all-`completed` TASK would reach the loop's existing
+  If refusing a model's completion TASK would reach the loop's existing
   consecutive-strike limit, accept it when `receipts` is the only pending kind
   and this turn has no failed operations. Receipts include successful execution
   results, not only READ/FIND. The same streak and configured limit
@@ -3907,7 +3907,7 @@ flowchart TD
 
 - §tokenomics-fetch-fits-free **Withholding is not deletion.** The complete result lands once. READ/FIND of its original log address retain the readable body and original coordinates; scoped READ creates a fresh output occurrence subject to the same admission rule. Source resources and forensic evidence remain unchanged. Deliberate scoped KILL, unlike withholding, removes lines from subsequent readable projections ({§log-readable-projection}).
 
-- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (all tasks completed) · `499` model-abandoned (a terminal inventory containing failed tasks, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` waiting — a TASK inventory waiting on a live obligation or explicit deadline/poll ({§wait-obligation-matrix}, {§worker-wait-timing}); an empty untimed wait continues at `102`, never implicit success · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
+- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (terminal inventory with at least one completed task) · `499` model-abandoned (a nonempty all-failed inventory, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` waiting — a TASK inventory waiting on a live obligation or explicit deadline/poll ({§wait-obligation-matrix}, {§worker-wait-timing}); an empty untimed wait continues at `102`, never implicit success · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
 
 ### §env-delta The environment delta: what changed since the model last looked
 

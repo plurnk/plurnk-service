@@ -412,8 +412,8 @@ of entry order. Actual execution adjudicates intent under {§wait-obligation-mat
 | Any `in_progress` | Continue independent actionable work | 102 |
 | Any `waiting`, no `in_progress` | Await work or an event | 202 |
 | Any `pending`, no actionable or waiting entry | Review blocked dependencies | 102 |
-| All terminal, any `failed` | End unsuccessfully | 499 |
-| All `completed`, nonempty | End successfully | 200 |
+| All terminal, any `completed` | End successfully | 200 |
+| All `failed`, nonempty | End unsuccessfully | 499 |
 
 `pending` is blocked on another task; `in_progress` can be actively advanced;
 `waiting` awaits an ongoing stream, worker or external event. `completed` is

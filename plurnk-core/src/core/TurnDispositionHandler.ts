@@ -165,7 +165,7 @@ export default class TurnDispositionHandler {
             const failure = withTimingDetail(this.#failure(
                 "scope-abandoned",
                 499,
-                "The task inventory ended with failed items.",
+                "All tasks in the final inventory failed.",
                 {},
                 {
                     ...(reason.length === 0 ? {} : { reason }),
@@ -185,7 +185,7 @@ export default class TurnDispositionHandler {
             );
             const finished = await this.#lifecycle.finish(loopId, failure);
             if (finished === null) return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when TASK attempted to abandon it.");
-            await this.#cancelDescendants?.(workerId, reason || "parent task inventory ended with failed items");
+            await this.#cancelDescendants?.(workerId, reason || "all tasks in the parent inventory failed");
             return failure;
         }
         return { status };

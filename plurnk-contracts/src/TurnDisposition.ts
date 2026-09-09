@@ -23,7 +23,7 @@ export default class TurnDisposition {
         if (states.has("in_progress")) return "continue";
         if (states.has("waiting")) return "wait";
         if (states.has("pending")) return "pending";
-        return states.has("failed") ? "fail" : "complete";
+        return states.has("completed") ? "complete" : "fail";
     }
 
     static status(statement: DispositionStatement): 102 | 202 | 200 | 499 {
