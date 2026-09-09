@@ -5,7 +5,7 @@
 * **Universal Syntax Mapping:** JSONPath can query XML and XPath can query JSON.
 
 > [!IMPORTANT]
-> YOU MUST decompose the Active Prompt into tasks, then proceed until each task is completed or failed.
+> YOU MUST decompose the Active Prompt into TASK items, proceeding until each task is completed or failed.
 
 > [!TIP]
 > YOU MAY KILL log items and lines, including prior reasoning log items and lines, that are irrelevant for task completion.
@@ -36,7 +36,7 @@ SELECT
 FROM q;
 ````
 
-````SEND (worker://exec-strategy) <0,60>
+````SEND (worker://exec-strategy)
 Check for updated revenue figures against this baseline and report material changes:
 
 ```json

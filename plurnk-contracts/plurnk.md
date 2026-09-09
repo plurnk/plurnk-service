@@ -5,6 +5,9 @@
 > [!WARNING]
 > YOU MUST use at least three backticks for code fences, with longer outer fences when nesting.
 
+> [!TIP]
+> YOU MAY append `<!-- terse single-line annotation -->` to the operation line.
+
 ### FIND - List matching results by pattern search.
 
 ````FIND (target or glob) <result range>?
@@ -34,7 +37,7 @@ literal replacement text
 
 ### SEND - Message workers or endpoints.
 
-````SEND (recipient)
+````SEND (recipient)?
 message
 ````
 
@@ -43,13 +46,13 @@ message
 
 ### WORK - deploy a child worker (fresh log)
 
-````WORK (worker://name)
+````WORK (worker://name)?
 prompt
 ````
 
 ### FORK - deploy a forked worker (forked log)
 
-````FORK (worker://name)
+````FORK (worker://name)?
 prompt
 ````
 
@@ -78,7 +81,7 @@ filter pattern?
 > [!TIP]
 > Successful KILL op receipts on log items and lines are not shown.
 
-### TASK - End the turn with the current task inventory.
+### TASK - End every turn with the current task inventory.
 
 ````TASK
 [{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
@@ -95,7 +98,7 @@ filter pattern?
 
 ## Pattern Filtering
 
-* Pattern matchers in the OP's `body` select paths by content:
+* Pattern matchers in the operation's `body` select paths by content:
 
 | prefix | dialect  | form                               | example                 | engine           |
 |--------|----------|------------------------------------|-------------------------|------------------|
@@ -111,7 +114,7 @@ filter pattern?
 
 ## `(path)`
 
-* Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
+* Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/operation.
 * In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
