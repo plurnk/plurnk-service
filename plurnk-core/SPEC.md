@@ -658,8 +658,9 @@ continues to decompose other authorities without treating them as mintable.
 
 The subtree is readable like the rest of the space ({§worker-read-scope}) and writable only by `_plurnk`: model, client, or plugin mutations under `/_plurnk/` are refused as 403 `worker-generated-read-only`, in the commons as well as own and named spaces. Runtime-authored mutations of this owned state do not demand the recipient worker's external capabilities ({§capability-admission}); reads and effects outside the subtree still do. Ordinary scheme write scoping remains enforced. Documents are materialized through ordinary `_plurnk` maintenance turns ({§actor-boundary-doc-injection}). Their successful rows do not render in model packets; failures remain visible, and READ over `log:///` recovers the durable operations. FORK rederives the subtree from inherited Functionality rather than copying its bytes ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No separate kernel authority exists.
 
-§worker-control-addressing **Only an exact authority-only address selects worker
-control.** Control is same-workspace only ({§actor-boundary}). Generic URI
+§worker-control-addressing **Explicit worker control addresses are authority-only.**
+WORK and FORK may omit their address to allocate one ({§worker-auto-name}).
+Control is same-workspace only ({§actor-boundary}). Generic URI
 parsing remains tolerant, but worker control admits no component it cannot
 interpret and never silently normalizes one away.
 
@@ -678,22 +679,23 @@ literal `workers.name` value.
 
 | Operation | Accepted pathless authority | Effect                                  |
 |-----------|-----------------------------|-----------------------------------------|
-| `WORK`    | new literal name            | Spawn a fresh named worker.             |
-| `FORK`    | new literal name            | Branch the caller into a named worker.  |
+| `WORK`    | new literal name, or omitted | Spawn a fresh worker.                   |
+| `FORK`    | new literal name, or omitted | Branch the caller into a new worker.    |
 | `SEND`    | existing literal name, `~`  | Message the named worker or caller.     |
 | `READ`    | existing literal name       | Collect the named worker's deliverable. |
 | `KILL`    | existing literal name, `~`  | Terminate the named worker or caller.   |
 
-- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>) ```` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** ({§machine-processes-worker-origin}): a name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error.
+- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** ({§machine-processes-worker-origin}): an explicit name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error.
 - §worker-scheme-irc **irc** — ```` ```SEND (worker://<name>) ```` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. ```` ```SEND (worker://~) ```` targets the caller; a literal name with no worker in the workspace is 404.
-- §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>) ```` with a task body branches the
+- §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>)? ```` with a task body branches the
   current worker into a **named** sister: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
   world is shared, never copied ({§machine-processes-fork-shares-the-world}).
   WORK and FORK are distinct verbs — WORK spawns a fresh worker, FORK branches
-  the log — and each names the new worker explicitly, so the model addresses
-  it (`KILL`/`SEND`/`READ`) by that name. The lower-level seam generates
-  `<parent>-fork-<N>` only when its caller omits a name. Inherited loops are
+  the log. Both report the resulting `worker://name` address in receipt
+  metadata `worker`, whether named explicitly or allocated automatically.
+  The submitted operation retains its authored target, including absence.
+  Inherited loops are
   copied as **terminal history** (a non-terminal status is clamped): a fork's
   own work is a fresh loop, so an inherited mid-flight loop never makes the
   branch look forever-live to the {§send-premature-terminate} gate.
@@ -2460,7 +2462,16 @@ current-Worker sigil; none can be minted by a spawn or client.
 
 §stream-owner-scoped **Capability streams are owner-scoped.** Concurrent workers' stream coordinates are loop-relative and IDENTICAL (every worker's first loop is sequence 1), so the entry identity keys on the owner and identical coordinates across workers are distinct rows. The address's authority names the owner: **empty = the calling worker** — your own streams need no qualifier, so a fan-out sibling's output can never surface under your READ — and a **named authority** reaches that worker's streams for any worker of the workspace (the parent designs the topology by what it names to whom; the engine imposes none, #394; an unknown name resolves 404). A child is told its parent's name in its packet (`parent-worker`). KILL stays self-only — a parent controls a child through the worker lifecycle, never by reaching into its streams. The storage pathname stays the bare loop coordinate; the owner rides the column, so nothing model-facing carries a worker id. A stream 404 never discloses existence, but it names the address space: the coordinate shape, the unqualified self, the descendant-by-name form, and that a tool's own ids are arguments, not addresses.
 
-§worker-auto-name **Auto-names are id-free ordinals** — worker names are the addressable authority, so an auto-name is `<prefix>-<N>` (per-workspace monotonic count, the fork `<parent>-fork-<N>` pattern), never a timestamp-hash that would leak machine identity through the hostname. The semantic suffix remains intact; when the complete name would exceed `WORKER_NAME`, generation shortens only the inherited prefix until the predicate admits it. Auto-names never reuse an existing literal and pass through {§worker-name-minting} like explicit names. Name selection and worker creation are one atomic claim: concurrent allocators receive distinct literals, while concurrent ensures of a workspace's default conversation converge on one root worker.
+§worker-auto-name **Automatic names are eight random lowercase hexadecimal
+characters**, e.g. `worker://ab3d5678`; a colliding draw is retried. All unnamed
+workers use this allocator, including WORK, FORK, clients, and conversations.
+Names encode neither machine identity nor topology or role; those remain
+separate durable fields.
+Automatic names never reuse an existing literal. Name selection and worker
+creation share one atomic claim: concurrent allocations receive distinct
+addresses, while concurrent default-conversation ensures converge on one root
+worker. Generated addresses appear in ordinary operation receipts and child
+inventory; allocation never rewrites the submitted operation's target.
 
 §workspace-auto-name **Workspace auto-names are five anchor-alphabet characters.** A `workspace.create` without a name draws five characters from the {§line-anchors} alphabet `0-9A-Za-z` (uniformly, from a cryptographic source), redrawing on the astronomically rare collision. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from, so nothing can grow load-bearing on it.
 

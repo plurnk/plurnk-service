@@ -69,14 +69,14 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
                     return true;
                 },
             );
-            // A default name mints distinct model-<N> conversations.
+            // Omission mints a distinct conversation with an opaque name.
             const anon = await daemon.createConversationWorker({ workspaceId });
-            assert.match(anon.workerName, /^model-/, "default name follows the model-worker convention");
+            assert.match(anon.workerName, /^[a-f0-9]{8}$/, "unnamed conversations receive the ordinary opaque worker identity");
         } finally { ws.close(); }
     });
 });
 
-test("{§worker-auto-name} #159: concurrent unnamed fresh conversations claim distinct model ordinals", async () => {
+test("{§worker-auto-name}: concurrent unnamed fresh conversations claim distinct short names", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -89,7 +89,7 @@ test("{§worker-auto-name} #159: concurrent unnamed fresh conversations claim di
             const names = conversations.map(({ workerName }) => workerName);
 
             assert.equal(new Set(names).size, conversations.length, "every fresh conversation remains individually addressable");
-            assert.deepEqual(names.toSorted(), Array.from({ length: 8 }, (_, i) => `model-${i + 1}`).toSorted());
+            for (const name of names) assert.match(name, /^[a-f0-9]{8}$/);
         } finally { ws.close(); }
     });
 });

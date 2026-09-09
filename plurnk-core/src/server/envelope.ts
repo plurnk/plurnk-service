@@ -64,8 +64,7 @@ export interface ClientEnvelope {
 
 export default class Envelope {
     // {§workspace-auto-name} — five characters from the line-anchor alphabet, no prefix:
-    // a name says nothing about where the workspace came from. Worker names use the
-    // workspace-local `<prefix>-<ordinal>` contract in WorkerName.
+    // a name says nothing about where the workspace came from.
     static readonly AUTO_NAME_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     static generateWorkspaceName(): string {
@@ -98,7 +97,6 @@ export default class Envelope {
         await GitMembership.resolveGitMembership(db, workspace.id, undefined);
         const worker = await WorkerName.claimAuto(db, {
             workspaceId: workspace.id,
-            prefix: "client",
             origin: "client",
         });
         return {
@@ -165,7 +163,6 @@ export default class Envelope {
         }
         return await WorkerName.claimAuto(db, {
             workspaceId,
-            prefix: "client",
             origin: "client",
         });
     }
@@ -207,7 +204,6 @@ export default class Envelope {
         if (name === undefined) {
             return await WorkerName.claimAuto(db, {
                 workspaceId,
-                prefix: "model",
                 origin: "model",
             });
         }
@@ -226,7 +222,6 @@ export default class Envelope {
         // distinguishes this default from arbitrary fresh conversations.
         const worker = await WorkerName.ensureDefaultConversation(db, {
             workspaceId,
-            prefix: "model",
         });
         return worker.id;
     }

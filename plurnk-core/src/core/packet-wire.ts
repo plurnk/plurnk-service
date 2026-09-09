@@ -751,6 +751,11 @@ export default class PacketWire {
             } else if (target !== null) {
                 meta[terminalStream ? "stream" : "target"] = target;
             }
+            // {§worker-auto-name} The created identity is an outcome, not an authored target.
+            if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
+                && typeof (e.attrs as { worker?: unknown }).worker === "string") {
+                meta.worker = (e.attrs as { worker: string }).worker;
+            }
             // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
             // `stream` link, distinct from the runtime-owned invocation target.
             // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only

@@ -1,119 +1,20 @@
 # Plurnk Harness
 
-## Plurnk Operation Syntax
+## Plurnk Harness Operation Syntax
 
-> [!WARNING]
-> YOU MUST use at least three backticks for code fences, with longer outer fences when nesting.
+> [!NOTE]
+> OP names a Plurnk operation, registered executor, or enabled MCP service.
 
-### FIND - List matching results by pattern search.
-
-````FIND (target or glob) <result range>? <!-- terse single-line annotation -->?
-filter pattern?
+`````syntax
+````OP (path)? <scope>? {metadata}? <!-- annotation -->?
+body?
 ````
-
-### READ - Read content from files, entries, or streams.
-
-````READ (path) <text region>? <!-- terse single-line annotation -->?````
-
-### EDIT - Edit, replace, or delete text in a file or entry.
-
-````EDIT (path) <text region>? <!-- terse single-line annotation -->?
-literal replacement text
-````
-
-> [!CAUTION]
-> An unscoped EDIT only creates a new file or entry.
-
-### COPY - Copy files, entries, streams, or text regions.
-
-````COPY (source) <source text region>? (destination) <destination text region>? <!-- terse single-line annotation -->?````
-
-### MOVE - Move files, entries, streams, or text regions.
-
-````MOVE (source) <source text region>? (destination) <destination text region>? <!-- terse single-line annotation -->?````
-
-### SEND - Respond to prompt or message workers or endpoints.
-
-````SEND <!-- terse single-line annotation -->?
-message
-````
-
-> [!IMPORTANT]
-> YOU SHOULD use SEND without a `(recipient)` to respond to the Active Prompt.
-
-### WORK - deploy a child worker (fresh log)
-
-````WORK (worker://name)? <!-- terse single-line annotation -->?
-prompt
-````
-
-### FORK - deploy a forked worker (forked log)
-
-````FORK (worker://name)? <!-- terse single-line annotation -->?
-prompt
-````
-
-### BARE - Deploy an isolated inference query (no log).
-
-````BARE (path)? <!-- terse single-line annotation -->?
-prompt
-````
-
-### KILL - Delete or terminate.
-
-````KILL (target) <range or region>? <!-- terse single-line annotation -->?
-filter pattern?
-````
-
-* ````KILL (worker://~/notes.md)```` without a scope deletes an entry.
-* ````KILL (src/app.js) <@zyxwv>```` removes one line by hash anchor.
-* ````KILL (sh:///1/2/3/EXEC)```` stops a running command.
-* ````KILL (worker://recheck)```` terminates a worker.
-* ````KILL (log:///1/[1-7]/*/{TASK,READ})```` removes matching log items.
-* ````KILL (log:///**/READ) <17,-1>```` trims each item's log lines from 17 on.
-
-> [!TIP]
-> Log curation must target `log:///` items, not their target source paths.
-
-> [!TIP]
-> Successful KILL op receipts on log items and lines are not shown.
-
-### TASK - End every turn with the current task inventory.
-
-````TASK <!-- terse single-line annotation -->?
-[{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
-````
-
-* `pending`: Task is blocked until another task it depends on is `completed`.
-* `waiting`: Task is awaiting an ongoing stream, deployed worker, or external event.
-* `in_progress`: Task is active work.
-* `completed`: Task has been successfully resolved.
-* `failed`: Task has ended unsuccessfully.
-
-> [!IMPORTANT]
-> The final turn must leave no unobserved results or unresolved work; all tasks must be "completed" or "failed".
-
-## Pattern Filtering
-
-* Pattern matchers in the operation's `body` select paths by content:
-
-| prefix | dialect  | form                               | example                 | engine           |
-|--------|----------|------------------------------------|-------------------------|------------------|
-| `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
-| `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535   |
-| `~`    | full-text | `~query`                          | `~retry` | SQLite FTS5 |
-| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
-| none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
-
-> [!TIP]
-> In a path target, `*` maps one level and `**` crosses directories.
+`````
 
 ## `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/operation.
 * In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
-* A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
 * Creating a file automatically creates missing parent directories.
 
@@ -136,3 +37,91 @@ filter pattern?
 
 > [!TIP]
 > YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.
+
+## `{metadata}`
+
+> [!NOTE]
+> Scheme- or executor-defined options; see its invocation contract.
+
+## `<!-- annotation -->`
+
+> [!NOTE]
+> Optional, terse, one-liner description of intent
+
+## Pattern Filtering
+
+* Pattern matchers in the operation's `body` select paths by content:
+
+| prefix | dialect  | form                               | example                 | engine           |
+|--------|----------|------------------------------------|-------------------------|------------------|
+| `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
+| `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535   |
+| `~`    | full-text | `~query`                          | `~retry` | SQLite FTS5 |
+| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
+| none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
+
+## Plurnk Harness Operations
+
+````FIND (path or glob) <result range>? <!-- list matching results by pattern search -->
+filter pattern?
+````
+
+````READ (path) <text region>? <!-- read content from files, entries, or streams -->````
+
+````EDIT (path) <text region>? <!-- create a file or entry; use scope to replace existing text -->
+literal replacement text
+````
+
+````COPY (source) <scope>? (destination) <scope>? <!-- copy files, entries, streams, or text regions -->````
+
+````MOVE (source) <scope>? (destination) <scope>? <!-- move files, entries, streams, or text regions -->````
+
+````SEND (path)? <!-- respond to prompt or message workers or endpoints -->
+message
+````
+
+> [!IMPORTANT]
+> YOU SHOULD use SEND without a `(path)` to respond to the Active Prompt.
+
+````WORK (path)? <!-- deploy a child worker (fresh log) -->
+prompt
+````
+
+````FORK (path)? <!-- deploy a forked worker (forked log) -->
+prompt
+````
+
+````BARE (path)? <!-- deploy an isolated inference query (no log) -->
+prompt
+````
+
+````KILL (path) <scope>? <!-- delete or terminate -->
+filter pattern?
+````
+
+* ````KILL (worker://~/notes.md)```` without a scope deletes an entry.
+* ````KILL (src/app.js) <@zyxwv>```` removes one line by hash anchor.
+* ````KILL (sh:///1/2/3/EXEC)```` stops a running command.
+* ````KILL (worker://recheck)```` terminates a worker.
+* ````KILL (log:///1/[1-7]/*/{TASK,READ})```` removes matching log items.
+* ````KILL (log:///**/READ) <17,-1>```` trims each item's log lines from 17 on.
+
+> [!TIP]
+> Log curation must target `log:///` items, not their target source paths.
+
+> [!TIP]
+> Successful KILL op receipts on log items and lines are not shown.
+
+````TASK <!-- conclude every turn with the current task inventory -->
+[{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
+````
+
+* `pending`: Task is blocked until another task it depends on is `completed`.
+* `waiting`: Task is awaiting an ongoing stream, deployed worker, or external event.
+* `in_progress`: Task is active work.
+* `completed`: Task has been successfully resolved.
+* `failed`: Task has ended unsuccessfully.
+
+> [!IMPORTANT]
+> The final turn must leave no unobserved results or unresolved work; all tasks must be "completed" or "failed".

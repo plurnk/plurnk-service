@@ -136,7 +136,7 @@ test("run.fork branches the model worker into a named worker; errors with no wor
             const r = fork.result as { workerId: number; workerName: string | null; parentWorkerId: number };
             assert.ok(typeof r.workerId === "number" && typeof r.parentWorkerId === "number", "returns new and parent worker ids");
             assert.notEqual(r.workerId, r.parentWorkerId, "the fork is a distinct worker");
-            assert.match(r.workerName ?? "", /-fork-\d+$/, "the fork is named <parent>-fork-<N> by default (unique per fork)");
+            assert.match(r.workerName ?? "", /^[a-f0-9]{8}$/, "an unnamed fork gets the ordinary opaque worker identity");
 
             // {§worker-scheme-fork} — an explicit branch name is immutable after instantiation.
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });

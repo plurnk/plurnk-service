@@ -283,14 +283,12 @@ export default class AstBuilder {
     // A mid-turn SEND is a message to its recipient path, or to the user when it names none.
     static #buildSend(ctx: SendStatementContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
+        const slots = AstBuilder.#extractSlots(ctx.resourceSelection(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
             annotation: AstBuilder.#annotationOf(ctx),
-            target: slots.target,
-            metadata: slots.metadata,
-            lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
+            ...slots,
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };
@@ -381,7 +379,7 @@ export default class AstBuilder {
         return found[0] ?? null;
     }
 
-    static #extractSlots(modCtx: SlotModifiersContext | null, pos: Position): Slots {
+    static #extractSlots(modCtx: SlotModifiersContext | ResourceSelectionContext | null, pos: Position): Slots {
         return {
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),

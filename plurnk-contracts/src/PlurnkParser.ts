@@ -58,8 +58,8 @@ export default class PlurnkParser {
             const modifiers: string[] = [];
             const selection = (resource: ResourceSelection): void => {
                 modifiers.push(`(${resource.target.raw})`);
-                for (const metadata of resource.metadata ?? []) modifiers.push(`{${metadata}}`);
                 if (resource.lineMarker !== null) modifiers.push(`<${resource.lineMarker.marks.join(",")}>`);
+                for (const metadata of resource.metadata ?? []) modifiers.push(`{${metadata}}`);
             };
             if (statement.op === "COPY" || statement.op === "MOVE") {
                 selection(statement.source);
@@ -68,8 +68,8 @@ export default class PlurnkParser {
                 if (statement.target !== null) {
                     modifiers.push(`(${statement.target.raw})`);
                 }
-                for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
+                for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
             }
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
             const body = TurnDisposition.is(statement) ? PlanValue.stringify(statement.body)

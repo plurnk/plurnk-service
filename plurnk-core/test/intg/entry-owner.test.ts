@@ -1,7 +1,7 @@
 // {§entry-owner} — every entry is owned by a worker row (never NULL: NULLs are
 // distinct under UNIQUE, so a nullable owner would let the commons fragment into duplicate rows);
 // capability streams are owner-scoped so concurrent workers' identical loop coordinates are
-// distinct rows ({§stream-owner-scoped}); worker auto-names are id-free ordinals.
+// distinct rows ({§stream-owner-scoped}).
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -11,6 +11,7 @@ import type Exec from "../../src/schemes/Exec.ts";
 import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
+import WorkerName from "../../src/core/WorkerName.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -110,17 +111,23 @@ test("the commons is a real reserved row — shared-content identity cannot frag
     } finally { await db.close(); }
 });
 
-test("auto-names are id-free per-workspace ordinals; only internal names and ~ are refused", async () => {
+test("{§worker-auto-name}: unnamed conversations retry occupied names; explicit names retain their validation", async (t) => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-name-${crypto.randomUUID()}`);
+        const names = ["ab3d5678", "ab3d5678", "bc4e6789", "cd5f7890", "de6a8901"];
+        t.mock.method(WorkerName, "short", () => {
+            const name = names.shift();
+            assert.ok(name !== undefined);
+            return name;
+        });
         const first = await Envelope.createModelWorker(db, ws);
-        assert.equal(first.name, "model-1", "the first model auto-name is the ordinal, no timestamp/hash");
+        assert.equal(first.name, "ab3d5678");
         const second = await Envelope.createModelWorker(db, ws);
-        assert.equal(second.name, "model-2", "the ordinal advances with the ever-created count");
-        await Envelope.createModelWorker(db, ws, "model-4");
+        assert.equal(second.name, "bc4e6789", "a generated name never reuses another worker's identity");
+        await Envelope.createModelWorker(db, ws, "cd5f7890");
         const afterOccupiedLiteral = await Envelope.createModelWorker(db, ws);
-        assert.equal(afterOccupiedLiteral.name, "model-5", "an occupied candidate is never reused");
+        assert.equal(afterOccupiedLiteral.name, "de6a8901", "explicit and generated names share the same namespace");
 
         await assert.rejects(Envelope.createModelWorker(db, ws, "commons"), /reserved/, "the commons row's name is refused");
         await assert.rejects(Envelope.createModelWorker(db, ws, "plurnk"), /reserved/, "the kernel row's name is refused");

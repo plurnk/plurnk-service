@@ -22,7 +22,7 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
         const f3 = await Fork.fork(db, parent, undefined, {}, () => "none");
         const nameOf = async (id: number): Promise<string | undefined> => (await db.fork_get_worker.get<{ name: string }>({ id }))?.name;
         const [n1, n2, n3] = [await nameOf(f1), await nameOf(f2), await nameOf(f3)];
-        assert.deepEqual([n1, n2, n3], ["worker-fork-1", "worker-fork-2", "worker-fork-3"], "each fork gets a unique -fork-<N>");
+        for (const name of [n1, n2, n3]) assert.match(name ?? "", /^[a-f0-9]{8}$/);
         assert.equal(new Set([n1, n2, n3]).size, 3, "no two forks collide on a single name");
         // The bug: a single `worker-fork` would have worker_resolve_by_name resolve to the newest for ALL three,
         // so KILL/SEND/READ could only ever reach one. Each unique name must address its OWN fork.
@@ -33,7 +33,7 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
     } finally { await db.close(); }
 });
 
-test("{§worker-auto-name} #159: concurrent unnamed forks atomically claim distinct ordinals", async () => {
+test("{§worker-auto-name}: concurrent unnamed forks atomically claim distinct short names", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-concurrent-${crypto.randomUUID()}`);
@@ -43,7 +43,7 @@ test("{§worker-auto-name} #159: concurrent unnamed forks atomically claim disti
             (await db.fork_get_worker.get<{ name: string }>({ id }))?.name ?? ""));
 
         assert.equal(new Set(names).size, forks.length, "every concurrent fork remains individually addressable");
-        assert.deepEqual(names.toSorted(), Array.from({ length: 8 }, (_, i) => `worker-fork-${i + 1}`).toSorted());
+        for (const name of names) assert.match(name, /^[a-f0-9]{8}$/);
     } finally { await db.close(); }
 });
 
@@ -56,8 +56,7 @@ test("an automatic fork of a maximum-length parent remains a mintable worker nam
         const name = (await db.fork_get_worker.get<{ name: string }>({ id: fork }))?.name ?? "";
 
         assert.ok(WORKER_NAME.test(name), "the generated name satisfies the contracts-owned minting predicate");
-        assert.equal(name.length, 63, "only the inherited parent portion is shortened");
-        assert.match(name, /-fork-1$/, "the stable fork ordinal remains visible");
+        assert.match(name, /^[a-f0-9]{8}$/, "the parent name does not influence the generated identity");
     } finally { await db.close(); }
 });
 

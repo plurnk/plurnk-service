@@ -1,12 +1,5 @@
 -- Automatic worker allocation. SPEC {§worker-auto-name}.
 
--- PREP: worker_name_count
--- A starting hint only. The atomic claim below remains authoritative because
--- explicit names and concurrent allocators can occupy any candidate.
-SELECT COUNT(*) AS n
-FROM workers
-WHERE workspace_id = $workspace_id AND name LIKE $name_prefix;
-
 -- PREP: worker_name_claim
 -- Claiming the literal and creating its worker are one SQLite write statement.
 -- The default-conversation predicate is enabled only by

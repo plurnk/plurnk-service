@@ -4,7 +4,7 @@ import { PlurnkParser, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_helpers.ts";
 
 const read = (source: string): ReadStatement => {
     const parsed = PlurnkParser.parseStatements(source);
@@ -111,3 +111,56 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
         await db.close();
     }
 });
+
+for (const op of ["COPY", "MOVE"] as const) {
+    test(`{§transfer-resource-selections}: parsed ${op} keeps each scope and metadata with its resource through dispatch`, async () => {
+        const db = await openMigrated();
+        const env = await seedEnvelope(db, `transfer-metadata-${crypto.randomUUID()}`);
+        const schemes = new SchemeRegistry();
+        const reads: unknown[] = [];
+        const writes: unknown[] = [];
+        schemes.register("opaque", {
+            manifest: { ...manifest("opaque", true), textEditScopes: true },
+            async prepareRepresentation(request) {
+                reads.push({ path: request.pathname, metadata: request.metadata });
+                return { status: 200 };
+            },
+            async editBatch(statements, ctx) {
+                writes.push(...statements.map(({ target, metadata }) => ({ path: target?.raw, metadata })));
+                return ctx.entries.operations.editBatch(statements);
+            },
+        } satisfies SchemeHandler);
+        const engine = new Engine({ db, schemes });
+        try {
+            for (const [pathname, content] of [["/source", "first\nselected\nlast"], ["/destination", "before\nreplace\nafter"]]) {
+                await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname, content });
+            }
+            const parsed = PlurnkParser.parseStatements(
+                `\`\`\`${op} (opaque:///source) <2> {source: true} (opaque:///destination) <2> {destination: true}\`\`\``,
+            );
+            assert.equal(parsed.unparsedTail, undefined);
+            assert.equal(parsed.items.length, 1);
+            const item = parsed.items[0];
+            assert.ok(item?.kind === "statement" && item.statement.op === op);
+            const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
+            assert.equal(result.status, 200);
+            assert.deepEqual(reads, [{ path: "/source", metadata: ["source: true"] }]);
+            assert.deepEqual(writes, [
+                { path: "opaque:///destination", metadata: ["destination: true"] },
+                ...(op === "MOVE" ? [{ path: "opaque:///source", metadata: ["source: true"] }] : []),
+            ]);
+            for (const [pathname, expected] of [
+                ["/source", op === "COPY" ? "first\nselected\nlast" : "first\nlast"],
+                ["/destination", "before\nselected\nafter"],
+            ]) {
+                const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+                    scheme: "opaque", pathname, name: "body",
+                });
+                assert.equal(channel?.content, expected);
+            }
+        } finally {
+            await schemes.close();
+            await db.close();
+        }
+    });
+}

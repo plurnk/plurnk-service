@@ -284,7 +284,7 @@ or selection exists.
 ## §canonical-statement 2. Canonical statement form
 
 `````text
-```OP (path)? {metadata}* <scope>? <!-- annotation -->?
+```OP (path)? <scope>? {metadata}* <!-- annotation -->?
 body
 ```
 
@@ -329,11 +329,12 @@ this serializer and the ordinary admission parser.
 | Body | Literal content between framing newlines |
 | Closing fence | Exactly the opening backtick count |
 
-§slot-order Producers put target, metadata, scope, then annotation, separated
-by one ASCII space. COPY/MOVE repeat the target/metadata/scope group per
-operand. ANTLR accepts adjacent slots and the admitted target/scope
-permutations without making them distinct canonical forms. Each slot appears
-at most once, except metadata blocks attached to their owning target.
+§slot-order Producers put target, scope, metadata, then annotation, separated
+by one ASCII space. Target and scope form one resource selection; COPY/MOVE
+repeat the complete selection/metadata group per operand. ANTLR accepts
+adjacent slots and scope/metadata permutations within a selection without
+changing ownership or making them distinct canonical forms. Each selection
+has at most one scope; its metadata blocks retain their authored order.
 
 §plan-slotless TASK accepts no target or metadata. Its optional scope carries
 waiting timing; its inventory body begins below the header.
@@ -383,8 +384,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | MOVE | required source and destination              | optional region after each path | empty                          |
 | EXEC | fence names executor; optional program/tool path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
-| WORK | required fresh `worker://name`               | none                            | required prompt                |
-| FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
+| WORK | optional fresh `worker://name`               | none                            | required prompt                |
+| FORK | optional context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
 | SEND | optional recipient | optional recipient timing | message |
 | TASK | none | optional timeout and poll for waiting intent | Plurnk Plan JSON array |
@@ -532,7 +533,7 @@ Mutation semantics:
 - `<0>` prepends and `<-1>` appends.
 - §empty-mutation-scope Empty mutation content has one writable position: `<0>`, `<1>`, `<-1>`, and `<1,-1>` all insert the body as its complete value. Other scopes resolve against that same empty value through the ordinary coordinate algebra.
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
-- §transfer-resource-selections COPY and MOVE require two singular `ResourceSelection` operands on the heading, source first and destination second, and admit no body. Each operand consists of `(path)`, any following `{metadata}`, and an optional following `<scope>`; modifiers bind only to the immediately preceding path. The two operands independently select their resource, channel, scheme metadata, and text region.
+- §transfer-resource-selections COPY and MOVE require two singular `ResourceSelection` operands on the heading, source first and destination second, and admit no body. Each operand consists of `(path)`, optional `<scope>`, and optional `{metadata}` blocks; modifiers bind only to that operand. The two operands independently select their resource, channel, scheme metadata, and text region.
 
 ### §operation-observation Per-operation observations
 

@@ -100,13 +100,19 @@ test("a child's packet names its parent worker; the root's packet does not", asy
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parent-pointer" });
             const workspaceId = 1;
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
+            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
             assert.equal(finalStatus, 200);
             await flush();
             const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
             assert.ok(childTurn, "the child ran a model turn");
             const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);
-            assert.match(packetSection(childPacket, "parent-worker"), /"status":\d+,"path":"worker:\/\/model-1"/, "the child is told its parent by name");
+            assert.ok(modelWorkerId !== undefined);
+            const parent = await db.fork_get_worker.get<{ name: string }>({ id: modelWorkerId });
+            assert.ok(parent !== undefined);
+            const pointers = JSON.parse(packetSection(childPacket, "parent-worker"));
+            assert.equal(pointers.length, 1);
+            assert.equal(typeof pointers[0].status, "number");
+            assert.equal(pointers[0].path, `worker://${parent.name}`, "the child is told its actual parent's address");
             const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1]! }))!.packet);
             assert.equal(packetSection(rootPacket, "parent-worker"), "", "a root worker has no parent pointer");
         } finally { ws.close(); }

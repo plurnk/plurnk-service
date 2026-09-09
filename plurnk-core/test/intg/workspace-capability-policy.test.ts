@@ -231,7 +231,7 @@ for (const layer of ["service", "workspace", "worker-bound", "worker", "loop"] a
         const workspaceId = await insertWorkspace(db, `reference-read-only-${layer}`);
         const capabilities: CapabilityPolicy = { only: [{ access: "observe" }] };
         const { id: workerId } = await WorkerName.claimAuto(db, {
-            workspaceId, prefix: "reference", origin: "model",
+            workspaceId, origin: "model",
             capabilityBound: layer === "worker-bound" ? capabilities : {},
         });
         if (layer === "service") process.env.PLURNK_SERVICE_CAPABILITIES = JSON.stringify(capabilities);

@@ -34,8 +34,9 @@ userinfo, port, query, fragment, or `{metadata}` modifier.
 
 **WORK to delegate, FORK to branch.** WORK starts a fresh log with your task
 prompt; FORK copies your history and own-space entries, then diverges. Both
-share the project filesystem. Give simultaneous jobs distinct names; use SEND
-to give an existing worker a follow-up task.
+share the project filesystem. Omit the address to allocate a short worker name,
+reported in the receipt; explicit names must be distinct for simultaneous jobs.
+Use SEND to give an existing worker a follow-up task.
 
 Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
 as a new task, rather than interrupting an unfinished task:

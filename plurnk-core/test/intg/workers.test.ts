@@ -17,7 +17,7 @@ test("a client cannot create or resume a worker named 'plurnk' (runtime imperson
     } finally { await db.close(); }
 });
 
-test("{§worker-auto-name} #159: concurrent anonymous attachments atomically claim distinct client ordinals", async () => {
+test("{§worker-auto-name}: concurrent anonymous attachments atomically claim distinct short names", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-concurrent-clients-${crypto.randomUUID()}`);
@@ -28,7 +28,7 @@ test("{§worker-auto-name} #159: concurrent anonymous attachments atomically cla
         const names = envelopes.map(({ workerName }) => workerName);
 
         assert.equal(new Set(names).size, envelopes.length, "every attachment receives a distinct addressable worker");
-        assert.deepEqual(names.toSorted(), Array.from({ length: 8 }, (_, i) => `client-${i + 1}`).toSorted());
+        for (const name of names) assert.match(name, /^[a-f0-9]{8}$/);
     } finally { await db.close(); }
 });
 

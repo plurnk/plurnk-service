@@ -38,14 +38,10 @@ export default class Fork {
         }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
-        // {§worker-scheme-fork}, {§machine-processes-worker-origin} — name the branch at instantiation
-        // (immutable after). An explicit name wins; the default
-        // is the next free `<parent>-fork-<N>` admitted by {§worker-name-minting}.
+        // {§worker-auto-name} The same allocator serves addressless WORK and FORK.
         const branch = name === undefined
             ? await WorkerName.claimAuto(db, {
                 workspaceId: parent.workspace_id,
-                prefix: parent.name,
-                qualifier: "fork",
                 parentWorkerId,
                 origin: parent.origin,
                 forkSnapshot: true,

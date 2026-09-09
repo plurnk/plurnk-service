@@ -558,6 +558,53 @@ test("scheme metadata is an opaque ordered modifier outside the target", () => {
     assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
 });
 
+test("{§slot-order}: target and scope precede opaque metadata in every scoped heading", () => {
+    for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "EXEC"] as const) {
+        const header = `${op === "EXEC" ? "node" : op} (known:///item) <1,4> {request={"value":"}"}} {mode=quiet} <!-- inspect -->`;
+        const statement = oneStatement(PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
+        assert.equal(statement.op, op);
+        assert.equal(statement.target?.raw, "known:///item");
+        assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
+        assert.deepEqual(statement.metadata, ['request={"value":"}"}', "mode=quiet"]);
+        assert.equal(statement.annotation, "inspect");
+        const canonical = PlurnkParser.stringify([statement]);
+        assert.equal(canonical, PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
+        assert.deepEqual(oneStatement(canonical), statement);
+    }
+});
+
+test("{§transfer-resource-selections}: scope and metadata stay with their own COPY/MOVE operand", () => {
+    for (const op of ["COPY", "MOVE"] as const) {
+        for (const sourceScope of ["", " <@abcde,@f1234>"]) {
+            for (const destinationScope of ["", " <0>"]) {
+                const header = `${op} (known:///source#body)${sourceScope} {source=one} {source=two} (known:///destination#notes)${destinationScope} {destination=one} <!-- transfer -->`;
+                const statement = oneStatement(PlurnkParser.frame(header, null));
+                if (statement.op !== "COPY" && statement.op !== "MOVE") assert.fail("expected transfer");
+                assert.equal(statement.source.target.raw, "known:///source#body");
+                assert.equal(statement.destination.target.raw, "known:///destination#notes");
+                assert.deepEqual(statement.source.metadata, ["source=one", "source=two"]);
+                assert.deepEqual(statement.destination.metadata, ["destination=one"]);
+                assert.deepEqual(statement.source.lineMarker, sourceScope ? { marks: ["@abcde", "@f1234"] } : null);
+                assert.deepEqual(statement.destination.lineMarker, destinationScope ? { marks: [0] } : null);
+                assert.equal(PlurnkParser.stringify([statement]), PlurnkParser.frame(header, null));
+                assert.deepEqual(oneStatement(PlurnkParser.stringify([statement])), statement);
+            }
+        }
+    }
+});
+
+test("{§slot-order}: a resource selection never silently accepts a second scope", () => {
+    for (const header of [
+        "READ (item) <1> {mode=one} <2>",
+        "COPY (source) <1> {mode=one} <2> (destination)",
+        "MOVE (source) (destination) <1> {mode=one} <2>",
+        "SEND (worker://reviewer) <1> {mode=one} <2>",
+    ]) {
+        const errors = errorsOf(PlurnkParser.frame(header, null));
+        assert.ok(errors.some(({ severity }) => severity === "error"), header);
+    }
+});
+
 test("{§scheme-metadata-modifier}: quoted braces and escapes remain exact metadata content", () => {
     for (const metadata of [
         `args=${JSON.stringify(["}", "{", 'quote"}here', "\\}", "line\nbreak"])}`,

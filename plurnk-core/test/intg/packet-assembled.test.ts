@@ -23,6 +23,54 @@ import { copyStmt, editStmt, readStmt, findStmt, regex, dispositionStmt, urlPath
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
+test("{§worker-auto-name}: assembled receipts and child inventory identify anonymous WORK and FORK", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-anonymous-workers-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "delegate two reviews");
+        const children: number[] = [];
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
+            injectWorker: async (args) => {
+                children.push(args.workerId);
+                const history = await db.fork_get_loops.all({ worker_id: args.workerId });
+                const childLoopId = await insertLoop(db, args.workerId, history.length + 1, args.prompt);
+                return { action: "enqueued_new_loop", loopId: childLoopId };
+            },
+        });
+        const parsed = PlurnkParser.parseStatements([
+            PlurnkParser.frame("WORK", "Review the files."),
+            PlurnkParser.frame("FORK", "Review the reasoning."),
+        ].join("\n"));
+        assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
+        const branches = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                { assistant: { content: "", reasoning: null, ops: [...branches, dispositionStmt("in_progress")] } },
+                { assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } },
+            ],
+        });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const packet = await getPacket(db, second.turnId);
+        const receipts = logEntries(packet).filter(({ path }) => /\/(WORK|FORK)$/.test(String(path)));
+        assert.equal(receipts.length, 2);
+        const names = await Promise.all(children.map(async (id) => (await db.fork_get_worker.get<{ name: string }>({ id }))!.name));
+        assert.equal(new Set(names).size, 2);
+        const pointers = packetSection(packet, "child-workers");
+        for (const [index, name] of names.entries()) {
+            assert.match(name, /^[a-f0-9]{8}$/);
+            assert.equal(receipts[index]?.worker, `worker://${name}`, "the outcome address is visible beside the spawning operation");
+            assert.equal(receipts[index]?.target, undefined, "no address is invented for the authored target slot");
+            assert.ok(pointers.includes(`worker://${name}`), "the same identity appears in the ordinary live-child inventory");
+        }
+        assert.match(String(receipts[0]?.body), /Review the files\./);
+        assert.match(String(receipts[1]?.body), /Review the reasoning\./);
+    } finally { await db.close(); }
+});
+
 test("assembled packet: editable READ lines carry copyable anchors without changing their visible ordinals", async () => {
     const db = await openMigrated();
     try {

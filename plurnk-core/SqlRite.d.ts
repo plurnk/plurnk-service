@@ -299,7 +299,6 @@ export class SqlRiteSync {
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
 	worker_live_by_name: SqlRiteSyncPreparedStatements;
 	worker_count_active: SqlRiteSyncPreparedStatements;
-	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
 }
@@ -557,7 +556,6 @@ export default class SqlRite {
 	worker_deliverable_by_name: SqlRitePreparedStatements;
 	worker_live_by_name: SqlRitePreparedStatements;
 	worker_count_active: SqlRitePreparedStatements;
-	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
 }

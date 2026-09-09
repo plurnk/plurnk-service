@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { InvalidLoopPolicyError, parsePath } from "@plurnk/plurnk-contracts";
+import { InvalidLoopPolicyError, PlurnkParser, parsePath } from "@plurnk/plurnk-contracts";
 import type {
     ParsedPath,
     PlurnkStatement,
@@ -24,6 +24,7 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
+import WorkerName from "../../src/core/WorkerName.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx, testExecutors } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, execStmt, fullReplace, urlPath } from "./_dsl.ts";
@@ -192,6 +193,65 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.deepEqual(spawnPolicy, { capabilities: {}, proposals: "review" }, "the delegating loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
+
+for (const op of ["WORK", "FORK"] as const) {
+    test(`{§worker-auto-name}: addressless ${op} allocates and reports a distinct short child address`, async (t) => {
+        const db = await openMigrated();
+        try {
+            const { calls, injectWorker } = recordingInjectWorker();
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+            const workspaceId = await insertWorkspace(db, `anonymous-${op}-${crypto.randomUUID()}`);
+            const parentId = await insertWorker(db, workspaceId, null, "parent");
+            const occupiedId = await insertWorker(db, workspaceId, null, "ab3d5678");
+            const loopId = await insertLoop(db, parentId, 1, "delegate");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+            const source = PlurnkParser.frame(op, "Inspect the project.");
+            const parsed = PlurnkParser.parseStatements(source);
+            assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
+            assert.equal(parsed.items.length, 1);
+            const item = parsed.items[0];
+            assert.ok(item?.kind === "statement");
+            const statement = item.statement;
+            assert.equal(statement.op, op);
+            assert.equal(statement.target, null, "authored program contains no invented address");
+            const names = ["e6a78901", "ab3d5678", "c4e56789", "d5f67890"];
+            t.mock.method(WorkerName, "short", () => {
+                const name = names.shift();
+                assert.ok(name !== undefined, "allocator must settle after the collision retry");
+                return name;
+            });
+            const first = await engine.dispatch({
+                statement, workspaceId, workerId: parentId, loopId, turnId, sequence: 1, origin: "model",
+            });
+            assert.equal(first.status, 200, "an omitted address allocates a worker rather than refusing the operation");
+            assert.deepEqual(first.attrs, { worker: "worker://e6a78901" });
+
+            const results = await Promise.all([2, 3].map((sequence) => engine.dispatch({
+                statement, workspaceId, workerId: parentId, loopId, turnId, sequence, origin: "model",
+            })));
+            assert.deepEqual(results.map(({ status }) => status), [200, 200]);
+            assert.deepEqual(results.map(({ body }) => body).toSorted(), ["c4e56789", "d5f67890"]);
+            for (const result of results) assert.deepEqual(result.attrs, { worker: `worker://${result.body}` });
+            assert.equal(calls.length, 3);
+            for (const call of calls) {
+                const child = await db.fork_get_worker.get<{ name: string }>({ id: call.workerId });
+                assert.ok(child !== undefined);
+                assert.match(child.name, /^[a-f0-9]{8}$/);
+                const lineage = await db.test_worker_lineage.get<{ parent_worker_id: number }>({ id: call.workerId });
+                assert.equal(lineage?.parent_worker_id, parentId);
+                assert.equal(call.workspaceId, workspaceId);
+                assert.equal(call.prompt, "Inspect the project.");
+                assert.deepEqual(call.freshLoopPolicy, { capabilities: {}, proposals: "review" });
+                const inherited = await db.fork_get_loops.all({ worker_id: call.workerId });
+                assert.equal(inherited.length, op === "FORK" ? 1 : 0, "FORK copies history; WORK starts fresh");
+                const addressed = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: child.name });
+                assert.equal(addressed?.id, call.workerId, "the reported name addresses the child that actually received the prompt");
+            }
+            assert.equal((await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "ab3d5678" }))?.id, occupiedId);
+            assert.equal(statement.target, null, "allocation must not rewrite submitted operation evidence");
+        } finally { await db.close(); }
+    });
+}
 
 test("{§worker-delegation-inherits-policy}: delegated capability authority is a durable non-widening bound", async () => {
     const db = await openMigrated();

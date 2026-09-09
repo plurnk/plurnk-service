@@ -81,7 +81,7 @@ moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
 dispositionStatement
     : OPEN_TASK lineMarker? opAnnotation? statementEnd
     ;
-sendStatement : OPEN_SEND (targetWithMetadata lineMarker?)? opAnnotation? statementEnd ;
+sendStatement : OPEN_SEND resourceSelection? opAnnotation? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
 bareStatement : OPEN_BARE targetWithMetadata? opAnnotation? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
@@ -101,14 +101,19 @@ statementEnd
     | body SECTION_END
     ;
 
-// COPY and MOVE are binary resource operations. Each operand owns the metadata
-// and scope immediately following its target; neither operation admits a body.
+// COPY and MOVE repeat the same resource selection used by single-target OPs.
+// Scope and metadata belong to that operand; neither operation admits a body.
 transferModifiers
     : resourceSelection resourceSelection
     ;
 
 resourceSelection
-    : targetWithMetadata lineMarker?
+    : target selectionModifier*
+    ;
+
+selectionModifier
+    : lineMarker
+    | metadata
     ;
 
 emptyStatementEnd
@@ -117,7 +122,7 @@ emptyStatementEnd
     ;
 
 slotModifiers
-    : targetWithMetadata lineMarker?
+    : resourceSelection
     | lineMarker targetWithMetadata?
     ;
 

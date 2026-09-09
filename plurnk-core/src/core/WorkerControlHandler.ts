@@ -26,14 +26,16 @@ export default class WorkerControlHandler {
         this.#failure = failure;
     }
 
-    // WORK and FORK name the new worker in the target authority and carry its seed task in the body.
+    // WORK and FORK optionally name the child and carry its seed task in the body.
     // Their distinct fresh/branched histories are specified by {§worker-scheme-spawn} and {§worker-scheme-fork}.
     async handleWorkerControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        const address = WorkerControlAddress.resolve(statement.target, statement.op);
-        if (!address.ok) return address.result;
-        const name = address.authority;
+        const origin = ctx.writer;
+        if (origin === "plugin") throw new Error("Worker control received a plugin writer despite the worker scheme's write policy.");
+        const address = statement.target === null ? null : WorkerControlAddress.resolve(statement.target, statement.op);
+        if (address !== null && !address.ok) return address.result;
+        const name = address?.authority;
         try {
-            WorkerName.assert(name); // {§worker-name-minting}
+            if (name !== undefined) WorkerName.assert(name); // {§worker-name-minting}
         } catch (error) {
             if (!(error instanceof WorkerNameError)) throw error;
             return this.#failure(
@@ -71,7 +73,7 @@ export default class WorkerControlHandler {
 
         // A name is frozen per worker but reclaimable across time ({§machine-processes-worker-origin}): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
-        const live = await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+        const live = name === undefined ? undefined : await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
         if (live !== undefined) {
             return this.#failure(
                 "worker-already-running",
@@ -81,43 +83,42 @@ export default class WorkerControlHandler {
                 { worker: name, retryable: false },
             );
         }
-
-
+        let workerId: number;
         if (statement.op === "FORK") {
-            // Branch the current worker's log into a named sister.
-            const branchWorkerId = await Fork.fork(
+            workerId = await Fork.fork(
                 this.#db,
                 ctx.workerId,
                 name,
                 capabilityBound,
                 (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, ctx.workerId),
             );
-            await ctx.injectWorker({
-                workspaceId: ctx.workspaceId,
-                workerId: branchWorkerId,
-                sourceLoopId: ctx.loopId,
-                prompt,
-                freshLoopPolicy: delegationPolicy,
-                spawn: true,
-            });
-            return { status: 200, body: name };
+        } else {
+            const row = name === undefined
+                ? await WorkerName.claimAuto(this.#db, {
+                    workspaceId: ctx.workspaceId,
+                    parentWorkerId: ctx.workerId,
+                    origin,
+                    capabilityBound,
+                })
+                : await this.#db.fork_insert_worker.get<{ id: number }>({
+                    workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin,
+                    fork_snapshot: 0,
+                    capability_bound: JSON.stringify(capabilityBound),
+                });
+            if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
+            workerId = row.id;
         }
-        // WORK — a fresh worker sister named <name>.
-        const row = await this.#db.fork_insert_worker.get<{ id: number }>({
-            workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
-            fork_snapshot: 0,
-            capability_bound: JSON.stringify(capabilityBound),
-        });
-        if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
+        const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });
+        if (worker === undefined) throw new Error("worker control: created worker was not found");
         await ctx.injectWorker({
             workspaceId: ctx.workspaceId,
-            workerId: row.id,
+            workerId,
             sourceLoopId: ctx.loopId,
             prompt,
             freshLoopPolicy: delegationPolicy,
             spawn: true,
         });
-        return { status: 200, body: name };
+        return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name) } };
     }
 
 
