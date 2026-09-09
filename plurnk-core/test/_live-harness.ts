@@ -166,20 +166,11 @@ export const liveLoop = async (
         });
     }
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
-    const lastContent = await lastReply(s.db, term.turnIds);
+    const lastContent = term.result.content ?? "";
     return {
         finalStatus: term.finalStatus, hitMaxTurns: term.hitMaxTurns ?? false,
         turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, lastContent,
     };
-};
-
-// The model's final reply — the last terminated turn's packet assistant content.
-const lastReply = async (db: Db, turnIds: number[] | undefined): Promise<string> => {
-    const lastTurnId = turnIds?.[turnIds.length - 1];
-    if (lastTurnId === undefined) return "";
-    const row = await db.test_get_turn.get<{ packet: string }>({ id: lastTurnId });
-    const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-    return packet.assistant?.content ?? "";
 };
 
 // Seed a workspace entry + body channel — a test PRECONDITION (the state the prompt

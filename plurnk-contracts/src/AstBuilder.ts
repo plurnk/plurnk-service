@@ -398,7 +398,6 @@ export default class AstBuilder {
     }
 
     // Depth-first search for the first terminal of `tokenType`; returns its text or null.
-    // Lets the SEND/KILL signal read work regardless of which signal rule wrapped it.
     static #findToken(root: ParserRuleContext | null, tokenType: number): string | null {
         if (root === null) return null;
         for (const child of root.children ?? []) {

@@ -496,8 +496,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        // An ENTRY-path SEND is the entry-SEND law (410 deletes, 499 cancels, else 501) on the
-        // resolved principal; write-scoping holds — a named space takes no 410.
+        // An entry is not a message recipient ({§send-dispatch-entry-schemes-501}).
         if (Worker.#entryPath(statement.target) !== "") {
             const resolved = await Worker.#resolveAuthority(authority, core);
             if (resolved === null) {

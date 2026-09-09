@@ -66,7 +66,7 @@ vanished.
 A provider response, deterministic `_plurnk` program, or future client/plugin
 program crosses one admission boundary into the same executor. That executor
 parses once, dispatches the admitted statements in order, records their ordinary
-outcomes and the exact `turnOps`, and completes the turn from its SEND ruling.
+outcomes and the exact `turnOps`, and completes the turn from its TASK ruling.
 Provider attempts, grammar recovery, reasoning, and accounting end before this
 shared seam. A programmatic operation batch that supplied no Plurnk source does
 not fabricate verbatim source.
@@ -948,16 +948,16 @@ sequenceDiagram
     participant C as Child loop
     participant S as Child stream
     P->>C: WORK or FORK
-    P->>P: SEND 202 parks on live child
+    P->>P: TASK waiting parks on live child
     C->>S: EXEC opens subscription
-    C->>C: SEND 202 parks on live stream
+    C->>C: TASK waiting parks on live stream
     loop backoff, fixed cadence, or explicit arrival
         S-->>C: optional progress observation
         C->>C: continue or park
     end
     S-->>C: terminal transition
     C->>C: terminal delta enters packet
-    C->>P: child SEND terminal becomes collect delta
+    C->>P: terminal loop result becomes collect delta
     P->>P: resume same parked loop
     P->>P: observe child result and continue
 ```
@@ -971,10 +971,9 @@ sequenceDiagram
 | cancelled or failed terminal                              | no | same wake/delivery path as success; outcome remains non-2xx |
 
 A stream's close status and a loop's terminal status are separate layers. A
-stream may close 4xx/5xx and wake its worker to recover. Model SEND signals
-`4xx/5xx` report a failed action and continue; signal `200` concludes successfully and
-signal `499` explicitly abandons the worker. Only a concluded loop crosses the
-parent edge as the child's result.
+stream may close 4xx/5xx and wake its worker to recover. TASK adjudicates the
+loop's inventory independently of stream and message-delivery statuses
+({§send}). Only a concluded loop crosses the parent edge as the child's result.
 
 §worker-lifecycle-terminal-result **Terminal truth is a result, not a lifecycle code.** `loops.terminal_result`
 stores the exact universal operation result. A failure therefore retains its
@@ -2602,7 +2601,7 @@ Model sees lifecycle events in the `log` section per turn.
 - **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
 - **Kill:** ```` ```KILL (sh:///1/2/3/EXEC) ```` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
 - **WebSocket write:** ```` ```EDIT (wss://feed/x) ```` or ```` ```SEND (wss://feed/x) ```` with a body sends one whole text frame through the active owner. Either write can follow the opening READ in the same turn under {§op-execution-order}.
-- **Other stream write:** ```` ```SEND [200] (…) ```` remains scheme-defined, including exec stdin.
+- **Other stream write:** ```` ```SEND (…) ```` remains scheme-defined, including exec stdin.
 
 ### §stream-constraints Engine constraints
 

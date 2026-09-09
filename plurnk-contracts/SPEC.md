@@ -563,8 +563,8 @@ EDIT. Whole-channel transfers remain bodyless structural effects; runtime
 owners reject binary markers rather than treating a text field as a byte lane.
 
 Every operation returns the runtime-neutral `OperationResult` defined by
-{§operation-result}. Its `status` belongs to the result envelope and is not a
-SEND signal. Durable operation observations are projected into a later packet;
+{§operation-result}. Its `status` belongs to the result envelope; TASK supplies
+the authored lifecycle intent. Durable operation observations are projected into a later packet;
 retrieval never returns inline within the emitting turn.
 
 ## §path-syntax 5. Target and path grammar

@@ -177,7 +177,7 @@ export default class LoopDriver {
                 }
 
                 // Durable disposition outranks a later process-local cancellation observation.
-                // SEND may commit 202 immediately before daemon shutdown aborts this drain; reading
+                // TASK may commit 202 immediately before daemon shutdown aborts this drain; reading
                 // the abort first launders that lawful park into 499 under load. Only a still-running
                 // 102 loop can be cancelled or time out at this boundary.
                 if (!await this.#lifecycle.startExecution(loopId, readLoopTimeoutMs(), () => loopAbort.abort(LOOP_TIMEOUT_REASON))) continue;
