@@ -32,7 +32,7 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat visible READ
 const TINY = 2;         // absolute wall far below any packet → irreducible overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
-const OVERFLOW_PLAN = [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }];
+const OVERFLOW_PLAN = [{ content: "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }];
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },

@@ -359,7 +359,7 @@ export default class PacketBuilder {
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // Familiar token language is a deliberate final model projection;
             // internally this is curation weight, never provider admission.
-            { name: "budget", slot: "user", header: "Context Token Budget", content: budgetReadout },
+            { name: "budget", slot: "user", header: "Context Curation", content: budgetReadout },
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
             { name: "prompt", slot: "user", header: "Active Prompts", content: prompt },

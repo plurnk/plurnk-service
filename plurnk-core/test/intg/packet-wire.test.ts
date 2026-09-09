@@ -234,11 +234,11 @@ test("{§packet-markdown}: section headings are separated from content without s
     }], tok);
     const packet = PacketWire.renderSlot([
         { slot: "user", header: "Log", content: log },
-        { slot: "user", header: "Context Token Budget", content: "tokensActiveTotal: 100\n" },
+        { slot: "user", header: "Context Curation", content: "tokensActiveTotal: 100\n" },
         { slot: "user", header: "Empty", content: "" },
         { slot: "user", header: null, content: "bare\n" },
     ], "user");
-    assert.equal(packet, `## Log\n\n${log}\n\n## Context Token Budget\n\ntokensActiveTotal: 100\n\nbare`);
+    assert.equal(packet, `## Log\n\n${log}\n\n## Context Curation\n\ntokensActiveTotal: 100\n\nbare`);
     assert.match(packet, /### log:\/\/\/1\/2\/1\/READ\n\{/u);
 });
 

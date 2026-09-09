@@ -200,7 +200,7 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const body = (JSON.parse(plan.tx) as { body: unknown }).body;
         assert.deepEqual(
             body,
-            [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }],
+            [{ content: "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }],
             "the recovery inventory states the ordinary curation action without simulating a packet account",
         );
         const problem = result.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;

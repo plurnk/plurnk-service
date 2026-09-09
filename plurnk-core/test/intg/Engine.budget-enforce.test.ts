@@ -344,7 +344,7 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(plan?.origin, "_plurnk");
         assert.deepEqual(
             (JSON.parse(plan!.tx) as { body: unknown }).body,
-            [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }],
+            [{ content: "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }],
         );
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
@@ -353,7 +353,7 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(turnOps?.folded, "[]", "initial suppression is not deliberate curation");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
         assert.match(source, /^```KILL /);
-        assert.match(source, /\n```TASK\n\[\{"content":"Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/);
+        assert.match(source, /\n```TASK\n\[\{"content":"YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/);
     } finally { await db.close(); }
 });
 

@@ -219,7 +219,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             op === null && JSON.parse(attrs).kind === "turnOps");
         overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
         assert.match(overflowSource, /^```KILL /, "the digest specimen is the actual admitted recovery program");
-        assert.match(overflowSource, /\n```TASK\n\[\{"content":"Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/);
+        assert.match(overflowSource, /\n```TASK\n\[\{"content":"YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/);
         assert.equal(overflowTurnOps?.initial_folded, "[[1,-1]]", "the real recovery source is initially body-suppressed");
         assert.equal(overflowTurnOps?.folded, "[]", "initial suppression is not deliberate curation");
     } finally {

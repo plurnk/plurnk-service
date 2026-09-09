@@ -110,7 +110,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
         assert.equal(operationRows[0]?.origin, "_plurnk");
         assert.deepEqual(
             (JSON.parse(operationRows.at(-1)!.tx) as { body: unknown }).body,
-            [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }],
+            [{ content: "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }],
         );
         assert.equal(operationRows.at(-1)?.op, "TASK");
         assert.ok(operationRows.some(({ op, origin }) => op === "KILL" && origin === "_plurnk"), "recovery uses the ordinary KILL dispatcher");
@@ -125,7 +125,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
         assert.match(recoverySource, /\n```KILL /, "the source records the same ordinary scoped KILL operations");
         assert.match(
             recoverySource,
-            /\n```TASK\n\[\{"content":"Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/,
+            /\n```TASK\n\[\{"content":"YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/,
             "the successor must dedicate its next turn to comprehensive bulk curation",
         );
 

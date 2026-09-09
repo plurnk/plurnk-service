@@ -131,7 +131,7 @@ test("{§tokenomics-prompt-projection-share} new shared-model samples cannot res
     assert.notEqual(budgetOf(before).tokensActiveMax, budgetOf(after).tokensActiveMax, "the ceiling uses new model evidence");
     assert.equal(packetSection(after, "log"), packetSection(before, "log"), "all historical rows, including the bounded prompt, stay byte-identical");
     const prefix = (packet: RequestPacket) => PacketWire.packetToWireMessages(packet)
-        .map(({ content }) => content.split("## Context Token Budget")[0]).join("\n");
+        .map(({ content }) => content.split("## Context Curation")[0]).join("\n");
     assert.equal(prefix(after), prefix(before), "the complete prefix before the volatile budget remains reusable");
     await recordSamples(f, [10_000, 10_000, 10_000, 10_000, 10_000]);
     const tighter = await f.build(provider);

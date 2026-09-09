@@ -109,7 +109,7 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     const taskRow = overflowRows.find(({ op }) => op === "TASK");
     assert.ok(taskRow, "overflow hands off through an ordinary TASK");
     const task = projected.find((row) => row.path === `log:///${loop.sequence}/${overflow.sequence}/${taskRow.sequence}/TASK`);
-    assert.match(String(task?.body ?? ""), /Next: YOU MUST ONLY KILL/, "the actual recovery TASK is visible to the model");
+    assert.match(String(task?.body ?? ""), /YOU MUST ONLY KILL/, "the actual recovery TASK is visible to the model");
     return {
         overflowTurns: turns.filter(({ kind }) => kind === "overflow").length,
         modelTurns: turns.filter(({ kind }) => kind === "inference").length,

@@ -26,7 +26,7 @@ export type OverflowKill = {
     readonly statement: KillStatement;
 };
 
-const OVERFLOW_SEND = "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
+const OVERFLOW_SEND = "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
 
 const targetFor = (coordinate: string): UrlPath => ({
     kind: "url",
