@@ -120,13 +120,17 @@ These are the complete strike sources:
 
 | Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
-| Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `501`. | The originating failure row.                                  |
+| Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
 | Terminal steering   | An idle NEXT or a final disposition refused at 409 sets the turn's steering ruling ({§send}).                       | The idle rail row or refused disposition row.                 |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
 
 `EXEC` results remain exact model-visible evidence but are always soft: an
 executor error is not a PLURNK contract violation. Cycle and terminal steering
 remain independent strike sources.
+
+A `425` not-ready result describes unfinished work, not a contract violation.
+It retains its exact receipt and scheduling effect ({§join-blocking-collect});
+other violations in the same turn still strike normally.
 
 §engine-cycle-evidence Cycle identity contains the ordered executed operations
 and their dispatch results, including complete operands, scopes, bodies, and
