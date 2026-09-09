@@ -242,6 +242,13 @@ cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine
 | **live** | `test/live/` | Real | Wire-level assertions |
 | **demo** | `test/demo/` | Real | Holistic outcome assertions |
 
+§service-worker-composition The service launcher and the live/demo workspace
+helper share one registration of default worker-facing modules: MCP and outbound
+A2A. Their management families and readable reference documents are present even
+with no enabled attachments. Capability policy still controls each worker's
+surface; registering a family does not enable a remote attachment. Client and
+inbound-A2A listeners and host hooks remain launcher-owned.
+
 §live-harness-deadline The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT`
 as one whole-specimen deadline, including multi-prompt stories. The test's abort
 signal reaches the loop wait and invokes ordinary scope cancellation before

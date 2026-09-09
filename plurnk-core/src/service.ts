@@ -21,11 +21,10 @@ import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import {
     Module as A2aModule,
-    OutboundModule as A2aOutboundModule,
     hostedAgentConfiguration,
 } from "@plurnk/plurnk-a2a";
 import { Module as HooksModule } from "@plurnk/plurnk-hooks";
-import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import ServiceModules from "./server/ServiceModules.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
@@ -231,11 +230,8 @@ export default class Service {
             const hooksModule = HooksModule.init();
             const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), skills: { hostPaths: Service.#hostPaths } });
-            daemon.registerModule(McpModule.init());
+            ServiceModules.registerWorkerCapabilities(daemon);
             daemon.registerModule(hooksModule);
-            // {§a2a-agents-functionality} — outbound agents are always a Worker
-            // family; the hosted inbound listener is the optional exposure.
-            daemon.registerModule(A2aOutboundModule.init());
             const a2a = hostedAgentConfiguration();
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
             // {§rpc}: AG-UI owns the already-bound client listener. Daemon
