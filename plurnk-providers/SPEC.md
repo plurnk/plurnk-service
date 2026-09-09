@@ -734,13 +734,13 @@ an empty body therefore remains observable. An endpoint that projects despite
 that request supplies no independent evidence. For an unsplit response, `input`
 is `content` and `contentStart` is zero.
 
-§gbnf-forced-march **A grammar masks end-of-generation until the sentence completes — pair rails on a weak model with a recency reminder.** llama-server admits EOG only in a grammar-accepting state, so a model whose intended emission diverges from the required turn shape cannot stop: each masked substitution drifts it further from the terminal, and the request runs to the token ceiling and dies as a length cut (measured 2026-09-01, #477 — the thought budget fires and throughput is unaffected; the march is the grammar's one failure mode, and the weaker the model, the likelier the divergence that triggers it). When enabling a GBNF rail for a model that does not reliably hold the frame shape, put the shape command where recency helps — the operator's Recap footer (core `PLURNK_SERVICE_RECAP`) — for example:
-
-```text
-End with a TASK block; close each block with matching backticks.
-```
-
-A model that emits valid frames freehand needs neither the rail nor the reminder.
+§gbnf-forced-march A grammar masks end-of-generation until its sentence completes.
+Divergence between the model's intended boundaries and the grammar's state can
+prolong generation until a token or time limit, even after the model has found
+the answer. Compare the same provider inputs with the grammar withheld before
+attributing this to model capability or prescribing more teaching. Constrained
+sampling is optional; its value is measured against unconstrained generation
+with the same accepted-language parser and recovery.
 
 §gbnf-response-observation The provider transports and represents; it does not grade its own enforcement.
 The consumer validates `grammarEvidence.input` outside the enforcer's failure
