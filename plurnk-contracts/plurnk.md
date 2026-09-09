@@ -1,111 +1,87 @@
-# Plurnk Service
+# Plurnk Harness
 
-YOU MUST ONLY use the Plurnk OPs (PLAN_|FIND_|READ_|EDIT_|COPY_|MOVE_|EXEC_|WORK_|FORK_|BARE_|KILL_|SEND_).
-YOU MUST proceed until every Active User Prompt requirement and every pending or in_progress item is completed.
+## Plurnk OP Syntax
 
-## Syntax
+### FIND - List matching results by pattern search.
 
-```example
-## PLAN_ <!-- terse annotation on same line as OP -->?
-[{"content": string, "status": "pending" | "in_progress" | "completed"},
-…]
-### OP_ (path)? <scope>? <!-- terse annotation on same line as OP -->?
-body?
-### SEND_ (NEXT|WAIT|TERM|FAIL)
-message
+```FIND (target or glob) <result range>?
+filter pattern?
 ```
 
-YOU MUST use an identical delimiter suffix (default: `_`) on all OPs in a turn.
-YOU MUST begin PLAN_ with `## `, as in `## PLAN_`, and every other OP with `### `, as in `### FIND_`.
-YOU MUST only place an OP's `(path)`, `<scope>`, and `<!-- annotation -->` on the OP heading line.
-YOU MUST begin an OP's `body` immediately beneath its heading line (unfenced).
+### READ - Read content from files, entries, or streams.
 
-## OPs
+```READ (path) <text region>?```
 
-* Plurnk grammar is overloaded and polymorphic, with `(path)`, `<scope>`, and `body` components depending on the OP.
-* When representing nested operations, the default (`_`) delimiter for the turn can be replaced: `[A-Za-z0-9_]*`.
-* An unscoped EDIT_ only creates a new file or entry.
+### EDIT - Edit, replace, or delete text in a file or entry.
 
-```example
-## PLAN_
-[{"content": string, "status": "pending" | "in_progress" | "completed"}]
-
-### FIND_ (target or glob) <result range> <!-- list matching targets -->
-filter pattern
-
-### READ_ (target) <text region> <!-- retrieve target content -->
-
-### EDIT_ (target) <text region> <!-- edit/replace/delete text -->
+```EDIT (path) <text region>?
 literal replacement text
+```
 
-### COPY_ (source) <source text region> (destination) <destination text region> <!-- copy between targets -->
+* An unscoped EDIT only creates a new file or entry.
 
-### MOVE_ (source) <source text region> (destination) <destination text region> <!-- move between targets -->
+### COPY - Copy files, entries, streams, or text regions.
 
-### EXEC_ <!-- run a command, script, or tool -->
-command, script, or tool input
+```COPY (source) <source text region>? (destination) <destination text region>?```
 
-### WORK_ (worker://name) <!-- spawn a child worker -->
-prompt
+### MOVE - Move files, entries, streams, or text regions.
 
-### FORK_ (worker://name) <!-- fork current worker -->
-prompt
+```MOVE (source) <source text region>? (destination) <destination text region>?```
 
-### BARE_ <!-- bare inference call -->
-prompt
+### SEND - Message workers or endpoints.
 
-### KILL_ (target or glob) <range or region> <!-- delete or terminate -->
-filter pattern
-
-### SEND_ (recipient) <!-- message a worker://name, a ws:// or a2a:// endpoint, or the user (default) -->
+```SEND (recipient)
 message
 ```
 
-## Standard Workflow
+* A SEND without a recipient is a response to the Active Prompt.
 
-YOU SHOULD begin every turn with a `## PLAN_`, including pending, in_progress, and completed items.
-YOU MUST end every turn with `### SEND_ (NEXT|WAIT|TERM|FAIL)`.
-YOU MUST NOT place an OP after it: the SEND_ and its message end the turn, so KILL_ and every other OP come before it.
-YOU MUST NOT `(TERM)` when the turn OPs contain delegation, streams, or side effects.
+### WORK - deploy a child worker (fresh log)
 
-| submit code      | meaning                           | body message                             |
-|------------------|-----------------------------------|------------------------------------------|
-| `### SEND_ (NEXT)` | Continue to results in next turn | Describe expected or intended next steps |
-| `### SEND_ (WAIT)` | Wait for workers or streams      | Describe expected or intended next steps |
-| `### SEND_ (TERM)` | Successful conclusion            | Response to the Active User Prompt       |
-| `### SEND_ (FAIL)` | Abort and fail prompt            | Describe error or issue                  |
-
-* The results of OPs are not observable until after submitting with `(NEXT)`, or `(WAIT)`.
-
-```example
-## PLAN_
-[{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
-### EDIT_ (worker://~/report-summary.md) <@wCf7x>
-* Q3 results: 42%
-
-### EDIT_ (worker://~/report-summary.md) <-1>
-* Q4 results exceeded Q3
-
-### EXEC_ [sqlite] <!-- quarter-over-quarter growth from the report's figures -->
-WITH q(quarter, revenue) AS (VALUES ('Q3', 4.2e6), ('Q4', 5.1e6))
-SELECT
-    quarter, FORMAT('%,.0f', revenue) AS revenue,
-    ROUND(100.0 * (revenue / LAG(revenue) OVER (ORDER BY quarter) - 1), 1) AS growth_pct
-FROM q;
-
-### SEND_ (worker://exec-strategy) <0,60>
-Check for updated revenue figures and report material changes.
-
-### BARE_ <!-- an isolated question -->
-Which Q4 revenue driver would a skeptical CFO question first, and why?
-
-### KILL_ (log:///1/5/3/READ) <42,67> <!-- purge reasoning about completed task -->
-### MOVE_ (log:///1/5/3/READ) <123,456> (worker://~/notes/Q4-insights.md) <!-- offload reasoning to private notes -->
-### KILL_ (log:///1/5/4/READ) <!-- purge previous summary chunk -->
-### READ_ (report.md) <401,600> <!-- retrieve next summary chunk -->
-### SEND_ (NEXT)
-Next: Distill relevant findings from this chunk, then continue reading.
+```WORK (worker://name)
+prompt
 ```
+
+### FORK - deploy a forked worker (forked log)
+
+```FORK (worker://name)
+prompt
+```
+
+### BARE - Deploy an isolated inference query (no log).
+
+```BARE (path)?
+prompt
+```
+
+### KILL - Delete or terminate.
+
+```KILL (target) <range or region>?
+filter pattern?
+```
+
+* ```KILL (worker://~/notes.md)``` without a scope deletes an entry.
+* ```KILL (src/app.js) <@zyxwv>``` removes one line by hash anchor.
+* ```KILL (sh:///1/2/3/EXEC)``` stops a running command.
+* ```KILL (worker://recheck)``` terminates a worker.
+* ```KILL (log:///1/[1-7]/*/{TASK,READ})``` removes matching log items.
+* ```KILL (log:///**/READ) <17,-1>``` trims each item's log lines from 17 on.
+* A log item or line KILL doesn't delete the source.
+
+### TASK - End the turn with the current task inventory.
+
+```TASK
+[{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
+```
+
+* `pending`: Task is blocked until another task it depends on is `completed`.
+* `waiting`: Task is awaiting an ongoing stream, deployed worker, or external event.
+* `in_progress`: Task is active work.
+* `completed`: Task has been successfully resolved.
+* `failed`: Task has ended unsuccessfully.
+
+* The prompt is finalized when all tasks are "completed" or "failed".
+* The final turn may only contain SEND and TASK operations.
 
 ## Pattern Filtering
 
@@ -115,26 +91,20 @@ Next: Distill relevant findings from this chunk, then continue reading.
 |--------|----------|------------------------------------|-------------------------|------------------|
 | `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
 | `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535         |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535   |
 | `~`    | full-text | `~query`                          | `~retry` | SQLite FTS5 |
 | `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
 | none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
 
-* The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
-* Mapping is universal: JSONPath can query XML and XPath can query JSON.
-* Patterned FIND_ returns paths for broad targets and locations for exact targets.
 
 ## `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
-* In FIND_ results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
+* In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
 * Creating a file automatically creates missing parent directories.
-
-* Parent traversal: `### READ_ (../AGENTS.md)`.
-* Stream channel: `### READ_ (sh:///1/2/3/EXEC#stderr)`.
 
 ## `<scope>`
 
@@ -151,24 +121,4 @@ Next: Distill relevant findings from this chunk, then continue reading.
 
 * The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
-YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT_ line coordinates; stale EDIT_ targets are rejected.
-
-## Context Management
-
-YOU SHOULD KILL_ log items and lines, including prior reasoning, that are neither pending nor in_progress.
-
-* `### KILL_ (worker://~/notes.md)` without a scope deletes an entry.
-* `### KILL_ (src/app.js) <@zyxwv>` removes one line by hash anchor.
-* `### KILL_ (sh:///1/2/3/EXEC)` stops a running command.
-* `### KILL_ (worker://recheck)` terminates a worker.
-* `### KILL_ (log:///1/[1-7]/*/{PLAN,READ})` removes matching log items.
-* `### KILL_ (log:///**/READ) <17,-1>` trims each item's log lines from 17 on.
-* A log item or line KILL_ doesn't delete the source.
-
-## Lifecycle
-
-| OP          | inherits   | typical use             | body |
-|-------------|------------|-------------------------|------|
-| `### WORK_` | fresh log  | Divide and conquer      | self-contained task prompt, with necessary context |
-| `### FORK_` | forked log | Do two things at once   | distinct objective prompt; prior context is inherited |
-| `### BARE_` | no log     | Pure, focused inference | retrieve undistracted answers to isolated queries |
+YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.
