@@ -48,6 +48,33 @@ test("a quoted turn remains one exact literal body", () => {
     assert.equal(edit.op === "EDIT" ? edit.body : null, body);
 });
 
+test("{§error-shape}: unexpected text identifies the actual preceding fence boundary", () => {
+    for (const newline of ["\n", "\r\n"]) {
+        for (const { source, name, opened, closed, count, line } of [
+            { source: "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```", name: "SEND", opened: 1, closed: 5, count: 3, line: 6 },
+            { source: "```READ (note.md)```\nOutside.", name: "READ", opened: 1, closed: 1, count: 3, line: 2 },
+            { source: "```READ (first.md)```\n````sh\necho 42\n````\n\nOutside.", name: "sh", opened: 2, closed: 4, count: 4, line: 6 },
+            { source: "```````READ (note.md)\n```````\nOutside.", name: "READ", opened: 1, closed: 2, count: 7, line: 3 },
+        ]) {
+            const parsed = PlurnkParser.parse((source + "\n" + task("Done.", "completed")).replaceAll("\n", newline));
+            assert.equal(parsed.unparsedTail, undefined);
+            assert.deepEqual(errors(parsed).map(({ message, code, line, column }) => ({ message, code, line, column })), [{
+                message: `unexpected text outside an operation block; ${name} opened at line ${opened} and closed at line ${closed} with ${count} backticks`,
+                code: "invalid-turn-structure",
+                line,
+                column: 0,
+            }], "a TASK after the broken boundary was not parsed; it was not omitted");
+        }
+    }
+});
+
+test("{§error-shape}: boundary context is not invented for text without a preceding closed operation", () => {
+    const parsed = PlurnkParser.parseStatements("Outside.");
+    assert.deepEqual(errors(parsed).map(({ message }) => message), ["unexpected text outside an operation block; expected operation fence header"]);
+    const preamble = PlurnkParser.parse("Preamble.\n" + task("Done.", "completed"));
+    assert.deepEqual(errors(preamble), [], "tolerated preamble text is not a fence error");
+});
+
 // {§tier-entrypoints}
 test("parseLog retains consecutive turns with independently chosen fence lengths", () => {
     const source = "```SEND\nOne.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```\n\n`````SEND\nTwo.\n`````\n`````TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n`````";

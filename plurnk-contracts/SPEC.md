@@ -1291,6 +1291,10 @@ scope, line marker, body, section boundary, or space between slots. They never
 expose ANTLR rule or token names. They refer to a slot or
 feature rather than an implementation rule. Generic tutoring, speculative
 intent, coordinate restatement, and multiple repair strategies are forbidden.
+Unexpected top-level text immediately after a closed operation identifies that
+operation's opening line, closing line, and matching backtick count. A document
+boundary failure does not additionally diagnose a missing TASK: subsequent
+source was not parsed.
 
 Examples of canonical hard facts:
 

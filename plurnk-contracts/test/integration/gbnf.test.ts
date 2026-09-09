@@ -660,8 +660,8 @@ test("{§rail-heading-boundaries}: nested SEND fence mistakes can finish samplin
     const parsed = PlurnkParser.parse(content);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error").map(({ error }) => error.code), [
         "invalid-turn-structure",
-        "missing-turn-disposition",
     ]);
+    assert.match(parsed.items.find((item) => item.kind === "error")?.error.message ?? "", /SEND opened at line \d+ and closed at line \d+ with 3 backticks/);
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "SEND", "TASK"]);
     const send = statements[1];

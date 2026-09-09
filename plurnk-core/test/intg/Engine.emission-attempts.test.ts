@@ -7,6 +7,7 @@ import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, ProviderUsage } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import Digest from "../../src/digest/Digest.ts";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
@@ -890,6 +891,49 @@ test("duplicate dispositions destroy the single-turn boundary and retry wholesal
     } finally {
         await db.close();
     }
+});
+
+test("{§error-shape}: informed fence recovery explains the boundary, preserves the body, and dispatches no rejected prefix", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
+        const task = PlurnkParser.frame("TASK", '[{"content":"Reported the result.","status":"completed"}]');
+        const rejected = [
+            PlurnkParser.frame("EDIT (worker:///must-not-exist)", "never write"),
+            `\`\`\`SEND\n${body}\n\`\`\``,
+            task,
+        ].join("\n");
+        const corrected = [PlurnkParser.frame("SEND", body), task].join("\n");
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [invalid(rejected), invalid(rejected), invalid(rejected), invalid(corrected)],
+        });
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId,
+            messages: [{ role: "user", content: "Report the result with its code example." }],
+        });
+        assert.equal(result.result.status, 200);
+        assert.equal(result.turnIds.length, 3, "initialization, rejected turn, and informed recovery");
+        const [, failedTurn, recoveryTurn] = result.turnIds;
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: failedTurn });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        const message = "unexpected text outside an operation block; SEND opened at line 4 and closed at line 8 with 3 backticks";
+        for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors), [{
+            line: 9, column: 0, source: "parser", message, code: "invalid-turn-structure",
+        }]);
+        assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private resamples keep the same cacheable packet");
+        assert.ok(provider.packets[3]?.includes(message), "the informed recovery sees the parser-owned boundary diagnosis");
+        assert.doesNotMatch(provider.packets[3]!, /No tasks were supplied/, "the unparsed TASK is not called absent");
+        const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurn });
+        assert.deepEqual(recoveryAttempts.map(({ accepted }) => accepted), [1]);
+        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string }>({ worker_id: workerId });
+        assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 0);
+        assert.equal(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").length, 1);
+        const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ pathname: string }>({ workspace_id: workspaceId });
+        assert.equal(entries.some(({ pathname }) => pathname === "/must-not-exist"), false);
+        const send = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
+        assert.equal(JSON.parse(send!.tx).body?.raw, body, "the durable message retains the complete literal body");
+    } finally { await db.close(); }
 });
 
 test("{§invalid-emission-attempts} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {

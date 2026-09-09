@@ -130,12 +130,11 @@ export default class PlurnkParser {
             });
             return;
         }
-        // Only add the anchor imperative when the shape is CLEANLY incomplete. If a bounded lexer
-        // or visitor error is present, the turn derailed within an operation, so the
-        // missing disposition is a parse artifact, not the real fix - that specific bounded error
-        // is the actionable guidance, and an imperative would mislead.
+        // {§error-shape}: a failed document boundary leaves later source unparsed,
+        // not absent. Bounded lexer/visitor errors likewise already identify the failure.
         const hasSpecificError = items.some(
-            (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
+            (i) => i.kind === "error" && i.error.severity === "error"
+                && (i.error.source !== "parser" || i.error.code === "invalid-turn-structure"),
         );
         if (hasSpecificError) return;
         if (!hasDisposition) {
