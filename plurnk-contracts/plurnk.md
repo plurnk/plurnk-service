@@ -1,6 +1,9 @@
 # Plurnk Harness
 
-## Plurnk OP Syntax
+## Plurnk Operation Syntax
+
+> [!WARNING]
+> YOU MUST use at least three backticks for code fences, with longer outer fences when nesting.
 
 ### FIND - List matching results by pattern search.
 
