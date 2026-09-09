@@ -318,8 +318,7 @@ export default class Http implements SchemeHandler {
         return Http.#passthrough(await ctx.entries.delete(address.pathname));
     }
 
-    // SEND dispatch — a recipient SEND with a body is the POST; a disposition label never
-    // reaches a scheme, and any other status is refused 501 ({§send-label}).
+    // {§turn-disposition} — SEND is messaging; lifecycle operations never reach a scheme.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {
@@ -328,24 +327,7 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        // A recipient SEND with a body posts it ({§send-label}: dispositions never reach a scheme).
-        if (statement.status === null) {
-            const body = statement.body?.raw ?? "";
-            return this.#requester.request(statement.target, statement.metadata, ctx, "POST", body);
-        }
-        const status = statement.status;
-        // Entry-bearing schemes return 501 for status codes they don't interpret.
-        return Http.#bad(
-            501,
-            "http",
-            "send-status-unsupported",
-            `The HTTP scheme does not interpret SEND status ${status}.`,
-            {
-                requestedStatus: status,
-                stage: "dispatch",
-                retryable: false,
-            },
-        );
+        return this.#requester.request(statement.target, statement.metadata, ctx, "POST", statement.body?.raw ?? "");
     }
 
     // {§http-manifest}/{§http-lifecycle} Seed the declared channel shape before

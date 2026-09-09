@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import Dsl from "./dsl.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
 test("op.edit creates an entry via engine.dispatch (origin=client)", async () => {
@@ -78,7 +79,7 @@ test("{§op-look}: resolves like READ without writing a log entry", async () => 
             await rpcCall(ws, 1, "workspace.create", { name: "look-test" });
             await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "secret" });
             const before = (await db.test_log_entries_count_all.get<{ n: number }>())?.n ?? -1;
-            const response = await rpcCall(ws, 3, "op.look", { text: "### READ_ (worker:///x)" });
+            const response = await rpcCall(ws, 3, "op.look", { text: "```READ (worker:///x)```" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "secret");
@@ -93,7 +94,7 @@ test("{§op-look}: rejects a non-READ statement", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "look-readonly" });
-            const response = await rpcCall(ws, 2, "op.look", { text: "### EDIT_ (worker:///x)\nnope" });
+            const response = await rpcCall(ws, 2, "op.look", { text: "```EDIT (worker:///x)\nnope\n```" });
             assert.ok(response.error, "a non-READ LOOK must be rejected");
             assert.match(response.error!.message, /READ only/);
         } finally { ws.close(); }
@@ -108,7 +109,6 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
             const statement = {
                 op: "EDIT" as const,
                 annotation: null,
-                delimiter: "",
                 metadata: null,
                 target: {
                     kind: "url" as const, raw: "worker:///hello",
@@ -183,7 +183,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
     });
 });
 
-test("op.send broadcast with terminal status updates loop status", async () => {
+test("a client DONE operation updates loop status", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -193,7 +193,7 @@ test("op.send broadcast with terminal status updates loop status", async () => {
 
             // op.send is the first client op — it lazily creates the
             // client loop. After it runs we can look up that loop.
-            const response = await rpcCall(ws, 2, "op.send", { status: 200 });
+            const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```") });
             assert.equal((response.result as { status: number }).status, 200);
 
             const clientLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });

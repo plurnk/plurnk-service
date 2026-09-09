@@ -16,8 +16,8 @@ test("a bare EXEC of a tool's name fails with a receipt that names the tool's re
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### EXEC_\nfail {\"message\":\"boom\"}\n\n### SEND_ (WAIT)\nwaiting on the shell", 10),
-            makeMockResponse("### SEND_ (TERM)\nseen", 10),
+            makeMockResponse("```EXEC\nfail {\"message\":\"boom\"}\n```\n\n```TASK\n[{\"content\":\"waiting on the shell\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
     const db = await openMigrated();
@@ -44,10 +44,10 @@ test("a bare EXEC of a tool's name fails with a receipt that names the tool's re
             assert.ok(receipts.every((row) => row.status_rx === 500), "the shell's exit 127 is still a 500 receipt");
             const receipt = JSON.parse(receipts[0]!.rx) as { exitCode?: number; problem?: { detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
             assert.equal(receipt.exitCode, 127);
-            assert.equal(receipt.problem?.detail, "'sh' exited with code 127: `fail` is not a shell command; it is a tool of [fixture].");
+            assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`.");
             assert.equal(
                 receipt.problem?.recovery,
-                "Invoke the tool with `### EXEC_ [fixture] (fail)` and its JSON input as the body; its contract is at worker://~/_plurnk/tools/fixture/fail.md.",
+                "Use the `fixture` fence with target `(fail)` and JSON input in the body; contract: worker://~/_plurnk/tools/fixture/fail.md.",
             );
             assert.deepEqual(receipt.problem?.toolRuntimes, ["fixture"]);
             assert.equal(receipt.problem?.tool, "fail");
@@ -62,8 +62,8 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### EXEC_\nno_such_program_zq --help\n\n### SEND_ (WAIT)\nwaiting", 10),
-            makeMockResponse("### SEND_ (TERM)\nseen", 10),
+            makeMockResponse("```EXEC\nno_such_program_zq --help\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
     const db = await openMigrated();

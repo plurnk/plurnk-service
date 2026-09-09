@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Packet → wire markdown projection. Single source of truth for how the
 // Packet's ordered list of sections renders to ChatMessage.content
 // strings the LLM receives. Engine imports this for the wire payload; the
@@ -262,7 +263,7 @@ export default class PacketWire {
 
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
     // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
-    // the model line refs for free (`### READ_ (...) <42-46>`), while the absence of any separator means a
+    // the model line refs for free (`READ (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
     // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
     // content, preserved verbatim. `N` is left-padded to the body's line-range width so every body
@@ -710,7 +711,7 @@ export default class PacketWire {
             // KILL keeps decisive destructive completion, a dissolving log-KILL
             // receipt exists only to show its status ({§curation-receipt-dissolves}),
             // and every non-200 stays explicit (#338).
-            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || e.status !== 200)) meta.status = e.status;
+            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
             if (typeof tx?.annotation === "string") meta.annotation = tx.annotation;
             const target = PacketWire.#renderActionTarget(e.target);
@@ -882,7 +883,7 @@ export default class PacketWire {
             }
 
             // The canonical full body is shared with log READ, log FIND,
-            // and search derivation. READ/FIND own selection bounds, PLAN is
+            // and search derivation. READ/FIND own selection bounds, TASK carries
             // task inventory, and prompt rows share their packet
             // allowance. Structured mutation receipts own their join bound;
             // every remaining body uses the ordinary fixed preview.
@@ -895,7 +896,7 @@ export default class PacketWire {
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
             const previewExempt = op === "READ"
                 || op === "FIND"
-                || op === "PLAN"
+                || op === "TASK"
                 || structuredMutationReceipt;
             const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;

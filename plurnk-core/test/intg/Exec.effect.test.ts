@@ -20,7 +20,7 @@ import { localPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: target === null ? null : localPath(target),
+    op: "EXEC", annotation: null, executor: runtime, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

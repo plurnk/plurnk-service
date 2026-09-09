@@ -7,9 +7,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import {
     PlanValue,
     type KillStatement,
-    type PlanStatement,
     type ReadStatement,
-    type SendStatement,
+    type DispositionStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
@@ -34,24 +33,21 @@ const continueResponse = () => ({
         content: "",
         reasoning: null,
         ops: [{
-            op: "SEND",
+            op: "TASK",
             annotation: null,
-            delimiter: "",
             metadata: null,
-            status: 102,
             target: null,
             lineMarker: null,
-            body: { raw: "continue", json: null },
+            body: PlanValue.admit("continue"),
             position: { line: 1, column: 1 },
-        } as SendStatement],
+        } as DispositionStatement],
     },
 });
 
-const plan = (body: string): PlanStatement => ({
+const plan = (body: string): DispositionStatement => ({
     metadata: null,
-    op: "PLAN",
+    op: "TASK",
     annotation: null,
-    delimiter: "",
     target: null,
     lineMarker: null,
     body: PlanValue.admit(body),
@@ -75,7 +71,6 @@ const read = (target: UrlPath): ReadStatement => ({
     metadata: null,
     op: "READ",
     annotation: null,
-    delimiter: "",
     target,
     lineMarker: null,
     body: null,
@@ -86,7 +81,6 @@ const kill = (target: UrlPath): KillStatement => ({
     metadata: null,
     op: "KILL",
     annotation: null,
-    delimiter: "",
     target,
     lineMarker: null,
     body: null,
@@ -124,7 +118,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
             turnId: childTurn,
             sequence: 1,
             origin: "model",
-        })).status, 200);
+        })).status, 102);
         assert.equal((await engine.dispatch({
             statement: read(path("missing", "/evidence")),
             workspaceId,
@@ -149,7 +143,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
 
         assert.deepEqual(
             (await observedFromChild(parent)).map(({ op }) => op),
-            ["PLAN", "READ"],
+            ["TASK", "READ"],
             "the parent receives every final op-bearing child activity in causal order",
         );
         assert.ok(
@@ -276,8 +270,8 @@ test("a fork inherits parent activity pending at its snapshot but not later sibl
             .filter(({ origin, source }) => origin === "_plurnk" && source === "worker://sibling")
             .map(({ op }) => op);
 
-        assert.deepEqual(await childOps(branch), ["PLAN"], "the branch receives only the pending parent event inside its fork boundary");
-        assert.deepEqual(await childOps(parent), ["PLAN", "READ"], "the parent independently receives both child events");
+        assert.deepEqual(await childOps(branch), ["TASK"], "the branch receives only the pending parent event inside its fork boundary");
+        assert.deepEqual(await childOps(parent), ["TASK", "READ"], "the parent independently receives both child events");
     } finally {
         await db.close();
     }

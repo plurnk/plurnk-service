@@ -45,7 +45,6 @@ const statement = (
         metadata: null,
         op: "READ",
         annotation: null,
-        delimiter: "READ",
         target,
         lineMarker,
         body: null,
@@ -55,7 +54,11 @@ const statement = (
 
 const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
     const modifiers = metadata.map((block) => ` {${block}}`).join("");
-    const parsed = PlurnkParser.parse(`## PLAN_\nacquire the addressed representation\n\n### READ_ (${target})${modifiers}\n\n### SEND_ (NEXT)\nacquisition pending`);
+    const parsed = PlurnkParser.parse(`
+\`\`\`READ (${target})${modifiers}\`\`\`
+\`\`\`TASK
+[{"content":"acquisition pending","status":"in_progress"}]
+\`\`\``);
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
@@ -75,7 +78,6 @@ const emptyStatement = (): ReadStatement => ({
     metadata: null,
     op: "READ",
     annotation: null,
-    delimiter: "READ",
     target: {
         kind: "url",
         raw: "https://93.184.216.34/empty",
@@ -97,7 +99,6 @@ const legacyTextStatement = (): ReadStatement => ({
     metadata: null,
     op: "READ",
     annotation: null,
-    delimiter: "READ",
     target: {
         kind: "url",
         raw: "https://93.184.216.34/legacy.txt",

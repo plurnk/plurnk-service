@@ -44,7 +44,6 @@ export default class TurnMaterialization {
             source: string | null;
             at: string | null;
             op: string | null;
-            delimiter: string | null;
             signal: string | null;
             scheme: string | null;
             username: string | null;
@@ -70,7 +69,7 @@ export default class TurnMaterialization {
         let written = 0;
         for (const r of rows) {
             if (r.event_id === null || r.producer_worker_id === null || r.producer_worker_name === null || r.kind === null
-                || r.at === null || r.op === null || r.delimiter === null || r.tx === null || r.mimetype_tx === null
+                || r.at === null || r.op === null || r.tx === null || r.mimetype_tx === null
                 || r.rx === null || r.mimetype_rx === null || r.status_rx === null || r.state === null) continue;
             const termination = r.kind === "loop_termination";
             const terminal = termination
@@ -97,7 +96,6 @@ export default class TurnMaterialization {
                 event_id: r.event_id,
                 source: WorkerControlAddress.render(r.producer_worker_name),
                 op: r.op,
-                delimiter: r.delimiter,
                 signal: r.signal,
                 scheme: r.scheme,
                 username: r.username,
@@ -251,7 +249,7 @@ export default class TurnMaterialization {
                 await this.#db.engine_insert_log_entry.get({
                     worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                     origin: "_plurnk", source: "file", model_call_id: null,
-                    op: "EDIT", delimiter: "", signal: null,
+                    op: "EDIT", signal: null,
                     // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
                     // only in log target metadata; its entry identity remains `file`.
                     scheme: null, username: null, password: null, hostname: null, port: null,
@@ -328,7 +326,6 @@ export default class TurnMaterialization {
             source,
             model_call_id: null,
             op: "prompt",
-            delimiter: "",
             signal: null,
             scheme: target.scheme,
             username: target.username,

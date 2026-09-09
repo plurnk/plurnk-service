@@ -21,9 +21,9 @@ test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 w
     const provider = new Mock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("### WORK_ (worker://counter)\nReply with the number 3.\n\n### SEND_ (WAIT) <-1>\nwaiting for the child"),
-            makeMockResponse("### SEND_ (TERM)\n3"),
-            makeMockResponse("### SEND_ (TERM)\nthe child answered 3"),
+            makeMockResponse("```WORK (worker://counter)\nReply with the number 3.\n```\n\n```TASK <-1>\n[{\"content\":\"waiting for the child\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\n3\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nthe child answered 3\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const db = await openMigrated();

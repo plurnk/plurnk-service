@@ -19,7 +19,7 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("### SEND_ (TERM)\ndone", 50)] });
+        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
         const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
         assert.equal((await engine.loopUsage(loopId)).curationBudget, null, "the client sees no invented allowance when physical capacity is unknown");

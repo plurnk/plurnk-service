@@ -9,7 +9,7 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { execStmt, sendStmt } from "./_dsl.ts";
+import { execStmt, dispositionStmt } from "./_dsl.ts";
 import {
     DEFAULT_MIMETYPES,
     insertLoop,
@@ -18,15 +18,15 @@ import {
     openMigrated,
     testExecutors,
 } from "./_helpers.ts";
-import type { SendStatement } from "@plurnk/plurnk-contracts";
+import type { PlanEntry } from "@plurnk/plurnk-contracts";
 
 let runtimeSequence = 0;
 
-const response = (tag: string, disposition: SendStatement["status"]) => ({
+const response = (tag: string, disposition: PlanEntry["status"]) => ({
     assistant: {
         content: "",
         reasoning: null,
-        ops: [execStmt(tag, "go"), sendStmt(disposition)],
+        ops: [execStmt(tag, "go"), dispositionStmt(disposition)],
     },
 });
 
@@ -79,7 +79,7 @@ const idle = async (schemes: SchemeRegistry): Promise<void> => {
     await (schemes.get("exec") as Exec).idle();
 };
 
-test("fast current-turn streams settle before SEND[202] and do not become monitored work", async () => {
+test("fast current-turn streams settle before WAIT and do not become monitored work", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     let startedAt = 0;
@@ -90,7 +90,7 @@ test("fast current-turn streams settle before SEND[202] and do not become monito
     });
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, 202)] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "waiting")] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,
@@ -99,7 +99,7 @@ test("fast current-turn streams settle before SEND[202] and do not become monito
         assert.equal(result.status, 102, "a concluded-but-unobserved stream continues to its observation turn");
         assert.deepEqual(result.outcomes, [
             { op: "EXEC", status: 200, problemType: null },
-            { op: "SEND", status: 102, problemType: null },
+            { op: "TASK", status: 102, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt < 500, "settlement ends when the stream settles, not at the full cap");
     } finally {
@@ -121,7 +121,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
     }));
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, 202)] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "waiting")] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,
@@ -130,7 +130,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
         assert.equal(result.status, 202, "the still-live stream remains a genuine monitored obligation");
         assert.deepEqual(result.outcomes, [
             { op: "EXEC", status: 200, problemType: null },
-            { op: "SEND", status: 202, problemType: null },
+            { op: "TASK", status: 202, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt >= 30, "SEND adjudication follows the configured settlement opportunity");
         release();
@@ -143,7 +143,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
     }
 });
 
-// {§send-premature-terminate} — a fast stream that closes SUCCESSFULLY no longer gates SEND[200]
+// {§send-premature-terminate} — a fast stream that closes SUCCESSFULLY no longer gates DONE
 // (send-200-stream-success.test.ts); the strike this witness guards arises from a fast FAILURE.
 test("strike settlement cannot reap a fast current-turn failed stream before its optimistic opportunity", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
@@ -154,14 +154,14 @@ test("strike settlement cannot reap a fast current-turn failed stream before its
     });
     try {
         const result = await fixture.engine.runLoop({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, 200)] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "completed")] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,
             maxStrikes: 1,
             messages: [],
         });
-        assert.equal(result.result.status, 500, "the unseen failure still makes SEND[200] dishonest and strikes");
+        assert.equal(result.result.status, 500, "the unseen failure still makes DONE dishonest and strikes");
         await idle(fixture.schemes);
         const subscription = await fixture.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
             worker_id: fixture.workerId,

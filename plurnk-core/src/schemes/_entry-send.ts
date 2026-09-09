@@ -36,8 +36,8 @@ export default class EntrySend {
             `The '${scheme}' entry scheme carries no messages.`,
             {},
             {
-                // {§send-target-recipient} — the model most likely meant the reply, which carries no target.
-                recovery: "`### SEND_ (TERM)` answers the active prompt with no target. A SEND target is a recipient — `### SEND_ (worker://<name>)` — or, with `[410]`, a resource to delete.",
+                // {§send-target-recipient}
+                recovery: "SEND targets a recipient, such as worker://<name>. Omit its target to message the user. KILL removes a resource.",
                 retryable: false,
             },
         ); // {§send-dispatch-entry-schemes-501}

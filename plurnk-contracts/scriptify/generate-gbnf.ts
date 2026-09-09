@@ -1,5 +1,5 @@
 // Generates the Gemma- and Qwen-template llama.cpp rails for canonical
-// lane `_` turns from one shared operation grammar.
+// fenced turns from one shared operation grammar.
 // ANTLR remains the accepted-language authority; this deliberately narrower
 // grammar makes useful, parseable local-model output likely and bounded.
 import { mkdir, writeFile } from "node:fs/promises";
@@ -23,12 +23,12 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...new Set(chars)].map((character) => R(character, character));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"] as const;
 const DIGIT = cls([R("0", "9")]);
 const BASE62 = cls([R("0", "9"), R("A", "Z"), R("a", "z")]);
 const WS = cls(C(" \t\r\n"));
 const CONTROL_RANGES: Array<[number, number]> = [[0x00, 0x08], [0x0B, 0x0C], [0x0E, 0x1F], [0x7F, 0x7F]];
 const LINE_TERMINATORS: Array<[number, number]> = [[0x0A, 0x0A], [0x0D, 0x0D]];
+const FENCE_LENGTHS = [3, 4] as const;
 
 const bodyOther = (excluded: string, singleLine = false): GItem =>
     cls([...CONTROL_RANGES, ...(singleLine ? LINE_TERMINATORS : []), ...C(excluded)], true);
@@ -63,6 +63,7 @@ const forbidLiterals = (
     for (const state of states) {
         const transitions = new Map<string, string[]>();
         for (const character of significant) {
+            if (singleLine && (character === "\n" || character === "\r")) continue;
             const candidate = state + character;
             if (literals.some((literal) => candidate.endsWith(literal))) continue;
             const target = nextState(candidate);
@@ -83,132 +84,102 @@ const forbidLiterals = (
     model.set(`${name}-ne`, initial.filter((sequence) => sequence.length > 0));
 };
 
-const optionalBodySection = (
+const fencedSection = (
     model: GModel,
     name: string,
-    header: GSeq,
-    bodyRule: string,
+    headers: GRule,
+    { body = "optional", matcher = false, terminal = false }: {
+        body?: "none" | "optional" | "required";
+        matcher?: boolean;
+        terminal?: boolean;
+    } = {},
 ): void => {
-    const annotated = [...header, opt(ref("annotation-slot"))];
-    model.set(name, [
-        [...annotated, lit("\n")],
-        [...annotated, lit("\n"), ref(`${bodyRule}-ne`), lit("\n")],
-    ]);
-};
-
-const requiredBodySection = (
-    model: GModel,
-    name: string,
-    header: GSeq,
-    bodyRule = "section-body",
-): void => {
-    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n"), ref(`${bodyRule}-ne`), lit("\n")]]);
-};
-
-const emptySection = (model: GModel, name: string, header: GSeq): void => {
-    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n")]]);
+    const headerName = `${name}-header`;
+    model.set(headerName, headers.map((header) => [...header, opt(ref("annotation-slot"))]));
+    model.set(name, FENCE_LENGTHS.flatMap((length): GRule => {
+        const fence = "`".repeat(length);
+        const open = [lit(fence), ref(headerName)];
+        const close = lit(fence + (terminal ? "" : "\n"));
+        return [
+            ...(body === "required" ? [] : [[...open, opt(lit("\n")), opt(lit("\n")), close]]),
+            ...(body === "none" ? [] : [[
+                ...open, lit("\n"),
+                ref(`${matcher ? "pattern" : "section"}-body-${length}-ne`),
+                lit("\n"), close,
+            ]]),
+        ];
+    }));
 };
 
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    // {§rail-heading-boundaries} — reserve stems at column zero, including the
-    // first body line, without constraining inline quotations.
-    const structuralHeadings = ["\n## PLAN", ...OPS.map((op) => `\n### ${op}`)];
-    forbidLiterals(model, "section-body", structuralHeadings, false, "\n");
+    // {§rail-heading-boundaries} — each body reserves its chosen closing fence,
+    // including immediately after the header newline of an empty block.
+    for (const length of FENCE_LENGTHS) {
+        const closer = `\n${"`".repeat(length)}`;
+        forbidLiterals(model, `section-body-${length}`, [closer], false, "\n");
+        forbidLiterals(model, `pattern-body-${length}`, [closer, "\n:"], true, "\n");
+    }
     forbidLiterals(model, "annotation-body", ["-->"], true);
-
-    // Matcher bodies are single-line on the rail. `:` and `#` are excluded only
-    // in first position: colon retains the existing typo sieve and hash would be
-    // interpreted as a direct same-lane heading. `@` remains ordinary glob text
-    // and introduces the conventional `@(...)` extglob group.
-    model.set("pattern-body-ne", [[
-        cls([...CONTROL_RANGES, ...LINE_TERMINATORS, ...C(":#")], true),
-        star(cls([...CONTROL_RANGES, ...LINE_TERMINATORS], true)),
-    ]]);
 
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
     const targetScope = (op: string, lineRule = "line-slot"): GSeq => [
-        lit(`### ${op}_`),
+        lit(op),
         target[0],
         opt(ref(lineRule)),
     ];
     const transfer = (op: "COPY" | "MOVE"): GSeq => [
-        lit(`### ${op}_`),
+        lit(op),
         target[0],
         opt(ref("text-line-slot")),
         target[0],
         opt(ref("text-line-slot")),
     ];
 
-    requiredBodySection(model, "plan", [lit("## PLAN_")]);
-    optionalBodySection(model, "find", targetScope("FIND"), "pattern-body");
-    optionalBodySection(model, "read", targetScope("READ", "text-line-slot"), "pattern-body");
-    optionalBodySection(model, "edit", targetScope("EDIT", "text-line-slot"), "section-body");
-    emptySection(model, "copy", transfer("COPY"));
-    emptySection(model, "move", transfer("MOVE"));
-    // {§exec-executor-slot} — `[executor]` then the program path; a bare EXEC is the shell.
-    optionalBodySection(model, "exec", [
-        lit("### EXEC_"),
-        opt(ref("executor-slot")),
+    fencedSection(model, "find", [targetScope("FIND")], { matcher: true });
+    fencedSection(model, "read", [targetScope("READ", "text-line-slot")], { matcher: true });
+    fencedSection(model, "edit", [targetScope("EDIT", "text-line-slot")]);
+    fencedSection(model, "copy", [transfer("COPY")], { body: "none" });
+    fencedSection(model, "move", [transfer("MOVE")], { body: "none" });
+    // {§exec-executor-slot} — runtime and MCP service names lower to EXEC.
+    fencedSection(model, "exec", [[
+        ref("exec-name"),
         opt(ref("exec-program")),
         opt(line[0]),
-    ], "section-body");
-    requiredBodySection(model, "bare-inline", [lit("### BARE_")]);
-    optionalBodySection(model, "bare-resource", [lit("### BARE_"), target[0]], "section-body");
+    ]]);
+    fencedSection(model, "bare-inline", [[lit("BARE")]], { body: "required" });
+    fencedSection(model, "bare-resource", [[lit("BARE"), target[0]]]);
     model.set("bare", [[ref("bare-inline")], [ref("bare-resource")]]);
-    requiredBodySection(model, "work", [lit("### WORK_"), target[0]]);
-    requiredBodySection(model, "fork", [lit("### FORK_"), target[0]]);
+    fencedSection(model, "work", [[lit("WORK"), target[0]]], { body: "required" });
+    fencedSection(model, "fork", [[lit("FORK"), target[0]]], { body: "required" });
     // {§kill-scope} — a KILL names its target, may scope lines of a log body or an entry, and
     // may select rows with a one-line matcher body.
-    optionalBodySection(model, "kill", [lit("### KILL_"), target[0], opt(ref("text-line-slot"))], "pattern-body");
+    fencedSection(model, "kill", [[lit("KILL"), target[0], opt(ref("text-line-slot"))]], { matcher: true });
 
-    // A non-disposition SEND names a recipient URL, or none for the user. The
-    // URL shape cannot consume the turn's one disposition label ({§send-label}).
-    const sendMidHeaders: GSeq[] = [
-        [lit("### SEND_"), ref("recipient-slot"), opt(ref("park-slot"))],
-        [lit("### SEND_")],
-    ];
-    model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
-        [...header, opt(ref("annotation-slot")), lit("\n")],
-        [...header, opt(ref("annotation-slot")), lit("\n"), ref("section-body-ne"), lit("\n")],
-    ]));
+    // SEND messages a recipient URL, or the user; lifecycle operations are separate.
+    fencedSection(model, "send-mid", [
+        [lit("SEND"), ref("recipient-slot"), opt(ref("park-slot"))],
+        [lit("SEND")],
+    ]);
 
-    // {§send-label} — the four dispositions are labels in the path slot; a terminal SEND
-    // names no recipient and always carries a body ({§terminal-body-nonempty}).
-    const final = (name: string, label: string, park: boolean): void => {
-        model.set(name, [[
-            lit(`### SEND_ (${label})`),
-            ...(park ? [opt(ref("park-slot"))] : []),
-            opt(ref("annotation-slot")),
-            lit("\n"),
-            ref("section-body-ne"),
-        ]]);
-    };
-    final("send-102", "NEXT", false);
-    final("send-200", "TERM", false);
-    final("send-202", "WAIT", true);
-    final("send-499", "FAIL", false);
-    model.set("send-final-any", [[ref("send-102")], [ref("send-200")], [ref("send-202")], [ref("send-499")]]);
-    model.set("send-final-first", [[ref("send-200")], [ref("send-202")], [ref("send-499")]]);
+    // {§turn-disposition} — native lifecycle operations carry no recipient.
+    fencedSection(model, "task", [[lit("TASK"), opt(ref("park-slot"))]], { body: "required", terminal: true });
 
     model.set("op-statement", [
         [ref("find")], [ref("read")], [ref("edit")], [ref("copy")], [ref("move")],
         [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
     ]);
 
-    // {§gbnf-turn-shape} — NEXT needs work before it; other dispositions may stand
-    // alone. Recursion imposes no ordinary-operation quota. {§disposition-ends-turn} — the
-    // disposition's body is the turn's last sampled text: no statement follows it, so a rail
-    // that keeps generating can only lengthen that body, never emit another operation.
-    for (const name of ["tail-0", "tail-work"]) {
-        model.set(name, [
-            [ref("statement"), ref("tail-work")],
-            [ref(name === "tail-0" ? "send-final-first" : "send-final-any")],
-        ]);
-    }
+    // {§gbnf-turn-shape}: TASK can stand alone; its body is not JSON-constrained.
+    model.set("tail", [
+        [ref("statement"), ref("block-sep"), ref("tail")],
+        [ref("task")],
+    ]);
 
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
+    model.set("blank-line", [[star(cls(C(" \t\r"))), lit("\n")]]);
+    model.set("block-sep", [[star(ref("blank-line"))]]);
     const channelOpen = "<|channel>thought\n";
     const channelClose = "<channel|>";
     forbidLiterals(model, "rz-chan", [channelOpen, channelClose]);
@@ -226,26 +197,20 @@ export const buildModel = (): GModel => {
     // {§gbnf-turn-shape} — the same rule as the gemma channel: no empty-thought exit.
     model.set("rz-think-first", [[cls([[0x30, 0x39], [0x41, 0x5A], [0x61, 0x7A]])]]);
     model.set("qwen-tail", [[ref("rz-think-first"), ref("rz-think-b0"), lit(thinkClose)]]);
-    // {§turn-shape} — PLAN is a SHOULD on the rail as in the parser.
-    model.set("turn", [[ref("plan"), ref("tail-0")], [ref("tail-0")]]);
-    model.set("framed-turn", [
-        [ref("turn")],
-        [lit("```example\n"), ref("turn"), lit("\n```")],
-        [lit("```plurnk\n"), ref("turn"), lit("\n```")],
-    ]);
-    model.set("root-gemma", [[ref("channel"), ref("sep"), ref("framed-turn")]]);
-    model.set("root-qwen", [[ref("qwen-tail"), ref("sep"), ref("framed-turn")]]);
+    model.set("turn", [[ref("tail")]]);
+    model.set("root-gemma", [[ref("channel"), ref("sep"), ref("turn")]]);
+    model.set("root-qwen", [[ref("qwen-tail"), ref("sep"), ref("turn")]]);
     model.set("root-qwen-response", [[lit(thinkOpen), ref("root-qwen")]]);
 
     model.set("statement", [[ref("op-statement")], [ref("send-mid")]]);
-    model.set("send-statement", [[ref("send-mid")], [ref("send-final-any")]]);
+    model.set("send-statement", [[ref("send-mid")]]);
 
     model.set("target-slot", [[lit(" "), ref("target"), star(ref("metadata-slot"))]]);
     model.set("recipient-slot", [[lit(" ("), ref("scheme"), lit("://"), ref("target-inner"), lit(")"), star(ref("metadata-slot"))]]);
     model.set("scheme", [[cls([[0x61, 0x7A]]), star(cls([[0x61, 0x7A], [0x30, 0x39], [0x2B, 0x2B], [0x2D, 0x2D], [0x2E, 0x2E]]))]]);
     // An executor name is a runtime tag: scheme-name characters, `+` included (#105).
-    model.set("executor-name", [[cls([R("0", "9"), R("A", "Z"), R("a", "z"), ...C("_.+-")]), star(cls([R("0", "9"), R("A", "Z"), R("a", "z"), ...C("_.+-")]))]]);
-    model.set("executor-slot", [[lit(" ["), ref("executor-name"), lit("]")]]);
+    model.set("executor-name", [[cls([R("a", "z")]), star(cls([R("0", "9"), R("A", "Z"), R("a", "z"), ...C("_.+-")]))]]);
+    model.set("exec-name", [[lit("EXEC")], [ref("executor-name")]]);
     // The program path with its metadata, or `{cwd=…}` metadata alone.
     model.set("exec-program", [[ref("target-slot")], [ref("metadata-slot"), star(ref("metadata-slot"))]]);
     model.set("metadata-slot", [[lit(" "), ref("metadata-block")]]);
@@ -369,5 +334,5 @@ if (import.meta.main) {
         writeFile("dist/plurnk.gemma.gbnf", serializeGbnf(model, "root-gemma")),
         writeFile("dist/plurnk.qwen.gbnf", serializeGbnf(model, "root-qwen")),
     ]);
-    process.stderr.write("Generated dist/plurnk.{gemma,qwen}.gbnf from one shared PLAN_/OP_ turn grammar\n");
+    process.stderr.write("Generated dist/plurnk.{gemma,qwen}.gbnf from one shared executable-fence grammar\n");
 }

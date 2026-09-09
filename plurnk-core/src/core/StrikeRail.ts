@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 
-// {§engine-rails}: discovery misses are soft. Refused dispositions strike via
+// {§engine-rails}: discovery misses and not-ready results are soft. Refused dispositions strike via
 // steerStruck, never by counting their raw 409 a second time. Executor evidence
 // is soft wherever it surfaces, including a completion READ ({§exec-stream}).
-const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
+const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
 
 export type StrikeOutcome = {
@@ -19,7 +19,7 @@ type RailState = { strike_streak: number; cycle_history: string; cycle_wait_revi
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
-const SOURCE_DECORATION = new Set(["annotation", "delimiter", "position"]);
+const SOURCE_DECORATION = new Set(["annotation", "position"]);
 
 const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
     ? result
@@ -37,10 +37,8 @@ export default class StrikeRail {
             throw new Error("cycle evidence requires one result per executed operation");
         }
         const activity = ops.flatMap((statement, index) => {
-            if (statement.op === "PLAN") return [];
-            const disposition = statement.op === "SEND" && statement.target === null && statement.status !== null;
             const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
-                !SOURCE_DECORATION.has(key) && !(disposition && key === "body")));
+                !SOURCE_DECORATION.has(key)));
             return [[operation, observedResult(results?.[index])]];
         });
         const canonical = JSON.stringify(activity, (_key, value) =>

@@ -27,20 +27,24 @@ const gitRoot = async (): Promise<string> => {
 const bareRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "plurnk-child-file-bare-"));
 
 const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> = [
-    { name: "git root, unscoped READ", root: gitRoot, read: "### READ_ (count.txt)" },
-    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "### READ_ (count.txt) <1,-1>" },
-    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "### READ_ (count.txt) <1,-1>" },
+    { name: "git root, unscoped READ", root: gitRoot, read: "```READ (count.txt)```" },
+    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "```READ (count.txt) <1,-1>```" },
+    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "```READ (count.txt) <1,-1>```" },
 ];
 
 for (const c of CASES) {
     test(`a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("### WORK_ (worker://counter)\nWrite the number 3 to count.txt and conclude.\n\n### SEND_ (WAIT) <-1>\nwaiting", 10),
-            makeMockResponse("### EDIT_ (count.txt)\n3\n\n### SEND_ (NEXT)\nwrote", 10),
-            makeMockResponse("### SEND_ (TERM)\nwritten", 10),
-            makeMockResponse(`${c.read}\n\n### SEND_ (NEXT)\nreading`, 10),
-            makeMockResponse("### SEND_ (TERM)\ndone", 10),
+            makeMockResponse("```WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```EDIT (count.txt)\n3\n```\n\n```TASK\n[{\"content\":\"wrote\",\"status\":\"in_progress\"}]\n```", 10),
+            makeMockResponse("```SEND\nwritten\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse(`${c.read}
+
+\`\`\`TASK
+[{"content":"reading","status":"in_progress"}]
+\`\`\``, 10),
+            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -66,13 +70,15 @@ for (const c of CASES) {
                     // conclusion as the engine's SEND attributed to `worker://counter`: status and body ride,
                     // no target is invented (a commons `worker:///counter` would name nothing the child wrote).
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
-                    const conclusions = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
-                        .filter((entry) => entry.source === "worker://counter" && String(entry.path).endsWith("/SEND") && entry.status === 200));
+                    const messages = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
+                        .filter((entry) => entry.source === "worker://counter" && entry.origin === "_plurnk" && String(entry.path).endsWith("/SEND") && entry.status === 200));
+                    const conclusions = messages.filter((entry) => "body" in entry);
+                    assert.equal(new Set(messages.filter((entry) => !("body" in entry)).map(({ path }) => path)).size, 1, "the child's SEND activity is a separate suppressed observation");
                     assert.equal(new Set(conclusions.map(({ path }) => path)).size, 1, `one durable child conclusion row reaches the parent's packets: ${JSON.stringify(conclusions)}`);
                     const [conclusion] = conclusions;
                     assert.equal(conclusion!.origin, "_plurnk", "the conclusion is the engine's narration");
                     assert.equal(conclusion!.status, 200, "the child's terminal status rides");
-                    assert.equal("target" in conclusion!, false, `the conclusion is untargeted like the TERM it mirrors: ${JSON.stringify(conclusion)}`);
+                    assert.equal("target" in conclusion!, false, `the conclusion reports the child's result without inventing a target: ${JSON.stringify(conclusion)}`);
                     assert.match(String(conclusion!.body ?? ""), /written/, "a 2xx conclusion arrives with its body visible");
                 } finally { ws.close(); }
             });
@@ -85,9 +91,9 @@ for (const c of CASES) {
 // space by name. The root worker has no such section.
 test("a child's packet names its parent worker; the root's packet does not", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("### WORK_ (worker://counter)\nReply with the number 3.\n\n### SEND_ (WAIT) <-1>\nwaiting", 10),
-        makeMockResponse("### SEND_ (TERM)\n3", 10),
-        makeMockResponse("### SEND_ (TERM)\ndone", 10),
+        makeMockResponse("```WORK (worker://counter)\nReply with the number 3.\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\n3\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

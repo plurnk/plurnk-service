@@ -22,7 +22,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
  target,
     lineMarker: null, body: null,
     position: { line: 1, column: 1 },
@@ -30,7 +30,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "",
+    op: "FIND", annotation: null,
  target,
     lineMarker: null, body,
     position: { line: 1, column: 1 },
@@ -61,7 +61,7 @@ const seedJson = async (db: Db, workspaceId: number, workerId: number, mimetypes
     await new Worker().edit(
         {
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "",
+            op: "EDIT", annotation: null,
             target: urlPath("worker", path),
             lineMarker: null, body: content,
             position: { line: 1, column: 1 },
@@ -275,7 +275,7 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
         await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "FIND", annotation: null, delimiter: "",
+                op: "FIND", annotation: null,
                 target: urlPath("worker", "/team.json"),
                 lineMarker: null,
                 body: { dialect: "jsonpath", raw: "$[*].name" } as MatcherBody,

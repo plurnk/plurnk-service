@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { makeMockResponse } from "./_rpc.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
@@ -76,7 +76,7 @@ test("{§operator-config-loop-timeout}: WAIT preserves one execution allowance a
         const loopId = await insertLoop(db, workerId, 1, "Wait, then finish the same assignment.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("### SEND_ (WAIT) <60>\nWait before continuing."),
+            makeMockResponse("```TASK <60>\n[{\"content\":\"Wait before continuing.\",\"status\":\"waiting\"}]\n```"),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
@@ -122,7 +122,7 @@ test("the default wall never intrudes — a short loop concludes 200 untouched",
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "quick");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } }] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.result.status, 200, "the 24h default is invisible to a normal loop");
     } finally { await db.close(); }

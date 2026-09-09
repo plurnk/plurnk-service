@@ -12,7 +12,7 @@ import {
     DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace,
     logEntries, openMigrated, packetSection,
 } from "./_helpers.ts";
-import { editStmt, findStmt, killStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
+import { editStmt, findStmt, killStmt, readStmt, dispositionStmt, urlPath } from "./_dsl.ts";
 
 const messages = [{ role: "system" as const, content: "S" }, { role: "user" as const, content: "review" }];
 const outputBudget = Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
@@ -22,7 +22,7 @@ const providerAt = (capacity: number | null, responses: MockResponse[] = [], mod
         responses,
     });
 const response = (reported = 0): MockResponse => ({
-    assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] },
+    assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] },
     usage: { inputTokens: reported, totalTokens: reported },
 });
 

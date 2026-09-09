@@ -42,52 +42,54 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         let sequence = 50;
         const dispatch = (source: string) => engine.dispatch({ ...context, statement: statement(source), turnId: next.turnId, sequence: sequence++, origin: "model" });
         const copy = "worker://~/reasoning-notes.txt";
-        assert.equal((await dispatch(`### COPY_ (${target}) (${copy})`)).status, 201);
+        assert.equal((await dispatch(`\`\`\`COPY (${target}) (${copy})\`\`\``)).status, 201);
         const copied = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-notes.txt", name: "body" });
         assert.equal(copied?.content, original);
         assert.equal(copied?.mimetype, "text/markdown", "COPY uses the destination type without rewriting reasoning text");
-        assert.equal((await dispatch(`### COPY_ (${target}) <2,3> (worker://~/reasoning-slice.md)`)).status, 201);
+        assert.equal((await dispatch(`\`\`\`COPY (${target}) <2,3> (worker://~/reasoning-slice.md)\`\`\``)).status, 201);
         const slice = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-slice.md", name: "body" });
         assert.equal(slice?.content, "Finding 2: evidence 2.\nFinding 3: evidence 3.\n", "COPY includes the selected lines' original terminators");
         assert.equal(slice?.mimetype, "text/markdown");
         for (const program of [
-            `### EDIT_ (${target}) <1>\nRevised determination.`,
-            "### EDIT_ (reasoning:///9/9/9)\nInvented history.",
-            `### KILL_ (${target})`,
-            `### KILL_ (${target}) <2>`,
-            `### COPY_ (${copy}) (${target}) <1,-1>`,
-            `### MOVE_ (${target}) (worker://~/moved-reasoning.txt)`,
-            `### MOVE_ (${copy}) (${target}) <1,-1>`,
+            `\`\`\`EDIT (${target}) <1>
+Revised determination.
+\`\`\``,
+            "```EDIT (reasoning:///9/9/9)\nInvented history.\n```",
+            `\`\`\`KILL (${target})\`\`\``,
+            `\`\`\`KILL (${target}) <2>\`\`\``,
+            `\`\`\`COPY (${copy}) (${target}) <1,-1>\`\`\``,
+            `\`\`\`MOVE (${target}) (worker://~/moved-reasoning.txt)\`\`\``,
+            `\`\`\`MOVE (${copy}) (${target}) <1,-1>\`\`\``,
         ]) {
             const denied = await dispatch(program);
             assert.equal(denied.status, 403, program);
             assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden", program);
         }
         assert.deepEqual(await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }), resources);
-        const explicit = await dispatch(`### READ_ (${target}) <2,3>`);
+        const explicit = await dispatch(`\`\`\`READ (${target}) <2,3>\`\`\``);
         assert.equal(explicit.status, 200);
         assert.ok("content" in explicit);
         assert.equal(explicit.content, original.split("\n").slice(1, 3).join("\n"));
         assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
-        const anchored = await dispatch(`### READ_ (${target}) <@abcde>`);
+        const anchored = await dispatch(`\`\`\`READ (${target}) <@abcde>\`\`\``);
         assert.equal(anchored.status, 400);
         assert.equal(anchored.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/line-anchor-unsupported");
-        const editable = await engine.look({ ...context, statement: statement(`### READ_ (${copy}) <1,-1>`) });
+        const editable = await engine.look({ ...context, statement: statement(`\`\`\`READ (${copy}) <1,-1>\`\`\``) });
         assert.equal(editable.status, 200, "a denied MOVE preserves its writable source");
         assert.ok("lineAnchors" in editable && Array.isArray(editable.lineAnchors));
         assert.equal(editable.lineAnchors.length, 30, "an ordinary editable copy still publishes anchors");
-        const history = await engine.look({ ...context, statement: statement(`### READ_ (${receipt}) <1,-1>`) });
+        const history = await engine.look({ ...context, statement: statement(`\`\`\`READ (${receipt}) <1,-1>\`\`\``) });
         assert.ok("content" in history && "lineAnchors" in history && Array.isArray(history.lineAnchors));
         assert.equal(history.content, original);
         assert.equal(history.lineAnchors.length, 30, "explicit log READs retain anchors for line curation");
-        assert.equal((await dispatch(`### KILL_ (${receipt}) <${history.lineAnchors[1]}>`)).status, 200);
-        assert.equal((await dispatch(`### KILL_ (${receipt}) <17,-1>`)).status, 200);
+        assert.equal((await dispatch(`\`\`\`KILL (${receipt}) <${history.lineAnchors[1]}>\`\`\``)).status, 200);
+        assert.equal((await dispatch(`\`\`\`KILL (${receipt}) <17,-1>\`\`\``)).status, 200);
         const curtailed = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ id }) => id === read.id);
         assert.ok(curtailed);
         assert.equal(curtailed.active, 1);
         assert.notEqual(curtailed.folded, "[]", "scoped log curation changes its projection");
         assert.equal(JSON.parse(curtailed.rx).content, original, "curation preserves durable observations");
-        assert.equal((await dispatch(`### KILL_ (${receipt})`)).status, 200);
+        assert.equal((await dispatch(`\`\`\`KILL (${receipt})\`\`\``)).status, 200);
         assert.deepEqual(await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }), resources);
         await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const after = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
@@ -116,7 +118,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
         if (limit === 0) {
             const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
             const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
-                statement: statement(`### READ_ (reasoning://${resource.pathname}) <17,30>`),
+                statement: statement(`\`\`\`READ (reasoning://${resource.pathname}) <17,30>\`\`\``),
             });
             assert.equal(explicit.status, 200);
             assert.ok("content" in explicit);
@@ -170,9 +172,13 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
             await Turn.complete(db, turn.id, result.status);
             return result;
         };
-        assert.equal((await engine.look({ ...context, workerId: unrelatedId, statement: statement(`### READ_ (${target})`) })).status, 404);
-        assert.equal((await clientDispatch(`### EDIT_ (${target}) <1>\nRetained determination.`)).status, 200);
-        const found = await dispatch(`### FIND_ (${target})\n~Retained`);
+        assert.equal((await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`READ (${target})\`\`\``) })).status, 404);
+        assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
+Retained determination.
+\`\`\``)).status, 200);
+        const found = await dispatch(`\`\`\`FIND (${target})
+~Retained
+\`\`\``);
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
         assert.equal(found.matchLocationCount, 1);
@@ -183,21 +189,29 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
         await engine.runTurn({ ...forkContext, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkId })).length, 1,
             "a pending source is observed by the fork without cloning provider accounting");
-        assert.equal((await clientDispatch(`### EDIT_ (${target}) <1>\nBranch-only decision.`, forkContext)).status, 200);
+        assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
+Branch-only decision.
+\`\`\``, forkContext)).status, 200);
         assert.match((await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, /^Retained determination\./);
-        assert.equal((await clientDispatch(`### EDIT_ (${target}) <1>\nRevised conclusion.`)).status, 200);
-        const outdated = await dispatch(`### FIND_ (${target})\n~Retained`);
+        assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
+Revised conclusion.
+\`\`\``)).status, 200);
+        const outdated = await dispatch(`\`\`\`FIND (${target})
+~Retained
+\`\`\``);
         assert.equal(outdated.status, 204, JSON.stringify(outdated));
         assert.ok("matchLocationCount" in outdated);
         assert.equal(outdated.matchLocationCount, 0, "FTS reflects the current source, not its former content");
-        assert.equal((await dispatch(`### FIND_ (${target})\n~Revised`)).status, 200);
+        assert.equal((await dispatch(`\`\`\`FIND (${target})
+~Revised
+\`\`\``)).status, 200);
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const observations = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         const read = observations.find(({ ambient_event_id }) => ambient_event_id === null);
         assert.ok(read, "a child's ambient READ must not stand in for observing the parent's independent reasoning source");
         assert.match(JSON.parse(read.rx).content, /^Revised conclusion\./);
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
-            statement: statement(`### KILL_ (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)`),
+            statement: statement(`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\``),
         })).status, 200);
         const forkAfterRead = await Fork.fork(db, workerId, "already-observed", {}, (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
         await db.close();
@@ -209,7 +223,7 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
         await engine.runTurn({ workspaceId, workerId: forkAfterRead, loopId: secondForkLoop.id, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkAfterRead })).filter(({ ambient_event_id }) => ambient_event_id === null).length, 1,
             "fork and restart preserve once-only delivery even when the old receipt is KILLed");
-        assert.equal((await clientDispatch(`### KILL_ (${target})`)).status, 200);
+        assert.equal((await clientDispatch(`\`\`\`KILL (${target})\`\`\``)).status, 200);
         const ids = await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: producing.turnId });
         const journal = await Promise.all(ids.map(({ id }) => LogEntry.fetchLogEntry(db, id)));
         const snapshot = new Translator({ threadId: "history", runId: "reattach" }).replay(journal)
@@ -237,7 +251,7 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource, wi
         const context = { workspaceId, workerId, loopId, messages: [] };
         for (const reasoning of [null, ""]) await engine.runTurn({ ...context, provider: provider(reasoning) });
         assert.deepEqual(await db.test_reasoning_resources.all({ worker_id: workerId }), []);
-        const source = "## PLAN_\n[]\n### SEND_ (NEXT)\nContinue.";
+        const source = "```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "invalid program", reasoning: "Private rejected reasoning." } },
             { assistant: { content: source, reasoning: "Admitted reasoning." } },

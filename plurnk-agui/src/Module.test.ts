@@ -81,7 +81,7 @@ const mockSeam = () => {
         cancelDrain: () => true,
         cancelWorker: async () => {},
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
-        readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
+        readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
         listModels: (query) => {
             modelQueries.push(query);
@@ -328,7 +328,7 @@ test("a read-only management Run does not duplicate its conversation's model set
                 worker_id: 20,
                 loop_id: 9,
                 origin: "model",
-                op: "SEND",
+                op: "SEND", status_rx: 200,
                 coordinate: "1/1/1/SEND",
                 tx: { body: "one answer" },
                 turn_id: 1,
@@ -615,7 +615,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "### EXEC_ (😀) <-1s,300>\nx";
+        const text = "```EXEC (😀) <-1s,300>\nx\n```";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
@@ -652,9 +652,9 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
-            { line: 1, column: 14, source: "lexer", severity: "error" },
+            { line: 1, column: 12, source: "lexer", severity: "error" },
         );
-        assert.equal(text.indexOf("<"), 15, "the UTF-16 index differs from the parser's code-point column");
+        assert.equal(text.indexOf("<"), 13, "the UTF-16 index differs from the parser's code-point column");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
     } finally { await mod.close(); }
 });
@@ -695,7 +695,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             return event.value;
         };
 
-        const source = " \n### LOOK_ (worker:///x) <1-2>\n~needle\n";
+        const source = " \n```LOOK (worker:///x) <1-2>\n~needle\n\n```";
         const admitted = await invoke(source);
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");
@@ -712,27 +712,27 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
 
-        const extra = await invoke("### LOOK_ (worker:///x)\n\n### LOOK_ (worker:///y)");
+        const extra = await invoke("```LOOK (worker:///x)```\n```LOOK (worker:///y)```");
         assert.equal(extra.ok, false);
         assert.equal(extra.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
         assert.equal(extra.problem?.stage, "action-validation");
 
         for (const operation of ["READ", "EDIT"] as const) {
-            const body = operation === "EDIT" ? "\nbad" : "";
-            const wrongOperation = await invoke(`### ${operation}_ (worker:///x)${body}`);
+            const body = operation === "EDIT" ? "bad" : null;
+            const wrongOperation = await invoke(PlurnkParser.frame(`${operation} (worker:///x)`, body));
             assert.equal(wrongOperation.ok, false);
             assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
-        const bounded = await invoke("text ### LOOK_ (worker:///x)");
+        const bounded = await invoke("text ```LOOK (worker:///x)```");
         assert.equal(bounded.ok, false);
         assert.deepEqual(bounded.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "unexpected text before PLAN; expected PLAN heading `## PLANdelimiter`, H3 operation heading `### OPdelimiter`, or H3 client heading `### OPdelimiter`",
+            detail: "unexpected text outside an operation block; expected operation fence header or client operation fence header",
             line: 1,
             column: 0,
             source: "parser",
@@ -741,14 +741,14 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             retryable: false,
         });
 
-        const tailed = await invoke("### LOOK_ (worker:///x)\n\n### EDIT_ (worker:///y");
+        const tailed = await invoke("```LOOK (worker:///x)```\n```EDIT (worker:///y");
         assert.equal(tailed.ok, false);
         assert.deepEqual(tailed.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `### EDIT_` opened at line 3 but never closed - add `)`",
-            line: 3,
+            detail: "target slot of `EDIT` opened at line 2 but never closed - add `)`",
+            line: 2,
             column: 0,
             source: "grammar",
             severity: "error",
@@ -769,7 +769,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "### EDIT_ (worker:///ok)\nyes\n\n### EDIT_ (worker:///bad";
+        const text = "```EDIT (worker:///ok)\nyes\n```\n\n```EDIT (worker:///bad";
         const events = await post(mod.address().port, {
             threadId: "parse-tail",
             runId: "parse-tail-run",
@@ -803,8 +803,8 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `### EDIT_` opened at line 4 but never closed - add `)`",
-            line: 4,
+            detail: "target slot of `EDIT` opened at line 5 but never closed - add `)`",
+            line: 5,
             column: 0,
             source: "grammar",
             severity: "error",
@@ -1560,8 +1560,8 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     worker_id: 20,
                     loop_id: 9,
                     turn_id: 12,
-                    coordinate: "1/12/1/PLAN",
-                    op: "PLAN",
+                    coordinate: "1/12/1/TASK",
+                    op: "TASK",
                     origin: "model",
                     tx: { body: [{ content: "Await approval.", status: "in_progress" }] },
                 },
@@ -1581,7 +1581,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     loop_id: 9,
                     turn_id: 12,
                     coordinate: "1/12/3/SEND",
-                    op: "SEND",
+                    op: "SEND", status_rx: 200,
                     origin: "model",
                     tx: { body: "Command approved." },
                 },
@@ -1669,10 +1669,10 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 0, coordinate: "1/1/0/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 0, rx: { content: "original question", mimetype: "text/markdown" } },
-        { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
+        { id: 1, coordinate: "1/1/1/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
             { content: "Inspect, repair, and verify.", status: "in_progress" },
         ] } },
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
         { id: 3, coordinate: "1/1/3", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "turnOps", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "OPAQUE", format: "openai-responses-v1" }] },
         ] } },
@@ -1716,10 +1716,10 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         reads.push(args);
         return [
             { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
-            { id: 2, coordinate: "1/1/2/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
+            { id: 2, coordinate: "1/1/2/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
                 { content: "Answer the prior question.", status: "completed" },
             ] } },
-            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         ];
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1860,8 +1860,8 @@ test("the official AG-UI client keeps the accepted current user message after au
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
-        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
-        { id: 2, coordinate: "1/1/2/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
+        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+        { id: 2, coordinate: "1/1/2/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
             { content: "Answer the prior question.", status: "completed" },
         ] } },
         { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
@@ -1900,7 +1900,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
         { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
     ];
     seam.runLoop = async (args) => {
@@ -2409,8 +2409,8 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
                 worker_id: 20,
                 loop_id: 9,
                 turn_id: 12,
-                coordinate: "1/12/1/PLAN",
-                op: "PLAN",
+                coordinate: "1/12/1/TASK",
+                op: "TASK",
                 origin: "model",
                 tx: { body: [{ content: "Attempt the run.", status: "in_progress" }] },
             },

@@ -15,13 +15,13 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, se
 
 const execStmt = (command: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", executor: null, annotation: null, delimiter: "", target: null,
+    op: "EXEC", executor: null, annotation: null, target: null,
     lineMarker: null, body: command, position: { line: 1, column: 1 },
 });
 
 const killExec = (pathname: string): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, delimiter: "",
+    op: "KILL", annotation: null,
     target: {
         kind: "url", raw: `exec://${pathname}`, scheme: "exec",
         username: null, password: null, hostname: null, port: null,

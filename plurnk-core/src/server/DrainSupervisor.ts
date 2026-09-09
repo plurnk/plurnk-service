@@ -397,7 +397,7 @@ export default class DrainSupervisor {
                         },
                     );
                     if (result.result.status === 202) {
-                        // The loop slept via SEND signal 202 — suspended, not terminated. Leave it at 202
+                        // The loop parked — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // through handleWakeWorker re-queues it; if it holds a polled stream, a poll timer
                         // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
@@ -806,7 +806,7 @@ export default class DrainSupervisor {
             return;
         }
 
-        // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
+        // No slept loop, no active drain — nothing to resume (e.g. a completed worker whose
         // streams were swept). Surface the conclusion without opening a loop.
         this.#emit(workspaceId, "stream/concluded", {
             ...conclusion, wakeAction: "no-loop",
@@ -909,6 +909,7 @@ export default class DrainSupervisor {
         const waits = await this.#lifecycle.parked(workerId);
         let woke = false;
         for (const wait of waits) {
+            if (!this.#acceptingWork || scope?.signal.aborted) return;
             if (await this.#lifecycle.wake(wait.id, { revision: wait.wait_revision, eventOnly: true })) {
                 this.#clearLoopTimer(wait.id);
                 woke = true;

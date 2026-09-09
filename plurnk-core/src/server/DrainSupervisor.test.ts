@@ -92,6 +92,28 @@ test("{§module-shutdown-order}: supervisor idle preserves a wake failure", asyn
     await drains.idle();
 });
 
+test("{§worker-lifecycle-durable-disposition}: stopping during wait selection preserves the parked loop", async (t) => {
+    const selecting = Promise.withResolvers<void>();
+    const selected = Promise.withResolvers<Array<{ id: number; wait_revision: number }>>();
+    let wakes = 0;
+    let starts = 0;
+    const drains = supervisor(async () => "system", undefined, {
+        lifecycle: {
+            parked: async () => { selecting.resolve(); return selected.promise; },
+            wake: async () => { wakes++; return true; },
+        } as never,
+    });
+    t.mock.method(drains, "ensureDrain", async () => { starts++; return null; });
+    drains.start();
+    const settlement = drains.settleCompletionWake(1, 2, "system");
+    await selecting.promise;
+    drains.beginStop("daemon_stopping");
+    selected.resolve([{ id: 7, wait_revision: 1 }]);
+    await settlement;
+    assert.equal(wakes, 0, "a pre-stop selection must not enqueue parked work after stopping");
+    assert.equal(starts, 0, "no provider drain can start from the stale selection");
+});
+
 const delivery = {
     workspaceId: 1, workerId: 2, sourceLoopId: 10, prompt: "message",
     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },

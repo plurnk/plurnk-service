@@ -70,7 +70,7 @@ ORDER BY ic.workspace_id, ic.timestamp, ic.id, pr.sequence;
 
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
-       op, delimiter, signal,
+       op, signal,
        scheme, hostname, port, pathname, query, fragment,
        rx, status_rx, mimetype_rx,
        state, outcome, attrs, initial_folded,

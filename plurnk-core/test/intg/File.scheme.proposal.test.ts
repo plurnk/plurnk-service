@@ -30,7 +30,7 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 
 const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "",
+    op: "EDIT", annotation: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname: `/${pathname}`, query: null, fragment: null },
@@ -39,7 +39,7 @@ const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null 
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname: `/${pathname}`, query: null, fragment: null },
@@ -51,7 +51,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
 // project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
 const bareEditStmt = (relPath: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "",
+    op: "EDIT", annotation: null,
     target: { kind: "local", raw: relPath },
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
@@ -94,7 +94,15 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
         assert.equal(read.status, 200);
         const anchors = read.lineAnchors as string[];
         assert.ok(anchors.length >= 3);
-        const source = `## PLAN_\n[]\n### EDIT_ (${target}) <2>\nTWO\n### EDIT_ (file:///${target}) <${anchors[2]}>\nTHREE\n### SEND_ (NEXT)`;
+        const source = `\`\`\`EDIT (${target}) <2>
+TWO
+\`\`\`
+\`\`\`EDIT (file:///${target}) <${anchors[2]}>
+THREE
+\`\`\`
+\`\`\`TASK
+[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\``;
         const first = deferred<number>();
         const second = deferred<number>();
         let firstId = 0;
@@ -105,8 +113,8 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
             fromSequence: 1, statements: TurnOps.parseInternal(source),
             onDispatch: (id) => {
                 dispatched++;
-                if (dispatched === 2) { firstId = id; first.resolve(id); }
-                if (dispatched === 3) second.resolve(id);
+                if (dispatched === 1) { firstId = id; first.resolve(id); }
+                if (dispatched === 2) second.resolve(id);
             },
             onSettled: async (id) => {
                 if (id === firstId && decision === "drift") await writeFile(join(root, target), original.replace("two", "TWO").replace("four", "external"));

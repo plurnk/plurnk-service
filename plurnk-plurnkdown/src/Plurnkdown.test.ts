@@ -27,42 +27,39 @@ test("line number tracks the offending prose block", () => {
     assert.equal(diagnostics[0].line, 5);
 });
 
-test("a bare Plurnk op inside a prose block is flagged for fencing", () => {
-    const source = "Here is an example.\n## PLAN_\ndo the thing\nThat op should be fenced.";
-    const opFence = linter.lint(source).filter(d => d.rule === "op-fence");
-    assert.equal(opFence.length, 1);
-    assert.equal(opFence[0].line, 2);
+test("operation names in Markdown headings are ordinary documentation", () => {
+    assert.deepEqual(linter.lint("## NEXT\n\nDescribe continuation.\n\n### READ\n\nDescribe reading."), []);
 });
 
-test("an op inside a plurnk fence is exempt from op-fence", () => {
-    const source = "```example\n## PLAN_\ndo the thing\n```";
-    assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-fence"), []);
+test("a longer fence preserves nested programs as literal body text", () => {
+    const source = "````EDIT (notes.md)\n```READ (file.md) <N>```\n````";
+    assert.deepEqual(linter.lint(source), []);
 });
 
-test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
-    const source = "```example\n### READ_ (file.md) <N>\n```"; // <N> — letters aren't valid scope
+test("a malformed compact op is flagged by op-syntax", () => {
+    const source = "Example:\n\n```READ (file.md) <N>```";
     const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
     assert.equal(diagnostics.length >= 1, true, JSON.stringify(diagnostics));
-    assert.equal(diagnostics[0].line, 2); // the op line inside the fence
+    assert.equal(diagnostics[0].line, 3);
 });
 
 // {§packet-operation-fences} {§unparsed-tail-boundary}
 test("an unfinished modifier in an op fence surfaces the parser-owned tail diagnostic", () => {
-    const source = "```example\n### EDIT_ (worker:///note.md\n```";
+    const source = "Example:\n\n```EDIT (worker:///note.md";
     const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
     assert.equal(diagnostics.length, 1, JSON.stringify(diagnostics));
     assert.equal(diagnostics[0].severity, "error");
     assert.match(diagnostics[0].message, /target/i);
-    assert.equal(diagnostics[0].line, 2);
+    assert.equal(diagnostics[0].line, 3);
 });
 
-test("valid ops inside a plurnk fence pass op-syntax", () => {
-    const source = "```example\n## PLAN_\ngo\n\n### READ_ (file.md) <5>\n```";
+test("native and named-executor blocks pass op-syntax", () => {
+    const source = "```READ (file.md) <5>```\n\n```gitea (list_issues)\n{\"repo_id\": 42}\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 
-test("a plain (non-plurnk) fence is never op-validated", () => {
-    const source = "```\n### READ_ (file.md) <N>\n```";
+test("an anonymous documentation fence is never op-validated", () => {
+    const source = "````\n```READ (file.md) <N>```\n````";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 
@@ -80,6 +77,6 @@ test("a semicolon-welded clause pair warns under the run-on length", () => {
 });
 
 test("short atomic sentences do not warn", () => {
-    const source = "Open every turn with a PLAN. Conclude with a SEND. Keep it short.";
+    const source = "Continue with NEXT. Conclude with DONE. Keep it short.";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "run-on"), []);
 });

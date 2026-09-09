@@ -57,7 +57,6 @@ const readStatement = (pathname: string): ReadStatement => ({
     metadata: null,
     op: "READ",
     annotation: null,
-    delimiter: "",
     target: {
         kind: "url",
         raw: `myserver://${pathname}`,

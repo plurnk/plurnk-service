@@ -1,6 +1,7 @@
+import { dispositionStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, PlurnkStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -16,16 +17,9 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "",
+    op: "EDIT", annotation: null,
     target: urlPath("worker", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
-});
-
-const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
-    metadata: null,
-    op: "SEND", annotation: null, delimiter: "", status, target: null,
-    lineMarker: null, body: { raw: body, json: null },
-    position: { line: 1, column: 1 },
 });
 
 const response = (ops: PlurnkStatement[]): MockResponse => ({
@@ -45,17 +39,17 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId };
 };
 
-test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
+test("Engine.runLoop: three-turn loop terminating on DONE", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/a", "1"), sendStmt(102, "continuing")]),
-                response([editStmt("/b", "2"), sendStmt(102, "still going")]),
-                response([editStmt("/c", "3"), sendStmt(200, "done")]),
+                response([editStmt("/a", "1"), dispositionStmt("in_progress", "continuing")]),
+                response([editStmt("/b", "2"), dispositionStmt("in_progress", "still going")]),
+                response([editStmt("/c", "3"), dispositionStmt("completed", "done")]),
                 // {§send-premature-terminate} — the third edit's receipt refuses that [200]; the observation turn concludes.
-                response([sendStmt(200, "done")]),
+                response([dispositionStmt("completed", "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -80,9 +74,9 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            // Each turn does real work (distinct EDIT) then continues — a bare SEND[102] is now an
+            // Each turn does real work (distinct EDIT) then continues — a bare NEXT is now an
             // idle-strike ({§send} the terminal contract); distinct paths keep the cycle rail quiet too.
-            responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), sendStmt(102, "more")])),
+            responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), dispositionStmt("in_progress", "more")])),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, maxTurns: 3,
@@ -99,20 +93,20 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
 test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Four non-terminal turns then SEND[200]. A positive cap of 3 would
+        // Four non-terminal turns then DONE. A positive cap of 3 would
         // force-terminate at turn 3 (429); -1 = no cap, so the loop runs all
         // five and ends gracefully on the model's SEND. (A naive `length >= -1`
         // terminator would also wrongly stop at turn 1 — this guards that too.)
         const provider = new Mock({
             contextWindow: 100000,
             // Non-terminal turns carry a work op (distinct EDIT) so they're real continues, not
-            // idle-strikes ({§send} the terminal contract); the final turn terminates on SEND[200].
+            // idle-strikes ({§send} the terminal contract); the final turn terminates on DONE.
             responses: [
-                response([editStmt("/1", "x"), sendStmt(102, "1")]),
-                response([editStmt("/2", "x"), sendStmt(102, "2")]),
-                response([editStmt("/3", "x"), sendStmt(102, "3")]),
-                response([editStmt("/4", "x"), sendStmt(102, "4")]),
-                response([sendStmt(200, "done")]),
+                response([editStmt("/1", "x"), dispositionStmt("in_progress", "1")]),
+                response([editStmt("/2", "x"), dispositionStmt("in_progress", "2")]),
+                response([editStmt("/3", "x"), dispositionStmt("in_progress", "3")]),
+                response([editStmt("/4", "x"), dispositionStmt("in_progress", "4")]),
+                response([dispositionStmt("completed", "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -125,30 +119,22 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
+test("Engine.runLoop: repeated identical TASK-only turns remain subject to the cycle rail", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // A bare SEND[102] is a continue that did no work — an idle turn ({§send} the terminal contract).
-        // It steers the model (a hint) and strikes (silently); a model that keeps idling spins out to
-        // the engine's 500, never its own 499.
+        // {§engine-cycle-evidence}
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, () => contentResponse(
-                "## PLAN_\ncontinue without work\n\n### SEND_ (NEXT)\nidling",
+                "\n```TASK\n[{\"content\":\"idling\",\"status\":\"in_progress\"}]\n```",
             )),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
-        assert.equal(result.result.status, 500, "idle spin-out is the engine ruling failure, not the model's 499");
-        assert.equal(result.turnIds.length, 3, "initialization plus two model strikes, well before maxTurns:10");
-        // The idle steer is a terse op='error' log row (409 Idle Turn) — its derived LogCoordinate
-        // pointer reaches the model; the guidance lives in the packet, not the row.
-        let steered = false;
-        for (const id of result.turnIds) {
-            const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}");
-            if (/"status":409,"path":"log:\/\/\/[^"]+\/error"/.test(packetSection(packet, "errors"))) steered = true;
-        }
-        assert.ok(steered, "the idle steer surfaced as a terse 409 log-coordinate error pointer");
+        assert.equal(result.result.status, 508, "identical inventory repetition is a cycle, not an idle-operation violation");
+        assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
+        assert.equal(result.reason, "strike_threshold");
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        assert.deepEqual(errors, [], "the cycle rail does not invent an idle-operation error");
     } finally { await db.close(); }
 });
 
@@ -159,8 +145,8 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
         const entryId = await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, pathname: "/live-stream" });
         await db.open_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response([sendStmt(200, "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
-            response([sendStmt(499, "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
+            response([dispositionStmt("completed", "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
+            response([dispositionStmt("failed", "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.turnIds.length, 3, "initialization plus two model turns prove the premature 200 was not honored");
@@ -169,7 +155,7 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
         // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":409,"path":"log:\/\/\/[^"]+\/SEND"/, "the premature SEND failure surfaced as a terse log-coordinate pointer");
+        assert.match(packetSection(packet, "errors"), /"status":409,"path":"log:\/\/\/[^"]+\/TASK"/, "the premature SEND failure surfaced as a terse log-coordinate pointer");
     } finally { await db.close(); }
 });
 
@@ -177,7 +163,7 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         await new LoopLifecycle(db).finish(loopId, { status: 200 });
-        const provider = new Mock({ contextWindow: 100000, responses: [response([sendStmt(200, "")])] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response([dispositionStmt("completed", "")])] });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
             messages: [],
@@ -226,7 +212,7 @@ test("Engine.runLoop: 499 model-emitted termination", async () => {
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([sendStmt(102, "thinking")]), response([sendStmt(499, "giving up")])],
+            responses: [response([dispositionStmt("in_progress", "thinking")]), response([dispositionStmt("failed", "giving up")])],
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -243,7 +229,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     try {
         const readStmt = (pathname: string) => ({
             metadata: null,
-            op: "READ" as const, annotation: null, delimiter: "",
+            op: "READ" as const, annotation: null,
             target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },
@@ -251,10 +237,10 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/state", "from turn 1"), sendStmt(102, "stored")]),
-                // READ continues (SEND[102]); its result enters turn 3, where it can be observed.
-                response([readStmt("/state"), sendStmt(102, "reading")]),
-                response([sendStmt(200, "retrieved")]),
+                response([editStmt("/state", "from turn 1"), dispositionStmt("in_progress", "stored")]),
+                // READ continues (NEXT); its result enters turn 3, where it can be observed.
+                response([readStmt("/state"), dispositionStmt("in_progress", "reading")]),
+                response([dispositionStmt("completed", "retrieved")]),
             ],
         });
         const result = await engine.runLoop({
@@ -273,7 +259,7 @@ test("Engine.runLoop: signal abort between turns throws AbortError", async () =>
         const controller = new AbortController();
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([sendStmt(102, "1")]), response([sendStmt(102, "2")]), response([sendStmt(200, "3")])],
+            responses: [response([dispositionStmt("in_progress", "1")]), response([dispositionStmt("in_progress", "2")]), response([dispositionStmt("completed", "3")])],
         });
         controller.abort();
         await assert.rejects(
@@ -289,9 +275,9 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([sendStmt(102, "1")]),
-                response([sendStmt(102, "2")]),
-                response([sendStmt(200, "3")]),
+                response([dispositionStmt("in_progress", "1")]),
+                response([dispositionStmt("in_progress", "2")]),
+                response([dispositionStmt("completed", "3")]),
             ],
         });
         await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -307,8 +293,9 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "strike out");
-        // Idle turns strike out to the engine's 500 (the run60 shape: repeated failed/no-op turns).
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
+            `\`\`\`EDIT (worker:///note-${i})\nx\n\`\`\``,
+        )) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");
 
@@ -327,7 +314,7 @@ test("the full terminal enumeration names itself — max_turns included", async 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "run to the ceiling");
         // A model that works forever (non-terminal SENDs) runs into the configured ceiling.
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([sendStmt(102, "working")])) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([dispositionStmt("in_progress", "working")])) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
         assert.equal(result.result.status, 429);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/max-turns");

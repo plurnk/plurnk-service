@@ -6,7 +6,7 @@
 SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
            WHEN le.origin = 'model'
-            AND le.op = 'SEND'
+            AND le.op IN ('SEND', 'TASK')
             AND json_type(t.packet, '$.assistant.reasoning') = 'text'
             AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
            THEN json_extract(t.packet, '$.assistant.reasoning')

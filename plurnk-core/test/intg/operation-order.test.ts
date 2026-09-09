@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -16,42 +17,64 @@ const anchors = LineAnchors.tokens(target, content);
 const cases = [
     {
         name: "READs observe the state at their authored position, not a future EDIT",
-        ops: [`### READ_ (${target}) <1,-1>`, `### EDIT_ (${target}) <2>\nTWO\nextra`, `### READ_ (${target}) <1,-1>`, `### EDIT_ (${target}) <4>\nTHREE`, `### READ_ (${target}) <1,-1>`],
+        ops: [`\`\`\`READ (${target}) <1,-1>\`\`\``, `\`\`\`EDIT (${target}) <2>
+TWO
+extra
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``, `\`\`\`EDIT (${target}) <4>
+THREE
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
         order: ["READ", "EDIT", "READ", "EDIT", "READ"],
         reads: [content, "one\nTWO\nextra\nthree\nfour\nfive\nsix", "one\nTWO\nextra\nTHREE\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an EDIT can create a resource and a later EDIT can change it in the same turn",
-        ops: ["### EDIT_ (worker:///new.md)\nalpha\nbeta", "### EDIT_ (worker:///new.md) <2>\nBETA", "### READ_ (worker:///new.md) <1,-1>"],
+        ops: ["```EDIT (worker:///new.md)\nalpha\nbeta\n```", "```EDIT (worker:///new.md) <2>\nBETA\n```", "```READ (worker:///new.md) <1,-1>```"],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["alpha\nBETA"],
         statuses: [201, 200],
     },
     {
         name: "an invalid EDIT does not roll back an earlier effect or suppress a later one",
-        ops: [`### EDIT_ (${target}) <1>\nONE`, `### EDIT_ (${target}) <99>\ninvalid`, `### EDIT_ (${target}) <2>\nTWO`, `### READ_ (${target}) <1,-1>`],
+        ops: [`\`\`\`EDIT (${target}) <1>
+ONE
+\`\`\``, `\`\`\`EDIT (${target}) <99>
+invalid
+\`\`\``, `\`\`\`EDIT (${target}) <2>
+TWO
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
         order: ["EDIT", "EDIT", "EDIT", "READ"],
         reads: ["ONE\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 416, 200],
     },
     {
         name: "a surviving hash follows its target through an adjacent numeric insertion",
-        ops: [`### EDIT_ (${target}) <0>\nprefix`, `### READ_ (${target}) <1,-1>`, `### EDIT_ (${target}) <${anchors[1]}>\nTWO`, `### READ_ (${target}) <1,-1>`],
+        ops: [`\`\`\`EDIT (${target}) <0>
+prefix
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``, `\`\`\`EDIT (${target}) <${anchors[1]}>
+TWO
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
         order: ["EDIT", "READ", "EDIT", "READ"],
         reads: [`prefix\n${content}`, "prefix\none\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an overwritten hash target is not rebound to replacement content",
-        ops: [`### EDIT_ (${target}) <${anchors[1]}>\nreplacement`, `### EDIT_ (${target}) <${anchors[1]}>\nwrong`, `### READ_ (${target}) <1,-1>`],
+        ops: [`\`\`\`EDIT (${target}) <${anchors[1]}>
+replacement
+\`\`\``, `\`\`\`EDIT (${target}) <${anchors[1]}>
+wrong
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["one\nreplacement\nthree\nfour\nfive\nsix"],
         statuses: [200, 409],
     },
     {
         name: "an untouched hash range survives a preceding scoped entry KILL",
-        ops: [`### KILL_ (${target}) <1>`, `### EDIT_ (${target}) <${anchors[2]},${anchors[3]}>\nTHREE\nFOUR`, `### READ_ (${target}) <1,-1>`],
+        ops: [`\`\`\`KILL (${target}) <1>\`\`\``, `\`\`\`EDIT (${target}) <${anchors[2]},${anchors[3]}>
+THREE
+FOUR
+\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
         order: ["KILL", "EDIT", "READ"],
         reads: ["two\nTHREE\nFOUR\nfive\nsix"],
         statuses: [200],
@@ -60,9 +83,17 @@ const cases = [
 
 for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse(`### EDIT_ (${target})\n${content}\n### SEND_ (NEXT)\ncreated`, 10),
-        makeMockResponse(`${fixture.ops.join("\n")}\n### SEND_ (NEXT)\nverify`, 10),
-        makeMockResponse("### SEND_ (TERM)\ndone", 10),
+        makeMockResponse(`\`\`\`EDIT (${target})
+${content}
+\`\`\`
+\`\`\`TASK
+[{"content":"created","status":"in_progress"}]
+\`\`\``, 10),
+        makeMockResponse(`${fixture.ops.join("\n")}
+\`\`\`TASK
+[{"content":"verify","status":"in_progress"}]
+\`\`\``, 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -71,7 +102,7 @@ for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, asy
             const result = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } });
             assert.equal(result.finalStatus, 200);
             const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId }))
-                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "PLAN").slice(1);
+                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "PLAN" && !TurnDisposition.isOp(op)).slice(1);
             assert.deepEqual(rows.map(({ op }) => op), fixture.order);
             assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ rx }) => JSON.parse(rx).content), fixture.reads);
             assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ rx }) => JSON.parse(rx).status), fixture.statuses);
@@ -86,7 +117,19 @@ for (const origin of ["client", "_plurnk"] as const) {
             const env = await seedEnvelope(db, `ordered-${origin}`, { producer: origin });
             env.turnId = (await Turn.open(db, { loopId: env.loopId, producer: origin, kind: "operation" })).id;
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const source = `## PLAN_\n[]\n### EDIT_ (${target})\n${content}\n### READ_ (${target}) <1,-1>\n### EDIT_ (${target}) <99>\ninvalid\n### EDIT_ (${target}) <2>\nTWO\n### SEND_ (NEXT)`;
+            const source = `\`\`\`EDIT (${target})
+${content}
+\`\`\`
+\`\`\`READ (${target}) <1,-1>\`\`\`
+\`\`\`EDIT (${target}) <99>
+invalid
+\`\`\`
+\`\`\`EDIT (${target}) <2>
+TWO
+\`\`\`
+\`\`\`TASK
+[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\``;
             const execution = engine.executeAdmittedTurn({
                 ...env, origin, source, sourceFolded: true, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
@@ -95,7 +138,7 @@ for (const origin of ["client", "_plurnk"] as const) {
             else assert.equal((await execution).status, 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
-                failOnOperationError ? ["PLAN", "EDIT", "READ", "EDIT"] : ["PLAN", "EDIT", "READ", "EDIT", "EDIT", "SEND"]);
+                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", "TASK"]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
             assert.equal(JSON.parse(rows.find(({ op }) => op === null)!.rx).content, source, "the submitted program remains durable even when execution stops at an error");
             const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/ordered.md", name: "body" });

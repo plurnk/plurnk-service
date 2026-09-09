@@ -56,8 +56,6 @@ export default class CapabilityResolver {
                 : [];
 
         switch (statement.op) {
-            case "PLAN":
-                return [];
             case "FIND":
             case "READ":
                 return demands(describe(statement.op, "observe", statement.target));
@@ -87,6 +85,8 @@ export default class CapabilityResolver {
                 if (scheme === "log") return [];
                 return demands(describe("KILL", scheme === "worker" ? "control" : "mutate", statement.target));
             }
+            case "TASK":
+                return [];
             case "SEND": {
                 if (statement.target === null) return [];
                 const scheme = schemeNameOf(statement.target);

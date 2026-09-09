@@ -1,3 +1,4 @@
+import { dispositionStmt } from "./_dsl.ts";
 // SPEC {§decisions} architectural-decision contract tests.
 //
 //   The built core passes: git-substrate membership ({§membership-git-membership}), the
@@ -14,7 +15,7 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlurnkStatement, SendStatement, ReadStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, ReadStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -32,13 +33,6 @@ const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
     lookThroughScheme("file", null, statement, ctx);
 
-const sendStmt = (status: SendStatement["status"]): SendStatement => ({
-    metadata: null,
-    op: "SEND", annotation: null, delimiter: "", status, target: null,
-    lineMarker: null, body: { raw: "", json: null },
-    position: { line: 1, column: 1 },
-});
-
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
@@ -47,14 +41,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", target,
+    op: "READ", annotation: null, target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: ParsedPath | null, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", target,
+    op: "EDIT", annotation: null, target,
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
@@ -331,7 +325,7 @@ test("out-of-band change to a member remains truthful runtime-actor evidence", a
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [mockResponse([sendStmt(200)]), mockResponse([sendStmt(200)])],
+            responses: [mockResponse([dispositionStmt("completed")]), mockResponse([dispositionStmt("completed")])],
         });
 
         await engine.runTurn({ provider, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, messages: [] });

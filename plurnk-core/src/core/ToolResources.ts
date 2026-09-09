@@ -69,7 +69,7 @@ const invocationRows = (
     ];
 };
 
-const exampleSource = (
+const invocationHeader = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
@@ -77,24 +77,15 @@ const exampleSource = (
     schemaPath?: string,
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
-    // {§exec-executor-slot} — `[executor]` then the program path; the bare EXEC is the default
-    // shell, so `[sh]` is never rendered.
-    const executor = runtime === "sh" ? "" : ` [${runtime}]`;
     const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
     const note = [
         ...(annotation === undefined ? [] : [annotationText(annotation)]),
         ...(schemaPath === undefined ? [] : [`Schema: worker://~${schemaPath}`]),
     ].join(" ");
-    const heading = `### EXEC_${executor}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
-    return invocation.example?.body === undefined
-        ? heading
-        : `${heading}\n${invocation.example.body}`;
+    return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
 };
 
-// {§tools-resource-materialization} — the survey row's summary is the runtime's compact
-// invocation: a static example or the effective registry's target alternatives. It rides as plain
-// text, never as a code span: the survey is already quoted by the Log's own fence, and a
-// backticked op taught models to fence their operations (#484, run30/run31 requiems).
+// {§tools-resource-materialization} — summaries retain one-line invocation witnesses.
 const invocationInput = (invocation: RuntimeInvocationDecl): string | undefined =>
     invocation.example?.body ?? (invocation.inputSchema === undefined
         ? invocation.signature
@@ -106,24 +97,25 @@ const summaryWitness = (
     exactTarget: string | undefined,
     summary?: string,
 ): string => {
-    const heading = exampleSource(runtime, invocation, exactTarget, summary)
-        .split("\n", 1)[0]!.replace(/^### EXEC_/u, "EXEC");
+    const header = invocationHeader(runtime, invocation, exactTarget, summary);
     const input = exactTarget === undefined && invocation.inputSchema === undefined
         ? invocation.example?.body
         : invocationInput(invocation);
-    return input === undefined ? heading : `${heading}\\n${input.replaceAll("\n", "\\n")}`;
+    return PlurnkParser.frame(header, input ?? null).replaceAll("\n", "\\n");
 };
 
 const authoredSummary = (source: ToolSource, summary: string): string => {
-    if (!summary.startsWith("EXEC ") || summary.includes("\\n")) return summary;
-    const { items } = PlurnkParser.parseStatements(summary.replace(/^EXEC/u, "### EXEC_"));
+    if (!summary.startsWith("```") || summary.includes("\\n")) return summary;
+    const { items } = PlurnkParser.parseStatements(summary);
     const item = items[0];
     if (items.length !== 1 || item?.kind !== "statement" || item.statement.op !== "EXEC") return summary;
     const statement = item.statement;
-    if ((statement.executor ?? "sh") !== source.runtime || statement.body !== null || statement.target === null) return summary;
+    if (statement.executor !== source.runtime || statement.body !== null || statement.target === null) return summary;
     const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
     const input = invocation === undefined ? undefined : invocationInput(invocation);
-    return input === undefined ? summary : `${summary}\\n${input.replaceAll("\n", "\\n")}`;
+    if (input === undefined) return summary;
+    const header = invocationHeader(source.runtime, invocation!, statement.target.raw, statement.annotation ?? undefined);
+    return PlurnkParser.frame(header, input).replaceAll("\n", "\\n");
 };
 
 const renderInvocation = (
@@ -137,13 +129,10 @@ const renderInvocation = (
     "",
     ...invocationRows(invocation, exactTarget),
     "",
-    ...(invocation.signature === undefined && invocation.inputSchema === undefined
-        ? [fence("example", exampleSource(runtime, invocation, exactTarget, annotation, schemaPath))]
-        : [
-            inlineCode(exampleSource(runtime, invocation, exactTarget, annotation, schemaPath)),
-            "",
-            `Signature: ${inlineCode(invocation.signature ?? ToolInputSchema.preview(invocation.inputSchema!))}`,
-        ]),
+    PlurnkParser.frame(
+        invocationHeader(runtime, invocation, exactTarget, annotation, schemaPath),
+        invocationInput(invocation) ?? null,
+    ),
 ];
 
 const renderDocument = (
@@ -216,30 +205,22 @@ export default class ToolResources {
             tools.map(({ target }) => target).join("|"),
             source.summary.description,
         );
-        const familyInvocations = tools.flatMap((tool, index): string[] => {
-            const heading = exampleSource(
-                source.runtime,
-                tool.invocation,
-                tool.target,
-                tool.summary,
+        const familyInvocations = tools.map((tool) => PlurnkParser.frame(
+            invocationHeader(
+                source.runtime, tool.invocation, tool.target, tool.summary,
                 tool.invocation.inputSchema === undefined ? undefined : schemaPath(tool.target),
-            ).split("\n", 1)[0]!;
-            const input = tool.invocation.inputSchema === undefined
-                ? tool.invocation.signature ?? tool.invocation.example?.body
-                : ToolInputSchema.preview(tool.invocation.inputSchema);
-            return [
-                ...(index === 0 ? [] : [""]),
-                heading,
-                ...(input === undefined ? [] : [input]),
-            ];
-        });
+            ),
+            invocationInput(tool.invocation) ?? null,
+        ));
         // A target's details nest as `## <target>`; their own headings demote
         // one level so the target heading stays the section boundary.
         const demote = (value: string): string => {
-            let fenced = false;
+            let marker: string | undefined;
             return value.split("\n").map((line) => {
-                if (line.startsWith("```")) fenced = !fenced;
-                return fenced ? line : line.replace(/^(#{2,5}) /u, "#$1 ");
+                const ticks = /^(`{3,}|~{3,})/u.exec(line)?.[1];
+                if (marker === undefined && ticks !== undefined) marker = ticks;
+                else if (marker !== undefined && line.trimEnd() === marker) marker = undefined;
+                return marker !== undefined ? line : line.replace(/^(#{2,5}) /u, "#$1 ");
             }).join("\n");
         };
         const sections = tools
@@ -251,7 +232,7 @@ export default class ToolResources {
         const family = renderDocument(
             source.runtime,
             summary,
-            ["## Tools", "", fence("example", familyInvocations.join("\n"))],
+            ["## Tools", "", familyInvocations.join("\n\n")],
             detailsBlock,
         );
         return [{ pathname: `${root}/${source.runtime}.md`, content: family }, ...tools.flatMap((tool) =>

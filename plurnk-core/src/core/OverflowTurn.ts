@@ -1,8 +1,7 @@
 import {
     UNKNOWN_POSITION,
     type KillStatement,
-    type PlanStatement,
-    type SendStatement,
+    type DispositionStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -27,7 +26,6 @@ export type OverflowKill = {
     readonly statement: KillStatement;
 };
 
-const OVERFLOW_PLAN = "Automatically KILL log bodies newly active at token-budget overflow.";
 const OVERFLOW_SEND = "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
 
 const targetFor = (coordinate: string): UrlPath => ({
@@ -48,7 +46,6 @@ const killFor = (row: RecoveryRow): OverflowKill => {
     const statement: KillStatement = {
         op: "KILL",
         annotation: null,
-        delimiter: "",
         target: targetFor(coordinate),
         metadata: null,
         lineMarker: { marks: [1, -1] },
@@ -83,26 +80,10 @@ export default class OverflowTurn {
         });
     }
 
-    static planStatement(): PlanStatement {
+    static sendStatement(): DispositionStatement {
         return {
-            op: "PLAN", delimiter: "", annotation: null,
-            target: null, metadata: null, lineMarker: null,
-            body: [{
-                content: OVERFLOW_PLAN,
-                status: "in_progress",
-            }],
-            position: UNKNOWN_POSITION,
-        };
-    }
-
-    static sendStatement(): SendStatement {
-        return {
-            op: "SEND", delimiter: "", annotation: null,
-            status: 102, target: null, metadata: null, lineMarker: null,
-            body: {
-                raw: OVERFLOW_SEND,
-                json: null,
-            },
+            op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null,
+            body: [{ content: OVERFLOW_SEND, status: "in_progress" }],
             position: UNKNOWN_POSITION,
         };
     }

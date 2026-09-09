@@ -156,10 +156,8 @@ export default class RuntimeInvocation {
         if (target?.required === true && !hasTarget) fail("invocation.example must provide the required target");
         if (exclusive && hasBody && hasTarget) fail("invocation.example must provide exactly one exclusive input");
 
-        // {§exec-executor-slot} — the example renders as the model writes it: runtime/target in the path.
-        // {§exec-executor-slot} — the example renders as the model spells it: `[executor]` then the program.
         const exampleTarget = example.target === undefined ? "" : ` (${PathSyntax.escapeTarget(example.target)})`;
-        const source = `### EXEC_ [${runtime}]${exampleTarget}${hasBody ? `\n${example.body}` : ""}`;
+        const source = PlurnkParser.frame(`${runtime}${exampleTarget}`, example.body ?? null);
         if (!oneExecSection(source)) {
             fail("invocation.example must render one valid EXEC section");
         }
@@ -190,7 +188,7 @@ export default class RuntimeInvocation {
                 fail(`tool registry.tools[${index}].details must be a string`);
             }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
-            if (!oneExecSection(`### EXEC_ [${runtime}] (${escapedTarget})`, exactTarget)) {
+            if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);

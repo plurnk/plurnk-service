@@ -18,7 +18,7 @@ process.env.PLURNK_SERVICE_PROVIDER_RECOVERY = "1000";
 process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "1";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `## PLAN_\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -45,7 +45,7 @@ class DropImageRequestOnce extends Mock {
 
 const runLoop = async (
     modalities: readonly InputModality[],
-    read = "### READ_ (logo.png)",
+    read = "```READ (logo.png)```",
     renew = false,
     responses?: MockResponse[],
     provider?: Mock,
@@ -56,11 +56,19 @@ const runLoop = async (
         contextWindow: viableWindow(),
         inputModalities: modalities,
         responses: responses ?? [
-            mockTurn(`${read}\n\n### SEND_ (NEXT)\nlooking`),
+            mockTurn(`${read}
+
+\`\`\`TASK
+[{"content":"looking","status":"in_progress"}]
+\`\`\``),
             renew
-                ? mockTurn(`${read}\n\n### SEND_ (NEXT)\nkeep looking`)
-                : mockTurn("### SEND_ (NEXT)\ncontinue without image"),
-            mockTurn("### SEND_ (TERM)\nseen"),
+                ? mockTurn(`${read}
+
+\`\`\`TASK
+[{"content":"keep looking","status":"in_progress"}]
+\`\`\``)
+                : mockTurn("```TASK\n[{\"content\":\"continue without image\",\"status\":\"in_progress\"}]\n```"),
+            mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     try {
@@ -122,7 +130,7 @@ test("{§packet-attachment-parts} completed response prevents native replay whil
 });
 
 test("{§packet-attachment-parts} repeating READ creates a new native delivery for the following request", async () => {
-    const requests = await runLoop(["image"], "### READ_ (logo.png)", true);
+    const requests = await runLoop(["image"], "```READ (logo.png)```", true);
     const third = requests[2]?.find((message) => message.role === "user");
     assert.ok(third !== undefined && Array.isArray(third.content), "the renewed request carries parts");
     assert.equal(third.content.filter((part) => part.type === "file").length, 1, "only the new READ contributes native content");
@@ -130,11 +138,11 @@ test("{§packet-attachment-parts} repeating READ creates a new native delivery f
 });
 
 test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materialized native request", async () => {
-    const requests = await runLoop(["image"], "### READ_ (logo.png)", false, [
-        mockTurn("### READ_ (logo.png)\n\n### SEND_ (NEXT)\nlooking"),
+    const requests = await runLoop(["image"], "```READ (logo.png)```", false, [
+        mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
         { assistant: { content: "not a Plurnk emission", reasoning: null }, assistantRaw: null },
-        mockTurn("### SEND_ (NEXT)\nrecovered"),
-        mockTurn("### SEND_ (TERM)\nseen"),
+        mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
+        mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ]);
     const attempted = requests.slice(1, 3).map((request) => request.find((message) => message.role === "user"));
     assert.equal(attempted.length, 2);
@@ -149,12 +157,12 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
         contextWindow: viableWindow(),
         inputModalities: ["image"],
         responses: [
-            mockTurn("### READ_ (logo.png)\n\n### SEND_ (NEXT)\nlooking"),
-            mockTurn("### SEND_ (NEXT)\nrecovered"),
-            mockTurn("### SEND_ (TERM)\nseen"),
+            mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
+            mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
+            mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
-    await runLoop(["image"], "### READ_ (logo.png)", false, undefined, provider);
+    await runLoop(["image"], "```READ (logo.png)```", false, undefined, provider);
     assert.equal(provider.attempts.length, 4, "one initial call, the dropped image request, its retry, and the next turn");
     assert.equal(provider.attempts[1], provider.attempts[2], "the response-less retry receives the exact same image-bearing request");
     assert.match(provider.attempts[1]!, /has been ejected from context/u);
@@ -162,7 +170,7 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
 });
 
 test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its hex slice and the complete native image", async () => {
-    const requests = await runLoop(["image"], "### READ_ (file:///logo.png#bytes) <1,16>");
+    const requests = await runLoop(["image"], "```READ (file:///logo.png#bytes) <1,16>```");
     const user = requests[1]?.find((message) => message.role === "user");
     const logoAt = typeof user?.content === "string" ? user.content.lastIndexOf("logo.png") : -1;
     const diagnostic = typeof user?.content === "string"
@@ -182,7 +190,7 @@ test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its 
 });
 
 test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ remains the same hex slice on a text-only route", async () => {
-    const requests = await runLoop([], "### READ_ (file:///logo.png#bytes) <1,16>");
+    const requests = await runLoop([], "```READ (file:///logo.png#bytes) <1,16>```");
     const user = requests[1]?.find((message) => message.role === "user");
     assert.ok(user !== undefined && typeof user.content === "string", "a text-only route receives no native part");
     assert.match(user.content, /"range":\{"unit":"byte","total":\d+,"requested":\[1,16\],"returned":\[1,16\]\}/u);

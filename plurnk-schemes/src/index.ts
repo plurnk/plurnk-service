@@ -131,7 +131,7 @@ export type {
     WorkStatement,
     ForkStatement,
     KillStatement,
-    PlanStatement,
+    DispositionStatement,
     ParsedPath,
     LocalPath,
     UrlPath,

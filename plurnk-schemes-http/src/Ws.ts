@@ -448,7 +448,7 @@ export default class Ws implements SchemeHandler {
         return this.#write(statement.target, statement.body ?? "", ctx, "EDIT");
     }
 
-    // A disposition label never reaches the scheme ({§send-label}); a KILL closes the owner.
+    // {§turn-disposition} — SEND is messaging; a KILL closes the owner.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
@@ -458,13 +458,7 @@ export default class Ws implements SchemeHandler {
                 retryable: false,
             });
         }
-        const status = statement.status;
-        if (status === null) return this.#write(statement.target, statement.body?.raw ?? "", ctx, "SEND");
-        return Ws.#bad(501, "send-status-unsupported", `The WebSocket scheme does not interpret SEND status ${status}.`, {
-            requestedStatus: status,
-            stage: "dispatch",
-            retryable: false,
-        });
+        return this.#write(statement.target, statement.body?.raw ?? "", ctx, "SEND");
     }
 
     async #write(

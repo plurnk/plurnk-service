@@ -19,11 +19,9 @@ Workers share project files and the commons. Own-space entries have separate
 ownership, not secrecy from other workers in the workspace; conversation logs
 remain owner-scoped. `_plurnk/` entries are generated and read-only even in your
 own space. EDIT creates or changes an entry, never a worker. An unscoped EDIT
-creates the entry from its body, which is the content itself: several lines,
-never wrapped in a fence.
+creates the entry from its body, which is the content itself.
 
-```example
-### EDIT_ (worker://~/scratch/greet.mjs) <!-- create the entry from the body -->
+```EDIT (worker://~/scratch/greet.mjs) <!-- create the entry from the body -->
 export const greet = (name) => `hello ${name}`;
 
 console.log(greet("world"));
@@ -42,15 +40,14 @@ to give an existing worker a follow-up task.
 Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
 as a new task, rather than interrupting an unfinished task:
 
-```example
-### SEND_ (worker://reviewer) <0,60>
+```SEND (worker://reviewer) <0,60>
 Check for new messages and report relevant findings.
 ```
 
 `<60>` runs once after an hour; `<0,60>` starts immediately and repeats hourly.
 Delay is nonnegative; an interval is positive. Occurrences never overlap; missed
 ticks coalesce without a backlog. Each occurrence uses the original instruction
-and policy with fresh task limits. Success permits the next occurrence; FAIL or
+and policy with fresh task limits. Success permits the next occurrence; a failed inventory or
 an engine failure ends the recurrence. KILL cancels current and future tasks.
 Queued future tasks remain live worker obligations, visible with their due times.
 
@@ -60,9 +57,8 @@ BARE makes one isolated call to the child model, not a persistent worker.
 It receives no parent history or tools. Give it a prompt resource, an inline
 prompt, or both; resource text precedes an inline body with a blank line between.
 
-```example
-### BARE_ (worker://~/question.md)
-### BARE_
+```BARE (worker://~/question.md)```
+```BARE
 What is the capital of Germany?
 ```
 
@@ -70,22 +66,22 @@ The resource supplies its complete current READ text, not a preview. Neither
 prompt form is truncated to fit; provider capacity still applies. A failed
 source read returns its error without making an inference call.
 Consecutive BARE calls run concurrently and settle before the turn continues.
-Their answers are ordinary BARE receipts, visible after `### SEND_ (NEXT)`.
+Their answers are ordinary BARE receipts, visible in the next packet.
 
 ## Lifecycle
 
-**Continue or wait.** You can keep doing useful work with `### SEND_ (NEXT)`
-while children run. Use WAIT when you need their results before proceeding:
+**Continue or wait.** TASK declares the current inventory. An `in_progress`
+item keeps the loop working while children run; `waiting` joins their activity:
 
-```example
-### WORK_ (worker://capital-checker)
+```WORK (worker://capital-checker)
 Find the capital of France from a primary source
-
-### SEND_ (WAIT)
-Awaiting capital-checker.
 ```
 
-WAIT accepts `<timeout,poll>` in whole minutes. It continues the same task;
+```TASK
+[{"content":"Await capital-checker's answer.","status":"waiting"}]
+```
+
+TASK with waiting intent accepts `<timeout,poll>` in whole minutes. It continues the same loop;
 neither a deadline nor a poll repeats a message or command.
 
 | Scope | Wake condition |
@@ -95,23 +91,24 @@ neither a deadline nor a poll repeats a message or command.
 | `<-1,60>` | Also wake after 60 minutes to observe; no wait deadline. |
 | `<60,0>` | Deadline or an event; no periodic stream observation. |
 
-A wake ends that wait. Submit another WAIT to wait again. Waking retains the
-task's prompts, turn allowance, and remaining execution time; parked time does
-not consume execution time. NEXT continues immediately, TERM concludes,
-and FAIL abandons the task. An untimed WAIT with no remaining work concludes.
+A wake ends that wait. Submit another waiting inventory to wait again. Waking
+retains the loop's prompts, turn allowance, and remaining execution time;
+parked time does not consume execution time. An untimed wait without live work
+continues; only an all-completed inventory claims success. A terminal inventory
+containing a failed item concludes unsuccessfully.
 
 Each child task's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
-failure preserves its status and Problem. `### READ_ (worker://capital-checker)`
+failure preserves its status and Problem. ```` ```READ (worker://capital-checker) ````
 collects the same result explicitly. While the child is running it returns
-`425`; submitting NEXT then waits for delivery rather than polling.
+`425`; the inventory still chooses whether to continue or wait.
 A result does not imply that every task in that worker has finished.
 
-**Concluding with live workers.** `### SEND_ (TERM)` is refused (`409`) while you hold a live worker or
+**Concluding with live workers.** An all-completed TASK is refused (`409`) while you hold a live worker or
 open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
-Either `### SEND_ (WAIT)` to await them or `### KILL_ (worker://<name>)` the ones you no longer need.
+Await them with a waiting inventory or ```` ```KILL (worker://<name>) ```` the ones you no longer need.
 KILL settles before the turn's disposition; other live work or unobserved
-results can still prevent TERM.
+results can still prevent completion.
 
 KILL cancels that worker and its descendants, including queued work and unread
 messages. History remains readable; a later SEND can start new work.

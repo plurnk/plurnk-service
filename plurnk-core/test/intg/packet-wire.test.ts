@@ -1042,7 +1042,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
-    const execTx = (body: string) => ({ op: "EXEC", executor: null, delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1/EXEC", scheme: "sh", pathname: "/1/1/1/EXEC", fragment: null }, body, lineMarker: null });
+    const execTx = (body: string) => ({ op: "EXEC", executor: null, target: { kind: "url", raw: "sh:///1/1/1/EXEC", scheme: "sh", pathname: "/1/1/1/EXEC", fragment: null }, body, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
         { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}$/ },
@@ -1051,7 +1051,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1/EXEC" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1/EXEC", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "PLAN body → the numbered json-result spread (#339), never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## PLAN/m },
+        { label: "PLAN body → the numbered json-result spread (#339), never a PLAN heading", entry: { ...base, op: "TASK", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## PLAN/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
@@ -1155,7 +1155,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /### EDIT_ \(/);
+    assert.doesNotMatch(out, /```EDIT \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -1201,7 +1201,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
         op: "FIND",
         status: 200,
         target: { scheme: "worker", pathname: "/**" },
-        tx: { op: "FIND", delimiter: "", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, lineMarker: null },
+        tx: { op: "FIND", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
     assert.match(out, /"path": "prompt:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
@@ -1229,9 +1229,9 @@ test("a body-suppressed turnOps row renders meta-only without inventing an opera
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, initial_folded: [[1, -1]],
         attrs: { kind: "turnOps" },
-        rx: { content: "## PLAN_\nInitialize\n\n### SEND_ (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "\n```TASK\n[{\"content\":\"Initialized\",\"status\":\"in_progress\"}]\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/ops\n\{"lines":5/, "the source row has a canonical /ops heading; model origin is the omitted default (#338)");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/ops\n\{"lines":4/, "the source row has a canonical /ops heading; model origin is the omitted default (#338)");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
     assert.match(out, /"tokensBody":\d+/, "suppressed state = tokensBody without a body field (#338)");
     assert.equal(parseLogRecords(out)[0]?.body, undefined, "the suppressed body is withheld");
@@ -1253,33 +1253,35 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "turnOps" },
-        rx: { content: "## PLAN_\nInitialize\n\n### SEND_ (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "\n```TASK\n[{\"content\":\"Initialized\",\"status\":\"in_progress\"}]\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/ops$/m, "the heading owns the canonical address; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
-    assert.match(out, /1:## PLAN_\n2:Initialize/, "the next model turn sees the prior PLAN section");
-    assert.match(out, /4:### SEND_ \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
+    assert.match(out, /1:\n2:```TASK\n3:\[{"content":"Initialized","status":"in_progress"}\]\n4:```/, "the entire source, including the initial blank line, remains line-addressable");
 });
 
 test("initialization renders its visible turnOps and its real kernel-authored operation outcomes", () => {
     const out = PacketWire.renderLog([
         {
-            coordinate: "1/1/1", origin: "_plurnk", op: "PLAN", status: 200, folded: [],
-            tags: ["_plurnk", "init"], tx: { body: planValue("Discover the tooling available.") },
+            coordinate: "1/1/1", origin: "_plurnk", op: "FIND", status: 200, folded: [],
+            tags: ["_plurnk", "init"], rx: { results: [] },
         },
         {
-            coordinate: "1/1/2", origin: "_plurnk", op: "SEND", status: 102, folded: [],
-            tags: ["_plurnk", "init"], tx: { body: { raw: "Address the prompt." } },
+            coordinate: "1/1/2", origin: "_plurnk", op: "TASK", status: 102, folded: [],
+            tags: ["_plurnk", "init"], tx: { body: planValue("Address the prompt.") },
         },
         {
             coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
             tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
-            rx: { content: `## PLAN_\n${JSON.stringify(planValue("Discover the tooling available."))}\n### SEND_ (NEXT)\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
+            rx: { content: `\`\`\`FIND (*)\`\`\`
+\`\`\`TASK
+${JSON.stringify(planValue("Address the prompt."))}
+\`\`\``, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/PLAN$/m, "the PLAN has an operation coordinate");
-    assert.match(out, /^### log:\/\/\/1\/1\/2\/SEND$/m, "the SEND has an operation coordinate");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/FIND$/m, "the survey has an operation coordinate");
+    assert.match(out, /^### log:\/\/\/1\/1\/2\/TASK$/m, "the continuation has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
     assert.match(out, /^### log:\/\/\/1\/1\/3\/ops$/m, "Turn 0's exact program is a visible peer artifact (coordinate lines present below, #338)");
     assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
@@ -1384,7 +1386,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
 
     // A short PLAN renders whole — no behavior change for a well-formed op.
     const shortOut = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue("Tidy context, then read the loader.") } },
+        { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue("Tidy context, then read the loader.") } },
     ], tok);
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
@@ -1392,7 +1394,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     // PLAN is the model's task inventory. Its visible projection is
     // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
+        { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
     ], tok);
     assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN");
     assert.doesNotMatch(planOut, /"chunk"/, "a PLAN never carries an ordinary preview cut");
@@ -1430,7 +1432,7 @@ test("{§body-projection}: PLAN reaches the next model packet without ACP priori
         { content: "Verify the baseline schema.", status: "pending" },
     ];
     const out = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: plan } },
+        { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: plan } },
     ], tok);
 
     assert.match(out, /"status":"pending"/, "the model sees its authored task status in the durable log");

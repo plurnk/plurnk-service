@@ -29,7 +29,7 @@ export const questionRuntimeDecl = {
 | \`message\` | The question shown to the user (non-empty string). |
 | \`requestedSchema\` | JSON Schema object the user's answer must satisfy; \`enum\`/enumNames/oneOf/array/boolean/string/number forms supported. |
 
-An optional target is a label, not a recipient. The result is \`{ "action": "accept", "content": <answer> }\` or \`{ "action": "cancel" }\`; WAIT resumes when the answer arrives.`,
+An optional target is a label, not a recipient. The result is \`{ "action": "accept", "content": <answer> }\` or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`,
 } satisfies RuntimeDecl;
 
 export default class QuestionTool extends BaseExecutor {

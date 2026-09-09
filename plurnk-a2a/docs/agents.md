@@ -20,8 +20,7 @@ in prose.
 returns one inert candidate carrying the exact definition. `add` persists and
 enables it for this worker (a host effect, run on acceptance):
 
-```example
-### EXEC_ [agents] (add)
+```agents (add)
 {"alias": "planner", "definition": {"name": "planner", "url": "https://agents.example.com/planner"}}
 ```
 
@@ -31,8 +30,7 @@ unreachable is listed `unavailable` with its exact Problem.
 
 ## Working with an added agent
 
-```example
-### SEND_ (a2a://planner) <!-- start a task -->
+```SEND (a2a://planner) <!-- start a task -->
 Compare the two proposals in docs/ and return a recommendation with evidence.
 ```
 

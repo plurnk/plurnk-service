@@ -16,7 +16,7 @@ export type Resource = { pathname: string; content: string };
 export type Read = { id: number; turn_id: number; sequence: number; origin: string; ambient_event_id: number | null; pathname: string; lineMarker: string; rx: string; active: number; folded: string; loop_seq: number; turn_seq: number };
 export const original = Array.from({ length: 30 }, (_, index) => `Finding ${index + 1}: evidence ${index + 1}.`).join("\n");
 export const provider = (reasoning: string | null = null) => new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-    content: "## PLAN_\n[]\n### SEND_ (TERM)\nReady.", reasoning,
+    content: "```SEND\nReady.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning,
 } }] });
 
 export const providerWithCapacity = (capacity: number, responses: MockResponse[]): Mock => {

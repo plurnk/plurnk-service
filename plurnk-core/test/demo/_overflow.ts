@@ -106,10 +106,10 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     const visibleRead = projected.find((row) => row.path === `log://${path}`);
     assert.ok(visibleRead, "the first recovery packet retains the READ receipt");
     assert.equal("body" in visibleRead, false, "the oversized body is absent from that packet");
-    const sendRow = overflowRows.find(({ op }) => op === "SEND");
-    assert.ok(sendRow, "overflow completes through an ordinary SEND");
-    const send = projected.find((row) => row.path === `log:///${loop.sequence}/${overflow.sequence}/${sendRow.sequence}/SEND`);
-    assert.match(String(send?.body ?? ""), /Next: YOU MUST ONLY KILL/, "the actual recovery SEND is visible to the model");
+    const taskRow = overflowRows.find(({ op }) => op === "TASK");
+    assert.ok(taskRow, "overflow hands off through an ordinary TASK");
+    const task = projected.find((row) => row.path === `log:///${loop.sequence}/${overflow.sequence}/${taskRow.sequence}/TASK`);
+    assert.match(String(task?.body ?? ""), /Next: YOU MUST ONLY KILL/, "the actual recovery TASK is visible to the model");
     return {
         overflowTurns: turns.filter(({ kind }) => kind === "overflow").length,
         modelTurns: turns.filter(({ kind }) => kind === "inference").length,

@@ -27,7 +27,7 @@ test("observe: an invalid first emission retries under the turn without failing 
                 },
                 {
                     assistant: {
-                        content: "## PLAN_\ncurate:\n\n### SEND_ (TERM)\nrecovered.",
+                        content: "\n```SEND\nrecovered.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
                         reasoning: null,
                     },
                 },

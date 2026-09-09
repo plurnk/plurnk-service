@@ -6,10 +6,10 @@ export interface TerminalPresentation {
 }
 
 export default class TerminalResult {
-    static success(content: string | null): SchemeResult {
+    static success(content: string | null, mimetype = "text/markdown"): SchemeResult {
         return Results.assert(content === null || content.length === 0
             ? { status: 200 }
-            : { status: 200, content, mimetype: "text/markdown" });
+            : { status: 200, content, mimetype });
     }
 
     static assert(value: unknown, subject: string): SchemeResult {

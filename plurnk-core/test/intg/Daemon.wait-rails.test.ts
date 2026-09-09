@@ -6,20 +6,27 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
 
-const invalidFind = "### FIND_ (worker:///x)\n$fC";
+const invalidFind = "```FIND (worker:///x)\n$fC\n```";
 const response = (dsl: string) => ({
-    assistant: { content: `## PLAN_\n[]\n${dsl}`, reasoning: null },
+    assistant: { content: `${dsl}`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
 for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
-    for (const last of ["NEXT", "WAIT"] as const) {
+    for (const last of ["TASK", "TASK"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
             const provider = new Mock({ contextWindow: 100000, responses: [
-                response(`${invalidFind}\n### SEND_ (WAIT) <1,0>`),
-                response(`${invalidFind}\n### SEND_ (WAIT) <1,0>`),
-                response(`${invalidFind}\n### SEND_ (${last})${last === "WAIT" ? " <1,0>" : ""}`),
-                response("### SEND_ (TERM)\nMust not reach a fourth model call."),
+                response(`${invalidFind}
+\`\`\`TASK <1,0>
+[{"content":"Await results.","status":"waiting"}]
+\`\`\``),
+                response(`${invalidFind}
+\`\`\`TASK <1,0>
+[{"content":"Await results.","status":"waiting"}]
+\`\`\``),
+                response(`${invalidFind}
+\`\`\`${last}${last === "TASK" ? " <1,0>" : ""}\`\`\``),
+                response("```SEND\nMust not reach a fourth model call.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -93,8 +100,8 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
 
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("### READ_ (worker:///missing)\n### SEND_ (WAIT) <1,0>")),
-        response("### SEND_ (TERM)\nObservation complete."),
+        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```TASK <1,0>\n[{\"content\":\"Await results.\",\"status\":\"waiting\"}]\n```")),
+        response("```SEND\nObservation complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });

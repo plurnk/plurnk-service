@@ -10,13 +10,13 @@ authored against the DB-free
 
 | Operation                                      | Behavior                                                                                  |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `### READ_ (http(s)://…)`                       | Fetch or reuse/revalidate a GET representation, then stream the selected response channel |
-| `### READ_ (http(s)://…) <scope>`               | Apply the standard entry READ to an already-materialized response without refetching      |
-| `### FIND_ (http(s)://…)` with matcher body     | Materialize an exact URL when required, then use the universal entry query and matcher    |
-| `### SEND_ (http(s)://…)` with body             | POST the body and stream the response                                                     |
-| `### EDIT_ (http(s)://…)` with body             | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
-| `### KILL_ (http(s)://…)`                       | Cancel a live acquisition of the address, or forget its stored response                 |
-| `### KILL_ (http(s)://…) {remote}`                 | DELETE the remote resource and stream the response                                        |
+| ```` ```READ (http(s)://…) ````                       | Fetch or reuse/revalidate a GET representation, then stream the selected response channel |
+| ```` ```READ (http(s)://…) <scope> ````               | Apply the standard entry READ to an already-materialized response without refetching      |
+| ```` ```FIND (http(s)://…) ```` with matcher body     | Materialize an exact URL when required, then use the universal entry query and matcher    |
+| ```` ```SEND (http(s)://…) ```` with body             | POST the body and stream the response                                                     |
+| ```` ```EDIT (http(s)://…) ```` with body             | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
+| ```` ```KILL (http(s)://…) ````                       | Cancel a live acquisition of the address, or forget its stored response                 |
+| ```` ```KILL (http(s)://…) {remote} ````                 | DELETE the remote resource and stream the response                                        |
 
 A path-pattern FIND surveys already-materialized web entries; it does not crawl
 or discover the remote web. Exact matcher FIND shares the standard flat

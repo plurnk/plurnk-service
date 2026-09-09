@@ -2,6 +2,7 @@ import {
     InvalidOperationResultError,
     PLURNK_OPS,
     Validator,
+    TurnDisposition,
     type OperationResult,
     type PlurnkOp,
     type PlurnkStatement,
@@ -313,11 +314,11 @@ export default class ProposalLifecycle {
         return { ...proposal, workspaceId: row.workspaceId };
     }
 
-    static #op(row: ProposalRow): PlurnkOp {
-        if (!PROPOSAL_OPS.has(row.op)) {
+    static #op(row: ProposalRow): ProposalProjection["op"] {
+        if (!PROPOSAL_OPS.has(row.op) || TurnDisposition.isOp(row.op)) {
             throw new Error(`Pending proposal ${row.logEntryId} has invalid operation ${JSON.stringify(row.op)}.`);
         }
-        return row.op as PlurnkOp;
+        return row.op as ProposalProjection["op"];
     }
 
     static #objectJson(logEntryId: number, field: string, raw: string): Record<string, unknown> {

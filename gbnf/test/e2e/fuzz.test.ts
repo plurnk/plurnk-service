@@ -21,8 +21,8 @@ const rng = (seed: number) => () => {
 // landing on a rich mix of accept / incomplete / reject verdicts.
 const FRAGMENTS = [
     "<|channel>thought\n", "<channel|>", "\n", "\n\n", " ", "\t",
-    "## PLAN_", "## PLAN2", "### FIND_", "### READ_", "### EDIT_", "### SEND_", "### EXEC_",
-    "### COPY_", "### MOVE_", "## OPEN0", "## FOLD0", "### KILL_", "### EDIT2", " ### FIND_", "",
+    "```PLAN```", "```PLAN```", "```FIND```", "```READ```", "```EDIT```", "```SEND```", "```EXEC```",
+    "```COPY```", "```MOVE```", "## OPEN0", "## FOLD0", "```KILL```", "```EDIT```", " ### FIND_", "",
     "(known:///**)", "(plurnk:///manifest.json)", "(README.md)", "(run://x)", "(#re#i)", "()",
     "[200]", "[philosophy,france]", "[]",
     "<1,2>", "<0.7>", "<-1>", "<2.5>",
@@ -51,7 +51,7 @@ const genNoise = (r: () => number): string => {
 };
 
 const genMultibyte = (r: () => number): string => {
-    let s = "<|channel>thought\n<channel|>\n## PLAN_\nanswer\n\n### SEND_ (TERM)\n";
+    let s = "<|channel>thought\n<channel|>\n```PLAN\nanswer\n```\n\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     const n = Math.floor(r() * 6);
     for (let i = 0; i < n; i++) s += r() < 0.5 ? pick(r, MULTIBYTE) : PRINTABLE[Math.floor(r() * PRINTABLE.length)];
     return s;

@@ -1,3 +1,4 @@
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -20,7 +21,7 @@ import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
 import LineAnchors from "../content/line-anchors.ts";
-import { ENGINE_PROBLEMS, TERMINAL_SEND_SIGNALS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
+import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult } from "./TurnRunner.ts";
 
 export default class AdmittedTurnExecutor {
@@ -64,7 +65,6 @@ export default class AdmittedTurnExecutor {
         turnId,
         fromSequence,
         maxCommands = Number.POSITIVE_INFINITY,
-        enforceIdle = false,
         allowUnobservedRetrievalCompletion = false,
         failOnOperationError = false,
         recoverableParseErrors = [],
@@ -85,7 +85,6 @@ export default class AdmittedTurnExecutor {
         turnId: number;
         fromSequence: number;
         maxCommands?: number;
-        enforceIdle?: boolean;
         allowUnobservedRetrievalCompletion?: boolean;
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
@@ -94,41 +93,18 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        // {§turn-shape} — PLAN is a SHOULD; the terminal SEND is the one structural requirement.
-        const dispositions = statements.filter((statement) => statement.op === "SEND" && statement.status !== null);
+        // {§turn-shape} — one disposition concludes the admitted program.
+        const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions[0];
-        if (dispositions.length !== 1 || finalOp?.op !== "SEND") {
-            throw new Error("an admitted operation batch must contain exactly one disposition SEND");
+        if (dispositions.length !== 1 || finalOp === undefined) {
+            throw new Error("an admitted operation batch must contain exactly one disposition");
         }
-        const dispositionSignal = finalOp.status;
-        if (dispositionSignal === null || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
-            throw new Error("an admitted turnOps program must contain a valid disposition SEND");
-        }
-        let sendOp = finalOp;
+        const dispositionSignal = TurnDisposition.status(finalOp);
         let turnStatus: number = dispositionSignal;
         let steerStruck = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
-        const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND").length
-            + recoverableParseErrors.length;
-        if (enforceIdle && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && middleCount === 0) {
-            // {§send-idle-turn} — an empty (NEXT) while the worker holds a live stream or child is a
-            // mis-spelled wait, not idleness: it parks as (WAIT) and no strike (#441). The correction
-            // rides the SEND row's annotation — a park drops transient notices, the row survives the
-            // wake. With nothing in flight the idle-turn 409 stands.
-            if (await this.#dispatcher.hasLiveWork(workerId)) {
-                const note = "an empty NEXT while a stream or child is in flight waits like WAIT - say WAIT to wait on it";
-                sendOp = { ...finalOp, status: 202, annotation: finalOp.annotation === null ? note : `${finalOp.annotation} · ${note}` };
-                turnStatus = 202;
-            } else {
-                steerStruck = true;
-                pendingEngineErrors.push("idle_turn");
-            }
-        }
-        const turnStatements = sendOp === finalOp ? statements : statements.map((statement) => statement === finalOp ? sendOp : statement);
-
         let realCommands = 0;
-        const admitted = turnStatements.filter((statement) => statement.op === "PLAN"
-            || statement === sendOp
+        const admitted = statements.filter((statement) => statement === finalOp
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
@@ -164,7 +140,8 @@ export default class AdmittedTurnExecutor {
             if (parseErrorsRecorded) return;
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
-                const envelopeDefault = error.code === PlurnkParser.MISSING_SEND;
+                // The synthesized TASK owns the single missing-inventory receipt.
+                if (error.code === PlurnkParser.MISSING_DISPOSITION) continue;
                 const recorded = await this.#problems.record({
                     workerId,
                     loopId,
@@ -183,7 +160,7 @@ export default class AdmittedTurnExecutor {
                             column: error.column,
                             source: error.source,
                             stage: "parse",
-                            ...(envelopeDefault ? {} : { siblingsRetained: true }),
+                            siblingsRetained: true,
                             retryable: false,
                         },
                     ),
@@ -195,7 +172,7 @@ export default class AdmittedTurnExecutor {
         };
 
         for (const [index, statement] of scheduled.entries()) {
-            if (statement === sendOp) {
+            if (statement === finalOp) {
                 await recordRecoverableParseErrors();
                 const execHandler = this.#schemes.get("exec") as {
                     settleTurnSpawns?: (
@@ -304,35 +281,21 @@ export default class AdmittedTurnExecutor {
                     message: `EDIT resolution applied: ${merge.rule} - the row's merged fact has the coordinates; verify before building on it.`,
                 });
             }
-            if (statement === sendOp && result.status === 409) {
-                steerStruck = true;
-                turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
-            }
-            if (
-                statement === sendOp
-                && result.status !== 409
-                && sendOp.target === null
-                && sendOp.status === 202
-                && result.status !== 202
-            ) {
-                turnStatus = result.status;
+            if (statement === finalOp) {
+                steerStruck = result.status === 409;
+                turnStatus = result.status >= 400 && result.status !== 499
+                    ? TURN_STATUS_IMPLICIT_CONTINUE : result.status;
             }
         }
         await recordRecoverableParseErrors();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         for (const kind of pendingEngineErrors) {
             const problem = ENGINE_PROBLEMS[kind];
-            const extensions = kind === "max_commands_exceeded"
-                ? {
+            const extensions = {
                     operationLimit: maxCommands,
                     omittedOperations: droppedCount,
                     stage: "dispatch-admission",
                     recovery: "Continue with no more than the configured operation limit.",
-                    retryable: false,
-                }
-                : {
-                    stage: "turn",
-                    recovery: "Perform an operation before continuing with `### SEND_ (NEXT)`.",
                     retryable: false,
                 };
             await this.#problems.record({

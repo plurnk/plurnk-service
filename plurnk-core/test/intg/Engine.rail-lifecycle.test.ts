@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
@@ -8,11 +9,14 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
 
-const response = (operation: string, disposition: string) => ({
-    assistant: { content: `## PLAN_\n[]\n${operation}\n### SEND_ ${disposition}`, reasoning: null },
+const response = (operation: string, status: string, timing = "") => ({
+    assistant: { content: [
+        operation,
+        PlurnkParser.frame(`TASK${timing}`, JSON.stringify([{ content: "Inspect the result.", status }])),
+    ].join("\n"), reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const invalidFind = "### FIND_ (worker:///x)\n$fC";
+const invalidFind = "```FIND (worker:///x)\n$fC\n```";
 
 test("{§loop-rail-continuity}: a resumed task retains its final-strike retrieval allowance", async (t) => {
     const db = await openMigrated();
@@ -25,9 +29,9 @@ test("{§loop-rail-continuity}: a resumed task retains its final-strike retrieva
         content: "42", mimetype: "text/plain", state: "static",
     });
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(invalidFind, "(NEXT)"),
-        response(invalidFind, "(WAIT) <60>"),
-        response("### READ_ (worker:///answer)", "(TERM)\n42"),
+        response(invalidFind, "in_progress"),
+        response(invalidFind, "waiting", " <60>"),
+        response("```READ (worker:///answer)```", "completed"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4, maxStrikes: 3,
@@ -53,7 +57,7 @@ test("{§worker-lifecycle-state-machine}: cancellation wins against a pending st
         }
         return verdict;
     });
-    const provider = new Mock({ contextWindow: 100000, responses: [response(invalidFind, "(NEXT)")] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(invalidFind, "in_progress")] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
     });

@@ -23,13 +23,13 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 
 const killStmt = (target: UrlPath): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, delimiter: "", target, lineMarker: null, body: null,
+    op: "KILL", annotation: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const readStmt = (target: UrlPath): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", target, lineMarker: null, body: null,
+    op: "READ", annotation: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 

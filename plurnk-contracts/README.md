@@ -49,9 +49,9 @@ The parser entry points deliberately accept different document tiers:
 
 | Entry point                    | Accepted input                                        |
 |--------------------------------|-------------------------------------------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; omitted PLAN/SEND are recovered |
+| `PlurnkParser.parse`           | One operation-bearing model turn; omitted TASK recovers an empty inventory with one strike |
 | `PlurnkParser.parseStatements` | A strict sequence of protocol statements              |
-| `PlurnkParser.parseLog`        | Strict consecutive PLAN-through-SEND turns            |
+| `PlurnkParser.parseLog`        | Strict consecutive disposition-ended turns           |
 | `PlurnkParser.parseClient`     | Protocol statements plus client-only LOOK and BUFF    |
 | `parsePath`                    | One path or URI using parser-equivalent decomposition |
 

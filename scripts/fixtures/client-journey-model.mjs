@@ -9,24 +9,17 @@ const journeys = Object.freeze({
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: [
-                "## PLAN_",
-                '[{"content":"Confirm the packed one-shot client path.","priority":"high","status":"completed"}]',
-                "### SEND_ (TERM)",
-                "The installed one-shot journey is complete.",
-            ].join("\n"),
+            content: "```SEND\nThe installed one-shot journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         }],
     },
     tui: {
         marker: "Exercise the installed interactive terminal.",
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.",
-            content: [
-                "## PLAN_",
-                '[{"content":"Confirm the packed interactive terminal path.","priority":"high","status":"completed"}]',
-                "### SEND_ (TERM)",
-                "The installed interactive journey is complete.",
-            ].join("\n"),
+            content: "```READ (prompt:///1/1)```\n```TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n```",
+        }, {
+            reasoning: "The prompt was retrieved through the terminal, so the journey can conclude.",
+            content: "```SEND\nThe installed interactive journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         }],
     },
     nvim: {
@@ -34,39 +27,27 @@ const journeys = Object.freeze({
         programs: [
             {
                 reasoning: "I will make one reviewed local change, then verify the settled result.",
-                content: [
-                    "## PLAN_",
-                    '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"in_progress"}]',
-                    "### EXEC_",
-                    "printf 'accepted\\n' > journey.txt",
-                    "### SEND_ (NEXT)",
-                    "Next: Confirm the reviewed command completed.",
-                ].join("\n"),
+                content: "```EXEC\nprintf 'accepted\\n' > journey.txt\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"in_progress\"}]\n```",
             },
             {
                 reasoning: "The reviewed command succeeded, so I can conclude the requested journey.",
-                content: [
-                    "## PLAN_",
-                    '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"completed"}]',
-                    "### SEND_ (TERM)",
-                    "The reviewed multiline journey is complete.",
-                ].join("\n"),
+                content: "```SEND\nThe reviewed multiline journey is complete.\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"completed\"}]\n```",
             },
             {
                 reasoning: "I will ask for the named fields and await the answer.",
                 content: [
-                    "## PLAN_", "[]", "### EXEC_ [question] (question)",
+                    "```question (question)",
                     JSON.stringify({ message: "Which branch details?", requestedSchema: {
                         type: "object", properties: {
                             branch: { type: "string" }, count: { type: "integer" }, notes: { type: "string" },
                         }, required: ["count"],
                     } }),
-                    "### SEND_ (WAIT)", "Awaiting branch details.",
+                    "```", "```TASK", '[{"content":"Awaiting branch details.","status":"waiting"}]', "```",
                 ].join("\n"),
             },
             {
                 reasoning: "The question result has arrived in the continued loop.",
-                content: "## PLAN_\n[]\n### SEND_ (TERM)\nThe named-field answer arrived.",
+                content: "```SEND\nThe named-field answer arrived.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
             },
         ],
     },

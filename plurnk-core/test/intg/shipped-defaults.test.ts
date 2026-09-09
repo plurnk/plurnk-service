@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 
 const shippedEnv = async (): Promise<Map<string, string>> => {
     const raw = await readFile(new URL("../../.env.defaults", import.meta.url), "utf8");
@@ -61,7 +61,7 @@ test("under the shipped policy wiring, the shipped policy renders in the packet 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "hello");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done") as PlurnkStatement] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done") as PlurnkStatement] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const policy = (await readFile(Paths.policy, "utf8")).trim();

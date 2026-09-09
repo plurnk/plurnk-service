@@ -244,10 +244,9 @@ export default class Worker extends CoreSchemeAdapterBase {
                 "worker-unfinished",
                 425,
                 detail,
-                { awaitWorker: authority, loopId: row.id, ...taskTiming(row) },
+                { loopId: row.id, ...taskTiming(row) },
                 {
                     worker: authority,
-                    recovery: "Continue once; the engine will wait for the worker's deliverable.",
                     retryable: false,
                 },
             );

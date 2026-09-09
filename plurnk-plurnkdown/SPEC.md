@@ -81,13 +81,14 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 ## §packet-operation-fences PLURNK operation fences
 
-Model-facing operation examples use fenced blocks with the `example` info string. A structural
-PLURNK operation heading outside such a fence is an `op-fence` error. Each `example` fence is parsed statement-by-statement by
+Model-facing operation examples are executable fences ({§fence-boundary}).
+The linter passes complete named code blocks and standalone compact blocks to
 `@plurnk/plurnk-contracts`; bounded diagnostics and {§unparsed-tail-boundary} surface as
 `op-syntax` diagnostics under {§parse-diagnostics}.
 
-Inline code may name a short operation form without becoming a block example. Other code-fence
-languages are opaque to the PLURNK syntax check.
+Inline references, ordinary Markdown headings, and anonymous code fences are not
+operation examples. Executor registration and tool input schemas belong to the runtime,
+not this syntax linter.
 
 ## §packet-log-records Log records
 
@@ -112,8 +113,7 @@ document-size limit.
 
 | Rule        | Severity         | Trigger                                                                    |
 | ----------- | ---------------- | -------------------------------------------------------------------------- |
-| `op-fence`  | error            | A PLURNK operation heading occurs outside an `example` fence.               |
-| `op-syntax` | error or warning | An `example` fence contains a parser diagnostic, advisory, or unparsed tail.|
+| `op-syntax` | error or warning | An executable fence contains a parser diagnostic, advisory, or unparsed tail.|
 | `run-on`    | warning          | Paragraph prose crosses an atomic-prose threshold.                         |
 
 `PacketLint.lintDir` evaluates byte-exact digest files named

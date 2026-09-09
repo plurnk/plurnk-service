@@ -26,8 +26,8 @@ const execFileP = promisify(execFile);
 // cap decides how many actions land. Turn 2 SENDs to terminate (no reliance on
 // maxTurns composition), so the loop ends cleanly either way.
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("### EDIT_ (worker:///a.md)\naaa\n\n### EDIT_ (worker:///b.md)\nbbb\n\n### SEND_ (NEXT)\ncontinue", 50),
-    makeMockResponse("### SEND_ (TERM)\ndone", 50),
+    makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```", 50),
+    makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname });
@@ -69,7 +69,7 @@ test("maxCommands:0 admits PLAN + the terminal SEND, drops every action", async 
         // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
         // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
-            makeMockResponse("### EDIT_ (worker:///a.md)\naaa\n\n### EDIT_ (worker:///b.md)\nbbb\n\n### SEND_ (TERM)\ndone", 50),
+            makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -82,7 +82,7 @@ test("maxCommands:0 admits PLAN + the terminal SEND, drops every action", async 
                     .map((e) => (e as { entry: { op: string; origin: string } }).entry)
                     .filter((e) => e.origin === "model")
                     .map((e) => e.op);
-                assert.deepEqual(modelOps, ["PLAN", "SEND"], "only PLAN + the terminal SEND dispatched — every action capped out");
+                assert.deepEqual(modelOps, ["TASK"], "only PLAN + the terminal SEND dispatched — every action capped out");
                 assert.equal(await entryId(db, "/a.md"), undefined, "the first EDIT action never landed at maxCommands:0");
                 assert.equal(await entryId(db, "/b.md"), undefined, "the second EDIT action never landed");
             } finally { ws.close(); }
@@ -120,7 +120,7 @@ test("workspace settings.git:false denies git membership for the workspace (env 
 });
 
 test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("### SEND_ (TERM)\ndone", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

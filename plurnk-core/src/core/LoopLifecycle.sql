@@ -49,7 +49,11 @@ SET status = $status,
     wait_deadline_at = NULL,
     wait_poll_interval = NULL,
     wait_poll_at = NULL,
-    terminal_result = $result,
+    terminal_result = CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
+        THEN json_set($result,
+            '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
+            '$.mimetype', 'text/markdown')
+        ELSE $result END,
     terminated_by = $terminated_by
 WHERE id = $loop_id AND status IN (100, 102, 202)
 RETURNING terminal_result;
@@ -101,7 +105,11 @@ SET status = 499,
     wait_poll_interval = NULL,
     wait_poll_at = NULL,
     terminal_result = json_set(
-        $result,
+        CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
+            THEN json_set($result,
+                '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
+                '$.mimetype', 'text/markdown')
+            ELSE $result END,
         '$.problem.instance',
         'loop:///' || id
     ),

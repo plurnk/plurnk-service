@@ -5,6 +5,7 @@
 // dispatch without a network or a database.
 
 import test, { after, before, beforeEach, mock } from "node:test";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -209,24 +210,24 @@ const readStmt = (
     lineMarker: ReadStatement["lineMarker"] = null,
     metadata: ReadStatement["metadata"] = null,
 ): ReadStatement => ({
-    op: "READ", delimiter: "READ", annotation: null, target, metadata, lineMarker, body: null,
+    op: "READ", annotation: null, target, metadata, lineMarker, body: null,
     position: { line: 0, column: 0 },
 });
-const sendStmt = (status: SendStatement["status"], target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
-    op: "SEND", delimiter: "SEND", annotation: null, status, target, metadata, lineMarker: null,
+const sendStmt = (target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
+    op: "SEND", annotation: null, target, metadata, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
 const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null, metadata: ResolvedEditStatement["metadata"] = null): ResolvedEditStatement => ({
-    op: "EDIT", delimiter: "EDIT", annotation: null, target, metadata, lineMarker, body,
+    op: "EDIT", annotation: null, target, metadata, lineMarker, body,
     position: { line: 0, column: 0 },
 });
 const killStmt = (target: UrlPath | null, body: KillStatement["body"] = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
-    op: "KILL", delimiter: "KILL", annotation: null, target, metadata, lineMarker: null, body,
+    op: "KILL", annotation: null, target, metadata, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
-    op: "FIND", delimiter: "FIND", annotation: null, target, metadata, lineMarker: null, body,
+    op: "FIND", annotation: null, target, metadata, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) => {
@@ -327,7 +328,7 @@ test("manifest: documentation is loaded verbatim from docs/https.md", async () =
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# https:\/\//);
     assert.match(Http.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}_ (`), `${op} remains illustrated in the discoverable reference`);
+    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`\`\`\`${op} (`), `${op} remains illustrated in the discoverable reference`);
 });
 
 test("ready validates the fetch ceiling without making a provider request", async () => {
@@ -686,10 +687,10 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.equal(wrote!.entry.channels.html?.state, "errored");
 });
 
-test("SEND[200]: also materializes the entry before subscribing (shares #fetchStream)", async () => {
+test("DONE: also materializes the entry before subscribing (shares #fetchStream)", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["ok"], { "content-type": "text/plain" }), async () => {
-        await new Http().send(sendStmt(null, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
     });
     const { wrote, seq } = inspect();
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
@@ -705,7 +706,7 @@ test("JSON mutation responses publish formatted documents without changing the r
         submitted = init?.body;
         return respond();
     }, async () => {
-        await new Http().send(sendStmt(null, urlTarget("http://example.com/x", "/x"), request), ctx);
+        await new Http().send(sendStmt(urlTarget("http://example.com/x", "/x"), request), ctx);
     });
     assert.equal(submitted, request);
     assert.deepEqual(inspect().chunks.filter(({ channel }) => channel === "body"), [{
@@ -726,7 +727,7 @@ test("interrupted JSON mutation responses preserve received text and the acquisi
         },
     });
     await withFetch(async () => new Response(stream, { headers: { "content-type": "application/json" } }), async () => {
-        const result = await new Http().send(sendStmt(null, urlTarget("http://example.com/x", "/x"), "task"), ctx);
+        const result = await new Http().send(sendStmt(urlTarget("http://example.com/x", "/x"), "task"), ctx);
         assert.equal(result.status, 502);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/fetch-failed");
     });
@@ -822,7 +823,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
         const target = urlTarget("http://127.0.0.1/private", "/private");
         const operations = [
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
-            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(null, target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["remote"]), ctx),
         ];
@@ -980,7 +981,7 @@ test("READ: an unparseable Content-Type is an unknown binary representation", as
     assert.equal(inspect().wrote, null);
 });
 
-test("SEND[200]: a binary response becomes a typed marker and explicit non-retryable 415", async () => {
+test("DONE: a binary response becomes a typed marker and explicit non-retryable 415", async () => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -995,7 +996,7 @@ test("SEND[200]: a binary response becomes a typed marker and explicit non-retry
         statusText: "OK",
         headers: { "content-type": "image/png" },
     }), async () => {
-        result = await new Http().send(sendStmt(null, urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
+        result = await new Http().send(sendStmt(urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
     });
 
     assert.equal(result?.status, 415);
@@ -1514,10 +1515,10 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
-test("SEND[200]: an HTML response streams body text as text/html", async () => {
+test("DONE: an HTML response streams body text as text/html", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
-        await new Http().send(sendStmt(null, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
     });
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "<html>body</html>");
@@ -1618,7 +1619,7 @@ test("READ: network failure bounds caught diagnostics in the exact Problem", asy
 });
 
 // ── SEND verbs ────────────────────────────────────────────────────────────
-test("SEND[200]: POSTs the body and streams the response", async () => {
+test("DONE: POSTs the body and streams the response", async () => {
     const { ctx, inspect } = makeCtx();
     let seenMethod = "", seenBody: unknown = null, seenType = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1631,12 +1632,7 @@ test("SEND[200]: POSTs the body and streams the response", async () => {
         });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().send(sendStmt(
-            null,
-            urlTarget("https://example.com/p", "/p"),
-            "payload",
-            ["Content-Type: text/plain"],
-        ), ctx);
+        const r = await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["Content-Type: text/plain"]), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "POST");
@@ -1645,11 +1641,11 @@ test("SEND[200]: POSTs the body and streams the response", async () => {
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "ok");
 });
 
-test("{§http-replay} SEND[200]: an uncertain POST failure never recommends automatic replay", async () => {
+test("{§http-replay} DONE: an uncertain POST failure never recommends automatic replay", async () => {
     const { ctx } = makeCtx();
     await withFetch(async () => { throw new Error("connection reset after dispatch"); }, async () => {
         const result = await new Http().send(
-            sendStmt(null, urlTarget("https://example.com/effect", "/effect"), "payload"),
+            sendStmt(urlTarget("https://example.com/effect", "/effect"), "payload"),
             ctx,
         );
         assert.equal(result.status, 502);
@@ -1657,13 +1653,10 @@ test("{§http-replay} SEND[200]: an uncertain POST failure never recommends auto
         assert.equal(result.problem?.retryable, false, "the origin may already have accepted the POST");
     });
 });
-test("a label SEND never reaches the scheme: a non-null status → 501", async () => {
-    const { ctx } = makeCtx();
-    const r = await new Http().send(sendStmt(200, urlTarget("http://example.com/x", "/x")), ctx);
-    assert.equal(r.status, 501);
-    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/send-status-unsupported");
-    assert.equal(r.problem?.stage, "dispatch");
-    assert.equal(r.problem?.requestedStatus, 200);
+test("HTTP SEND cannot carry an independently supplied lifecycle status", () => {
+    const message = sendStmt(urlTarget("http://example.com/x", "/x"));
+    assert.equal(Validator.validatePlurnkStatement(message).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...message, status: 200 }).valid, false);
 });
 
 // ── request headers and method operations {§op-surface} ───────────────────
@@ -1871,7 +1864,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     }, async () => {
         const target = urlTarget(blob, "/o/r/blob/main/src/x.js");
         const operations = [
-            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(null, target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["remote"]), ctx),
         ];

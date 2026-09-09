@@ -16,7 +16,7 @@ const url = (pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: marker, body,
+    op: "EDIT", annotation: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {

@@ -3,7 +3,7 @@ import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import { PlanValue } from "@plurnk/plurnk-contracts";
-import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, DispositionStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
@@ -19,7 +19,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: opts.annotation ?? null, delimiter: "",
+    op: "EDIT", annotation: opts.annotation ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
@@ -28,7 +28,7 @@ const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: Tex
 
 const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "",
+    op: "READ", annotation: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: null,
@@ -37,19 +37,19 @@ const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker
 
 const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; body?: MatcherBody | null }): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, delimiter: "",
+    op: "KILL", annotation: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
-const planStmt = (opts: { body?: string | null }): PlanStatement => ({
+const continuationStmt = (opts: { body?: string | null }): DispositionStatement => ({
     metadata: null,
-    op: "PLAN", annotation: null, delimiter: "",
+    op: "TASK", annotation: null,
     target: null,
     lineMarker: null,
-    body: PlanValue.admit(opts.body ?? ""),
+    body: PlanValue.admit(opts.body ?? "Continue the task."),
     position: { line: 1, column: 1 },
 });
 
@@ -164,10 +164,10 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     try {
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
         const plan = await engine.dispatch({
-            statement: planStmt({ body: "obsolete goals to curate away" }),
+            statement: continuationStmt({ body: "obsolete goals to curate away" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(plan.status, 200);
+        assert.equal(plan.status, 102);
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
@@ -207,20 +207,20 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survives into tx", async () => {
+test("Engine.dispatch: NEXT is a continuation whose canonical Plurnk value survives into tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
-            statement: planStmt({ body: JSON.stringify([{
+            statement: continuationStmt({ body: JSON.stringify([{
                 content: "The capital of France remains unverified.",
                 status: "pending",
             }]) }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(plan.status, 200);
+        assert.equal(plan.status, 102);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
-        if (log === undefined) throw new Error("PLAN log_entry not found");
-        assert.equal(log.op, "PLAN");
+        if (log === undefined) throw new Error("NEXT log_entry not found");
+        assert.equal(log.op, "TASK");
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
@@ -237,14 +237,14 @@ const setup = async () => {
     const engine = new Engine({ db, schemes });
     return { db, engine, env };
 };
-test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row (#335)", async () => {
-    // PLAN log bodies project line-per-entry JSONL, so the model's ordinary
+test("Engine.dispatch: a KILL line scope trims one entry of a projected NEXT row (#335)", async () => {
+    // NEXT log bodies project line-per-entry JSONL, so the model's ordinary
     // KILL <line> scope reaches individual plan items — the ruled alternative
-    // to spooky automatic suppression of superseded PLANs.
+    // to spooky automatic suppression of superseded NEXTs.
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: planStmt({ body: JSON.stringify([
+            statement: continuationStmt({ body: JSON.stringify([
                 { content: "Verify the finding.", status: "pending" },
                 { content: "Done: the finished action.", status: "completed" },
                 { content: "Next: the open inquiry.", status: "in_progress" },
@@ -252,7 +252,7 @@ test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row
             ...env, sequence: 1, origin: "model",
         });
         const curated = await engine.dispatch({
-            statement: killStmt({ target: urlPath("log", "/1/1/1/PLAN"), marker: { marks: [2, 2] } }),
+            statement: killStmt({ target: urlPath("log", "/1/1/1/TASK"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(curated.status, 200);
@@ -394,7 +394,7 @@ test("Engine.dispatch: scoped KILL accepts body and log anchors, and READ respec
     try {
         await db.engine_insert_log_entry.get({
             worker_id: env.workerId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "",
+            origin: "model", source: null, model_call_id: null, op: "READ",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/source.md", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -664,7 +664,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         });
         const log = await db.test_first_log_entry_for_turn.get<{
             worker_id: number; loop_id: number; turn_id: number; sequence: number;
-            origin: string; op: string; delimiter: string; signal: string | null;
+            origin: string; op: string; signal: string | null;
             scheme: string | null; pathname: string | null;
             tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
         }>({ turn_id: env.turnId });
@@ -675,7 +675,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         assert.equal(log.sequence, 1);
         assert.equal(log.origin, "model");
         assert.equal(log.op, "EDIT");
-        assert.equal(log.delimiter, "");
+        assert.equal(Object.hasOwn(log, "delimiter"), false);
         assert.equal(log.signal, null);
         assert.equal(log.scheme, "worker");
         assert.equal(log.pathname, "/x");
@@ -727,7 +727,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     try {
         const stmt: EditStatement = {
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", target: null, lineMarker: null, body: "y",
+            op: "EDIT", annotation: null, target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -921,7 +921,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { metadata: null, op: "SEND", annotation: null, delimiter: "", status: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "SEND", annotation: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -1012,7 +1012,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                op: "COPY", annotation: null, delimiter: "",
+                op: "COPY", annotation: null,
                 source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null },
                 destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null },
                 position: { line: 1, column: 1 },

@@ -10,14 +10,13 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
-import { copyStmt, editStmt, killStmt, moveStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
+import { copyStmt, editStmt, killStmt, moveStmt, readStmt, dispositionStmt, urlPath } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({
     metadata: null,
     op: "EXEC",
     annotation: null,
-    delimiter: "",
     executor: runtime, target: null,
     lineMarker: null,
     body: "echo hi",
@@ -87,7 +86,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
         const { turnId } = await engine.runTurn({
             provider,
@@ -131,7 +130,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
 
         const result = await engine.runTurn({
@@ -147,8 +146,8 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null }>({ loop_id: loopId });
         const harnessOps = rows.filter(({ origin }) => origin === "_plurnk").map(({ op }) => op);
-        assert.equal(harnessOps.includes("PLAN"), true);
-        assert.equal(harnessOps.includes("SEND"), true);
+        assert.equal(harnessOps.includes("PLAN"), false);
+        assert.equal(harnessOps.includes("TASK"), true);
         assert.deepEqual(
             harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),
             [],
@@ -181,7 +180,7 @@ test("{§capability-admission}: Turn 0 catalogs only capabilities admitted by th
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
 
         const result = await engine.runTurn({
@@ -250,7 +249,7 @@ for (const layer of ["service", "workspace", "worker-bound", "worker", "loop"] a
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
                 readStmt({ ...urlPath("worker", "/_plurnk/plurnk/worker.md"), hostname: "~", raw: "worker://~/_plurnk/plurnk/worker.md" }, { marks: [1, -1] }),
-                sendStmt(102),
+                dispositionStmt("in_progress"),
             ] } },
         ] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });

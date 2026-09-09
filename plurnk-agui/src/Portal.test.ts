@@ -146,7 +146,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
     // A live model SEND fans to the thread as assistant speech.
     seen.length = 0;
-    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", coordinate: "1.1.1", tx: { body: "hi" }, turn_id: 1 } });
+    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", status_rx: 200, coordinate: "1.1.1", tx: { body: "hi" }, turn_id: 1 } });
     assert.ok(seen.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "live speech rendered to the bound thread");
 
     // Workspace topology is visible, but another loop's terminal must never
@@ -180,7 +180,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
     // An event for an UNbound workspace is dropped, not misrouted.
     seen.length = 0;
-    m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, loop_id: 1, origin: "model", op: "SEND", tx: { body: "x" } } });
+    m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, loop_id: 1, origin: "model", op: "SEND", status_rx: 200, tx: { body: "x" } } });
     assert.equal(seen.length, 0, "events for other workspaces don't leak into this thread");
     portal.stop();
 });
@@ -208,7 +208,7 @@ test("{§agui-conversation-sync}: synchronization observes an already-active loo
             worker_id: 10,
             loop_id: 77,
             origin: "model",
-            op: "SEND",
+            op: "SEND", status_rx: 200,
             coordinate: "1/1/2/SEND",
             tx: { body: "Observed answer." },
             turn_id: 1,
@@ -728,7 +728,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
             worker_id: 10,
             loop_id: 77,
             origin: "model",
-            op: "SEND",
+            op: "SEND", status_rx: 200,
             coordinate: "1/1/3/SEND",
             tx: { body: "continued" },
             reasoning: "working",

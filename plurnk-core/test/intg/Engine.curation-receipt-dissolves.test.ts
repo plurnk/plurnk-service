@@ -18,10 +18,10 @@ const row = (log: string, op: string): Record<string, unknown> | undefined => ro
 
 test("{§curation-receipt-dissolves} scoped and whole KILL receipts show once with their status, then dissolve; the 204 no-op shows once too", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("### EDIT_ (worker:///note)\nfirst line\nsecond line\n\n### READ_ (worker:///note)\n\n### SEND_ (NEXT)\nwrote", 50),
-        makeMockResponse("### KILL_ (log:///1/**/READ) <1,-1>\n\n### KILL_ (log:///1/**/EDIT)\n\n### SEND_ (NEXT)\ncurated", 50),
-        makeMockResponse("### KILL_ (log:///1/**/EDIT)\n\n### SEND_ (NEXT)\nagain", 50),
-        makeMockResponse("### SEND_ (TERM)\ndone", 50),
+        makeMockResponse("```EDIT (worker:///note)\nfirst line\nsecond line\n```\n\n```READ (worker:///note)```\n```TASK\n[{\"content\":\"wrote\",\"status\":\"in_progress\"}]\n```", 50),
+        makeMockResponse("```KILL (log:///1/**/READ) <1,-1>```\n```KILL (log:///1/**/EDIT)```\n```TASK\n[{\"content\":\"curated\",\"status\":\"in_progress\"}]\n```", 50),
+        makeMockResponse("```KILL (log:///1/**/EDIT)```\n```TASK\n[{\"content\":\"again\",\"status\":\"in_progress\"}]\n```", 50),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

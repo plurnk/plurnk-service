@@ -338,7 +338,7 @@ export default class PacketBuilder {
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy follows the definition for prefix-cache locality.
-            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
+            { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
@@ -362,7 +362,7 @@ export default class PacketBuilder {
             { name: "budget", slot: "user", header: "Context Token Budget", content: budgetReadout },
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
-            { name: "prompt", slot: "user", header: "Active User Prompts", content: prompt },
+            { name: "prompt", slot: "user", header: "Active Prompts", content: prompt },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
@@ -484,7 +484,7 @@ export default class PacketBuilder {
         // EDIT/READ delivery rows.
         const rows = await this.#db.engine_render_log.all<{
             id: number; loop_seq: number; turn_seq: number; sequence: number;
-            origin: string; op: string | null; delimiter: string; signal: string | null;
+            origin: string; op: string | null; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;
@@ -526,7 +526,6 @@ export default class PacketBuilder {
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 origin: r.origin,
                 op: r.op,
-                delimiter: r.delimiter,
                 signal: r.signal === null ? null : JSON.parse(r.signal),
                 target: {
                     scheme: r.scheme,

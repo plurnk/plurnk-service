@@ -68,11 +68,11 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### SEND_ (TERM)\nfirst composed result"),
-            makeMockResponse("### SEND_ (TERM)\nsecond composed result"),
+            makeMockResponse("```SEND\nfirst composed result\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nsecond composed result\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             makeMockResponse([
-                "### EXEC_ [question]",
-                JSON.stringify({
+                "```question",
+                "" + (JSON.stringify({
                     message: "Which branch should I use?",
                     requestedSchema: {
                         type: "object",
@@ -80,11 +80,13 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
                         required: ["branch"],
                         additionalProperties: false,
                     },
-                }),
-                "### SEND_ (WAIT)",
+                })) + "",
+                "```",
+                "```WAIT",
                 "waiting for the branch selection",
+                "```",
             ].join("\n")),
-            makeMockResponse("### SEND_ (TERM)\nselected branch"),
+            makeMockResponse("```SEND\nselected branch\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const daemon = new Daemon({ db, provider });
@@ -269,7 +271,7 @@ test("{§a2a-lazy-workspace}: listener discovery is passive and first task lazil
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("### SEND_ (TERM)\nlazy workspace result")],
+            responses: [makeMockResponse("```SEND\nlazy workspace result\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
         }),
     });
     const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
@@ -323,7 +325,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("### SEND_ (TERM)\nfirst durable result")],
+            responses: [makeMockResponse("```SEND\nfirst durable result\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
         }),
     });
     const workspace = await daemon.createWorkspace({
@@ -363,7 +365,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             db,
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeMockResponse("### SEND_ (TERM)\nsecond durable result")],
+                responses: [makeMockResponse("```SEND\nsecond durable result\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
             }),
         });
         let secondListener: A2aModule | null = null;

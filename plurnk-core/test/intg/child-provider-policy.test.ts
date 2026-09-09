@@ -68,16 +68,16 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("### WORK_ (worker://child)\ndelegate once\n\n### SEND_ (WAIT) <-1>\nwaiting"),
-            makeMockResponse("### SEND_ (TERM)\ntree complete"),
+            makeMockResponse("```WORK (worker://child)\ndelegate once\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\ntree complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("### WORK_ (worker://grandchild)\ndelegate again\n\n### SEND_ (WAIT) <-1>\nwaiting"),
-            makeMockResponse("### SEND_ (TERM)\nleaf complete"),
-            makeMockResponse("### SEND_ (TERM)\nchild complete"),
+            makeMockResponse("```WORK (worker://grandchild)\ndelegate again\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nleaf complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nchild complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -128,13 +128,13 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("### WORK_ (worker://child)\nuse configured child\n\n### SEND_ (WAIT) <-1>\nwaiting"),
-            makeMockResponse("### SEND_ (TERM)\nparent complete"),
+            makeMockResponse("```WORK (worker://child)\nuse configured child\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nparent complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("### SEND_ (TERM)\nchild complete")],
+        responses: [makeMockResponse("```SEND\nchild complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -168,8 +168,8 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("## PLAN_\nAsk the isolated factual question.\n\n### BARE_\nWhat is the capital of Germany?\n\n### SEND_ (NEXT)\nReview the answer."),
-            makeMockResponse("### SEND_ (TERM)\nThe isolated answer was reviewed."),
+            makeMockResponse("\n```BARE\nWhat is the capital of Germany?\n```\n\n```TASK\n[{\"content\":\"Review the answer.\",\"status\":\"in_progress\"}]\n```"),
+            makeMockResponse("```SEND\nThe isolated answer was reviewed.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const child = new Mock({
@@ -209,9 +209,9 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("### WORK_ (worker://child)\ndo it\n\n### SEND_ (WAIT) <-1>\nwaiting"),
-            makeMockResponse("### SEND_ (TERM)\nchild complete"),
-            makeMockResponse("### SEND_ (TERM)\nparent complete"),
+            makeMockResponse("```WORK (worker://child)\ndo it\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nchild complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nparent complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -247,8 +247,8 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("### FORK_ (worker://branch)\ncontinue with inherited history\n\n### SEND_ (WAIT) <-1>\nwaiting"),
-            makeMockResponse("### SEND_ (TERM)\nobserved child failure"),
+            makeMockResponse("```FORK (worker://branch)\ncontinue with inherited history\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nobserved child failure\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const child = new Mock({ contextWindow: 4096, responses: [] });

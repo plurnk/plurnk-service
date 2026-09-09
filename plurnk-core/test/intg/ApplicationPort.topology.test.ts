@@ -6,7 +6,7 @@ import { makeMockResponse, waitFor, withDaemon } from "./_rpc.ts";
 test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: exterior adapters observe exact topology and durable loop state", async () => {
     const provider = new Mock({
         contextWindow: 16_384,
-        responses: [makeMockResponse("### SEND_ (TERM)\ncomposed result", 10)],
+        responses: [makeMockResponse("```SEND\ncomposed result\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)],
     });
 
     await withDaemon(provider, async (_db, daemon) => {

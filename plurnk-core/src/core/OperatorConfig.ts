@@ -35,7 +35,7 @@ export default class OperatorConfig {
             "",
             "# AGENT SKILLS — project skills live in .agents/skills; user-global skills",
             "# live in ~/.agents/skills. Manage them per Worker with /skills (clients) or",
-            "# EXEC [skills] (model). Optional overrides of the standard machinery:",
+            "# the skills executor (model). Optional overrides of the standard machinery:",
             "# PLURNK_SERVICE_SKILLS_CLI=\"npx --yes skills\"",
             "# PLURNK_SERVICE_SKILLS_REGISTRY_URL=https://skills.sh",
             "",

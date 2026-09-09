@@ -74,7 +74,6 @@ export interface EntryReadResult extends SchemeResult {
     readonly matches?: ReadonlyArray<MatchEvidence>;
     readonly range?: RangeExtent;
     readonly reason?: string;
-    readonly awaitWorker?: string;
 }
 
 export type EntryStreamLifecycle =

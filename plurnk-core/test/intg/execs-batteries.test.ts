@@ -29,7 +29,7 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 // {§exec-executor-slot} — the battery's third column is the program path (a db file for sqlite), never a cwd.
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: target === null ? null : localPath(target),
+    op: "EXEC", annotation: null, executor: runtime, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

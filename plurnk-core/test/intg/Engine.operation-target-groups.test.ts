@@ -43,7 +43,6 @@ const seedLogRead = async (
         source: null,
         model_call_id: null,
         op: "READ",
-        delimiter: "",
         scheme: "worker",
         username: null,
         password: null,
@@ -53,7 +52,7 @@ const seedLogRead = async (
         query: null,
         fragment: null,
         lineMarker: null,
-        tx: `### READ_ (worker:///source-${sequence}.md)`,
+        tx: `\`\`\`READ (worker:///source-${sequence}.md)\`\`\``,
         mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({
             status: 200,
@@ -87,15 +86,7 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response([
-                "## PLAN_",
-                "Read both resources.",
-                "",
-                "### READ_ (worker:///alpha.md worker:///beta.md)",
-                "",
-                "### SEND_ (NEXT)",
-                "Both reads are pending review.",
-            ].join("\n"))],
+            responses: [response("\n```READ (worker:///alpha.md worker:///beta.md)```\n```TASK\n[{\"content\":\"Both reads are pending review.\",\"status\":\"in_progress\"}]\n```")],
         });
 
         const result = await engine.runTurn({
@@ -133,15 +124,7 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response([
-                "## PLAN_",
-                "Curate both completed reads.",
-                "",
-                "### KILL_ (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>",
-                "",
-                "### SEND_ (NEXT)",
-                "Both read bodies are suppressed.",
-            ].join("\n"))],
+            responses: [response("\n```KILL (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>```\n```TASK\n[{\"content\":\"Both read bodies are suppressed.\",\"status\":\"in_progress\"}]\n```")],
         });
 
         const result = await engine.runTurn({
@@ -173,15 +156,7 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
-        const source = [
-            "## PLAN_",
-            "Retire the selected history.",
-            "",
-            "### KILL_ (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)",
-            "",
-            "### SEND_ (NEXT)",
-            "Review the independent KILL outcomes.",
-        ].join("\n");
+        const source = "\n```KILL (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)```\n```TASK\n[{\"content\":\"Review the independent KILL outcomes.\",\"status\":\"in_progress\"}]\n```";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response(source)],

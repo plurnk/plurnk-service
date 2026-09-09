@@ -1,4 +1,4 @@
-// grammar 0.74.20 — EXEC `<T,P>` poll cadence. While a loop hibernates (SEND[202]) with a polled
+// grammar 0.74.20 — EXEC `<T,P>` poll cadence. While a loop hibernates (WAIT) with a polled
 // stream, the daemon wakes it every P MINUTES to inspect progress ({§exec-poll}). Proof: a 1-minute
 // poll resumes the parked loop before its 90s spawn would conclude — and a non-polled 202 would just
 // hang. Own file: real subprocess + timing, process-isolated.
@@ -16,10 +16,10 @@ test("a polled EXEC <T,P> wakes a hibernating (202) loop every P minutes", { tim
     // 16384: base-packet growth (grammar 0.76.5 + sibling teaching) crested this accumulation's 8192 edge — headroom scaffolding, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: background a long spawn with a 1-minute poll, then hibernate.
-        makeMockResponse("### EXEC_ <30,1>\nsleep 90\n\n### SEND_ (WAIT) <-1>\nhibernating; will poll", 10),
+        makeMockResponse("```EXEC <30,1>\nsleep 90\n```\n\n```TASK <-1>\n[{\"content\":\"hibernating; will poll\",\"status\":\"waiting\"}]\n```", 10),
         // Turn 2 only happens if something resumed the parked loop. The spawn is still running at ~60s,
         // so a stream conclusion did NOT wake it — the poll did. Abandon (499 reaps the live spawn).
-        makeMockResponse("### SEND_ (FAIL)\nwoke via poll; abandoning", 10),
+        makeMockResponse("```SEND\nwoke via poll; abandoning\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -40,8 +40,8 @@ test("an EXEC without an explicit cadence wakes on the exponential-backoff floor
     const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "1";
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### EXEC_ <30>\nsleep 30\n\n### SEND_ (WAIT)\nwaiting under backoff", 10),
-        makeMockResponse("### SEND_ (FAIL)\nobserved the still-open stream on a backoff wake", 10),
+        makeMockResponse("```EXEC <30>\nsleep 30\n```\n\n```TASK\n[{\"content\":\"waiting under backoff\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\nobserved the still-open stream on a backoff wake\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -65,8 +65,8 @@ test("an explicit zero cadence stays blind while open but still wakes exactly on
     const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "0.1";
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("### EXEC_ <10,0>\nsleep 3; echo closed\n\n### SEND_ (WAIT)\nwaiting blindly for closure", 10),
-        makeMockResponse("### SEND_ (TERM)\nobserved terminal closure", 10),
+        makeMockResponse("```EXEC <10,0>\nsleep 3; echo closed\n```\n\n```TASK\n[{\"content\":\"waiting blindly for closure\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\nobserved terminal closure\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

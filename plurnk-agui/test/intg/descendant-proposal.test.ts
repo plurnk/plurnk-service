@@ -71,17 +71,17 @@ test("a child proposal traverses its controlling conversation without losing eit
         contextWindow: 32768,
         responses: [
             makeMockResponse(
-                "### WORK_ (worker://guesser1)\nCreate child.txt and conclude.\n\n"
-                + "### SEND_ (WAIT) <-1>\nWaiting for guesser1.",
+                "```WORK (worker://guesser1)\nCreate child.txt and conclude.\n```\n"
+                + "```TASK <-1>\n[{\"content\":\"Waiting for guesser1.\",\"status\":\"waiting\"}]\n```",
                 10,
             ),
             makeMockResponse(
-                "### EDIT_ (child.txt)\ncreated by child\n\n"
-                + "### SEND_ (NEXT)\nConfirming the write.",
+                "```EDIT (child.txt)\ncreated by child\n```\n"
+                + "```TASK\n[{\"content\":\"Confirming the write.\",\"status\":\"in_progress\"}]\n```",
                 10,
             ),
-            makeMockResponse("### SEND_ (TERM)\nChild work complete.", 10),
-            makeMockResponse("### SEND_ (TERM)\nDelegated work confirmed.", 10),
+            makeMockResponse("```SEND\nChild work complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```SEND\nDelegated work confirmed.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
     const db = await openTestDatabase();

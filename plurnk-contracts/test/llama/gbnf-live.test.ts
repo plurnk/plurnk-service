@@ -1,3 +1,4 @@
+import { TurnDisposition } from "../../src/index.ts";
 /**
  * Live GBNF validation against a local llama.cpp server. Opt-in, NOT part of
  * The deterministic gate has no server: run explicitly with `npm run test:llama`.
@@ -10,7 +11,7 @@
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
  * - The selected grammar constrains sampled token zero through the reasoning
- *   boundary, then `sep`, mandatory `## PLAN_`, H2 operations, and terminal SEND.
+ *   boundary, then `sep`, operation fences and a native disposition.
  *   The Qwen profile composes with the opener already supplied by its template.
  *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
  *   projecting the enclosure body out of `content` into `reasoning_content`.
@@ -72,7 +73,7 @@ test(`llama.cpp accepts the generated plurnk.${railProfile}.gbnf (size/format ch
 });
 
 // {§gbnf-reasoning-boundary} — this observes the real post-grammar projection.
-test("llama projection separates reasoning and the model completes a PLAN turn", async () => {
+test("llama projection separates reasoning and the model completes a disposition-ended turn", async () => {
     const { content, reasoning, finishReason } = await complete(
         "What is the capital of France? Record the fact as a known entry, then deliver the answer.",
         1024,
@@ -82,14 +83,12 @@ test("llama projection separates reasoning and the model completes a PLAN turn",
     assert.equal(content.includes("<think>"), false, `reasoning opener leaked into content: ${JSON.stringify(content)}`);
     assert.equal(content.includes("</think>"), false, `reasoning closer leaked into content: ${JSON.stringify(content)}`);
     assert.equal(typeof reasoning, "string");
-    // Feed the projected content directly; parsing begins at the H1 PLAN anchor.
+    // Feed the projected content directly, without rewriting its operation fences.
     const result = PlurnkParser.parse(content);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");
 
     assert.ok(statements.length > 0, `reasoning allowance left no actionable turn: ${JSON.stringify(content)}`);
-    const first = statements[0];
-    assert.ok(first.kind === "statement" && first.statement.op === "PLAN", `turn did not open with PLAN: ${JSON.stringify(content)}`);
     assert.equal(finishReason, "stop", `reasoning or content exhausted the generation envelope: ${JSON.stringify(content)}`);
     assert.equal(
         errors.length,
@@ -97,6 +96,6 @@ test("llama projection separates reasoning and the model completes a PLAN turn",
         `model emitted a parser-invalid operation inside the constrained frame: ${JSON.stringify(content)}`,
     );
     assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
-    const dispositions = statements.filter(({ statement }) => statement.op === "SEND" && statement.status !== null);
+    const dispositions = statements.filter(({ statement }) => TurnDisposition.is(statement));
     assert.equal(dispositions.length, 1, `turn must contain one disposition SEND: ${JSON.stringify(content)}`);
 });

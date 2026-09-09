@@ -81,7 +81,7 @@ Plurnk's own skill uses the same discovery, READ, and per-Worker enablement as
 installed skills. It is not copied into a universal root.
 
 Clients use `worker.skills.{list,discover,add,enable,disable,remove}`; models use
-the generated `EXEC [skills]` interface. `discover` returns candidates without
+the generated ```` ```skills ```` interface. `discover` returns candidates without
 installation. `add` installs through the standard skills CLI into the chosen
 project or global scope; `remove` uninstalls a Worker-origin installation.
 Service-provided entries can be disabled, not uninstalled through that action.

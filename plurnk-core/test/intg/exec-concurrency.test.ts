@@ -20,7 +20,6 @@ const statement = (body: string): ExecStatement => ({
     metadata: null,
     op: "EXEC", executor: "controlled",
     annotation: null,
-    delimiter: "",
     target: null,
     lineMarker: null,
     body,
@@ -31,7 +30,6 @@ const killStatement = (scheme: string, pathname: string): KillStatement => ({
     metadata: null,
     op: "KILL",
     annotation: null,
-    delimiter: "",
     target: {
         kind: "url",
         raw: `${scheme}://${pathname}`,

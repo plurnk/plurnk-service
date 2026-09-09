@@ -17,8 +17,8 @@ class Flaky extends Mock {
         super({
             contextWindow: viableWindow() * 4,
             responses: signals.map((signal) => makeMockResponse(signal === 102
-                ? "## PLAN_\ncontinue after provider recovery\n\n### FIND_ (worker:///**)\n\n### SEND_ (NEXT)\ncontinue"
-                : "### SEND_ (TERM)\ndone", 20)),
+                ? "\n```FIND (worker:///**)```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"
+                : "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 20)),
         });
         this.failures = failures;
     }

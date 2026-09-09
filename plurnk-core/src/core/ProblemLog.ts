@@ -63,7 +63,6 @@ export default class ProblemLog {
             source: input.source,
             model_call_id: null,
             op: "error",
-            delimiter: "",
             signal: null,
             scheme: null,
             username: null,

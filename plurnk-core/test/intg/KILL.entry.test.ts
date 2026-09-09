@@ -101,7 +101,7 @@ test("a recipient SEND to an entry scheme returns 501 (entry schemes carry no me
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(null, urlPath("worker", "/x"), "hello"));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(urlPath("worker", "/x"), "hello"));
         assert.equal(r.status, 501);
     } finally { await db.close(); }
 });

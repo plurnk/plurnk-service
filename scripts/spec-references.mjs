@@ -39,7 +39,8 @@ const markdownLines = (name, text) => {
     let fence = null;
     return text.split("\n").map((line, index) => {
         const marker = line.match(FENCE)?.[1];
-        if (marker !== undefined) {
+        if (marker !== undefined && (fence !== null || marker[0] !== "`"
+            || !line.slice(line.indexOf(marker) + marker.length).includes("`"))) {
             if (fence === null) {
                 fence = { character: marker[0], length: marker.length };
             } else if (

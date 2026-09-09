@@ -1,18 +1,13 @@
+import { dispositionStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { EditStatement, PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 
-const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
-    metadata: null,
-    op: "SEND", annotation: null, delimiter: "", status, target: null, lineMarker: null,
-    body: { raw: body, json: null }, position: { line: 1, column: 1 },
-});
-
 const editStmt = (target: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "",
+    op: "EDIT", annotation: null,
     target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -53,8 +48,8 @@ test("Mock.provider: exhausted queue throws", async () => {
 test("Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
-            content: "### SEND_ (TERM)\ndone",
-            ops: [sendStmt(200, "done")],
+            content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+            ops: [dispositionStmt("completed", "done")],
             reasoning: "thought about it",
             finishReason: "stop",
             model: "mock-bench-v1",
@@ -63,7 +58,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     };
     const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
-    assert.equal(result.assistant.content, "### SEND_ (TERM)\ndone");
+    assert.equal(result.assistant.content, "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
     assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
     assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
@@ -71,7 +66,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     assert.equal(result.assistant.model, "mock-bench-v1");
     assert.equal(result.assistant.reasoning, "thought about it");
     assert.equal(result.assistant.ops?.length, 1);
-    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "SEND");
+    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "TASK");
 });
 
 test("Mock.provider: request accounting defaults fill when the fixture omits usage", async () => {
@@ -127,11 +122,11 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
     const ops = [
         editStmt("a", "1"),
         editStmt("b", "2"),
-        sendStmt(102, "continuing"),
+        dispositionStmt("in_progress", "continuing"),
     ];
-    const content = "### EDIT_ (worker:///a)\n1\n\n### EDIT_ (worker:///b)\n2\n\n### SEND_ (NEXT)\ncontinuing";
+    const content = "```EDIT (worker:///a)\n1\n```\n\n```EDIT (worker:///b)\n2\n```\n\n```TASK\n[{\"content\":\"continuing\",\"status\":\"in_progress\"}]\n```";
     const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);
-    assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);
+    assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "TASK"]);
 });

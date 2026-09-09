@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 
 for (const [label, reasoning, reasoningLine] of [
     ["readable", "thought hard", "thought hard"],
@@ -27,7 +27,7 @@ for (const [label, reasoning, reasoningLine] of [
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const resp: MockResponse = {
-            assistant: { content: "", reasoning, ops: [sendStmt(200, null, "done")] },
+            assistant: { content: "", reasoning, ops: [dispositionStmt("completed", "done")] },
             usage: {
                 inputTokens: 100,
                 outputTokens: 57,

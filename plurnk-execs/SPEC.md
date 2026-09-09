@@ -319,7 +319,8 @@ details as separate facts. A `{ from: "tools" }` summary is valid only for a
 runtime implementing {§executor-tool-registry}; the consumer resolves it from
 the exact effective tool set, after capability attenuation, so a denied tool
 cannot survive in the family orientation line. The inventory renders as
-`EXEC [runtime] (target|...)`, with the optional purpose as a trailing annotation;
+one compact executable fence naming `runtime (target|...)`, with the optional
+purpose as a trailing annotation and body line breaks represented by literal `\n`;
 an authored string remains a description, without expanding its tool inventory.
 The consumer deterministically renders the
 model-facing tool document from either the static invocation or the executor's exact

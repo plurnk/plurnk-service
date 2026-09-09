@@ -107,7 +107,7 @@ export default class LoopDriver {
         let modelTurnCount = await this.#lifecycle.modelTurnCount(loopId);
         let invalidEmissionRecoveryEntryId: number | null = null;
         const loopAbort = new AbortController();
-        // Native composition retains worker cancellation for streams surviving WAIT
+        // Native composition retains worker cancellation for streams surviving a wait
         // without leaving one caller-signal listener per execution segment.
         const executionSignal = signal === undefined ? loopAbort.signal : AbortSignal.any([signal, loopAbort.signal]);
         this.#loopSignals.set(loopId, executionSignal);
@@ -134,7 +134,7 @@ export default class LoopDriver {
             "loop_timeout",
         );
 
-        // WAIT preserves asynchronous work for this same task's continuation.
+        // A wait preserves asynchronous work for this same task's continuation.
         // Actual termination and exceptional exits reap the execution scope.
         let cleaned = false;
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {

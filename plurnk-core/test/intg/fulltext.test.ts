@@ -14,11 +14,11 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const edit = (pathname: string, body: string, lineMarker: LineMarker | null = null): ResolvedEditStatement => ({
-    metadata: null, op: "EDIT", annotation: null, delimiter: "", target: url(pathname), lineMarker, body,
+    metadata: null, op: "EDIT", annotation: null, target: url(pathname), lineMarker, body,
     position: { line: 1, column: 1 },
 });
 const find = (pathname: string, query: string, marks: LineMarker["marks"] = [1, -1]): FindStatement => ({
-    metadata: null, op: "FIND", annotation: null, delimiter: "", target: url(pathname),
+    metadata: null, op: "FIND", annotation: null, target: url(pathname),
     lineMarker: { marks }, body: { dialect: "fts", raw: `~${query}` },
     position: { line: 1, column: 1 },
 });

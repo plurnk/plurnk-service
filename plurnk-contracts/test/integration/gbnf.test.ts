@@ -1,3 +1,4 @@
+import { TurnDisposition } from "../../src/index.ts";
 /**
  * GBNF compatibility tests exercise both deliberate examples and seeded
  * derivations against the exported rule model. {§gbnf-rail-purpose}
@@ -173,61 +174,90 @@ const thinkTail = (body = ""): string => `${body}${THINK_CLOSE}`;
 const derivesQwenTurn = (content: string, reasoning = "thought", separator = ""): boolean =>
     derives("root-qwen", `${thinkTail(reasoning)}${separator}${content}`);
 
-const plan = (body: string): string => `## PLAN_\n${body}\n`;
-const mid = (op: string, slots = "", body?: string): string =>
-    body === undefined ? `### ${op}_${slots}\n` : `### ${op}_${slots}\n${body}\n`;
-// {§send-label} — the harness keeps numeric dispositions and spells them as the rail does.
-const LABEL: Record<number, string> = { 102: "NEXT", 200: "TERM", 202: "WAIT", 499: "FAIL" };
-const terminal = (code: number, body: string, slots = ""): string => `### SEND_ (${LABEL[code] ?? "DONE"})${slots}\n${body}`;
-const turn = (planBody: string, operations: string[], code = 200, sendBody = "done", sendSlots = ""): string =>
-    `${plan(planBody)}${operations.join("")}${terminal(code, sendBody, sendSlots)}`;
+const mid = (op: string, slots = "", body?: string): string => {
+    const executor = op === "EXEC" ? /^\s*\[([^\]]+)\]/.exec(slots) : null;
+    const header = executor === null ? op + slots : executor[1] + slots.slice(executor[0].length);
+    return body === undefined ? "```" + header + "```\n" : "```" + header + "\n" + body + "\n```\n";
+};
+// {§turn-disposition}
+const STATE: Record<number, string> = { 102: "in_progress", 200: "completed", 202: "waiting", 499: "failed" };
+const terminal = (code: number, body: string, slots = ""): string =>
+    PlurnkParser.frame("TASK" + slots, JSON.stringify([{ content: body, status: STATE[code] }]));
+const turn = (operations: string[], code = 200, sendBody = "done", sendSlots = ""): string =>
+    `${operations.join("")}${terminal(code, sendBody, sendSlots)}`;
+
+test("empty multiline operations terminate at their first closing fence on both rails", () => {
+    for (const header of ["READ (worker:///poem.md)", "FIND (*)", "KILL (log:///**/READ)", "sh", "COPY (a) (b)", "MOVE (a) (b)", "SEND (worker://peer)"]) {
+        const content = `\`\`\`${header}\n\`\`\`\n${terminal(102, "Inspect the results.")}`;
+        assert.equal(derivesTurn(content), true, header);
+        assert.equal(derivesQwenTurn(content), true, header);
+        assert.deepEqual(PlurnkParser.parse(content).items.filter(({ kind }) => kind === "error"), [], header);
+    }
+    for (const op of ["READ", "FIND", "KILL"]) {
+        const content = `\`\`\`${op} (worker:///poem.md)\n\`\`\`\n\`\`\`\n${terminal(102, "Inspect the results.")}`;
+        assert.equal(derivesTurn(content), false, `${op}: a closing fence is not a matcher body`);
+        assert.equal(derivesQwenTurn(content), false, `${op}: a closing fence is not a matcher body`);
+    }
+});
+
+test("matcher rail boundary protection retains ordinary ticks and a single body line", () => {
+    for (const body of ["`quoted`", "``quoted``", "~a```b", "~key:value"]) {
+        const content = turn([mid("FIND", " (doc.md)", body)], 102, "Inspect matches.");
+        assert.equal(derivesTurn(content), true, body);
+        assert.equal(derivesQwenTurn(content), true, body);
+    }
+    for (const body of [":typo", "~first\nsecond"]) {
+        assert.equal(derivesTurn(turn([mid("FIND", " (doc.md)", body)], 102, "Inspect matches.")), false, body);
+    }
+});
 
 // {§gbnf-turn-shape}
-// {§turn-shape} — PLAN is optional on the rail as in the grammar; the terminal SEND is not.
-test("GBNF root takes an optional PLAN first and requires one disposition SEND", () => {
-    assert.equal(derivesTurn(turn("decompose", [mid("READ", " (worker:///x)")], 102, "reading")), true);
-    assert.equal(derivesTurn(turn("answer", [], 200, "Paris")), true);
+// {§turn-shape}
+test("GBNF root requires one disposition after zero or more operations", () => {
+    assert.equal(derivesTurn(turn([mid("READ", " (worker:///x)")], 102, "reading")), true);
+    assert.equal(derivesTurn(turn([], 200, "Paris")), true);
     assert.equal(derivesTurn(`${mid("READ", " (worker:///x)")}${terminal(102, "reading")}`), true, "a PLAN-less turn stands");
     assert.equal(derivesTurn(`${terminal(200, "Paris")}`), true, "a bare conclusion stands");
-    assert.equal(derivesTurn(plan("incomplete")), false);
+    assert.equal(derivesTurn(mid("READ", " (notes.md)")), false);
     // {§disposition-ends-turn} — the disposition body is the last sampled text; an operation after it is not derivable.
-    assert.equal(derivesTurn(`${turn("p", [], 200, "done")}\n### READ_ (worker:///late)\n`), false);
+    assert.equal(derivesTurn(`${turn([], 200, "done")}
+\`\`\`READ (worker:///late)\`\`\``), false);
 });
 
 // {§disposition-ends-turn} — neither rail derives an operation after any disposition; the same operations
 // before it derive, and a second disposition never does.
 test("neither rail derives an operation after any disposition, nor a second disposition", () => {
-    for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        const trailing = `${plan("curate")}### SEND_ (${label})\nAnswer.\n${mid("KILL", " (log:///3/3/1/READ)")}${mid("READ", " (notes.md)")}`;
+    for (const [label, code] of Object.entries({ in_progress: 102, waiting: 202, completed: 200, failed: 499 })) {
+        const operations = mid("KILL", " (log:///3/3/1/READ)") + mid("READ", " (notes.md)");
+        const trailing = terminal(code, "Answer.") + "\n" + operations;
         assert.equal(derivesTurn(trailing), false, label);
         assert.equal(derivesQwenTurn(trailing), false, label);
-        const closed = `${plan("curate")}${mid("KILL", " (log:///3/3/1/READ)")}${mid("READ", " (notes.md)")}### SEND_ (${label})\nAnswer.`;
+        const closed = operations + terminal(code, "Answer.");
         assert.equal(derivesTurn(closed), true, label);
         assert.equal(derivesQwenTurn(closed), true, label);
-        assert.equal(derivesTurn(`${closed}\n### SEND_ (TERM)\nAgain.`), false, label);
-        assert.equal(derivesQwenTurn(`${closed}\n### SEND_ (TERM)\nAgain.`), false, label);
+        assert.equal(derivesTurn(closed + "\n" + terminal(200, "Again.")), false, label);
+        assert.equal(derivesQwenTurn(closed + "\n" + terminal(200, "Again.")), false, label);
     }
-    assert.equal(derivesTurn(`${plan("idle")}### SEND_ (NEXT)\nNothing.`), false);
+    assert.equal(derivesTurn(terminal(102, "Nothing.")), true);
 });
-
 // {§disposition-ends-turn} — long sequences derive before the disposition only; the parser admits the
 // same set and drops what followed with one diagnostic.
 test("both rails admit long operation sequences before the one disposition and none after it", () => {
     for (const [before, after] of [[15, 0], [0, 15], [8, 8], [24, 24]]) {
         const operations = (count: number) => Array.from({ length: count }, (_, index) =>
             mid("KILL", ` (log:///1/${index + 1}/*/READ)`)).join("");
-        for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-            const content = plan("curate")
-                + operations(before) + `### SEND_ (${label})\nDone.`
+        for (const code of [102, 202, 200, 499]) {
+            const label = STATE[code];
+            const content = operations(before) + terminal(code, "Task state.")
                 + (after > 0 ? `\n${operations(after)}` : "");
-            const derivable = after === 0 && !(label === "NEXT" && before === 0);
+            const derivable = after === 0;
             assert.equal(derivesTurn(content), derivable, `${label}: ${before} before, ${after} after`);
             assert.equal(derivesQwenTurn(content), derivable, `${label}: ${before} before, ${after} after`);
             const parsed = PlurnkParser.parse(content);
             const errors = parsed.items.filter((item) => item.kind === "error");
             assert.deepEqual(errors.map((item) => item.error.code), after === 0 ? [] : [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
             if (after > 0) assert.match(errors[0]!.error.message, new RegExp(`${after} operations after its body were not admitted \\(KILL ×${after}\\)`, "u"));
-            assert.equal(parsed.items.filter((item) => item.kind === "statement").length, before + 2);
+            assert.equal(parsed.items.filter((item) => item.kind === "statement").length, before + 1);
             assert.equal(derivesTurn(`${content}\n${terminal(200, "Again.")}`), false);
             assert.equal(derivesQwenTurn(`${content}\n${terminal(200, "Again.")}`), false);
         }
@@ -236,12 +266,12 @@ test("both rails admit long operation sequences before the one disposition and n
 
 test("GBNF keeps brace globs inside targets and shapes opaque metadata after targets", () => {
     assert.equal(
-        derivesTurn(turn("curate", [mid("KILL", " (log:///1/[1-7]/*/{PLAN,READ})")], 102, "continue")),
+        derivesTurn(turn([mid("KILL", " (log:///1/[1-7]/*/{PLAN,READ})")], 102, "continue")),
         true,
         "brace alternation remains target syntax",
     );
     assert.equal(
-        derivesTurn(turn("retrieve", [mid("READ", " (https://api.example/me) {Authorization: Bearer TOKEN} {Accept: application/json}")], 102, "continue")),
+        derivesTurn(turn([mid("READ", " (https://api.example/me) {Authorization: Bearer TOKEN} {Accept: application/json}")], 102, "continue")),
         true,
         "ordered metadata blocks follow the complete target",
     );
@@ -252,7 +282,7 @@ test("{§scheme-metadata-modifier}: rails preserve quoted braces and nested meta
         `args=${JSON.stringify(["}", "{", 'quote"}here', "\\}", "line\nbreak"])}`,
         'request={"nested":{"value":"}"}}',
     ]) {
-        const content = turn("run", [mid("EXEC", ` [node] (script.js) {${metadata}}`, "stdin")], 102, "continue");
+        const content = turn([mid("EXEC", ` [node] (script.js) {${metadata}}`, "stdin")], 102, "continue");
         assert.equal(derivesTurn(content), true, metadata);
         const parsed = PlurnkParser.parse(content);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
@@ -264,51 +294,63 @@ test("{§scheme-metadata-modifier}: rails preserve quoted braces and nested meta
 
 test("{§section-boundary}: GBNF composes adjacent operation sections without blank separators", () => {
     const content = [
-        "## PLAN_",
-        "Read the target, then curate the result.",
-        "### READ_ (worker:///x)",
-        "### KILL_ (log:///**/READ)",
+        "```READ (worker:///x)```",
+        "```KILL (log:///**/READ)",
         "needle",
-        "### SEND_ (NEXT)",
+        "```",
+        "```TASK",
         "Continue from the retrieved result.",
+        "```",
     ].join("\n");
 
     assert.equal(derivesTurn(content), true);
 });
 
+test("{§section-boundary}: both rails admit blank lines between executable blocks", () => {
+    for (const separator of ["\n", "\n\n", " \t\n\n"]) {
+        const content = [
+            mid("FIND", " (worker:///notes/**) <1,-1>", "~irrigation"),
+            mid("SEND", " (worker://peer)", "Found the note."),
+            terminal(102, "Report the matching path."),
+        ].join(separator);
+        assert.equal(derivesTurn(content), true, JSON.stringify(separator));
+        assert.equal(derivesQwenTurn(content), true, JSON.stringify(separator));
+        assert.deepEqual(PlurnkParser.parse(content).items.filter(({ kind }) => kind === "error"), []);
+    }
+});
+
 test("{§send-directed-scope}: GBNF admits scheduled directed SEND beside an ordinary disposition", () => {
     for (const scope of ["<60>", "<0,60>"]) {
-        const content = turn("schedule the check", [mid("SEND", ` (worker://reviewer) ${scope}`, "Check for updates.")], 102, "Inspect the acknowledgement.");
+        const content = turn([mid("SEND", ` (worker://reviewer) ${scope}`, "Check for updates.")], 102, "Inspect the acknowledgement.");
         assert.equal(derivesTurn(content), true, scope);
         assert.deepEqual(PlurnkParser.parse(content).items.filter((item) => item.kind === "error"), []);
     }
 });
 
-test("GBNF optionally frames the complete PLURNK document in a paired fence", () => {
-    const content = turn("decompose", [mid("READ", " (worker:///x)")], 102, "reading");
+test("GBNF emits executable blocks without a document wrapper", () => {
+    const content = turn([mid("READ", " (worker:///x)")], 102, "reading");
     assert.equal(derivesTurn(content), true);
-    assert.equal(derivesTurn(`\`\`\`plurnk\n${content}\n\`\`\``), true);
-    assert.equal(derivesTurn(`\`\`\`plurnk\n${content}`), false);
+    assert.equal(derivesTurn("````plurnk\n" + content + "\n````"), false);
+    assert.equal(derivesTurn("````plurnk\n" + content), false);
 });
-
-// {§no-idle-102}
-test("GBNF excludes zero-operation 102 and restores it after one internal operation", () => {
-    assert.equal(derivesTurn(turn("think", [], 102, "working")), false);
-    assert.equal(derivesTurn(turn("think", [], 102, "working", " (worker://~)")), false);
-    assert.equal(derivesTurn(turn("think", [mid("READ", " (worker:///x)")], 102, "working")), true);
-    assert.equal(derivesTurn(turn("think", [mid("SEND", "", "progress")], 102, "working")), true);
+// {§inventory-only-turn}
+test("GBNF admits inventory-only continuation without inferring idleness", () => {
+    assert.equal(derivesTurn(turn([], 102, "working")), true);
+    assert.equal(derivesTurn(turn([], 102, "working", " (worker://~)")), false);
+    assert.equal(derivesTurn(turn([mid("READ", " (worker:///x)")], 102, "working")), true);
+    assert.equal(derivesTurn(turn([mid("SEND", "", "progress")], 102, "working")), true);
     for (const code of [200, 202, 499]) {
-        assert.equal(derivesTurn(turn("think", [], code, "terminal")), true, String(code));
+        assert.equal(derivesTurn(turn([], code, "terminal")), true, String(code));
     }
-    assert.equal(derivesTurn(turn("think", [], 300, "question")), false, "an unknown label is no disposition; the turn has no terminal");
+    assert.equal(derivesTurn(PlurnkParser.frame("TASK", "unstructured inventory")), true, "the parser, not GBNF, normalizes inventory values");
 
-    const tolerant = PlurnkParser.parse(`${plan("think")}${terminal(102, "working")}`);
+    const tolerant = PlurnkParser.parse(`${terminal(102, "working")}`);
     assert.deepEqual(tolerant.items.filter((item) => item.kind === "error"), []);
 });
 
 // {§gbnf-reasoning-boundary}
 test("GBNF root has exactly one leading Harmony reasoning channel", () => {
-    const content = turn("intent", [], 200, "answer");
+    const content = turn([], 200, "answer");
     assert.equal(derivesTurn(content, "Analyze the task."), true);
     assert.equal(derivesTurn(content), true);
     assert.equal(derivesTurn(content, "reason", "\n \t"), true);
@@ -322,7 +364,7 @@ test("GBNF root has exactly one leading Harmony reasoning channel", () => {
 });
 
 test("each rail constrains the sampled text at its template's generation boundary", () => {
-    const content = turn("intent", [], 200, "answer");
+    const content = turn([], 200, "answer");
     assert.equal(derivesQwenTurn(content, "Analyze the task."), true);
     assert.equal(derivesQwenTurn(content), true);
     assert.equal(derivesQwenTurn(content, "reason", "\n \t"), true);
@@ -332,26 +374,26 @@ test("each rail constrains the sampled text at its template's generation boundar
     assert.equal(derives("root-qwen", `${THINK_OPEN}inner${THINK_CLOSE}${content}`), false);
 });
 
-test("reasoning channel rejects nested channel delimiters and cannot recur after PLAN", () => {
-    const content = turn("p", [mid("READ", " (worker:///x)")], 102, "waiting");
+test("reasoning channel rejects nested channel delimiters and cannot recur after operations", () => {
+    const content = turn([mid("READ", " (worker:///x)")], 102, "waiting");
     assert.equal(derives("channel", `${CHANNEL_OPEN}outer ${CHANNEL_OPEN}inner${CHANNEL_CLOSE}`), false);
-    assert.equal(derivesTurn(`${plan("p")}${channel("between")}${terminal(200, "done")}`), false);
+    assert.equal(derivesTurn(`${mid("READ", " (notes.md)")}${channel("between")}${terminal(200, "done")}`), false);
     assert.equal(derivesTurn(content, "one uninterrupted reasoning span"), true);
 });
 
-test("ANTLR preserves provider preamble text before the PLAN anchor", () => {
-    const source = `plain preamble\n${turn("do the thing", [mid("READ", " (worker:///x)")], 200, "done")}`;
+test("ANTLR preserves provider preamble text before an operation fence", () => {
+    const source = `plain preamble\n${turn([mid("READ", " (worker:///x)")], 200, "done")}`;
     const result = PlurnkParser.parse(source);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.deepEqual(
         result.items.filter((item) => item.kind === "text").map(({ text }) => text),
         ["plain", "preamble"],
     );
-    assert.equal(result.items.find((item) => item.kind === "statement")?.statement.op, "PLAN");
+    assert.equal(result.items.find((item) => item.kind === "statement")?.statement.op, "READ");
 });
 
-test("ANTLR recognizes a PLAN anchor directly after provider preamble text", () => {
-    const source = `harmless status.${turn("do the thing", [mid("READ", " (worker:///x)")], 200, "done")}`;
+test("ANTLR recognizes an operation fence directly after provider preamble text", () => {
+    const source = `harmless status.${turn([mid("READ", " (worker:///x)")], 200, "done")}`;
     const result = PlurnkParser.parse(source);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.deepEqual(
@@ -360,7 +402,7 @@ test("ANTLR recognizes a PLAN anchor directly after provider preamble text", () 
     );
     assert.deepEqual(
         result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement.op),
-        ["PLAN", "READ", "SEND"],
+        ["READ", "TASK"],
     );
     assert.deepEqual(
         result.items.find((item) => item.kind === "statement")?.statement.position,
@@ -368,37 +410,34 @@ test("ANTLR recognizes a PLAN anchor directly after provider preamble text", () 
     );
 });
 
-test("separator-free PLAN tolerance does not promote ordinary hashes or inline operations", () => {
-    const source = `ordinary.## PLAN_! remains preamble\n${turn(
-        "keep inline ### READ_ (worker:///not-an-operation) as body",
+test("separator-free fence tolerance does not promote ordinary hashes or inline operations", () => {
+    const source = `ordinary.## Heading! remains preamble\n${turn(
         [],
         200,
-        "done",
+        "keep inline ### READ_ (worker:///not-an-operation) as body",
     )}`;
     const result = PlurnkParser.parse(source);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.deepEqual(
         result.items.filter((item) => item.kind === "text").map(({ text }) => text),
-        ["ordinary.", "#", "#", "PLAN_!", "remains", "preamble"],
+        ["ordinary.##", "Heading!", "remains", "preamble"],
     );
     const statements = result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["TASK"]);
     const first = statements[0];
-    assert.deepEqual(first?.op === "PLAN" ? first.body : undefined, [{
-            content: "keep inline ### READ_ (worker:///not-an-operation) as body",
-            status: "in_progress",
-    }]);
+    assert.equal(first?.op === "TASK" ? first.body[0]?.content : undefined,
+        "keep inline ### READ_ (worker:///not-an-operation) as body");
 });
 
 // {§park-202-only} {§waitpid-dispositions}
-test("GBNF terminal labels and the WAIT park scope are bounded", () => {
-    assert.equal(derivesTurn(turn("p", [], 202, "bounded", " <30>")), true);
-    assert.equal(derivesTurn(turn("p", [], 202, "polled", " <30,5>")), true);
-    assert.equal(derivesTurn(turn("p", [], 202, "indefinite", " <-1>")), true);
-    assert.equal(derivesTurn(turn("p", [], 202, "targeted", " (worker://parent) <30,5>")), false, "a label SEND names no recipient");
-    assert.equal(derivesTurn(turn("p", [], 200, "no park", " <30>")), false);
-    assert.equal(derivesTurn(turn("p", [], 499, "abort")), true);
-    assert.equal(derivesTurn(`${plan("p")}### SEND_ (DONE)\ninvalid`), false, "only the four labels conclude a turn");
+test("GBNF bounds TASK timing syntax without interpreting inventory intent", () => {
+    assert.equal(derivesTurn(turn([], 202, "bounded", " <30>")), true);
+    assert.equal(derivesTurn(turn([], 202, "polled", " <30,5>")), true);
+    assert.equal(derivesTurn(turn([], 202, "indefinite", " <-1>")), true);
+    assert.equal(derivesTurn(turn([], 202, "targeted", " (worker://parent) <30,5>")), false, "a label SEND names no recipient");
+    assert.equal(derivesTurn(turn([], 200, "no park", " <30>")), true, "unused timing is a runtime warning, not grammar rejection");
+    assert.equal(derivesTurn(turn([], 499, "abort")), true);
+    assert.equal(derivesTurn(`${PlurnkParser.frame("SEND (DONE)", "invalid")}`), false, "SEND does not substitute for TASK");
 });
 
 test("GBNF admits canonical authenticated HTTP and WebSocket targets", () => {
@@ -407,58 +446,58 @@ test("GBNF admits canonical authenticated HTTP and WebSocket targets", () => {
         "ws://example.test/socket",
         "wss://example.test/socket",
     ]) {
-        assert.equal(derivesTurn(turn("read", [mid("READ", ` (${target})`)], 102, "reading")), true, target);
+        assert.equal(derivesTurn(turn([mid("READ", ` (${target})`)], 102, "reading")), true, target);
     }
 });
 
 test("GBNF requires a disposition even after a long operation sequence", () => {
     const operation = mid("READ", " (worker:///x)");
     for (const count of [1, 14, 15, 32]) {
-        assert.equal(derivesTurn(`${plan("p")}${operation.repeat(count)}`), false);
-        assert.equal(derivesQwenTurn(`${plan("p")}${operation.repeat(count)}`), false);
+        assert.equal(derivesTurn(`${operation.repeat(count)}`), false);
+        assert.equal(derivesQwenTurn(`${operation.repeat(count)}`), false);
     }
 });
 
 test("GBNF matcher bodies are one line while content bodies may be multiline", () => {
-    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "/needle/i")], 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "&<needle")], 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "@(needle|other)")], 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "@literal")], 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "line one\nline two")], 102, "done")), false);
-    assert.equal(derivesTurn(turn("p", [mid("EDIT", " (a)", "line one\nline two")], 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", [], 200, "multi\nline")), true);
+    assert.equal(derivesTurn(turn([mid("FIND", " (a)", "/needle/i")], 102, "done")), true);
+    assert.equal(derivesTurn(turn([mid("FIND", " (a)", "&<needle")], 102, "done")), true);
+    assert.equal(derivesTurn(turn([mid("FIND", " (a)", "@(needle|other)")], 102, "done")), true);
+    assert.equal(derivesTurn(turn([mid("FIND", " (a)", "@literal")], 102, "done")), true);
+    assert.equal(derivesTurn(turn([mid("FIND", " (a)", "line one\nline two")], 102, "done")), false);
+    assert.equal(derivesTurn(turn([mid("EDIT", " (a)", "line one\nline two")], 102, "done")), true);
+    assert.equal(derivesTurn(turn([], 200, "multi\nline")), true);
 });
 
 test("GBNF permits Base62 line anchors on text-coordinate operation scopes", () => {
     assert.equal(
-        derivesTurn(turn("p", [mid("EDIT", " (worker:///x) <@aZ09b>", "replacement")], 102, "done")),
+        derivesTurn(turn([mid("EDIT", " (worker:///x) <@aZ09b>", "replacement")], 102, "done")),
         true,
     );
     assert.equal(
-        derivesTurn(turn("p", [mid("EDIT", " (worker:///x) <@aZ09b,@0Aa9Z>", "replacement")], 102, "done")),
+        derivesTurn(turn([mid("EDIT", " (worker:///x) <@aZ09b,@0Aa9Z>", "replacement")], 102, "done")),
         true,
     );
     assert.equal(
-        derivesTurn(turn("p", [mid("READ", " (worker:///x) <@aZ09b>")], 102, "done")),
+        derivesTurn(turn([mid("READ", " (worker:///x) <@aZ09b>")], 102, "done")),
         true,
     );
     assert.equal(
-        derivesTurn(turn("p", [mid("COPY", " (worker:///x) <@aZ09b> (worker:///y)")], 102, "done")),
+        derivesTurn(turn([mid("COPY", " (worker:///x) <@aZ09b> (worker:///y)")], 102, "done")),
         true,
     );
     assert.equal(
-        derivesTurn(turn("p", [mid("MOVE", " (worker:///x) <@aZ09b> (worker:///y)")], 102, "done")),
+        derivesTurn(turn([mid("MOVE", " (worker:///x) <@aZ09b> (worker:///y)")], 102, "done")),
         true,
     );
     for (const combined of ["<@aZ09b:42,@0Aa9Z:43>", "<@aZ09b 42,@0Aa9Z 43>"]) {
         assert.equal(
-            derivesTurn(turn("p", [mid("EDIT", ` (worker:///x) ${combined}`, "replacement")], 102, "done")),
+            derivesTurn(turn([mid("EDIT", ` (worker:///x) ${combined}`, "replacement")], 102, "done")),
             false,
             combined,
         );
     }
     assert.equal(
-        derivesTurn(turn("p", [mid("FIND", " (worker:///*) <@aZ09b>")], 102, "done")),
+        derivesTurn(turn([mid("FIND", " (worker:///*) <@aZ09b>")], 102, "done")),
         false,
     );
 });
@@ -466,14 +505,14 @@ test("GBNF permits Base62 line anchors on text-coordinate operation scopes", () 
 // {§gbnf-kill-shaping}
 // {§kill-scope}
 test("GBNF KILL shapes whole-item and scoped curation while the parser owns selection validity", () => {
-    assert.equal(derivesTurn(turn("p", [mid("KILL", " (log:///1/2/3/READ)")], 102, "done")), true, "whole log item");
-    assert.equal(derivesTurn(turn("p", [mid("KILL", " (log:///1/[1-7]/*/{PLAN,READ})")], 102, "done")), true, "bulk selection");
-    assert.equal(derivesTurn(turn("p", [mid("KILL", " (log:///**/READ) <17,-1>")], 102, "done")), true, "scoped log bodies");
-    assert.equal(derivesTurn(turn("p", [mid("KILL", " (log:///**)", "needle")], 102, "done")), true, "matcher-selected rows");
-    assert.equal(derivesTurn(turn("p", [mid("KILL", " (worker:///notes.md) <@aB3dE,@0Aa9Z>")], 102, "done")), true, "an entry span by anchor");
-    assert.equal(derivesTurn(turn("p", [mid("KILL", "")], 102, "done")), false, "the rail always names a target");
-    assert.equal(derivesTurn(turn("p", [mid("KILL", " <17,-1> (log:///**)")], 102, "done")), false, "canonical slot order");
-    const parsed = PlurnkParser.parse(turn("p", [mid("KILL", " (log:///**/READ) <17,-1>", "needle")], 102, "done"));
+    assert.equal(derivesTurn(turn([mid("KILL", " (log:///1/2/3/READ)")], 102, "done")), true, "whole log item");
+    assert.equal(derivesTurn(turn([mid("KILL", " (log:///1/[1-7]/*/{PLAN,READ})")], 102, "done")), true, "bulk selection");
+    assert.equal(derivesTurn(turn([mid("KILL", " (log:///**/READ) <17,-1>")], 102, "done")), true, "scoped log bodies");
+    assert.equal(derivesTurn(turn([mid("KILL", " (log:///**)", "needle")], 102, "done")), true, "matcher-selected rows");
+    assert.equal(derivesTurn(turn([mid("KILL", " (worker:///notes.md) <@aB3dE,@0Aa9Z>")], 102, "done")), true, "an entry span by anchor");
+    assert.equal(derivesTurn(turn([mid("KILL", "")], 102, "done")), false, "the rail always names a target");
+    assert.equal(derivesTurn(turn([mid("KILL", " <17,-1> (log:///**)")], 102, "done")), false, "canonical slot order");
+    const parsed = PlurnkParser.parse(turn([mid("KILL", " (log:///**/READ) <17,-1>", "needle")], 102, "done"));
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], "scope and matcher compose");
 });
 
@@ -509,16 +548,16 @@ test("GBNF COPY and MOVE shape two independently scoped resource selections", ()
 });
 
 // {§send-mid-reservation}
-// {§send-label}
+// {§turn-disposition}
 test("GBNF mid-turn SENDs name a recipient or the user and never carry a label", () => {
-    assert.equal(derivesTurn(turn("p", [mid("SEND", "", "progress")], 200, "done")), true, "the user is the default recipient");
-    assert.equal(derivesTurn(turn("p", [mid("SEND", " (worker://child)", "progress")], 200, "done")), true);
-    assert.equal(derivesTurn(turn("p", [mid("SEND", " (https://hooks.example/notify)", "progress")], 200, "done")), true);
-    for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        assert.equal(derivesTurn(turn("p", [mid("SEND", ` (${label})`, "not terminal")], 200, "done")), false, label);
+    assert.equal(derivesTurn(turn([mid("SEND", "", "progress")], 200, "done")), true, "the user is the default recipient");
+    assert.equal(derivesTurn(turn([mid("SEND", " (worker://child)", "progress")], 200, "done")), true);
+    assert.equal(derivesTurn(turn([mid("SEND", " (https://hooks.example/notify)", "progress")], 200, "done")), true);
+    for (const label of ["NEXT", "WAIT", "DONE", "FAIL"]) {
+        assert.equal(derivesTurn(turn([mid("SEND", ` (${label})`, "not terminal")], 200, "done")), false, label);
     }
-    assert.equal(derives("send-statement", "### SEND_ (worker://child) (worker://other)\nmessage\n"), false, "one recipient");
-    assert.equal(derives("send-statement", "### SEND_ [102]\nmessage\n"), false, "the retired code slot");
+    assert.equal(derives("send-statement", "```SEND (worker://child) (worker://other)\nmessage\n\n```"), false, "one recipient");
+    assert.equal(derives("send-statement", "```SEND [102]\nmessage\n\n```"), false, "the retired code slot");
 });
 
 test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and bodies", () => {
@@ -544,119 +583,158 @@ test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and 
 
 // {§operation-annotation}
 test("GBNF permits one canonical trailing operation annotation", () => {
-    assert.equal(derives(
-        "statement",
-        "### EXEC_ [gitea] (list_issues) <!-- Lists issues -->\n{}\n",
-    ), true);
-    assert.equal(derives(
-        "statement",
-        "### EXEC_ <!-- Lists issues --> [gitea] (list_issues)\n{}\n",
-    ), false);
-    assert.equal(derives(
-        "statement",
-        "### EXEC_ [gitea] (list_issues) <!-- Lists\nissues -->\n{}\n",
-    ), false);
-    assert.equal(derivesTurn(
-        "## PLAN_ <!-- Keep the Plan current -->\nreason\n"
-        + "### SEND_ (TERM) <!-- Return the answer -->\ndone",
-    ), true);
+    assert.equal(derives("statement", mid("gitea", " (list_issues) <!-- Lists issues -->", "{}")), true);
+    assert.equal(derives("statement", mid("gitea", " <!-- Lists issues --> (list_issues)", "{}")), false);
+    assert.equal(derives("statement", mid("gitea", " (list_issues) <!-- Lists\nissues -->", "{}")), false);
+    assert.equal(derivesTurn("```SEND\ndone\n```\n```TASK <!-- Return the answer -->\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"), true);
 });
-
-test("GBNF PLAN is a nonempty slotless H1 lane `_` anchor only", () => {
-    assert.equal(derivesTurn(turn("intent", [], 200, "done")), true);
-    assert.equal(derivesTurn(turn('[]', [], 200, "done")), true, "the semantic JSON form remains ordinary PLAN body text");
-    assert.equal(derivesTurn(`## PLAN_ [tag]\nintent\n${terminal(200, "done")}`), false);
-    assert.equal(derivesTurn(`## PLAN_\n${terminal(200, "done")}`), false);
-    assert.equal(derivesTurn(`## PLAN\nintent\n${terminal(200, "done")}`), false);
-    assert.equal(derivesTurn(`## PLANouter\nintent\n${terminal(200, "done")}`), false);
-    assert.equal(derives("statement", mid("PLAN", "", "intent")), false);
+test("GBNF shapes continuation bodies without enforcing the inventory JSON signature", () => {
+    for (const code of [102, 202]) {
+        for (const body of ["[]", '[{"content":"Observe results.","status":"pending"}]', "Observe results.", '{"unfinished":']) {
+            const content = turn([mid("READ", " (notes.md)")], code, body);
+            assert.equal(derivesTurn(content), true, body);
+            assert.equal(derivesQwenTurn(content), true, body);
+            assert.equal(derivesTurn(content.replaceAll("```", "````")), true, body);
+        }
+        assert.equal(derivesTurn(turn([mid("READ", " (notes.md)")], code, "[]", " (tag)")), false);
+    }
 });
-
 // {§rail-heading-boundaries}
 test("GBNF allows inline operation quotations without inventing sections", () => {
     for (const body of [
         "quote ### READ_ here",
-        "Use `### SEND_ (NEXT)` after retrieval.",
+        "Use `NEXT` after retrieval.",
         "Quoted alternate lane: ## PLAN2 and ### SEND2 (TERM).",
         "Instructions:\n> ### READ_ (x)\n    ### EDIT_ (x)",
         "First line\nThen quote `### KILL_ (log:///**/READ)`.",
     ]) {
-        const content = turn(body, [mid("EDIT", " (note.md)", body)], 200, body);
+        const content = turn([mid("EDIT", " (note.md)", body)], 200, body);
         assert.equal(derivesTurn(content), true, body);
         assert.equal(derivesQwenTurn(content), true, body);
         const parsed = PlurnkParser.parse(content);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], body);
         const statements = parsed.items.filter((item) => item.kind === "statement");
-        assert.equal(statements.length, 3, body);
-        const edit = statements[1].statement;
+        assert.equal(statements.length, 2, body);
+        const edit = statements[0].statement;
         assert.ok(edit.op === "EDIT");
         assert.equal(edit.body?.trim(), body);
-        const send = statements[2].statement;
-        assert.ok(send.op === "SEND");
-        assert.equal(send.body?.raw.trim(), body);
+        const send = statements[1].statement;
+        assert.ok(send.op === "TASK");
+        assert.equal(send.body[0]?.content, body);
     }
 });
 
-test("GBNF reserves operation stems at the first body line and subsequent line starts", () => {
-    assert.equal(derivesTurn(turn("## PLAN2\nquoted plan\n\n### SEND2 (TERM)\nquoted answer", [], 200, "done")), false);
-    for (const heading of ["## PLAN", ...["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"].map((op) => `### ${op}`)]) {
-        for (const suffix of ["0", "2", "outer", ""]) {
-            for (const prefix of ["", "text\n", "text\n\n"]) {
-                assert.equal(derives("statement", mid("EDIT", " (note.md)", `${prefix}${heading}${suffix} (x)`)), false);
-            }
-        }
+test("GBNF reserves fence boundaries, not operation stems or Markdown headings", () => {
+    for (const body of ["## PLAN_", "### READ (x)", "PLAN", "DONE", "# Heading\ntext"]) {
+        assert.equal(derives("statement", mid("EDIT", " (note.md)", body)), true, body);
     }
-    assert.equal(derives("statement", mid("EXEC", " (sh)", "pwd\n\n### SEND_ (NEXT)\nnot a terminal section")), false);
+    for (const prefix of ["", "text\n", "text\n\n"]) {
+        assert.equal(derives("statement", mid("EDIT", " (note.md)", prefix + "```sh\necho hello\n```")), false);
+    }
+    const quoted = PlurnkParser.frame("EDIT (note.md)", "```sh\necho hello\n```");
+    assert.equal(PlurnkParser.parseStatements(quoted).items.some((item) => item.kind === "error"), false);
+});
+test("GBNF TASK body is required and names no recipient", () => {
+    assert.equal(derivesTurn(turn([], 200, "done")), true);
+    assert.equal(derivesTurn(turn([], 200, "done", " (worker://parent)")), false);
+    assert.equal(derivesTurn(`${PlurnkParser.frame("TASK", null)}`), false);
+    assert.equal(derivesTurn(`${PlurnkParser.frame("TASK", "")}`), false);
 });
 
-test("GBNF terminal SEND body is required and names no recipient", () => {
-    assert.equal(derivesTurn(turn("p", [], 200, "done")), true);
-    assert.equal(derivesTurn(turn("p", [], 200, "done", " (worker://parent)")), false);
-    assert.equal(derivesTurn(`${plan("p")}### SEND_ (TERM)`), false);
-    assert.equal(derivesTurn(`${plan("p")}### SEND_ (TERM)\n`), false);
+test("GBNF admits matching three/four fences and comma scopes while ANTLR accepts longer fences and dash scopes", () => {
+    assert.equal(derives("statement", mid("READ", " (x)")), true);
+    assert.equal(derives("statement", "````READ (x)````\n"), true);
+    assert.equal(derives("statement", "`````READ (x)`````\n"), false);
+    assert.equal(derives("statement", mid("READ", " (x) <1,5>")), true);
+    assert.equal(derives("statement", mid("READ", " (x) <1-5>")), false);
+    for (const source of ["```READ (x) <1-5>```", "````READ (x) <1-5>````"]) {
+        assert.equal(PlurnkParser.parseStatements(source).items.some((item) => item.kind === "error"), false);
+    }
 });
 
-test("GBNF fixes lane `_` and canonical comma scopes while ANTLR tolerates wider lanes and dash scopes", () => {
-    assert.equal(derives("statement", "### READ_ (x)\n"), true);
-    assert.equal(derives("statement", "### READouter (x)\n"), false);
-    assert.equal(derives("statement", "### READ (x)\n"), false);
-    assert.equal(derives("statement", "### READ_ (x) <1,5>\n"), true);
-    assert.equal(derives("statement", "### READ_ (x) <1-5>\n"), false);
-
-    assert.equal(PlurnkParser.parseStatements("### READouter (x) <1-5>").items.some((item) => item.kind === "error"), false);
-    assert.equal(PlurnkParser.parseStatements("### READ (x) <1-5>").items.some((item) => item.kind === "error"), false);
+test("{§rail-heading-boundaries}: both fence lengths cover the complete operation vocabulary", () => {
+    const blocks = [
+        mid("FIND", " (*)"),
+        mid("READ", " (notes.md)", ""),
+        mid("EDIT", " (notes.md) <1,-1>", "replacement"),
+        mid("COPY", " (source.md) (copy.md)"),
+        mid("MOVE", " (source.md) (destination.md)"),
+        mid("EXEC", " [sh]", "printf hello"),
+        mid("gitea", " (list_issues)", '{"repo_id":42}'),
+        mid("BARE", "", "What is the capital of Germany?"),
+        mid("BARE", " (question.md)"),
+        mid("WORK", " (worker://review)", "Review the changes."),
+        mid("FORK", " (worker://review)", "Review the changes."),
+        mid("KILL", " (log:///**/READ)", ""),
+        mid("SEND", " (worker://review)", "Ready for review."),
+        mid("SEND", "", "An update."),
+    ];
+    for (const count of [3, 4]) {
+        const fence = "`".repeat(count);
+        const content = blocks.map((block) => block.replaceAll("```", fence)).join("\n")
+            + terminal(102, "Continue from results.").replaceAll("```", fence);
+        assert.equal(derivesTurn(content), true, `${count} backticks`);
+        assert.equal(derivesQwenTurn(content), true, `${count} backticks`);
+        assert.deepEqual(PlurnkParser.parse(content).items.filter(({ kind }) => kind === "error"), []);
+    }
 });
 
+test("{§rail-heading-boundaries}: longer fences preserve literal code in EDIT and every disposition", () => {
+    const body = "Run this command:\n\n```sh\nprintf hello\n```\n\nThen inspect the result.";
+    for (const code of [102, 200, 202, 499]) {
+        const content = PlurnkParser.frame("EDIT (README.md) <1,-1>", body) + "\n\n"
+            + terminal(code, body);
+        assert.equal(derivesTurn(content), true, STATE[code]);
+        assert.equal(derivesQwenTurn(content), true, STATE[code]);
+        const parsed = PlurnkParser.parse(content);
+        assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
+        const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "TASK"]);
+        assert.equal(statements[0].op === "EDIT" ? statements[0].body : null, body);
+        const disposition = statements[1];
+        assert.ok(TurnDisposition.is(disposition));
+        assert.deepEqual(disposition.body, [{ content: body, status: STATE[code] }]);
+    }
+});
+
+test("{§fence-boundary}: the rail does not mix opening and closing counts or duplicate empty closers", () => {
+    for (const content of [
+        "````READ (x)```\n" + terminal(102, "Read it."),
+        "```READ (x)````\n" + terminal(102, "Read it."),
+        "````READ (x)\n````\n````\n" + terminal(102, "Read it."),
+        "````DONE\nDone.\n```",
+        "```DONE\nDone.\n````",
+    ]) {
+        assert.equal(derivesTurn(content), false, content);
+        assert.equal(derivesQwenTurn(content), false, content);
+    }
+});
 // {§path-parentheses}
 test("GBNF targets require canonical escaping for delimiters and parentheses", () => {
-    assert.equal(derives("statement", "### READ_ (https://example.test/a%28b%29)\n"), true);
-    assert.equal(derives("statement", String.raw`### READ_ (https://example.test/a\(b\))
-`), true);
-    assert.equal(derives("statement", "### READ_ (https://example.test/a(b))\n"), false);
-    assert.equal(derives("statement", "### READ_ (a<b)\n"), false);
+    assert.equal(derives("statement", mid("READ", " (https://example.test/a%28b%29)")), true);
+    assert.equal(derives("statement", mid("READ", " (https://example.test/a\\(b\\))")), true);
+    assert.equal(derives("statement", mid("READ", " (https://example.test/a(b))")), false);
+    assert.equal(derives("statement", mid("READ", " (a<b)")), false);
 });
-
 // {§slot-order}
 test("GBNF emits spaced canonical slot order while ANTLR accepts spaced permutations", () => {
-    const canonical = "### FIND_ (source) <1,5>\nneedle\n";
-    const reordered = "### FIND_ <1,5> (source)\nneedle\n";
-    const compact = "### FIND_ (source)<1,5>\nneedle\n";
+    const canonical = mid("FIND", " (source) <1,5>", "needle");
+    const reordered = mid("FIND", " <1,5> (source)", "needle");
+    const compact = mid("FIND", " (source)<1,5>", "needle");
     assert.equal(derives("statement", canonical), true);
     assert.equal(derives("statement", reordered), false);
     assert.equal(derives("statement", compact), false);
     assert.equal(PlurnkParser.parseStatements(reordered).items.some((item) => item.kind === "error"), false);
     assert.equal(PlurnkParser.parseStatements(compact).items.some((item) => item.kind === "error"), false);
+});test("GBNF shapes scoped bulk log curation with numeric or anchored lines", () => {
+    assert.equal(derives("statement", mid("KILL", " (log:///**/READ) <17,-1>")), true);
+    assert.equal(derives("statement", mid("KILL", " (log:///1/2/3/READ) <@aB3dE>")), true);
 });
-test("GBNF shapes scoped bulk log curation with numeric or anchored lines", () => {
-    assert.equal(derives("statement", "### KILL_ (log:///**/READ) <17,-1>\n"), true);
-    assert.equal(derives("statement", "### KILL_ (log:///1/2/3/READ) <@aB3dE>\n"), true);
-});
-
 test("representative rail turns round-trip through ANTLR", () => {
     for (const content of [
-        turn("read", [mid("READ", " (worker:///x)")], 102, "reading"),
-        turn("edit", [mid("EDIT", " (notes.md) <2>", "replacement")], 200, "done"),
-        turn("delegate", [mid("WORK", " (worker://child)", "do it")], 202, "waiting"),
+        turn([mid("READ", " (worker:///x)")], 102, "reading"),
+        turn([mid("EDIT", " (notes.md) <2>", "replacement")], 200, "done"),
+        turn([mid("WORK", " (worker://child)", "do it")], 202, "waiting"),
     ]) {
         assert.equal(derivesTurn(content, "reasoning"), true, content);
         const parsed = PlurnkParser.parse(content);
@@ -666,7 +744,7 @@ test("representative rail turns round-trip through ANTLR", () => {
 });
 
 test("rail-legal malformed matcher remains one bounded AstBuilder error", () => {
-    const content = turn("find", [mid("FIND", " (data.json)", "$[(")], 102, "searching");
+    const content = turn([mid("FIND", " (data.json)", "$[(")], 102, "searching");
     assert.equal(derivesTurn(content), true);
     const parsed = PlurnkParser.parse(content);
     const errors = parsed.items.filter((item) => item.kind === "error");
@@ -685,7 +763,7 @@ test("100 seeded turn derivations preserve exactly one disposition SEND", () => 
         assert.equal(result.unparsedTail, undefined, `seed ${seed}`);
         const statements = result.items.filter((item) => item.kind === "statement");
         assert.ok(statements.length >= 1, `seed ${seed}`);
-        const dispositions = statements.filter(({ statement }) => statement.op === "SEND" && statement.status !== null);
+        const dispositions = statements.filter(({ statement }) => TurnDisposition.is(statement));
         assert.equal(dispositions.length, 1, `seed ${seed}: exactly one disposition`);
         assert.ok(
             result.items.filter((item) => item.kind === "error").every((item) => item.error.source === "visitor"),
@@ -737,10 +815,10 @@ test("test recognizer can inspect alternate serialized roots", () => {
 });
 
 test("{§gbnf-turn-shape}: neither rail admits an empty thought", () => {
-    const qwen = turn("answer", [], 200, "Paris");
+    const qwen = turn([], 200, "Paris");
     assert.equal(derives("root-qwen", `${thinkTail("")}${qwen}`), false, "an empty qwen think body is not a turn");
     assert.equal(derives("root-qwen", `${thinkTail("x")}${qwen}`), true, "one character of thought is");
-    const content = turn("answer", [], 200, "Paris");
+    const content = turn([], 200, "Paris");
     assert.equal(derives("root-gemma", `${channel("")}${content}`), false, "an empty channel is not a turn");
     assert.equal(derives("root-gemma", `${channel("x")}${content}`), true, "one character of thought is");
 });

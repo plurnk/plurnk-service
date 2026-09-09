@@ -44,19 +44,18 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         contextWindow: 100_000,
         responses: [
             makeMockResponse([
-                "## PLAN_",
-                '[{"content":"Delegate the comparison to the configured remote agent.","status":"in_progress"}]',
-                "### SEND_ (a2a://remote)",
+                "```SEND (a2a://remote)",
                 "Compare mangoes and pineapples in one concise sentence.",
+                "```",
             ].join("\n")),
-            makeMockResponse("### SEND_ (WAIT)\nWaiting for the remote A2A Task."),
-            makeMockResponse("### SEND_ (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
+            makeMockResponse("```TASK\n[{\"content\":\"Waiting for the remote A2A Task.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### SEND_ (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
+            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();
@@ -174,28 +173,27 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async () => {
     const [callerDb, agentDb] = await Promise.all([openMigrated(), openMigrated()]);
     const delegate = (fruit: string) => makeMockResponse([
-        "## PLAN_",
-        '[{"content":"Delegate the comparison to the configured remote agent.","status":"in_progress"}]',
-        "### SEND_ (a2a://remote)",
-        `Compare ${fruit} in one concise sentence.`,
+        "```SEND (a2a://remote)",
+        "Compare " + (fruit) + " in one concise sentence.",
+        "```",
     ].join("\n"));
     const callerProvider = new Mock({
         contextWindow: 100_000,
         responses: [
             delegate("mangoes and pineapples"),
-            makeMockResponse("### SEND_ (WAIT)\nWaiting for the remote A2A Task."),
-            makeMockResponse("### SEND_ (TERM)\nFirst delegation done."),
+            makeMockResponse("```TASK\n[{\"content\":\"Waiting for the remote A2A Task.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nFirst delegation done.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             delegate("plums and cherries"),
-            makeMockResponse("### SEND_ (WAIT)\nWaiting for the second remote A2A Task."),
-            makeMockResponse("### SEND_ (TERM)\nSecond delegation done."),
-            makeMockResponse("### SEND_ (TERM)\nBystander observed nothing remote."),
+            makeMockResponse("```TASK\n[{\"content\":\"Waiting for the second remote A2A Task.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nSecond delegation done.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nBystander observed nothing remote.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("### SEND_ (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
-            makeMockResponse("### SEND_ (TERM)\nPlums and cherries are both drupes."),
+            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nPlums and cherries are both drupes.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();

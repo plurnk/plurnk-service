@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
+    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
         {
             "$ref": "#/$defs/FindStatement"
@@ -38,7 +38,7 @@
             "$ref": "#/$defs/KillStatement"
         },
         {
-            "$ref": "#/$defs/PlanStatement"
+            "$ref": "#/$defs/DispositionStatement"
         }
     ],
     "$defs": {
@@ -147,7 +147,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -159,9 +158,6 @@
             "properties": {
                 "op": {
                     "const": "FIND"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -187,7 +183,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -199,9 +194,6 @@
             "properties": {
                 "op": {
                     "const": "READ"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -227,7 +219,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -239,9 +230,6 @@
             "properties": {
                 "op": {
                     "const": "EDIT"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -270,7 +258,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "source",
                 "destination",
@@ -280,9 +267,6 @@
             "properties": {
                 "op": {
                     "const": "COPY"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -302,7 +286,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "source",
                 "destination",
@@ -312,9 +295,6 @@
             "properties": {
                 "op": {
                     "const": "MOVE"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -334,22 +314,17 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
                 "lineMarker",
                 "body",
-                "position",
-                "status"
+                "position"
             ],
             "additionalProperties": false,
             "properties": {
                 "op": {
                     "const": "SEND"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -368,23 +343,6 @@
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
-                },
-                "status": {
-                    "description": "The turn disposition the label names ({§send-label}): NEXT 102, WAIT 202, TERM 200, FAIL 499; null for a mid-turn message to a recipient.",
-                    "oneOf": [
-                        {
-                            "type": "integer",
-                            "enum": [
-                                102,
-                                200,
-                                202,
-                                499
-                            ]
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
                 }
             }
         },
@@ -392,7 +350,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "executor",
@@ -406,9 +363,6 @@
                 "op": {
                     "const": "EXEC"
                 },
-                "delimiter": {
-                    "type": "string"
-                },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
                 },
@@ -416,7 +370,7 @@
                     "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
                 "executor": {
-                    "description": "The `[executor]` slot: the registered executor that runs the program; null is the default shell.",
+                    "description": "The registered executor selected by the fence name; null is the default shell for native EXEC.",
                     "type": [
                         "string",
                         "null"
@@ -443,7 +397,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -455,9 +408,6 @@
             "properties": {
                 "op": {
                     "const": "BARE"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -479,51 +429,10 @@
                 }
             }
         },
-        "PlanStatement": {
-            "type": "object",
-            "required": [
-                "op",
-                "delimiter",
-                "annotation",
-                "metadata",
-                "target",
-                "lineMarker",
-                "body",
-                "position"
-            ],
-            "additionalProperties": false,
-            "properties": {
-                "op": {
-                    "const": "PLAN"
-                },
-                "delimiter": {
-                    "type": "string"
-                },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
-                },
-                "metadata": {
-                    "type": "null"
-                },
-                "target": {
-                    "type": "null"
-                },
-                "lineMarker": {
-                    "type": "null"
-                },
-                "body": {
-                    "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"
-                },
-                "position": {
-                    "$ref": "#/$defs/PositionRef"
-                }
-            }
-        },
         "KillStatement": {
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -535,9 +444,6 @@
             "properties": {
                 "op": {
                     "const": "KILL"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -565,7 +471,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -577,9 +482,6 @@
             "properties": {
                 "op": {
                     "const": "WORK"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -606,7 +508,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -618,9 +519,6 @@
             "properties": {
                 "op": {
                     "const": "FORK"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -637,6 +535,42 @@
                 "body": {
                     "type": "string",
                     "minLength": 1
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
+            }
+        },
+        "DispositionStatement": {
+            "type": "object",
+            "required": [
+                "op",
+                "annotation",
+                "metadata",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "op": {
+                    "const": "TASK"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "metadata": {
+                    "type": "null"
+                },
+                "target": {
+                    "type": "null"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

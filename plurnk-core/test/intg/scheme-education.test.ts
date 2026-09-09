@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { dispositionStmt } from "./_dsl.ts";
 
 test("{§schemes-directory}: stored packets carry language and policy without an injected resource catalogue", async () => {
     const db = await openMigrated();
@@ -27,11 +27,11 @@ test("{§schemes-directory}: stored packets carry language and policy without an
                 volatile: false,
                 modelVisible: true,
                 glyph: "GLYPH_MUST_STAY_CLIENT_SIDE",
-                documentation: "# Glyph test\n\n## Summary\n\nDiscover glyph-test resources.\n\n### READ_ (glyph-test:///example)",
+                documentation: "# Glyph test\n\n## Summary\n\nDiscover glyph-test resources.\n\n```READ (glyph-test:///example)```",
             },
         });
         const engine = new Engine({ db, schemes: registry });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
 
         const { turnId } = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -46,7 +46,7 @@ test("{§schemes-directory}: stored packets carry language and policy without an
         assert.doesNotMatch(JSON.stringify(system), /glyph-test|GLYPH_MUST_STAY_CLIENT_SIDE/, "neither references nor client glyphs are injected");
         const reference = (await engine.referenceEntries(workspaceId, workerId))
             .find(({ pathname }) => pathname === "/_plurnk/plurnk/glyph-test.md");
-        assert.match(reference?.content ?? "", /### READ_ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
+        assert.match(reference?.content ?? "", /```READ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
     } finally {
         await db.close();
     }

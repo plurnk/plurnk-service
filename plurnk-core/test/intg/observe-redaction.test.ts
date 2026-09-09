@@ -38,7 +38,7 @@ test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundar
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: `## PLAN_\ncurate:\n\n### SEND_ (TERM)\ntask complete.`,
+                    content: "\n```SEND\ntask complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
                     reasoning: null,
                 },
             }],

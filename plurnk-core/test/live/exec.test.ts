@@ -10,9 +10,10 @@
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-test("live exec: model emits ### EXEC_\ncommand and the spawn captures stdout", async (t) => {
+test("live exec: model emits a sh fence and the spawn captures stdout", async (t) => {
     const s = await liveWorkspace({ name: `live-exec-${crypto.randomUUID()}` });
     try {
         const userPrompt = [
@@ -20,13 +21,12 @@ test("live exec: model emits ### EXEC_\ncommand and the spawn captures stdout", 
             "",
             "If you see the exec's stdout stream (a `sh:///...` entry) containing",
             "`plurnk-exec-live-ok`, emit this complete turn:",
-            "  ## PLAN_\n[{\"content\":\"Report the observed stdout.\",\"status\":\"completed\"}]",
-            "  ### SEND_ (TERM)\nplurnk-exec-live-ok",
+            PlurnkParser.frame("SEND", "plurnk-exec-live-ok"),
+            PlurnkParser.frame("TASK", '[{"content":"Stdout probe verified.","status":"completed"}]'),
             "",
             "Otherwise, emit this complete turn to run `echo plurnk-exec-live-ok` and await its result:",
-            "  ## PLAN_\n[{\"content\":\"Run the stdout probe and await its result.\",\"status\":\"in_progress\"}]",
-            "  ### EXEC_\necho plurnk-exec-live-ok",
-            "  ### SEND_ (WAIT)\nWaiting for the stdout probe.",
+            PlurnkParser.frame("sh", "echo plurnk-exec-live-ok"),
+            PlurnkParser.frame("TASK", '[{"content":"Await the stdout probe result.","status":"waiting"}]'),
             "",
             "Do not repeat the EXEC once you see the `sh:///...` stream entry in the log.",
         ].join("\n");

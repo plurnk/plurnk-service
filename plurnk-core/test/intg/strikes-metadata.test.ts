@@ -27,10 +27,10 @@ class CapturingMock extends Mock {
 
 test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("## PLAN_\ncontinue without work\n\n### SEND_ (NEXT)\nworking", 10),
-        response("## PLAN_\nattempt a malformed matcher\n\n### FIND_ (worker:///x)\n$fC\n\n### SEND_ (NEXT)\ncontinue", 10),
-        response("## PLAN_\nrecover\n\n### EDIT_ (worker:///note)\nr\n\n### SEND_ (NEXT)\nrecovered", 10),
-        response("## PLAN_\nfinish\n\n### SEND_ (TERM)\ndone", 10),
+        response("```READ (worker:///absent)```", 10),
+        response("\n```FIND (worker:///x)\n$fC\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```", 10),
+        response("\n```EDIT (worker:///note)\nr\n```\n\n```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```", 10),
+        response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -38,7 +38,7 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
             await rpcCall(ws, 1, "workspace.create", { name: "strikes-meta" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 8 });
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
-            assert.deepEqual(mock.seen, [0, 1, 2, 0], "raw admitted turns carry 0 → idle strike → bounded-parse strike → clean reset");
+            assert.deepEqual(mock.seen, [0, 1, 2, 0], "raw admitted turns carry 0 → missing inventory strike → bounded-parse strike → clean reset");
             // The model-facing packets never carry it ({§engine-rails}: no metric to game).
             for (const row of await db.test_all_packets.all<{ packet: string }>({})) {
                 const sections = (JSON.parse(row.packet) as { sections?: object[] }).sections ?? [];
@@ -48,10 +48,10 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
     });
 });
 
-test("an operation-bearing turn with omitted PLAN and SEND is admitted, struck once, and continued", async () => {
+test("an operation-bearing turn with omitted TASK is admitted, struck once, and continued", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("### EDIT_ (worker:///proof.md)\nlanded", 10),
-        response("## PLAN_\n[]\n### SEND_ (TERM)", 10),
+        response("```EDIT (worker:///proof.md)\nlanded\n```", 10),
+        response("```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -63,7 +63,7 @@ test("an operation-bearing turn with omitted PLAN and SEND is admitted, struck o
                 policy: { proposals: "accept" },
             });
             assert.equal(finalStatus, 200);
-            assert.deepEqual(mock.seen, [0, 1], "both omitted boundaries price one admitted turn, not two failures or a retry");
+            assert.deepEqual(mock.seen, [0, 1], "missing inventory prices one admitted turn, not a retry");
             const ops = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             assert.equal(
                 ops.find(({ op }) => op === "EDIT")?.status_rx,
@@ -71,8 +71,8 @@ test("an operation-bearing turn with omitted PLAN and SEND is admitted, struck o
                 `the useful operation landed: ${JSON.stringify(ops)}`,
             );
             assert.equal(
-                ops.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length,
-                1, "the model receives one exact warning for the recovered terminal SEND",
+                ops.filter(({ op, status_rx }) => op === "TASK" && status_rx === 409).length,
+                1, "the missing inventory receives one exact receipt",
             );
         } finally { ws.close(); }
     });
@@ -82,9 +82,9 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
     // Range-probing is the surgical behavior wanted under pressure; striking it prices
     // caution into the exact motion being taught. {404, 416, 501}: one set, evenly applied.
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("## PLAN_\ncreate a short entry\n\n### EDIT_ (worker:///short)\none line only\n\n### SEND_ (NEXT)\nwrote", 10),
-        response("## PLAN_\nprobe a missing range\n\n### READ_ (worker:///short) <99,100>\n\n### SEND_ (NEXT)\nprobing", 10),
-        response("## PLAN_\nfinish\n\n### SEND_ (TERM)\ndone", 10),
+        response("\n```EDIT (worker:///short)\none line only\n```\n\n```TASK\n[{\"content\":\"wrote\",\"status\":\"in_progress\"}]\n```", 10),
+        response("\n```READ (worker:///short) <99,100>```\n```TASK\n[{\"content\":\"probing\",\"status\":\"in_progress\"}]\n```", 10),
+        response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -99,8 +99,8 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
 
 test("an EXEC operation error remains visible but does not bump the strike streak", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("## PLAN_\ntry an empty command\n\n### EXEC_\n\n### SEND_ (NEXT)\ncorrecting", 10),
-        response("## PLAN_\nfinish\n\n### SEND_ (TERM)\ndone", 10),
+        response("\n```EXEC```\n```TASK\n[{\"content\":\"correcting\",\"status\":\"in_progress\"}]\n```", 10),
+        response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

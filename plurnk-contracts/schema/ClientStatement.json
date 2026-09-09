@@ -81,7 +81,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -93,9 +92,6 @@
             "properties": {
                 "op": {
                     "const": "LOOK"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
@@ -121,7 +117,6 @@
             "type": "object",
             "required": [
                 "op",
-                "delimiter",
                 "annotation",
                 "metadata",
                 "target",
@@ -133,9 +128,6 @@
             "properties": {
                 "op": {
                     "const": "BUFF"
-                },
-                "delimiter": {
-                    "type": "string"
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"

@@ -14,13 +14,13 @@ import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForD
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `## PLAN_\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
 // A host exec that arms itself against the polite signals, then sleeps. Only the housekeeping
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
-const stubbornSpawn = `### EXEC_\ntrap '' HUP TERM; sleep 30\n\n### SEND_ (WAIT) <-1>\nparked with a stubborn spawn`;
+const stubbornSpawn = "```EXEC\ntrap '' HUP TERM; sleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"parked with a stubborn spawn\",\"status\":\"waiting\"}]\n```";
 
 test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;

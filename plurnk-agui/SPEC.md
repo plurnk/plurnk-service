@@ -52,8 +52,9 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `forwardedProps.plurnk.mode = "sync"`      | Durable conversation `MESSAGES_SNAPSHOT`, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-conversation-sync} |
 | `log/entry` turn boundary                  | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
-| `log/entry` op=PLAN (model)                | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
-| `log/entry` op=SEND (model)                | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
+| `log/entry` op=TASK (model)           | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} + `CUSTOM plurnk.send`; no assistant speech |
+| Successful targetless model SEND | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
+| Directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` READ of `reasoning:///…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
@@ -67,13 +68,13 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 
-§agui-plan-activity **PLAN is replaceable activity, not reasoning.** PLAN is the
-ACP projection of the model's latest {§plan-value} installment, produced only at
+§agui-plan-activity **Task inventory is replaceable PLAN activity, not reasoning.** PLAN activity is the
+ACP projection of the model's latest TASK {§plan-value} installment, produced only at
 this standards boundary under {§plan-acp-projection}. Provider reasoning is a
 separate channel, so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
 `<threadId>/plan` identity makes every live update replace the prior activity;
-reattach includes only the newest model PLAN. The same ACP projection replaces
-`tx.body` on every client-facing PLAN `CUSTOM plurnk.row` and
+reattach includes only the newest model inventory. The same ACP projection replaces
+`tx.body` on every client-facing TASK `CUSTOM plurnk.row` and
 `CUSTOM plurnk.ambient`; all other row and transaction fields remain intact:
 
 | Projection | Standard representation |
@@ -90,14 +91,14 @@ the failed request's partial reasoning. Foreign-worker and BARE reasoning never
 enter the thread. Failed or rejected requests may therefore leave honest
 transient reasoning that is not replayed.
 
-Core also derives the admitted SEND's optional complete `reasoning` from its
-durable packet ({§methods-readable-reasoning}). When that value was not already
-delivered by the completed live stream, projection emits it atomically before
-the SEND speech under `<SEND identity>/reasoning`; otherwise it emits no
-duplicate. A standard interrupt may divide one durable Loop across consecutive
+Core also derives optional complete `reasoning` on admitted SEND and disposition
+rows from their durable packet ({§methods-readable-reasoning}). When that value
+was not already delivered by the completed live stream, projection emits it
+atomically before the turn's first speech or inventory under `<OP identity>/reasoning`.
+Subsequent rows in the same turn do not repeat it. A standard interrupt may divide one durable Loop across consecutive
 AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
 before the stopped operation is released. Reattach replaces transient attempt presentation with the durable
-accepted `ReasoningMessage` immediately before its SEND `AssistantMessage` in
+accepted `ReasoningMessage` once per turn, before its speech or inventory in
 `MESSAGES_SNAPSHOT`. Empty evidence emits nothing, PLAN never substitutes for
 reasoning ({§agui-plan-activity}), and the SEND row still precedes its text
 sequence.
@@ -172,7 +173,7 @@ every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the complete client-facing row (fold state, durable tags, curation weight, coordinate)
-  alongside its core projection. PLAN `tx.body` follows {§agui-plan-activity}; rich clients
+  alongside its core projection. TASK `tx.body` follows {§agui-plan-activity}; rich clients
   (TUI/nvim) never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
@@ -213,7 +214,7 @@ host owns; decoration and layout are not cross-client protocol facts.
 | -------------------- | ------------ | -------------------- | ------ | --------------------------------- |
 | lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | editor statusline and winbar | process, terminal, and editor lifecycle idioms |
 | PLAN and reasoning | structured record and trace | streaming waterfall blocks | buffer blocks and folds | host-native persistence and navigation |
-| operation receipts and terminal SEND | stdout plus structured operation record | scrollback waterfall | worker waterfall buffer | Unix streams versus durable visual surfaces |
+| operation receipts and turn disposition | stdout plus structured operation record | scrollback waterfall | worker waterfall buffer | Unix streams versus durable visual surfaces |
 | cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | editor review, selection, and input | each host owns human interaction |
 | Problems and Notices | RFC 9457 JSON or stderr | terminal rows | editor diagnostics | presentation only; exact semantics survive |
 | MCP, Skills, and A2A Functionality | state commands | slash commands | `:AI` commands | one `worker.{mcp,skills,agents}.*` action contract |
@@ -498,7 +499,7 @@ this Run.
 `entry.loop_id`) refines it wherever the event is loop-scoped. Branch-batch
 events remain workspace status and route only to conversation Runs. Opening a
 read-only management Run can therefore never replay reasoning, operation rows,
-or terminal SEND from an active conversation.
+or turn disposition from an active conversation.
 
 ## §agui-configuration Module configuration
 

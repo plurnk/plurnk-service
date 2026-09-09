@@ -1,5 +1,5 @@
-// {§send-premature-terminate} extended to child workers — a SEND[200] while a spawned child is still
-// live is premature exactly as a SEND[200] with an open stream is (children and streams are the same
+// {§send-premature-terminate} extended to child workers — a DONE while a spawned child is still
+// live is premature exactly as a DONE with an open stream is (children and streams are the same
 // kind of "live thing the worker holds", {§worker-loop-lifecycle}). Engine-level A/B so it's race-free.
 
 import test from "node:test";
@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { execStmt, killStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
+import { execStmt, killStmt, dispositionStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
@@ -18,7 +18,7 @@ const knownPath = (pathname: string): ParsedPath => ({
     username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null,
 });
 
-test("SEND[200] with a live child worker is refused 409 on the record (no erasure) + steers", async () => {
+test("DONE with a live child worker is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
@@ -26,21 +26,21 @@ test("SEND[200] with a live child worker is refused 409 on the record (no erasur
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const send200 = () => engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
 
-        // Baseline: no child → SEND[200] is a clean terminal.
+        // Baseline: no child → DONE is a clean terminal.
         const clean = await send200();
-        assert.equal(clean.status, 200, "with no live child, SEND[200] terminates cleanly");
+        assert.equal(clean.status, 200, "with no live child, DONE terminates cleanly");
         assert.equal(clean.steerStruck, false);
 
         // Spawn a live child worker (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child");
 
-        // Now SEND[200] is premature — the child is still a live thing the worker holds.
+        // Now DONE is premature — the child is still a live thing the worker holds.
         const premature = await send200();
         assert.equal(premature.status, 102, "the TURN stays a continue (102) — the loop never went terminal");
         assert.equal(premature.steerStruck, true, "and the premature-terminate steer fired");
@@ -49,12 +49,12 @@ test("SEND[200] with a live child worker is refused 409 on the record (no erasur
         // (refused — Conflict), auto-surfacing in the errors section (status≥400). The old downgrade
         // rewrote the row to 102, erasing what the model did.
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: premature.turnId });
-        const sendRow = rows.find((r) => r.op === "SEND");
+        const sendRow = rows.find((r) => r.op === "TASK");
         assert.equal(sendRow?.status_rx, 409, "the SEND row records the refusal as 409, preserving the model's termination attempt");
     } finally { await db.close(); }
 });
 
-test("an _plurnk administrative SEND[200] closes only its own loop while model work remains live", async () => {
+test("an _plurnk administrative DONE closes only its own loop while model work remains live", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `admin-terminal-${crypto.randomUUID()}`);
@@ -67,7 +67,7 @@ test("an _plurnk administrative SEND[200] closes only its own loop while model w
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const result = await engine.dispatch({
-            statement: sendStmt(200),
+            statement: dispositionStmt("completed"),
             workspaceId,
             workerId,
             loopId: adminLoopId,
@@ -103,7 +103,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const refused = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -116,7 +116,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
             terminal_result: JSON.stringify({ status: 200 }),
         });
         const completed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -128,7 +128,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
 // The unified PENDING SET (grammar 0.75.0 / the terminal redesign): a [200] is judged at its own
 // dispatch, post-batch — streams, live children, and this turn's retrievals are ONE rule.
 
-test("READ + SEND[200] same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
+test("READ + DONE same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
@@ -137,14 +137,14 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "the host is db.internal")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), dispositionStmt("completed", "the host is db.internal")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
         assert.equal(result.steerStruck, true, "the false terminal claim strikes while the turn still demotes");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
-        assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409");
+        assert.equal(rows.find((r) => r.op === "TASK")?.status_rx, 409, "the DONE row records the refusal as 409");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
         // provisional status pre-dispatch; the refusal must demote the row too, not just the return).
         const storedTurn = await db.test_get_turn.get<{ status: number }>({ id: result.turnId });
@@ -152,30 +152,61 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
     } finally { await db.close(); }
 });
 
-test("SEND (NEXT) rejects a wait scope instead of preserving the retired dual spelling", async () => {
+test("a direct actionable TASK ignores wait timing with factual feedback", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const wait = { ...sendStmt(102, null, "standing by"), lineMarker: { marks: [-1] } };
+        const wait = { ...dispositionStmt("in_progress", "standing by"), lineMarker: { marks: [-1] } };
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
+        assert.equal(result.status, 102);
+        assert.equal(result.steerStruck, false);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(result.status, 102, "the failed disposition leaves the loop available to observe and repair");
-        assert.equal(loopStatus, 102, "the invalid wait never parks or concludes the loop");
-        const row = await db.test_send_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
-        const rejected = row.find((r) => r.status_rx === 400);
-        assert.ok(rejected, "the SEND records the contract failure");
-        assert.match(rejected.rx, /### SEND_ \(WAIT\).*wait/, "the failure points to the one wait spelling");
+        assert.equal(loopStatus, 102, "timing never overrides the actionable inventory");
+        const row = await db.test_disposition_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
+        assert.equal(row.length, 1);
+        assert.equal(row[0].status_rx, 102);
+        assert.equal(JSON.parse(row[0].rx).detail, "Wait timing was not applied because no waiting intent was selected.");
     } finally { await db.close(); }
 });
 
-test("SEND[202] cannot complete an empty join over a same-turn failed operation", async () => {
+test("model actionable TASK with timing retains valid work and reports unapplied timing", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `next-scope-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "read the note");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const content = "```READ (worker:///note.txt)```\n```TASK <-1>\n[{\"content\":\"standing by\",\"status\":\"in_progress\"}]\n```";
+        const result = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
+            workspaceId, workerId, loopId,
+            messages: [{ role: "user", content: "read the note" }],
+        });
+        assert.equal(result.status, 102);
+        assert.equal(result.steerStruck, false);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
+        assert.equal(rows.find(({ op }) => op === "READ")?.status_rx, 200, "the valid sibling executes");
+        assert.equal(rows.some(({ op }) => op === "error"), false);
+        const task = rows.find(({ op }) => op === "TASK");
+        assert.equal(task?.status_rx, 102);
+        assert.equal(JSON.parse(task!.rx).detail, "Wait timing was not applied because no waiting intent was selected.");
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.equal(attempts[0]?.accepted, 1);
+        const diagnostics = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string }>;
+        assert.deepEqual(diagnostics, []);
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 102);
+    } finally { await db.close(); }
+});
+
+test("WAIT cannot complete an empty join over a same-turn failed operation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-failure-${crypto.randomUUID()}`);
@@ -191,7 +222,7 @@ test("SEND[202] cannot complete an empty join over a same-turn failed operation"
                         reasoning: null,
                         ops: [
                             execStmt("unregistered-runtime", "build"),
-                            sendStmt(202, null, "awaiting the build"),
+                            dispositionStmt("waiting", "awaiting the build"),
                         ],
                     },
                 }],
@@ -203,16 +234,16 @@ test("SEND[202] cannot complete an empty join over a same-turn failed operation"
         });
 
         assert.equal(result.status, 102, "the failed operation remains unobserved, so the turn continues");
-        assert.equal(result.steerStruck, true, "the false completion attempt is struck");
+        assert.equal(result.steerStruck, false, "waiting makes no completion claim; ordinary operation-error accounting remains separate");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "the loop never records a false successful terminal");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.ok((rows.find((row) => row.op === "EXEC")?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
-        assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the empty-join completion is explicitly refused");
+        assert.equal(rows.find((row) => row.op === "TASK")?.status_rx, 102, "the failed result enters the next packet without an additional correction");
     } finally { await db.close(); }
 });
 
-test("a successful same-turn scoped KILL continues an empty SEND (WAIT) without blocking explicit SEND (TERM) housekeeping", async () => {
+test("a successful same-turn scoped KILL continues an empty WAIT without blocking explicit DONE housekeeping", async () => {
     const db = await openMigrated();
     try {
         const run = async (status: 200 | 202) => {
@@ -232,7 +263,7 @@ test("a successful same-turn scoped KILL continues an empty SEND (WAIT) without 
             const primed = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 100000,
-                    responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/notes.md")), sendStmt(102)] } }],
+                    responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/notes.md")), dispositionStmt("in_progress")] } }],
                 }),
                 workspaceId,
                 workerId,
@@ -253,7 +284,7 @@ test("a successful same-turn scoped KILL continues an empty SEND (WAIT) without 
                             reasoning: null,
                             ops: [
                                 killStmt(urlPath("log", `/1/${primedTurn.sequence}/${read.sequence}/READ`), { marks: [1, -1] }),
-                                sendStmt(status, null, status === 202 ? "continue after curation" : "curation complete"),
+                                dispositionStmt(status === 202 ? "waiting" : "completed", status === 202 ? "continue after curation" : "curation complete"),
                             ],
                         },
                     }],
@@ -280,8 +311,8 @@ test("a successful same-turn scoped KILL continues an empty SEND (WAIT) without 
     } finally { await db.close(); }
 });
 
-test("a READ + non-terminal SEND[102] continue does not strike — the live-thing gate is [200]-only", async () => {
-    // The correct shape stays clean: submit the READ, SEND[102] to receive it next turn. A continue is
+test("a READ + non-terminal NEXT continue does not strike — the live-thing gate is [200]-only", async () => {
+    // The correct shape stays clean: submit the READ, NEXT to receive it next turn. A continue is
     // never gated — only a terminal [200] over a live thing is.
     const db = await openMigrated();
     try {
@@ -291,11 +322,11 @@ test("a READ + non-terminal SEND[102] continue does not strike — the live-thin
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(102)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), dispositionStmt("in_progress")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        assert.equal(result.steerStruck, false, "READ + SEND[102] does not strike — the rail gates only terminal [200]");
+        assert.equal(result.steerStruck, false, "READ + NEXT does not strike — the rail gates only terminal [200]");
     } finally { await db.close(); }
 });
 
@@ -312,7 +343,7 @@ test("a model that won't stop premature-200ing with a live child STRIKES OUT (50
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } })) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } })) });
         const result = await engine.runLoop({ provider, workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
         // The engine rails abandon it: identical repeated premature-200 turns trip CYCLE detection (508)
         // before the plain strike threshold (500) — defense in depth. Either way the model is terminated
@@ -340,7 +371,7 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
             cancelDescendants: async (root, reason) => { await lifecycle.cancelTree(root, reason, false); },
         });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), dispositionStmt("failed", "abandoning")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -350,11 +381,11 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
         assert.equal(loopStatus, 499, "the loop is terminal");
         const childStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: childLoop }))?.status;
         assert.equal(childStatus, 499, "the unresolved child is cancelled with its abandoned parent scope");
-        const sends = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: parentWorker });
+        const sends = await db.test_disposition_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: parentWorker });
         const abandoned = sends.find(({ status_rx }) => status_rx === 499);
         assert.ok(abandoned);
         const problem = (JSON.parse(abandoned.rx) as { problem?: Record<string, unknown> }).problem;
-        assert.equal(problem?.detail, "The worker ended its scope with SEND[499].");
+        assert.equal(problem?.detail, "The task inventory ended with failed items.");
         assert.equal(problem?.reason, "abandoning");
         assert.doesNotMatch(String(problem?.detail), /abandoning/, "the authored SEND body is not duplicated into Problem prose");
     } finally { await db.close(); }
@@ -372,11 +403,11 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), dispositionStmt("completed", "the answer is Hi")] } }] }),
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const refusals = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const refusals = await db.test_disposition_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
         const problem = (JSON.parse(refused!.rx) as { problem?: Record<string, unknown> }).problem;
@@ -406,22 +437,20 @@ test("{§send-final-strike-retrieval}: changing retrieval targets still allows c
         const provider = new Mock({
             contextWindow: 100000,
             responses: paths.map((pathname) => ({
-                assistant: { content: "", reasoning: null, ops: [readStmt(knownPath(pathname)), sendStmt(200, null, `read ${pathname}`)] },
+                assistant: { content: "", reasoning: null, ops: [readStmt(knownPath(pathname)), sendStmt(null, `read ${pathname}`), dispositionStmt("completed", `read ${pathname}`)] },
             })),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
 
         assert.equal(result.result.status, 200, "the last retrieval-only TERM is accepted independently of cycle detection");
-        assert.equal(result.result.content, "read /page-2.html");
+        assert.equal(result.result.content, "read /page-0.html\n\nread /page-1.html\n\nread /page-2.html", "delivered responses survive refused completion attempts");
         assert.equal(result.turnIds.length, 4, "initialization, two refusals, and the accepted conclusion form the chronology");
-        const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
+        const refusals = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
         assert.equal(refusals.filter((r) => r.status_rx === 409).length, 2, "earlier correction receipts remain unchanged");
     } finally { await db.close(); }
 });
 
-test("a retrieval refusal grants no exemption from the ordinary idle-turn rail", async () => {
-    // The next packet already contains the retrieval result and directs the model to review it
-    // before concluding. PLAN + SEND[102] performs no work and remains an ordinary idle strike.
+test("{§inventory-only-turn} a retrieval refusal does not make subsequent inventory-only turns invalid", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `grace-${crypto.randomUUID()}`);
@@ -429,26 +458,21 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
         const loopId = await insertLoop(db, workerId, 1, "go");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const planStmt = {
-            op: "PLAN", annotation: null, delimiter: "", target: null,
-            metadata: null, lineMarker: null,
-            body: [{
-                content: "Wait for the retrieval result.",
-                status: "in_progress",
-            }],
-            position: { line: 1, column: 1 },
-        } as const;
-        const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });
+        const idle = () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress", "Wait for the retrieval result.")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "Hi")] } },
+            { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), dispositionStmt("completed", "Hi")] } },
             idle(), idle(), idle(), idle(),
         ] });
         for (let i = 0; i < 5; i++) {
-            await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            assert.equal(turn.status, 102);
+            assert.equal(turn.steerStruck, i === 0, "only the premature completion is refused");
         }
         const errRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length;
-        assert.equal(idleStrikes, 4, "all four idle turns strike; the retrieval refusal creates no special rail state");
+        assert.equal(idleStrikes, 0, "no operationless-turn error is manufactured");
+        const rows = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
+        assert.deepEqual(rows.map(({ status_rx }) => status_rx), [409, 102, 102, 102, 102]);
     } finally { await db.close(); }
 });
 
@@ -467,21 +491,21 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [
-                { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } },
-                { assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } },
+                { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), dispositionStmt("completed", "the answer is Hi")] } },
+                { assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } },
             ] }),
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         // The NEXT packet renders the refused SEND row with its steer ON the meta line.
         const t2 = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } }] }),
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
-        const send = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/SEND") && status === 409);
+        const send = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
         assert.ok(send !== undefined, "the refused SEND row renders");
         assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded this turn's operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
         // And NO minted action_failure item exists — the row is the one record.
