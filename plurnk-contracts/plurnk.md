@@ -92,7 +92,7 @@ prompt
 prompt
 ````
 
-````BARE (path)? <!-- deploy an isolated inference query (no log) -->
+````BARE <!-- deploy an isolated inference query (no log or tools) -->
 prompt
 ````
 
