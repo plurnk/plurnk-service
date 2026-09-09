@@ -111,6 +111,15 @@ assertClean("statement sequence", result);
 assertClean("turn log", PlurnkParser.parseLog(program));
 assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (known://foo)", null)));
 
+const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
+    + "\\n3\\n" + program + "\\nPostscript.";
+for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseLog, PlurnkParser.parseClient]) {
+    const parsed = parse(interstitial);
+    assertClean("interstitial text", parsed);
+    if (parsed.items.length !== 2 || parsed.items[0]?.statement?.body?.raw !== "Only this is a message."
+        || parsed.items[1]?.statement?.op !== "TASK") throw new Error("outside text changed the parsed program");
+}
+
 // Parse a simple statement and validate its schema-derived position.
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);

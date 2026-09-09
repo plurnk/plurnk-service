@@ -48,31 +48,27 @@ test("a quoted turn remains one exact literal body", () => {
     assert.equal(edit.op === "EDIT" ? edit.body : null, body);
 });
 
-test("{§error-shape}: unexpected text identifies the actual preceding fence boundary", () => {
+test("{§whitespace-contract}: exact closing fences bound bodies before ignored outside text", () => {
     for (const newline of ["\n", "\r\n"]) {
-        for (const { source, name, opened, closed, count, line } of [
-            { source: "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```", name: "SEND", opened: 1, closed: 5, count: 3, line: 6 },
-            { source: "```READ (note.md)```\nOutside.", name: "READ", opened: 1, closed: 1, count: 3, line: 2 },
-            { source: "```READ (first.md)```\n````sh\necho 42\n````\n\nOutside.", name: "sh", opened: 2, closed: 4, count: 4, line: 6 },
-            { source: "```````READ (note.md)\n```````\nOutside.", name: "READ", opened: 1, closed: 2, count: 7, line: 3 },
+        for (const { source, names, bodies } of [
+            { source: "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```", names: ["SEND"], bodies: ["Code:\n```ts\nconst value = 42;"] },
+            { source: "```READ (note.md)```\nOutside.", names: ["READ"], bodies: [null] },
+            { source: "```READ (first.md)```\n````sh\necho 42\n````\n\nOutside.", names: ["READ", "EXEC"], bodies: [null, "echo 42"] },
+            { source: "```````READ (note.md)\n```````\nOutside.", names: ["READ"], bodies: [null] },
         ]) {
             const parsed = PlurnkParser.parse((source + "\n" + task("Done.", "completed")).replaceAll("\n", newline));
             assert.equal(parsed.unparsedTail, undefined);
-            assert.deepEqual(errors(parsed).map(({ message, code, line, column }) => ({ message, code, line, column })), [{
-                message: `unexpected text outside an operation block; ${name} opened at line ${opened} and closed at line ${closed} with ${count} backticks`,
-                code: "invalid-turn-structure",
-                line,
-                column: 0,
-            }], "a TASK after the broken boundary was not parsed; it was not omitted");
+            assert.deepEqual(errors(parsed), []);
+            assert.deepEqual(ops(parsed).map(({ op }) => op), [...names, "TASK"]);
+            assert.deepEqual(ops(parsed).slice(0, -1).map((op) => op.op === "EXEC" ? op.body : op.op === "SEND" ? op.body?.raw : null), bodies.map((body) => body?.replaceAll("\n", newline) ?? null));
         }
     }
 });
 
-test("{§error-shape}: boundary context is not invented for text without a preceding closed operation", () => {
+test("{§whitespace-contract}: a text-only statement list is empty", () => {
     const parsed = PlurnkParser.parseStatements("Outside.");
-    assert.deepEqual(errors(parsed).map(({ message }) => message), ["unexpected text outside an operation block; expected operation fence header"]);
-    const preamble = PlurnkParser.parse("Preamble.\n" + task("Done.", "completed"));
-    assert.deepEqual(errors(preamble), [], "tolerated preamble text is not a fence error");
+    assert.deepEqual(parsed.items, []);
+    assert.equal(parsed.unparsedTail, undefined);
 });
 
 // {§tier-entrypoints}

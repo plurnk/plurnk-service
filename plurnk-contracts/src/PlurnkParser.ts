@@ -30,13 +30,9 @@ const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_clientStatement,
 ]);
 
-// Container rules whose children hold one turn's statements. `turnContent`
-// carries tolerated preamble text; `turn` is also the direct child of a fenced
-// document. parseLog contains multiple turnContent siblings, flattened in order.
+// One-turn containers, flattened in source order for model and saved programs.
 const CONTAINER_RULES = new Set<number>([
-    plurnkParser.RULE_modelTurnContent,
     plurnkParser.RULE_modelTurn,
-    plurnkParser.RULE_turnContent,
     plurnkParser.RULE_turn,
 ]);
 
@@ -85,7 +81,7 @@ export default class PlurnkParser {
     }
 
     // Parse one model turn. A source operation lets ingestion recover an omitted disposition.
-    // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
+    // Outside text never becomes a parse item. {§whitespace-contract} {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's diagnostics while the document boundary
@@ -255,8 +251,8 @@ export default class PlurnkParser {
     }
 
     // Parse a bare sequence of statements - teaching-example collections, single ops,
-    // documentation snippets. Strict: statements only (whitespace is hidden), no prose,
-    // no turn shape. Not for model output; use `parse` for that.
+    // documentation snippets. No turn shape; outside text is ignored in every tier.
+    // Not for model output; use `parse` for that.
     static parseStatements(input: string): ParseResult {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
@@ -345,10 +341,7 @@ export default class PlurnkParser {
         return { from, reason };
     }
 
-    // Walk a parse tree, appending statement/error/text items in source order. Statement rules
-    // are leaves (built directly); container rules (turnContent) are recursed into; TEXT tokens
-    // surface as text items. So `document` (one turnContent) and `log` (turnContent+) both
-    // flatten to items in order, while a bounded malformed statement surfaces as an error item.
+    // Walk statement containers in source order; bounded malformed statements become errors.
     static #collect<S extends ClientStatement>(
         ctx: ParserRuleContext,
         errors: PlurnkParseError[],
@@ -394,9 +387,6 @@ export default class PlurnkParser {
                 }
             } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
                 PlurnkParser.#collect(c, errors, consumedErrors, items, buildFn, boundary);
-            } else if (c.symbol?.type === plurnkLexer.TEXT) {
-                const position: Position = { line: start.line, column: start.column };
-                items.push({ kind: "text", text: c.symbol.text ?? "", position });
             }
         }
     }

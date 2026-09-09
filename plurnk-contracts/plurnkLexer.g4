@@ -118,10 +118,11 @@ fragment EOL : '\r'? '\n' ;
 // block may terminate a provider preamble without an intervening newline.
 OPEN : { this.column === 0 || !this.started }? FENCE NAME { this.open(); } -> mode(SLOTS) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
-THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT) ;
-CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
-TEXT_RUN : ~[ \t\r\n`]+ -> type(TEXT) ;
-TEXT_TICK : '`' -> type(TEXT) ;
+// {§whitespace-contract} — outside text has no AST or execution semantics.
+THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;
+CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT), channel(HIDDEN) ;
+TEXT_RUN : ~[ \t\r\n`]+ -> type(TEXT), channel(HIDDEN) ;
+TEXT_TICK : '`' -> type(TEXT), channel(HIDDEN) ;
 
 mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;

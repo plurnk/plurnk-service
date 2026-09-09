@@ -354,7 +354,7 @@ test("same-lane sections compose and section whitespace is structural", () => {
     ));
     assert.equal(result.items.filter((item) => item.kind === "statement").length, 3);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
-    assert.equal(result.items.filter((item) => item.kind === "text").length, 0);
+    assert.equal(result.items.length, 3);
 });
 
 test("an unfinished block establishes an unparsed-tail trust boundary", () => {

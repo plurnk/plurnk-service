@@ -264,7 +264,6 @@ export default class BuiltinActions {
                             }));
                             continue;
                         }
-                        if (item.kind !== "statement") continue; // interstitial text isn't dispatchable
                         statements.push(item.statement as unknown as PlurnkStatement);
                         results.push(null);
                     }
@@ -320,20 +319,6 @@ export default class BuiltinActions {
                             source: "grammar",
                             severity: "error",
                         }));
-                    }
-                    const textItem = parsed.items.find((item) => item.kind === "text");
-                    if (textItem !== undefined && textItem.kind === "text") {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "op.look parsed text outside the statement; only surrounding whitespace is allowed.",
-                            400,
-                            {
-                                field: "text",
-                                line: textItem.position.line,
-                                column: textItem.position.column,
-                                recovery: "Remove text outside the LOOK statement.",
-                            },
-                        );
                     }
                     const statements = parsed.items.filter((item) => item.kind === "statement");
                     if (statements.length !== 1) {

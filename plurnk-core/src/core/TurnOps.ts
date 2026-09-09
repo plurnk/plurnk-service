@@ -1,6 +1,5 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import {
-    PlurnkParseError,
     PlurnkParser,
     type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
@@ -25,10 +24,8 @@ export default class TurnOps {
                 statements.push(item.statement);
                 continue;
             }
-            if (item.kind === "text" && item.text.trim().length === 0) continue;
-            if (item.kind === "error" && item.error.severity === "warning") continue;
-            const error = item.kind === "error" ? item.error : null;
-            failures.push(error instanceof PlurnkParseError ? error.message : "unparsed text");
+            if (item.error.severity === "warning") continue;
+            failures.push(item.error.message);
         }
         if (parsed.unparsedTail !== undefined) failures.push(parsed.unparsedTail.reason);
         if (failures.length > 0) {

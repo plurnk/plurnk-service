@@ -44,14 +44,15 @@ for (const item of result.items) {
 }
 ```
 
-Parse items are ordered and discriminate as `statement`, `error`, or `text`.
+Parse items are ordered and discriminate as `statement` or `error`.
+Outside-block text is ignored in every tier; literal bodies remain exact.
 The parser entry points deliberately accept different document tiers:
 
 | Entry point                    | Accepted input                                        |
 |--------------------------------|-------------------------------------------------------|
 | `PlurnkParser.parse`           | One operation-bearing model turn; omitted TASK recovers an empty inventory with one strike |
-| `PlurnkParser.parseStatements` | A strict sequence of protocol statements              |
-| `PlurnkParser.parseLog`        | Strict consecutive disposition-ended turns           |
+| `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
+| `PlurnkParser.parseLog`        | Consecutive disposition-ended turns                    |
 | `PlurnkParser.parseClient`     | Protocol statements plus client-only LOOK and BUFF    |
 | `parsePath`                    | One path or URI using parser-equivalent decomposition |
 

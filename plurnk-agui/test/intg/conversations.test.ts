@@ -45,9 +45,9 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
 
     try {
         // Thread A (== workspace name: the default conversation) dispatches one ordered
-        // multi-statement action against a shared entry. {§agui-op-parse}
+        // multi-statement action against a shared entry. {§agui-op-parse} {§whitespace-contract}
         const edit = await action(port, "shared-world", "shared-world", "op.parse", {
-            text: "```EDIT (worker:///notes.md)\nfirst\n```\n\n```EDIT (worker:///notes.md) <1,-1>\nthe world is one\n```",
+            text: "Prelude.\n```EDIT (worker:///notes.md)\nfirst\n```\n3\n```EDIT (worker:///notes.md) <1,-1>\nthe world is one\n```\nPostscript.",
         });
         assert.equal(edit.ok, true, JSON.stringify(edit.problem));
         const editResults = (edit.result as { results: Array<{ status: number }> }).results;
@@ -92,7 +92,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const beforeLook = await action(port, "second-look", "shared-world", "log.read");
         const entriesBeforeLook = (beforeLook.result as { entries: unknown[] }).entries.length;
         const looked = await action(port, "second-look", "shared-world", "op.look", {
-            text: "```LOOK (worker:///notes.md)```",
+            text: "Observe the note.\n```LOOK (worker:///notes.md)```\nThis is not a result.",
         });
         assert.equal(looked.ok, true, JSON.stringify(looked.problem));
         assert.equal(looked.result?.status, 200);
@@ -110,6 +110,10 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         assert.equal(ambiguousLook.ok, false);
         assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
+        const textOnlyLook = await action(port, "second-look", "shared-world", "op.look", { text: "Only commentary." });
+        assert.equal(textOnlyLook.ok, false);
+        assert.equal(textOnlyLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
+        assert.equal(textOnlyLook.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
         const unchanged = await action(port, "second-look", "shared-world", "op.look", {
             text: "```LOOK (worker:///notes.md)```",
         });

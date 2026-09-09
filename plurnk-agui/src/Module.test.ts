@@ -726,20 +726,11 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
-        const bounded = await invoke("text ```LOOK (worker:///x)```");
-        assert.equal(bounded.ok, false);
-        assert.deepEqual(bounded.problem, {
-            type: "https://problems.plurnk.xyz/agui/action/parse-failed",
-            title: "Parse failed",
-            status: 400,
-            detail: "unexpected text outside an operation block; expected operation fence header or client operation fence header",
-            line: 1,
-            column: 0,
-            source: "parser",
-            severity: "error",
-            stage: "parsing",
-            retryable: false,
-        });
+        const outside = await invoke("text ```LOOK (worker:///x)```\nPostscript.");
+        assert.equal(outside.ok, true, "outside text is ignored under {§whitespace-contract}");
+        assert.equal(outside.result?.content, "looked");
+        assert.equal(calls.length, 2);
+        assert.deepEqual(calls[1].statement.position, { line: 1, column: 5 }, "ignored preamble does not shift source positions");
 
         const tailed = await invoke("```LOOK (worker:///x)```\n```EDIT (worker:///y");
         assert.equal(tailed.ok, false);
@@ -755,7 +746,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             stage: "parsing",
             retryable: false,
         });
-        assert.equal(calls.length, 1, "no rejected parse reaches ApplicationPort.look");
+        assert.equal(calls.length, 2, "no rejected parse reaches ApplicationPort.look");
     } finally { await mod.close(); }
 });
 

@@ -395,53 +395,6 @@ test("reasoning channel rejects nested channel delimiters and cannot recur after
     assert.equal(derivesTurn(content, "one uninterrupted reasoning span"), true);
 });
 
-test("ANTLR preserves provider preamble text before an operation fence", () => {
-    const source = `plain preamble\n${turn([mid("READ", " (worker:///x)")], 200, "done")}`;
-    const result = PlurnkParser.parse(source);
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-    assert.deepEqual(
-        result.items.filter((item) => item.kind === "text").map(({ text }) => text),
-        ["plain", "preamble"],
-    );
-    assert.equal(result.items.find((item) => item.kind === "statement")?.statement.op, "READ");
-});
-
-test("ANTLR recognizes an operation fence directly after provider preamble text", () => {
-    const source = `harmless status.${turn([mid("READ", " (worker:///x)")], 200, "done")}`;
-    const result = PlurnkParser.parse(source);
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-    assert.deepEqual(
-        result.items.filter((item) => item.kind === "text").map(({ text }) => text),
-        ["harmless", "status."],
-    );
-    assert.deepEqual(
-        result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement.op),
-        ["READ", "TASK"],
-    );
-    assert.deepEqual(
-        result.items.find((item) => item.kind === "statement")?.statement.position,
-        { line: 1, column: "harmless status.".length },
-    );
-});
-
-test("separator-free fence tolerance does not promote ordinary hashes or inline operations", () => {
-    const source = `ordinary.## Heading! remains preamble\n${turn(
-        [],
-        200,
-        "keep inline ### READ_ (worker:///not-an-operation) as body",
-    )}`;
-    const result = PlurnkParser.parse(source);
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-    assert.deepEqual(
-        result.items.filter((item) => item.kind === "text").map(({ text }) => text),
-        ["ordinary.##", "Heading!", "remains", "preamble"],
-    );
-    const statements = result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["TASK"]);
-    const first = statements[0];
-    assert.equal(first?.op === "TASK" ? first.body[0]?.content : undefined,
-        "keep inline ### READ_ (worker:///not-an-operation) as body");
-});
 
 // {§park-202-only} {§waitpid-dispositions}
 test("GBNF bounds TASK timing syntax without interpreting inventory intent", () => {
@@ -649,7 +602,7 @@ test("{§rail-heading-boundaries}: GBNF content bodies leave internal fences opa
     assert.equal(PlurnkParser.parseStatements(quoted).items.some((item) => item.kind === "error"), false);
 });
 
-test("{§rail-heading-boundaries}: nested SEND fence mistakes can finish sampling for parser feedback", () => {
+test("{§whitespace-contract}: SEND ends at its matching fence and subsequent prose is ignored", () => {
     const content = turn([
         mid("KILL", " (log:///1/3/1/READ)"),
         mid("SEND", "", "The matching note is:\n\n```\nworker:///notes/alpha.md\n```\n\nFound by full-text lookup."),
@@ -658,18 +611,15 @@ test("{§rail-heading-boundaries}: nested SEND fence mistakes can finish samplin
     assert.equal(derivesTurn(content), true);
     assert.equal(derivesQwenTurn(content), true);
     const parsed = PlurnkParser.parse(content);
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "error").map(({ error }) => error.code), [
-        "invalid-turn-structure",
-    ]);
-    assert.match(parsed.items.find((item) => item.kind === "error")?.error.message ?? "", /SEND opened at line \d+ and closed at line \d+ with 3 backticks/);
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "SEND", "TASK"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "SEND", "KILL", "TASK"]);
     const send = statements[1];
     assert.ok(send.op === "SEND");
     assert.equal(send.body?.raw, "The matching note is:\n");
-    const task = statements[2];
+    const task = statements[3];
     assert.ok(task.op === "TASK");
-    assert.deepEqual(task.body, []);
+    assert.deepEqual(task.body, [{ content: "Report the matching path.", status: "completed" }]);
 });
 test("GBNF TASK body is required and names no recipient", () => {
     assert.equal(derivesTurn(turn([], 200, "done")), true);

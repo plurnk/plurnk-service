@@ -1067,6 +1067,10 @@ Core retries a rejected emission against the exact same packet beneath the same 
 
 When the loop continues after exhaustion under {§invalid-emission-attempts}, the next ordinary turn's packet projects the latest rejected response visibly from a durably body-suppressed emission-attempt item under {§rejected-emission-entry} and carries one transient `invalid_emission` Notice: `Response rejected before dispatch; no operations were performed.` followed by `Parser: <the latest attempt's first diagnostic>` with its `content-offset` position — the model sees why, at which line, against its own projected text. The Notice states only observed admission facts; it does not classify the response as unrecoverable, infer why generation ended, or prescribe intent beyond the parser-owned diagnostic. Attempt count and rail state never become model-facing. The recovery turn has its own honestly stored packet and its configured private same-packet attempts. The packet-local projection never changes the row's curation state, so no later packet repeats that malformed body unless the model explicitly READs its exact address. Admission clears the recovery projection; another exhaustion replaces it with the latest rejected response if the loop continues.
 
+Outside-block text has no execution, message, or receipt semantics under
+{§whitespace-contract}. The source-backed `/ops` retains it verbatim under
+{§turn-ops-log-curation}; execution never reconstructs source from the AST.
+
 An admitted program may contain bounded malformed statements or recovered
 inventory defaults. Parsed operations still dispatch; except the missing-TASK diagnostic above, each hard parser diagnostic
 becomes one durable model-origin `error` row with the parser's exact detail under

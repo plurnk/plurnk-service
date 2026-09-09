@@ -24,11 +24,10 @@ test("SEND messages do not conclude a turn and omitted disposition recovers empt
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
 });
 
-test("a stray closing fence is described as outside a block, not as text before PLAN", () => {
+test("{§whitespace-contract}: a stray outside closing fence is ignored", () => {
     const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```TASK\n[{\"content\":\"Inspect the note.\",\"status\":\"in_progress\"}]\n```");
-    const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []);
-    assert.ok(errors.some((message) => message.startsWith("unexpected text outside an operation block")));
-    assert.ok(errors.every((message) => !message.includes("before PLAN")));
+    assert.deepEqual(result.items.map((item) => item.kind), ["statement", "statement"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
 });
 
 test("TASK admits timing independent of intent but never a resource operand", () => {

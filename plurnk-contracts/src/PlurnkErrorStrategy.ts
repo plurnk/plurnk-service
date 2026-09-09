@@ -48,7 +48,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.TARGET_TEXT]: "path content",
         [plurnkParser.METADATA_TEXT]: "scheme metadata content",
         [plurnkParser.BODY_TEXT]: "body content",
-        [plurnkParser.TEXT]: "text outside an operation block",
     };
 
     static translateLexerMessage(lexer: plurnkLexer, originalMsg: string): string {
@@ -118,28 +117,10 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return text === "" ? "end of input" : `'${Array.from(text)[0]}'`;
     }
 
-    static #closedBlockContext(recognizer: Parser, tok: Token): string {
-        let closing: Token | undefined;
-        for (let i = tok.tokenIndex - 1; i >= 0; i--) {
-            const prior = recognizer.tokenStream.get(i);
-            if (prior.channel !== Token.DEFAULT_CHANNEL) continue;
-            if (closing === undefined) {
-                if (prior.type !== plurnkParser.SECTION_END) return "";
-                closing = prior;
-            } else if (PlurnkErrorStrategy.#HEADING_BOUNDARY.has(prior.type)) {
-                const heading = /^(`+)(.+)$/.exec(prior.text ?? "");
-                if (heading === null) return "";
-                const line = closing.line + (/^\r?\n/.test(closing.text ?? "") ? 1 : 0);
-                return `; ${heading[2]} opened at line ${prior.line} and closed at line ${line} with ${heading[1].length} backticks`;
-            }
-        }
-        return "";
-    }
-
-    static #describeToken(recognizer: Parser, tok: Token | null): string {
+    static #describeToken(tok: Token | null): string {
         if (!tok || tok.type === Token.EOF) return "end of input";
         const slot = PlurnkErrorStrategy.#SLOT_BY_TOKEN[tok.type];
-        if (slot) return slot + (tok.type === plurnkParser.TEXT ? PlurnkErrorStrategy.#closedBlockContext(recognizer, tok) : "");
+        if (slot) return slot;
         const text = tok.text ?? "";
         return text.length > 0 ? `'${text}'` : "input";
     }
@@ -236,7 +217,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             return;
         }
 
-        const got = PlurnkErrorStrategy.#describeToken(recognizer, e.offendingToken);
+        const got = PlurnkErrorStrategy.#describeToken(e.offendingToken);
         const expected = PlurnkErrorStrategy.#describeExpected(e);
 
         let msg: string;
@@ -263,7 +244,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const expected = expectedNames.length > 0
             ? (expectedNames.length === 1 ? expectedNames[0] : expectedNames.join(" or "))
             : "more input";
-        const got = PlurnkErrorStrategy.#describeToken(recognizer, tok);
+        const got = PlurnkErrorStrategy.#describeToken(tok);
         const msg = `expected ${expected}; got ${got}`;
         recognizer.notifyErrorListeners(msg, tok, null);
     }
@@ -282,7 +263,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             recognizer.notifyErrorListeners(secondSlot.message, secondSlot.at, null);
             return;
         }
-        const got = PlurnkErrorStrategy.#describeToken(recognizer, tok);
+        const got = PlurnkErrorStrategy.#describeToken(tok);
         const expectedTokens = this.getExpectedTokens(recognizer);
         const expectedNames = [...new Set(
             expectedTokens

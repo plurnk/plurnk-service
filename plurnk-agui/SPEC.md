@@ -373,23 +373,23 @@ preserves the parser's source order in its `results` array:
 | Statement before the tail boundary             | Its corresponding `ApplicationPort.dispatchClientAction` result in the statement's position                                                                 |
 | Bounded hard error                             | A 400 `agui/action/parse-failed` result in the error's position, preserving parser detail, line, column, source, and severity                        |
 | `unparsedTail` under {§unparsed-tail-boundary} | Exactly one final 400 `agui/action/parse-failed` result with its verbatim reason and position, `source: "grammar"`, and no adapter-authored recovery |
-| Text item                                      | No result; text is not dispatchable                                                                                                                  |
 
 No statement at or beyond the tail boundary is dispatched. Every parse failure
-uses `stage: "parsing"` and `retryable: false`.
+uses `stage: "parsing"` and `retryable: false`. Outside text is ignored by the
+parser under {§whitespace-contract} and produces no result.
 
 ### §agui-op-look Single-statement observation admission
 
 `op.look` admits a parser result only when it contains exactly one LOOK
-statement, no other item, and no `unparsedTail`. Hidden surrounding whitespace
-is not an item. The action never selects a trusted prefix or silently discards
+statement, no other item, and no `unparsedTail`. Outside text and whitespace
+produce no item under {§whitespace-contract}. The action never selects a trusted prefix or silently discards
 a parser fact.
 
 | Parser result                                       | AG-UI outcome                                                                                                                      |
 |-----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
 | First positioned diagnostic                         | 400 `agui/action/parse-failed`, preserving parser detail, line, column, source, and severity                                       |
 | No diagnostic, with `unparsedTail`                  | 400 `agui/action/parse-failed`, preserving its reason and position with `source: "grammar"` and `severity: "error"`                |
-| Text item, zero or multiple statements, or non-LOOK | 400 `agui/action/invalid-action-parameters` naming the observed admission fact                                                     |
+| Zero or multiple statements, or non-LOOK            | 400 `agui/action/invalid-action-parameters` naming the observed admission fact                                                     |
 | Exactly one LOOK and no other parser fact           | Change only `op` to READ and call `ApplicationPort.look` under {§op-look}; return its exact `OperationResult` through the action envelope |
 
 Parser failures use `stage: "parsing"`; action-shape failures use

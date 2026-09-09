@@ -74,8 +74,7 @@ export type ClientOp = "LOOK" | "BUFF";
 // PlurnkStatement (the default), while parseClient returns ParseResult<ClientStatement>.
 export type ParseItem<S = PlurnkStatement> =
     | { kind: "statement"; statement: S }
-    | { kind: "error"; error: PlurnkParseError }
-    | { kind: "text"; text: string; position: Position };
+    | { kind: "error"; error: PlurnkParseError };
 
 export type ParseResult<S = PlurnkStatement> = {
     items: ParseItem<S>[];

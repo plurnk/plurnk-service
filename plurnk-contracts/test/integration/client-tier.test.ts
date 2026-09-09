@@ -110,10 +110,9 @@ test("client: a LOOK mid-turn breaks parse() (not a protocol op)", () => {
     assert.ok(errors.length > 0 || result.unparsedTail !== undefined);
 });
 
-test("client: an unknown H2 word stays text because the registry governs operation identity", () => {
+test("client: ordinary Markdown headings are ignored, not operations", () => {
     const items = PlurnkParser.parseClient("## MAGIC0 is not an op").items;
-    assert.equal(items.filter((i) => i.kind === "statement").length, 0);
-    assert.ok(items.some((i) => i.kind === "text"));
+    assert.deepEqual(items, []);
 });
 
 // -------------------------------------------------------------------------

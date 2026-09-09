@@ -242,7 +242,8 @@ USD-expressible request and is `null` only when none is expressible. The empty
 request set projects explicit zero usage and cost. Consumers do not recompute
 provider rates or convert currencies while reading the projection.
 
-The parser returns ordered statement, error, and text items. It recovers at a
+The parser ignores outside text and returns ordered statement and error items
+under {§whitespace-contract}. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a
 boundary-destroying failure makes later input undefined. Operation status codes
 and parse diagnostics are separate contracts.
@@ -854,10 +855,14 @@ including leading/trailing blank lines, indentation, CRLF and literal
 backslash escapes. A formatter adds its own framing newline even when a body
 already ends in one. Interstatement whitespace belongs to no body.
 
-A header starts at column zero; the first operation may follow tolerated
-provider preamble without a separating newline. Preamble TEXT has no execution
-semantics. No generic Markdown rendering, indentation stripping or recursive
-code-block extraction occurs. Only a header annotation has comment semantics.
+A header starts at column zero; the first operation may follow provider preamble
+without a separating newline. Text outside operation blocks is ignored in every
+parser tier: before, between, and after operations. It produces no AST item,
+message, receipt, or diagnostic. Exact source remains in `/ops` under
+{§turn-ops-log-curation}; body bytes and source positions are unchanged. A matching
+closer still ends its body, and no missing closer is inferred. No generic Markdown
+rendering, indentation stripping or recursive code-block extraction occurs.
+Only a header annotation has annotation semantics.
 
 ## §public-api 12. Public API
 
@@ -882,13 +887,13 @@ the executable blocks themselves are the program.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One model turn with optional preamble TEXT; an omitted TASK recovers to an empty inventory | `PlurnkStatement`     |
-| `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One model turn; an omitted TASK recovers to an empty inventory | `PlurnkStatement`     |
+| `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including read-shaped LOOK/BUFF commands      | `ClientStatement`     |
 
-Every entry point returns ordered `statement`, `error`, and, where admitted,
-`text` items. When present, {§unparsed-tail-boundary} governs the result's item
+Every entry point ignores outside text under {§whitespace-contract} and returns
+ordered `statement` and `error` items. When present, {§unparsed-tail-boundary} governs the result's item
 extent. The statement `op` field discriminates the generated per-operation
 union.
 
@@ -1200,8 +1205,8 @@ class PlurnkParseError extends Error {
 
 §parser-position Parser source locations are points, not text regions. An AST
 statement's `position` identifies the first backtick of its header; a diagnostic
-identifies the offending or recovery point; a text item and `unparsedTail.from`
-identify the first point at which that item or undefined tail begins. A
+identifies the offending or recovery point; `unparsedTail.from` identifies where
+the undefined tail begins. A
 statement constructed without retained parsed source uses `UNKNOWN_POSITION`,
 the unknown sentinel; its dispatch origin remains a separate fact.
 

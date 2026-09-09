@@ -2,24 +2,16 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
-// One model turn: optional provider/preamble TEXT and at least one operation.
+// One model turn: at least one operation; outside text is hidden by the lexer.
 // Model admission may recover an omitted disposition. Saved logs require one
 // disposition per turn. Authored position does not prescribe execution order. {§turn-shape}
 document
-    : modelTurnContent EOF
+    : modelTurn EOF
     ;
 
 // Each disposition ends one saved turn.
 log
-    : turnContent+ EOF
-    ;
-
-turnContent
-    : TEXT* turn
-    ;
-
-modelTurnContent
-    : TEXT* modelTurn
+    : turn+ EOF
     ;
 
 // {§turn-shape} — turns contain ordinary operations followed by a disposition.
