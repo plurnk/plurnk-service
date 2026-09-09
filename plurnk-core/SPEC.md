@@ -2158,7 +2158,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
-| complete | Model fired an operation other than SEND/TASK, or has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
+| complete | Model fired an operation other than SEND/TASK/KILL, or has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
 | complete | No blocking obligation, or administrative producer | 200 | None |
 | fail | Always | 499; cancel unresolved descendant scope | `The task inventory ended with failed items.` |
 
@@ -2201,13 +2201,14 @@ violations follow the current admission and strike contracts
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-idle-turn **Inventory-only continuation is valid.** An `in_progress` inventory continues whether or not another operation ran, including while children or streams are live. TASK is operational state; neither absence of other operations nor a not-ready READ may replace its intent with an implicit park. Exact repeating activity remains subject to {§engine-cycle-evidence}.
 - §send-premature-terminate **Premature terminate — the pending set.**
-  A model's completion turn normally contains only SEND and TASK. Every other
+  A model's completion turn permits SEND, TASK, and KILL. Every other
   fired operation requires another packet, regardless of success, stream
-  timing, empty results, or log curation. Execution is judged from durable
+  timing, or empty results. KILL does not erase other observation requirements
+  or failed results. Execution is judged from durable
   operation records, never the curated log projection. Pending work has two states:
   **live obligations** (open
   streams/spawns and live child workers) and **completed-but-unobserved
-  results** (every same-turn non-SEND/TASK operation, terminal stream output
+  results** (every same-turn non-SEND/TASK/KILL operation, terminal stream output
   without a terminal foisted READ, and child results queued for the next packet).
   The set is judged at the disposition's own dispatch, after
   earlier operations in the emission. `[200]` over a pending member is refused
@@ -2221,7 +2222,7 @@ violations follow the current admission and strike contracts
   If refusing a model's all-`completed` TASK would reach the loop's existing
   consecutive-strike limit, accept it when `receipts` is the only pending kind
   and this turn has no failed operations. Receipts include successful execution
-  and curation results, not only READ/FIND. The same streak and configured limit
+  results, not only READ/FIND. The same streak and configured limit
   apply; a clean turn resets the streak and there is no separate refusal counter.
   Live work, undelivered child results, and failed stream results remain blocking.
   Decide at TASK dispatch: record the accepted TASK and terminal normally,

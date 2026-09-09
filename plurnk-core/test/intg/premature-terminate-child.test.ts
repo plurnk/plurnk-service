@@ -243,7 +243,7 @@ test("WAIT cannot complete an empty join over a same-turn failed operation", asy
     } finally { await db.close(); }
 });
 
-test("a successful same-turn scoped KILL continues an empty wait and refuses explicit completion", async () => {
+test("a successful same-turn scoped KILL continues an empty wait and permits explicit completion", async () => {
     const db = await openMigrated();
     try {
         const run = async (status: 200 | 202) => {
@@ -307,8 +307,8 @@ test("a successful same-turn scoped KILL continues an empty wait and refuses exp
         assert.equal(continued.result.steerStruck, false, "the normalized continuation is not a model error");
 
         const concluded = await run(200);
-        assert.equal(concluded.result.status, 102, "log curation requires another packet before completion");
-        assert.equal(concluded.result.steerStruck, true, "premature completion receives the ordinary refusal strike");
+        assert.equal(concluded.result.status, 200, "log curation is permitted in a completion turn");
+        assert.equal(concluded.result.steerStruck, false, "final housekeeping does not strike");
     } finally { await db.close(); }
 });
 

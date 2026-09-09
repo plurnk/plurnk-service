@@ -41,7 +41,6 @@ for (const { name, operation, maxStrikes } of [
     { name: "READ at five strikes", operation: "```READ (worker:///answer.md)```", maxStrikes: 5 },
     { name: "FIND", operation: "```FIND (worker:///answer.md)```", maxStrikes: 3 },
     { name: "BARE", operation: "```BARE\nWhat is six times seven?\n```", maxStrikes: 3 },
-    { name: "no-op log KILL", operation: "```KILL (log:///999/*/*)```", maxStrikes: 3 },
 ]) {
     test(`{§send-final-strike-retrieval}: ${name} concludes at the existing limit without rewriting prior refusals`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
@@ -80,6 +79,34 @@ for (const { name, operation, maxStrikes } of [
     });
 }
 
+for (const target of ["log:///999/*/*", "worker:///answer.md"]) {
+    test(`{§send-premature-terminate}: KILL ${target} permits completion without using the final-strike allowance`, async (t) => {
+        const { engine, workspaceId, workerId, loopId, sends } = await fixture(t);
+        const provider = new Mock({ contextWindow: 100_000, responses: [response(`\`\`\`KILL (${target})\`\`\``)] });
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 1, maxStrikes: 3,
+        });
+        assert.equal(result.result.status, 200, "successful KILL is permitted on the first completion attempt");
+        assert.equal(provider.received.length, 1);
+        assert.deepEqual((await sends()).map(({ status_rx }) => status_rx), [200]);
+    });
+}
+
+test("{§send-premature-terminate}: successful KILL does not exempt a same-turn READ from observation", async (t) => {
+    const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
+    const provider = new Mock({ contextWindow: 100_000, responses: [response("```READ (worker:///answer.md)```\n```KILL (worker:///answer.md)```")] });
+    const result = await engine.runLoop({
+        provider, workspaceId, workerId, loopId, messages: [], maxTurns: 1, maxStrikes: 3,
+    });
+    assert.equal(result.result.status, 429, "the READ still needs an observation turn");
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
+    assert.ok(rows.some(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200));
+    assert.ok(rows.some(({ op, origin, status_rx }) => op === "KILL" && origin === "model" && status_rx === 200), "the source entry was actually deleted after the READ");
+    const dispositions = await sends();
+    assert.deepEqual(dispositions.map(({ status_rx }) => status_rx), [409]);
+    assert.deepEqual(JSON.parse(dispositions[0].rx).problem.pending, ["receipts"]);
+});
+
 test("{§send-final-strike-retrieval}: a clean turn resets the allowance with the ordinary strike streak", async (t) => {
     const { engine, workspaceId, workerId, loopId, sends } = await fixture(t);
     const read = "```READ (worker:///answer.md)```";
@@ -93,14 +120,14 @@ test("{§send-final-strike-retrieval}: a clean turn resets the allowance with th
     assert.equal(provider.received.length, 6);
 });
 
-for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-stream-results", "worker-results", "operation-failure"] as const) {
+for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-stream-results", "worker-results", "operation-failure", "kill-failure"] as const) {
     test(`{§send-final-strike-retrieval}: final-strike TERM remains blocked by ${kind}`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
         const read = "```READ (worker:///answer.md)```";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             response(read), response(read),
             response(kind === "operation-failure" ? `${read}
-\`\`\`READ (worker:///missing.md)\`\`\`` : read),
+\`\`\`READ (worker:///missing.md)\`\`\`` : kind === "kill-failure" ? `${read}\n\`\`\`KILL (worker:///missing.md)\`\`\`` : read),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
@@ -149,7 +176,7 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
         const rows = await sends();
         assert.deepEqual(rows.map(({ status_rx }) => status_rx), [409, 409, 409]);
         const problem = JSON.parse(rows.at(-1)!.rx).problem;
-        if (kind === "operation-failure") {
+        if (kind === "operation-failure" || kind === "kill-failure") {
             assert.equal(problem.type, "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures");
             assert.equal(problem.failures, 1);
         } else {

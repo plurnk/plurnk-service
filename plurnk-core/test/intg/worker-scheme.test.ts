@@ -986,7 +986,7 @@ test("{§join-blocking-collect} an actionable TASK without live work continues n
     } finally { await db.close(); }
 });
 
-test("{§op-synchronous} KILL(worker) settles before its receipt forces continuation", async () => {
+test("{§op-synchronous} KILL(worker) settles before same-turn completion", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);
@@ -1004,7 +1004,7 @@ test("{§op-synchronous} KILL(worker) settles before its receipt forces continua
             },
         });
 
-        // Killing the worker settles immediately; observing that result still requires a packet.
+        // Killing the worker settles immediately and does not itself block completion.
         const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
@@ -1012,8 +1012,7 @@ test("{§op-synchronous} KILL(worker) settles before its receipt forces continua
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
         const send = await engine.dispatch({ statement: dispositionStmt("completed", "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
-        assert.equal(send.status, 409, "the KILL receipt requires observation even though the worker has already stopped");
-        assert.deepEqual(send.problem?.pending, ["receipts"], "the stopped worker is no longer live pending work");
+        assert.equal(send.status, 200, "the stopped worker is no longer live pending work and KILL permits completion");
     } finally { await db.close(); }
 });
 

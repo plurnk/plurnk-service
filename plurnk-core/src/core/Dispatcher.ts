@@ -1148,7 +1148,7 @@ export default class Dispatcher {
 
 
     // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,
-    // after earlier operations have executed. Every non-SEND/TASK model operation
+    // after earlier operations have executed. Every non-SEND/TASK/KILL model operation
     // requires a new packet, independently of its result or log visibility.
     async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
         const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
@@ -1160,16 +1160,16 @@ export default class Dispatcher {
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-        if (boundaries.operations || boundaries.streamTerminations.length > 0) pending.push("receipts");
+        if (boundaries.operations.some((op) => op !== "KILL") || boundaries.streamTerminations.length > 0) pending.push("receipts");
         // The final-strike escape hatch cannot discard an unobserved failure.
         if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
         if (boundaries.childTerminations) pending.push("worker-results");
         return pending;
     }
 
-    // {§wait-obligation-matrix}: completion and an empty wait share one observation boundary.
+    // {§wait-obligation-matrix}: completion and an empty wait use the same execution evidence.
     async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
-        operations: boolean;
+        operations: string[];
         streamTerminations: Array<{ closeStatus: number }>;
         childTerminations: boolean;
     }> {
@@ -1181,7 +1181,7 @@ export default class Dispatcher {
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            operations: turnBoundaries.length > 0,
+            operations: turnBoundaries.map(({ op }) => op),
             streamTerminations,
             childTerminations: childTermination !== undefined,
         };

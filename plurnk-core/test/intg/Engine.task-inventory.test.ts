@@ -89,7 +89,6 @@ for (const terminal of ["completed", "failed"] as const) {
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(`${send("First.")}\n${task("in_progress")}`),
             response(`\`\`\`KILL (log:///1/2/*/SEND)\`\`\`\n${send("Second.")}\n${task(terminal)}`),
-            ...(terminal === "completed" ? [response(task("completed"))] : []),
         ] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3,
@@ -99,7 +98,7 @@ for (const terminal of ["completed", "failed"] as const) {
         assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "First.\n\nSecond.");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
         assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200), "the earlier SEND was actually curated");
-        assert.equal(provider.received.length, terminal === "completed" ? 3 : 2, "completion observes curation; failure may abandon deliberately");
+        assert.equal(provider.received.length, 2, "final housekeeping requires no extra inference");
         if (terminal === "failed") assert.equal(result.result.problem?.detail, "The task inventory ended with failed items.");
     });
 }

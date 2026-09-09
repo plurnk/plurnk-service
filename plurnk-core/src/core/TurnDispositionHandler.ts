@@ -12,7 +12,7 @@ export default class TurnDispositionHandler {
     readonly #db: Db;
     readonly #cancelDescendants: CancelDescendantsNotify | undefined;
     readonly #lifecycle: LoopLifecycle;
-    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ operations: boolean; streamTerminations: Array<{ closeStatus: number }>; childTerminations: boolean; }>;
+    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ operations: string[]; streamTerminations: Array<{ closeStatus: number }>; childTerminations: boolean; }>;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
     readonly #pendingSet: (workerId: number, turnId: number) => Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">>;
     readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
@@ -24,7 +24,7 @@ export default class TurnDispositionHandler {
         db: Db;
         cancelDescendants: CancelDescendantsNotify | undefined;
         lifecycle: LoopLifecycle;
-        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ operations: boolean; streamTerminations: Array<{ closeStatus: number }>; childTerminations: boolean; }>;
+        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ operations: string[]; streamTerminations: Array<{ closeStatus: number }>; childTerminations: boolean; }>;
         unobservedFailureCount: (turnId: number) => Promise<number>;
         pendingSet: (workerId: number, turnId: number) => Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">>;
         hasLiveWork: (workerId: number) => Promise<boolean>;
@@ -97,7 +97,7 @@ export default class TurnDispositionHandler {
             // fired, so do not park; continue directly to the packet that
             // materializes them.
             const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-            if (boundaries.operations || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
+            if (boundaries.operations.length > 0 || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
                 return { status: 102 };
             }
             const failCount = await this.#unobservedFailureCount(turnId);
