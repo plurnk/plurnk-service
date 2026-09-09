@@ -426,7 +426,7 @@ test("xAI's native chat contract requests its strongest cataloged effort and cap
     });
 });
 
-test("Cerebras explicit reasoning activation needs no operator effort or token budget", async () => {
+test("Cerebras explicit and adaptive reasoning do not invent a token budget", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         body = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -435,21 +435,21 @@ test("Cerebras explicit reasoning activation needs no operator effort or token b
                 id: "chatcmpl-cerebras",
                 object: "chat.completion.chunk",
                 created: 1,
-                model: "gemma-4-31b",
+                model: "qwen-3.8-27b",
                 choices: [{ index: 0, delta: { reasoning: "consider" }, finish_reason: null }],
             })}`,
             `data: ${JSON.stringify({
                 id: "chatcmpl-cerebras",
                 object: "chat.completion.chunk",
                 created: 2,
-                model: "gemma-4-31b",
+                model: "qwen-3.8-27b",
                 choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
             })}`,
             `data: ${JSON.stringify({
                 id: "chatcmpl-cerebras",
                 object: "chat.completion.chunk",
                 created: 3,
-                model: "gemma-4-31b",
+                model: "qwen-3.8-27b",
                 choices: [],
                 usage: {
                     prompt_tokens: 2,
@@ -462,20 +462,22 @@ test("Cerebras explicit reasoning activation needs no operator effort or token b
         ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
     });
 
-    const provider = catalogProviderFromEnv("cerebras", {
-        ...env,
-        CEREBRAS_API_KEY: "test-key",
-        PLURNK_PROVIDERS_REASONING: "high",
-    }, "gemma-4-31b");
-    const result = await provider?.generate({
-        workerId: "worker",
-        messages: [{ role: "user", content: "hello" }],
-    });
+    for (const policy of ["high", "adaptive"] as const) {
+        const provider = catalogProviderFromEnv("cerebras", {
+            ...env,
+            CEREBRAS_API_KEY: "test-key",
+            PLURNK_PROVIDERS_REASONING: policy,
+        }, "qwen-3.8-27b");
+        const result = await provider?.generate({
+            workerId: "worker",
+            messages: [{ role: "user", content: "hello" }],
+        });
 
-    assert.equal(body?.reasoning_effort, "high", "the native SDK preserves the explicit durable effort");
-    assert.equal("thinking_budget_tokens" in (body ?? {}), false, "activation does not invent a token budget");
-    assert.equal(result?.assistant.reasoning, "consider");
-    assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
+        assert.equal(body?.reasoning_effort, "high", `${policy} reaches the native SDK as high`);
+        assert.equal("thinking_budget_tokens" in (body ?? {}), false, "activation does not invent a token budget");
+        assert.equal(result?.assistant.reasoning, "consider");
+        assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
+    }
 });
 
 test("Meta Muse adaptive reasoning is requested even when the endpoint returns no readable trace", async () => {

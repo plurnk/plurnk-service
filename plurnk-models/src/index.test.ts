@@ -73,14 +73,14 @@ test("providerNameFromCatalogId projects the one canonical PLURNK route segment"
     assert.equal(providerNameFromCatalogId("google"), "google");
 });
 
-test("provider catalog carries Cerebras and Gemma 4 facts", () => {
+test("provider catalog carries Cerebras and Qwen 3.8 facts", () => {
     assert.deepEqual(lookupProvider("cerebras"), {
         id: "cerebras",
         name: "Cerebras",
         npm: "@ai-sdk/cerebras",
         env: ["CEREBRAS_API_KEY"],
     });
-    const model = lookup("cerebras", "gemma-4-31b");
+    const model = lookup("cerebras", "qwen-3.8-27b");
     assert.ok(model !== null);
     assert.ok(model.contextWindow > 0);
     assert.ok((model.maxOutputTokens ?? 0) > 0);
