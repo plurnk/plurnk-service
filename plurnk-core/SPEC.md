@@ -3038,10 +3038,11 @@ aborts proposals, branches, derivations, and worker scopes. It simultaneously
 begins every module closer in reverse registration order, allowing exterior
 listeners to stop accepting work while active requests observe those
 cancellations. It then settles branches, drains, module closers, streaming
-producers, derivations, mimetypes, and schemes before its final conclusion-wake
-barrier. The supervisor owns each asynchronous wake task from acceptance
-through settlement; a task failure participates in the shutdown aggregate. The
-database may be released only after the final wake barrier resolves.
+producers, derivations, mimetypes, and schemes before its final worker-settlement
+barrier. The supervisor owns each asynchronous cancellation and wake task from
+acceptance through settlement, including immediately acknowledged and explicitly
+awaited cancellation; a task failure participates in the shutdown aggregate.
+The database may be released only after the final settlement barrier resolves.
 
 §crash-only-stop The settle sequence is deadline-bounded
 (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, default 30000): past the deadline each wait
@@ -3058,8 +3059,8 @@ flowchart LR
     moduleClose --> joined
     joined --> producers[Settle streaming producers]
     producers --> resources[Dispose derivations,<br/>mimetypes, and schemes]
-    resources --> wakes[Settle conclusion wakes]
-    wakes --> database[Release database]
+    resources --> settlement[Settle cancellations and wakes]
+    settlement --> database[Release database]
 ```
 
 | Setup function | Contract |

@@ -92,6 +92,68 @@ test("{§module-shutdown-order}: supervisor idle preserves a wake failure", asyn
     await drains.idle();
 });
 
+const cancellationCases = [
+    { name: "immediate", includeRoot: true, cancel: (drains: DrainSupervisor) => drains.cancel(2, "operator cancelled") },
+    { name: "awaited", includeRoot: true, cancel: (drains: DrainSupervisor) => drains.cancelWorkerTree(2, "operator cancelled") },
+    { name: "descendant", includeRoot: false, cancel: (drains: DrainSupervisor) => drains.cancelDescendants(2, "operator cancelled") },
+] as const;
+
+for (const { name, includeRoot, cancel } of cancellationCases) {
+    test(`{§module-shutdown-order}: supervisor idle joins ${name} cancellation`, async () => {
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const calls: unknown[][] = [];
+        const drains = supervisor(async () => "system", undefined, {
+            db: { drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) } } as unknown as Db,
+            lifecycle: {
+                cancelTree: async (...args: unknown[]) => {
+                    calls.push(args);
+                    entered.resolve();
+                    await release.promise;
+                    return { workerIds: [], loops: [] };
+                },
+            } as never,
+        });
+        drains.start();
+        const cancellation = cancel(drains);
+        await entered.promise;
+        drains.beginStop("daemon_stopping");
+        let settled = false;
+        const idle = drains.idle().then(() => { settled = true; });
+        try {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            assert.equal(settled, false, "accepted cancellation belongs to the shutdown barrier");
+        } finally {
+            release.resolve();
+            await cancellation;
+            await idle;
+        }
+        assert.deepEqual(calls, [[2, "operator cancelled", includeRoot]]);
+    });
+
+    test(`{§module-shutdown-order}: supervisor preserves ${name} cancellation failure`, async (t) => {
+        const cause = new Error("cancellation fixture failed");
+        const diagnostics: unknown[][] = [];
+        t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+        const drains = supervisor(async () => "system", undefined, {
+            db: { drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) } } as unknown as Db,
+            lifecycle: { cancelTree: async () => { throw cause; } } as never,
+        });
+        drains.start();
+        const cancellation = cancel(drains);
+        const caller = typeof cancellation === "boolean"
+            ? Promise.resolve(assert.equal(cancellation, false))
+            : assert.rejects(cancellation, (error: unknown) => error === cause);
+        await caller;
+        await assert.rejects(drains.idle(), (error: unknown) => error instanceof AggregateError
+            && error.errors.length === 1
+            && error.errors[0] === cause);
+        assert.equal(diagnostics.length, 1, "each failure is reported once, including immediate acknowledgement");
+        assert.equal(diagnostics[0]?.[1], cause, "the original failure remains inspectable");
+        await drains.idle();
+    });
+}
+
 test("{§worker-lifecycle-durable-disposition}: stopping during wait selection preserves the parked loop", async (t) => {
     const selecting = Promise.withResolvers<void>();
     const selected = Promise.withResolvers<Array<{ id: number; wait_revision: number }>>();

@@ -2,6 +2,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import Engine from "../../src/core/Engine.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { insertLoop, insertTurn, insertWorker } from "./_helpers.ts";
 
@@ -159,3 +161,61 @@ test("{§worker-lifecycle-total-reap}: external cancellation terminalizes the du
         } finally { ws.close(); }
     });
 });
+
+for (const mode of ["immediate", "awaited"] as const) {
+    test(`{§module-shutdown-order}: stop joins ${mode} cancellation before its final database read`, async (t) => {
+        const collecting = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const mock = new Mock({ contextWindow: 16384, responses: [] });
+        await withDaemon(mock, async (db, daemon) => {
+            const { workspaceId } = await daemon.createWorkspace({ name: `cancel-stop-${mode}` });
+            const workerId = await insertWorker(db, workspaceId, null, "cancelled");
+            const loopId = await insertLoop(db, workerId, 1, "cancel this task");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+            const events: Array<{ loopId: number; result: { status: number }; turnIds: number[] }> = [];
+            const order: string[] = [];
+            daemon.subscribeToEvents((_workspaceId, method, params) => {
+                if (method === "loop/terminated") {
+                    events.push(params as typeof events[number]);
+                    order.push("terminal event");
+                }
+            });
+            const loopUsage = Engine.prototype.loopUsage;
+            t.mock.method(Engine.prototype, "loopUsage", async function (this: Engine, id: number) {
+                if (id === loopId) {
+                    collecting.resolve();
+                    await release.promise;
+                    order.push("final database read");
+                }
+                return loopUsage.call(this, id);
+            });
+            const cancelWorkerTree = DrainSupervisor.prototype.cancelWorkerTree;
+            let settlement: Promise<void> | undefined;
+            t.mock.method(DrainSupervisor.prototype, "cancelWorkerTree", function (this: DrainSupervisor, id: number, reason: string) {
+                const result = cancelWorkerTree.call(this, id, reason);
+                if (id === workerId) settlement = result;
+                return result;
+            });
+            const cancellation = mode === "awaited"
+                ? daemon.cancelWorker({ workspaceId, workerId, reason: "operator cancelled" })
+                : daemon.cancelDrain(workerId, "operator cancelled");
+            if (mode === "immediate") assert.equal(cancellation, false, "no active drain does not mean no cancellation work");
+            await collecting.promise;
+            let stopped = false;
+            const stopping = daemon.stop().then(() => { stopped = true; order.push("stopped"); });
+            try {
+                await flush();
+                assert.equal(stopped, false, "stop cannot authorize database closure while cancellation still uses it");
+            } finally {
+                release.resolve();
+                await cancellation;
+                await settlement;
+                await stopping;
+            }
+            assert.deepEqual(order, ["final database read", "terminal event", "stopped"]);
+            assert.deepEqual(events.map(({ loopId: id, result, turnIds }) => ({ loopId: id, status: result.status, turnIds })), [
+                { loopId, status: 499, turnIds: [turnId] },
+            ], "the durable cancellation is published once before shutdown completes");
+        });
+    });
+}

@@ -124,8 +124,8 @@ export default class DrainSupervisor {
     // The handle is the drain identity. Start/exit compare by reference so an
     // exiting drain cannot clobber a successor that raced in.
     readonly #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
-    readonly #wakeTasks = new Set<Promise<void>>();
-    readonly #wakeFailures: unknown[] = [];
+    readonly #settlementTasks = new Set<Promise<void>>();
+    readonly #settlementFailures: unknown[] = [];
     // One cancellation scope spans a worker's loops and streams. It outlives
     // any single drain and is replaced only after it has been aborted.
     readonly #workerAborts = new Map<number, AbortController>();
@@ -203,14 +203,14 @@ export default class DrainSupervisor {
         for (;;) {
             const pending = [
                 ...[...this.#activeDrains.values()].map(({ promise }) => promise),
-                ...this.#wakeTasks,
+                ...this.#settlementTasks,
             ];
             if (pending.length === 0) break;
             await Promise.allSettled(pending);
         }
-        const failures = this.#wakeFailures.splice(0);
+        const failures = this.#settlementFailures.splice(0);
         if (failures.length > 0) {
-            throw new AggregateError(failures, "wake-on-completion settlement failed");
+            throw new AggregateError(failures, "worker lifecycle settlement failed");
         }
     }
 
@@ -725,38 +725,37 @@ export default class DrainSupervisor {
     }
 
     cancelWorkerTree(workerId: number, reason: string): Promise<void> {
-        return this.#cancelTree(workerId, reason, true);
+        return this.#trackSettlement(this.#cancelTree(workerId, reason, true), `cancelTree(${workerId})`);
     }
 
     cancelDescendants(workerId: number, reason: string): Promise<void> {
-        return this.#cancelTree(workerId, reason, false);
+        return this.#trackSettlement(this.#cancelTree(workerId, reason, false), `cancelDescendants(${workerId})`);
     }
 
     cancel(workerId: number, reason: string = "user_cancelled"): boolean {
         const hadDrain = this.#activeDrains.has(workerId);
         const hadWork = hadDrain || this.#hasActiveStreams(workerId);
-        void this.cancelWorkerTree(workerId, reason).catch((error: unknown) => {
-            console.error(`cancelTree(${workerId}) failed:`, error);
-        });
+        void this.cancelWorkerTree(workerId, reason);
         return hadWork;
     }
 
     // {§module-shutdown-order}: the producer emits synchronously, while the
     // supervisor owns the asynchronous scheduler work and its shutdown truth.
     notifyWakeWorker(payload: WakeWorkerPayload): void {
-        this.#trackWake(this.#handleWakeWorker(payload));
+        this.#trackSettlement(this.#handleWakeWorker(payload), "wake-on-completion");
     }
 
-    #trackWake(task: Promise<void>): void {
-        this.#wakeTasks.add(task);
+    #trackSettlement(task: Promise<void>, label: string): Promise<void> {
+        this.#settlementTasks.add(task);
         void task.then(
-            () => { this.#wakeTasks.delete(task); },
+            () => { this.#settlementTasks.delete(task); },
             (error: unknown) => {
-                this.#wakeTasks.delete(task);
-                this.#wakeFailures.push(error);
-                console.error("wake-on-completion failed:", error);
+                this.#settlementTasks.delete(task);
+                this.#settlementFailures.push(error);
+                console.error(`${label} failed:`, error);
             },
         );
+        return task;
     }
 
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
@@ -856,7 +855,7 @@ export default class DrainSupervisor {
         const timer = setTimeout(() => {
             if (this.#loopTimers.get(loopId)?.timer !== timer) return;
             this.#loopTimers.delete(loopId);
-            this.#trackWake(this.#wakeTimedLoop(workspaceId, workerId, systemPrompt, loopId, status, revision));
+            this.#trackSettlement(this.#wakeTimedLoop(workspaceId, workerId, systemPrompt, loopId, status, revision), "wake-on-completion");
         }, Math.max(1, Math.min(dueAt - Date.now(), 2_147_483_647)));
         timer.unref();
         this.#loopTimers.set(loopId, { workerId, status, revision, dueAt, timer });
@@ -1028,7 +1027,7 @@ export default class DrainSupervisor {
 
     #publishTermination(workspaceId: number, event: DrainLoopResult & { workerId: number }): void {
         this.#emit(workspaceId, "loop/terminated", event);
-        this.#trackWake(this.#notifyParentCompletion(workspaceId, event.workerId));
+        this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.workerId), "wake-on-completion");
     }
 
     // {§worker-lifecycle-child-wake}: completion belongs to a task, not drain teardown.
