@@ -18,7 +18,8 @@ filter pattern?
 literal replacement text
 ```
 
-* An unscoped EDIT only creates a new file or entry.
+> [!CAUTION]
+> An unscoped EDIT only creates a new file or entry.
 
 ### COPY - Copy files, entries, streams, or text regions.
 
@@ -34,7 +35,8 @@ literal replacement text
 message
 ```
 
-* A SEND without a recipient is a response to the Active Prompt.
+> [!NOTE]
+> A SEND without a recipient is a response to the Active Prompt.
 
 ### WORK - deploy a child worker (fresh log)
 
@@ -66,7 +68,12 @@ filter pattern?
 * ```KILL (worker://recheck)``` terminates a worker.
 * ```KILL (log:///1/[1-7]/*/{TASK,READ})``` removes matching log items.
 * ```KILL (log:///**/READ) <17,-1>``` trims each item's log lines from 17 on.
-* A log item or line KILL doesn't delete the source.
+
+> [!TIP]
+> A log item or line KILL doesn't delete the source.
+
+> [!TIP]
+> Successful KILL op receipts on log items and lines are not shown.
 
 ### TASK - End the turn with the current task inventory.
 
@@ -80,7 +87,8 @@ filter pattern?
 * `completed`: Task has been successfully resolved.
 * `failed`: Task has ended unsuccessfully.
 
-* The final turn may only contain SEND and TASK operations, with all tasks either "completed" or "failed".
+> [!IMPORTANT]
+> The final turn may only contain SEND and TASK operations, with all tasks either "completed" or "failed".
 
 ## Pattern Filtering
 
@@ -95,7 +103,8 @@ filter pattern?
 | `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
 | none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
 
-* In a path target, `*` maps one level and `**` crosses directories.
+> [!TIP]
+> In a path target, `*` maps one level and `**` crosses directories.
 
 ## `(path)`
 
@@ -107,7 +116,8 @@ filter pattern?
 
 ## `<scope>`
 
-* Text scopes use 1-based lines and Unicode code-point columns consistently across textual mimetypes:
+> [!NOTE]
+> Text scopes use 1-based lines and Unicode code-point columns consistently across textual mimetypes:
 
 | form            | endpoint rule                  |
 |-----------------|--------------------------------|
@@ -118,6 +128,8 @@ filter pattern?
 | `<SL,SC,EL,EC>` | start included, end excluded — `<2,1,2,5>` is columns 1-4 of line 2 |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
-* The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
+> [!CAUTION]
+> The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
-YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.
+> [!TIP]
+> YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.

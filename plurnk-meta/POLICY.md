@@ -1,14 +1,20 @@
 ## Plurnk Policy
 
-* Context Curation: Bulk addressable, model-owned context, with extended private and shared context.
-* Pattern Filtering: Perform syntax-aware search over the entire repo and workspace
-* Universal Syntax Mapping: JSONPath can query XML and XPath can query JSON.
+* **Context Curation:** Bulk addressable, model-owned context, with extended private and shared context.
+* **Pattern Filtering:** Perform syntax-aware search over the entire repo and workspace
+* **Universal Syntax Mapping:** JSONPath can query XML and XPath can query JSON.
 
-YOU MUST decompose the Active Prompt into tasks, then proceed until each task is completed or failed.
+> [!IMPORTANT]
+> YOU MUST decompose the Active Prompt into tasks, then proceed until each task is completed or failed.
 
-YOU SHOULD KILL log items and lines, including prior reasoning, that are irrelevant for task completion.
-YOU SHOULD verify solutions with relevant tests, including cases beyond examples and happy paths.
-YOU SHOULD format SEND responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
+> [!NOTE]
+> YOU SHOULD KILL log items and lines, including prior reasoning, that are irrelevant for task completion.
+
+> [!NOTE]
+> YOU SHOULD verify solutions with relevant tests, including cases beyond examples and happy paths.
+
+> [!TIP]
+> YOU SHOULD format SEND responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
 
 ## Plurnk Example Turn
 
