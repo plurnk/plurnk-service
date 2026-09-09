@@ -23,6 +23,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { DispositionStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, logEntries, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
+import { killStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);
 
@@ -140,6 +141,42 @@ test("a parent receives all direct-child entry activity while an independent run
             "lineage supervision carries every child operation, including private-entry activity",
         );
         assert.doesNotMatch(JSON.stringify(deltas), /runtime bulletin/, "an independent runtime actor does not broadcast its private mutation");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§log-kill-meta-operation} child log-curation successes stay out of the parent's packet, while failures remain visible", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `curation-observation-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const parentLoop = await insertLoop(db, parent, 1, "Observe the child.");
+        const child = await insertWorker(db, workspaceId, parent, "child");
+        const childLoop = await insertLoop(db, child, 1);
+        const childTurn = await insertTurn(db, childLoop, 1);
+        const engine = makeEngine(db);
+        const dispatch = (statement: Parameters<Engine["dispatch"]>[0]["statement"], sequence: number) => engine.dispatch({
+            statement, workspaceId, workerId: child, loopId: childLoop,
+            turnId: childTurn, sequence, origin: "model",
+        });
+        assert.equal((await dispatch(editStmt(workerPath("~", "/note"), "child note"), 1)).status, 201);
+        assert.equal((await dispatch(killStmt(urlPath("log", "/1/1/1/EDIT")), 2)).status, 200);
+        assert.equal((await dispatch(killStmt(urlPath("log", "/9/9/9")), 3)).status, 404);
+        const turn = await engine.runTurn({
+            provider: new Mock({ contextWindow: 32768, responses: [okSend()] }),
+            workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES,
+        });
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
+        const kills = logEntries(packet).filter(({ path }) => String(path).endsWith("/KILL"));
+        assert.deepEqual(kills.map(({ target, source, status }) => ({ target, source, status })), [
+            { target: "log:///9/9/9", source: "worker://child", status: 404 },
+        ], "attribution does not exempt successful curation receipts from suppression");
+        const observations = await db.test_log_entries_by_worker.all<{ op: string; source: string; status_rx: number }>({ worker_id: parent });
+        assert.deepEqual(observations.filter(({ op }) => op === "KILL").map(({ source, status_rx }) => ({ source, status_rx })), [
+            { source: "worker://child", status_rx: 200 },
+            { source: "worker://child", status_rx: 404 },
+        ], "both child occurrences remain durable, even though only the failure enters the packet");
     } finally {
         await db.close();
     }
@@ -638,7 +675,6 @@ test("{§env-delta-child-termination} administrative loops stay private without 
         { name: "model inference", turns: [inference], delivered: true },
         { name: "model work after maintenance", turns: [maintenance, inference], delivered: true },
         { name: "initialization without inference", turns: [{ producer: "_plurnk", kind: "initialization" }], delivered: true },
-        { name: "harness overflow", turns: [{ producer: "_plurnk", kind: "overflow" }], delivered: true },
         { name: "client program", turns: [{ producer: "client", kind: "operation" }], delivered: true },
         { name: "before the first turn", turns: [], delivered: true },
     ];

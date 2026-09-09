@@ -236,14 +236,7 @@ export default class LoopDriver {
                 }
                 turnIds.push(...turn.createdTurnIds);
 
-                // {§overflow-turn-only} — packetless kernel chronology is not a
-                // model attempt and never enters emission or strike accounting.
-                if (turn.kind === "overflow") {
-                    if (turn.curationFailure !== undefined) {
-                        return await ruleTerminal(turn.curationFailure, "token_budget");
-                    }
-                    continue;
-                }
+                if (turn.curationFailure !== undefined) return await ruleTerminal(turn.curationFailure, "token_budget");
                 modelTurnCount++;
 
                 // {§engine-rails} Contract Strikes: every emission exhaustion is one

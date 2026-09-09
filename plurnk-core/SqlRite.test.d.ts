@@ -198,8 +198,8 @@ export class SqlRiteSync {
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_stream_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
-	overflow_turn_causal_rows: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
+	engine_admit_log_outputs: SqlRiteSyncPreparedStatements;
 	engine_log_selection_high_water: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
@@ -295,7 +295,6 @@ export class SqlRiteSync {
 	strike_rail_state: SqlRiteSyncPreparedStatements;
 	strike_rail_assess: SqlRiteSyncPreparedStatements;
 	turn_open: SqlRiteSyncPreparedStatements;
-	turn_become_overflow: SqlRiteSyncPreparedStatements;
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
 	turn_fail_open: SqlRiteSyncPreparedStatements;
@@ -719,8 +718,8 @@ export default class SqlRite {
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_stream_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
-	overflow_turn_causal_rows: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
+	engine_admit_log_outputs: SqlRitePreparedStatements;
 	engine_log_selection_high_water: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
@@ -816,7 +815,6 @@ export default class SqlRite {
 	strike_rail_state: SqlRitePreparedStatements;
 	strike_rail_assess: SqlRitePreparedStatements;
 	turn_open: SqlRitePreparedStatements;
-	turn_become_overflow: SqlRitePreparedStatements;
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;
 	turn_fail_open: SqlRitePreparedStatements;

@@ -508,50 +508,6 @@ WHERE le.loop_id = $loop_id
   )
 ORDER BY t.sequence, le.sequence;
 
--- PREP: overflow_turn_causal_rows
--- {§overflow-turn-curation} — one deterministic causal set: rows already in
--- the packetless candidate and rows from the worker's immediately preceding
--- completed turn.
-WITH current_turn AS (
-    SELECT turn.id, turn.sequence AS turn_seq,
-           loop.id AS loop_id, loop.sequence AS loop_seq, loop.worker_id
-    FROM turns turn
-    JOIN loops loop ON loop.id = turn.loop_id
-    WHERE turn.id = $turn_id AND loop.id = $loop_id
-),
-previous_turn AS (
-    SELECT prior.id
-    FROM turns prior
-    JOIN loops prior_loop ON prior_loop.id = prior.loop_id
-    JOIN current_turn current ON current.worker_id = prior_loop.worker_id
-    WHERE prior.completed_at IS NOT NULL
-      AND (
-          prior_loop.sequence < current.loop_seq
-          OR (
-              prior_loop.sequence = current.loop_seq
-              AND prior.sequence < current.turn_seq
-          )
-      )
-    ORDER BY prior_loop.sequence DESC, prior.sequence DESC
-    LIMIT 1
-),
-causal_rows(id) AS (
-    SELECT row.id
-    FROM active_log_entries row
-    WHERE row.turn_id = $turn_id
-       OR row.turn_id = (SELECT id FROM previous_turn)
-)
-SELECT row.id,
-       (loop.sequence || '/' || turn.sequence || '/' || row.sequence) AS coordinate,
-       row.origin, row.op, row.attrs,
-       row.tx, row.mimetype_tx, row.rx, row.mimetype_rx,
-       row.folded
-FROM causal_rows causal
-JOIN active_log_entries row ON row.id = causal.id
-JOIN turns turn ON turn.id = row.turn_id
-JOIN loops loop ON loop.id = row.loop_id
-ORDER BY loop.sequence, turn.sequence, row.sequence;
-
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§body-projection}).
 -- Yields log_entries for the whole worker — the conversation's working
@@ -574,28 +530,21 @@ SELECT
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
     le.state, le.outcome, le.initial_folded, le.folded, delivery.delivered_at AS native_delivered_at,
-    le.source, le.weight, le.attrs
+    le.source, le.weight, le.attrs,
+    le.output_admission_turn_id, le.output_withheld
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 LEFT JOIN native_content_deliveries delivery ON delivery.log_entry_id = le.id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
--- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden})
--- and dissolve successful log-curation receipts: a model-authored log-target KILL
--- row renders in exactly the packet after its turn — the actor sees its 200 or 204 once — and
--- leaves the projection as soon as a later model turn has rows ({§log-kill-meta-operation},
--- {§curation-receipt-dissolves}). Every failed operation remains visible through
--- {§operation-result-uniform-error-channel}.
+-- Proposed rows wait for resolution ({§proposal-proposed-hidden}); successful
+-- log-KILL receipts stay out of the packet ({§log-kill-meta-operation}).
+-- Every failed operation remains visible ({§operation-result-uniform-error-channel}).
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
       (COALESCE(le.op, '') = 'KILL' AND COALESCE(le.scheme, '') = 'log')
       AND le.status_rx < 400
-      AND le.source IS NULL
-      AND le.turn_id <> (
-          SELECT MAX(latest.turn_id) FROM active_log_entries latest
-          WHERE latest.worker_id = le.worker_id AND latest.origin = 'model'
-      )
   )
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and
@@ -607,6 +556,12 @@ WHERE le.worker_id = $worker_id
       AND le.source IS NULL
   )
 ORDER BY l.sequence, t.sequence, le.sequence;
+
+-- PREP: engine_admit_log_outputs
+UPDATE log_entry_projections
+SET output_admission_turn_id = $turn_id, output_withheld = $withheld
+WHERE log_entry_id IN (SELECT value FROM json_each($ids))
+  AND active = 1 AND output_admission_turn_id IS NULL;
 
 -- PREP: engine_log_selection_high_water
 -- An admitted program resolves log curation against the event journal as it

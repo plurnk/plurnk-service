@@ -447,13 +447,12 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     });
 });
 
-test("log-targeted KILL is recorded in the DB, dissolves after rendering once, and a failed one persists", async () => {
+test("log-targeted KILL is recorded in the DB, and a failed one persists", async () => {
     // Successful meta-operations are forensic but render-free; failures remain
     // visible error signals. {§log-kill-meta-operation}
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```EDIT (worker:///note)\nsome content worth folding\n```\n\n```TASK\n[{\"content\":\"wrote\",\"status\":\"in_progress\"}]\n```", 10),
-        // The phantom KILL fails (400) — {§send-premature-terminate} refuses the same-turn [200], so the
-        // curation turn continues and the loop concludes NEXT turn, failure weighed.
+        // The phantom KILL fails (404); the next turn observes the failure.
         makeMockResponse("```KILL (log:///1/2/1) <1,-1>```\n```KILL (log:///9/9/9) <1,-1>```\n```TASK\n[{\"content\":\"curated\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\nthe phantom KILL failed; curation done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
@@ -465,11 +464,8 @@ test("log-targeted KILL is recorded in the DB, dissolves after rendering once, a
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
             const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             const kills = rows.filter((r) => r.op === "KILL");
-            // Both KILLs are recorded in the DB — the success (real coordinate) and the failure
-            // (phantom). The success renders once then dissolves ({§curation-receipt-dissolves}); the
-            // failure renders and persists with its status.
             assert.equal(kills.length, 2, `both KILLs recorded in the DB; got ${JSON.stringify(kills)}`);
-            assert.ok(kills.some((kill) => kill.status_rx < 400) && kills.some((kill) => kill.status_rx >= 400), "one success + one failure recorded");
+            assert.deepEqual(kills.map(({ status_rx }) => status_rx), [200, 404], "one success + one failure recorded");
         } finally { ws.close(); }
     });
 });

@@ -1,21 +1,5 @@
-// Budget stories — the overflow recovery under real pressure. The specimens exercise
-// PLURNK's own packet architecture:
-//
-//   * Entries are FREE. An EDIT's body lands in the catalog entry, which does not
-//     render — so a "fat entry" adds nothing to the packet. The only thing that
-//     renders (and therefore creates budget pressure) is the LOG: a READ result
-//     renders the content it pulled.
-//   * The overflow recovery runs PRE-LLM. An over-ceiling would-be model turn becomes
-//     a packetless `_plurnk` recovery turn; the next model turn receives the recovered
-//     state through ordinary materialization. A model turn's stored request packet is what was
-//     sent before the model spoke, so its own fat log weighs on the next candidate.
-//   * The lever is the immediately-prior producer-neutral turn plus the current
-//     packetless candidate's already-materialized causal boundary.
-//
-// Machinery anchors (overflow-only, causal whole-body suppression, context-envelope admission,
-// and negative-pressure telemetry) live in Engine.budget-enforce. These behavioral
-// stories prove that the recovery gates on the current candidate, ordinary scoped KILL
-// reclaims room, and a failed hard admission never reaches the model.
+// {§tokenomics}: measured packet weight, pressure inventory and hard-capacity
+// evidence. Output admission and preservation are exercised in output-admission.test.ts.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -23,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { Plan, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, dispositionStmt, } from "./_dsl.ts";
@@ -32,7 +16,6 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat visible READ
 const TINY = 2;         // absolute wall far below any packet → irreducible overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
-const OVERFLOW_PLAN = [{ content: "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }];
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
@@ -71,18 +54,6 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
     const packet = JSON.parse(row!.packet) as { weight: number; assistant?: { ops: unknown[] } };
     return { ...packet, packet };
 };
-const overflowPlan = async (db: Db, turnId: number): Promise<Plan> => {
-    const turn = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: turnId });
-    assert.deepEqual(
-        { producer: turn?.producer, kind: turn?.kind },
-        { producer: "_plurnk", kind: "overflow" },
-        "the recovery has an explicit producer and purpose",
-    );
-    const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId });
-    const plan = rows.find((row) => row.op === "TASK" && row.origin === "_plurnk");
-    assert.ok(plan, "the packetless recovery turn contains its actual NEXT inventory");
-    return (JSON.parse(plan.tx) as { body: Plan }).body;
-};
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
     const state = JSON.parse(budget.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
@@ -90,8 +61,6 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
     const ceiling = state.tokensActiveMax;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
-const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null }>> =>
-    db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null }>({ worker_id: workerId });
 // Two reference measurements on throwaway workers (deterministic FAT body), so the
 // recovery ceilings track the real assembly and never magic numbers:
 //   floor    = bare scaffolding (turn 1's pre-emission packet, no prior log)
@@ -133,182 +102,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     } finally { await db.close(); }
 });
 
-// 2 — the overflow recovery gates on the CURRENT assembled packet: a fat prior-turn
-// READ log triggers suppression on the next turn — plurnk measures packet.weight.
-test("budget: overflow is judged on the current assembled packet, not a prior-turn baseline", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }); // fat READ log, expanded
-        // Ceiling sits ABOVE the floor but BELOW floor+fat: the only thing over the
-        // wall is the fat prior-turn log, which the overflow recovery must measure NOW and suppress.
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(recovery.producer, "_plurnk", "the over-ceiling candidate becomes a recovery turn");
-        assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: recovery.turnId }))?.packet, null);
-        assert.equal(tightP.remaining, 1, "provider I/O is unreachable on the recovery turn");
-        const priorModelLog = (await logRows(db, workerId)).filter((r) => r.turn_seq === 2 && r.weight > 0);
-        assert.ok(priorModelLog.length > 0 && priorModelLog.every((r) => r.folded === "[[1,-1]]"),
-            "the fat prior model turn was body-suppressed because the current candidate overflowed");
-    } finally { await db.close(); }
-});
-
-// 3 — recovery is its own turn. The successor model packet is ordinary
-// materialization of the suppressed state and can deliver without synthetic narration.
-test("budget: scoped KILL reclaims room, records a recovery turn, and the successor model turn delivers", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(recovery.producer, "_plurnk");
-        assert.deepEqual(await overflowPlan(db, recovery.turnId), OVERFLOW_PLAN);
-        const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(delivered.status, 200, "the successor model turn delivers after recovery");
-        assert.equal(delivered.producer, "model");
-        const packet = (await packetOf(db, delivered.turnId)).packet;
-        assert.equal(packetSection(packet, "errors"), "", "recovered overflow is not fabricated as a durable operation failure");
-        assert.equal(packetSection(packet, "notices"), "", "the actual recovery turn needs no synthetic notice");
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.xyz/engine/context/token-budget-overflow"), false,
-            "successful recovery does not duplicate itself as a synthetic Problem");
-    } finally { await db.close(); }
-});
-
-// 4 — a DELIVERED packet is always ≤100% (owner: "the packet literally can't be over
-// 100%"). The recovered packet's own readout never exceeds the ceiling.
-test("budget: a delivered packet after overflow recovery reads at or below 100%", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const { percent, free } = budgetHeadline((await packetOf(db, delivered.turnId)).packet);
-        assert.ok(percent <= 100, `delivered recovered packet reads ≤100% (got ${percent}%)`);
-        assert.ok(free >= 0, "free never goes negative on a delivered packet");
-    } finally { await db.close(); }
-});
-
-// 5 — scoped KILL drops the measured packet. The recovered delivered packet is
-// lighter than the expanded reference.
-test("budget: suppressing a fat log body strictly reduces the measured packet", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const modelTurn = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const delivered = (await packetOf(db, modelTurn.turnId)).weight;
-        assert.ok(delivered < expanded, `delivered recovered packet (${delivered}) lighter than the expanded reference (${expanded})`);
-    } finally { await db.close(); }
-});
-
-// 6 — a hard-413 never reaches the model. The recovery turn remains packetless.
-test("budget: an irreducible hard-413 short-circuits dispatch — the model is never called", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = engineAt(db);
-        const provider = mockCeiling(TINY, [response([dispositionStmt("completed", "must not run")])]);
-        const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(t.status, 413, "the effective context envelope rejects immediately");
-        assert.equal(t.producer, "_plurnk");
-        assert.equal(t.capacityHardStop, false, "curation recovery fails before the provider capacity boundary");
-        assert.equal(provider.remaining, 1, "the provider was not called");
-        assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null,
-            "no request or assistant is fabricated when recovery fails");
-        assert.deepEqual(await overflowPlan(db, t.turnId), OVERFLOW_PLAN);
-    } finally { await db.close(); }
-});
-
-// 7 — body suppression is render-only: stored log_entries.weight is unchanged
-// by a scoped KILL.
-test("budget: scoped KILL changes the render, not the stored curation weight of the entry", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = (await logRows(db, workerId)).filter((r) => r.turn_seq === 2).reduce((s, r) => s + r.weight, 0);
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const modelTurnAfter = (await logRows(db, workerId)).filter((r) => r.turn_seq === 2);
-        assert.ok(modelTurnAfter.filter((r) => r.weight > 0).every((r) => r.folded === "[[1,-1]]"),
-            "the first model turn's complete body set is suppressed");
-        assert.equal(modelTurnAfter.reduce((s, r) => s + r.weight, 0), before,
-            "stored weight is unchanged across scoped KILL — only the render collapsed");
-    } finally { await db.close(); }
-});
-
-// 8 — the lever is the IMMEDIATELY-prior turn, not progressive shedding. The overflow recovery
-// selects the previous packet-bearing turn only; it does not walk backward
-// through packetless chronology or progressively shed older history.
-test("budget: overflow suppresses the immediately-prior turn each time, never older suppressed turns", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), [...fatReads(FAT, 1), ...okSends(1)]);
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 }); // recovery, raw turn 3
-        const suppressed = (rows: Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null }>, t: number): boolean =>
-            rows.filter((r) => r.turn_seq === t && r.weight > 0).every((r) => r.folded === "[[1,-1]]");
-        assert.ok(suppressed(await logRows(db, workerId), 2), "the first recovery suppressed model turn 2");
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 }); // fat model turn, raw turn 4
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 }); // recovery, raw turn 5
-        const afterSecondRecovery = await logRows(db, workerId);
-        assert.ok(suppressed(afterSecondRecovery, 4), "the second recovery suppressed immediately-prior model turn 4");
-        assert.ok(suppressed(afterSecondRecovery, 2), "older model turn 2 stays suppressed without being selected again");
-    } finally { await db.close(); }
-});
-
-// 8b — automatic suppression is recorded as ordinary `_plurnk` scoped KILL rows the model can read back.
-test("the overflow recovery records its automatic suppression as ordinary `_plurnk` KILL rows", async () => {
-    const db = await openMigrated();
-    try {
-        const { floor, expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const wide = engineAt(db);
-        const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
-        await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const foldedRows = (await logRows(db, workerId)).filter((row) => row.turn_seq === 2 && row.weight > 0);
-        assert.ok(foldedRows.length > 0 && foldedRows.every((row) => row.folded === "[[1,-1]]"));
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const recoveryRows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: recovery.turnId });
-        assert.ok(
-            recoveryRows.some((row) => row.op === "KILL" && row.origin === "_plurnk"),
-            "the recovery records its exact ordinary scoped KILL operations",
-        );
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.xyz/engine/context/token-budget-overflow"), false,
-            "successful recovery is a turn, not a durable synthetic error");
-    } finally { await db.close(); }
-});
-
-// 10 — the hard-413 Problem owns exact ruler pressure while the ordinary
-// recovery inventory remains terse and the rejected candidate remains unstored.
+// The hard-413 Problem owns exact pressure; no request or task is fabricated.
 test("budget: the irreducible hard-413 Problem reports a positive overshoot honestly", async () => {
     const db = await openMigrated();
     try {
@@ -316,7 +110,7 @@ test("budget: the irreducible hard-413 Problem reports a positive overshoot hone
         const engine = engineAt(db);
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
-        assert.deepEqual(await overflowPlan(db, t.turnId), OVERFLOW_PLAN);
+        assert.equal(t.producer, "model", "admission failure does not manufacture a recovery producer");
         const problem = t.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal 413 carries its exact Problem");
         const { ceiling, usage, deficit } = problem;
@@ -338,7 +132,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
         // curation rail reports that exact derived ceiling before provider I/O.
         const provider = mockCeiling(10, okSends(1));
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.deepEqual(await overflowPlan(db, t.turnId), OVERFLOW_PLAN);
+        assert.equal(t.producer, "model");
         const ceiling = (t.curationFailure?.problem as { ceiling?: number } | undefined)?.ceiling;
         assert.equal(ceiling, 10, "context 12 − total output budget 2 → input capacity 10");
         assert.equal(provider.remaining, 1, "curation overflow prevents provider I/O");

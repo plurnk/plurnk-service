@@ -1,10 +1,9 @@
-// {§prompt-entry}, {§overflow-turn-curation}. Prompt frames are ordinary
-// curatable log memory. Explicit and automatic scoped KILL use the same contract.
+// {§prompt-entry}, {§context-output-selection}. Prompt frames are ordinary
+// curatable log memory; withholding output does not curate it.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import OverflowTurn from "../../src/core/OverflowTurn.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { editStmt, killStmt, dispositionStmt } from "./_dsl.ts";
@@ -69,45 +68,6 @@ test("KILL of the prompt remains deliberate curation", async () => {
     } finally { await db.close(); }
 });
 
-test("the overflow recovery suppresses a causal prompt frame without a row-kind exemption", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        const before = await db.engine_render_log.all<{
-            id: number;
-            loop_seq: number;
-            turn_seq: number;
-            sequence: number;
-            op: string;
-            scheme: string | null;
-            folded: string;
-        }>({ worker_id: workerId });
-        const kills = await OverflowTurn.plan(db, loopId, curationTurn);
-        for (const [index, { statement }] of kills.entries()) {
-            const result = await engine.dispatch({
-                statement,
-                workspaceId,
-                workerId,
-                loopId,
-                turnId: curationTurn,
-                sequence: index + 1,
-                origin: "_plurnk",
-            });
-            assert.ok(result.status < 400, "the ordinary recovery scoped KILL succeeds");
-        }
-        const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
-        assert.equal(visibility?.folded, "[[1,-1]]", "the prompt remains addressable with its complete body suppressed");
-
-        const after = new Map((await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
-            .map((row) => [row.id, row.folded]));
-        const expected = before
-            .filter((row) => after.get(row.id) !== row.folded)
-            .map((row) => `${row.loop_seq}/${row.turn_seq}/${row.sequence}`)
-            .sort();
-        assert.ok(expected.includes("1/2/1"), `the prompt frame is among the rows the recovery suppressed: ${JSON.stringify(expected)}`);
-    } finally { await db.close(); }
-});
-
 test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same coordinate", async () => {
     const db = await openMigrated();
     try {
@@ -132,7 +92,7 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
     } finally { await db.close(); }
 });
 
-test("a scoped KILL is recorded in the DB, render once in the next packet, then dissolve ({§curation-receipt-dissolves})", async () => {
+test("a scoped KILL is recorded in the DB but never renders ({§log-kill-meta-operation})", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -142,19 +102,18 @@ test("a scoped KILL is recorded in the DB, render once in the next packet, then 
         const dbRow = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the scoped KILL is recorded in the DB (forensics)");
         const rendered = await db.engine_render_log.all<{ op: string; status_rx: number }>({ worker_id: workerId });
-        assert.ok(rendered.some((r) => r.op === "KILL" && r.status_rx < 400), "the successful scoped KILL renders while its turn is the latest model turn — the actor sees its status once");
-        // The next model turn lands a row: the receipt dissolves; the scoped KILL's history stays.
+        assert.ok(!rendered.some((r) => r.op === "KILL"), "the successful scoped KILL is absent immediately");
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const laterTurn = await insertTurn(db, loopId, next!.next, 102);
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch2"), "later"), workspaceId, workerId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
         const later = await db.engine_render_log.all<{ op: string }>({ worker_id: workerId });
-        assert.ok(!later.some((r) => r.op === "KILL"), "no KILL receipt lingers once a later model turn exists");
+        assert.ok(!later.some((r) => r.op === "KILL"), "the successful receipt remains absent on later turns");
         const stillRecorded = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
-        assert.ok((stillRecorded?.n ?? 0) >= 1, "history is append-only: the dissolved receipt remains in the DB");
+        assert.equal(stillRecorded?.n, dbRow?.n, "history is append-only: the suppressed receipt remains in the DB");
     } finally { await db.close(); }
 });
 
-test("a successful log-item KILL renders once then dissolves; a non-log KILL renders and stays ({§curation-receipt-dissolves})", async () => {
+test("a successful log-item KILL never renders; a non-log KILL renders and stays ({§log-kill-meta-operation})", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -172,13 +131,13 @@ test("a successful log-item KILL renders once then dissolves; a non-log KILL ren
 
         const rendered = await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId });
         const killRows = rendered.filter((r) => r.op === "KILL");
-        assert.ok(killRows.some((r) => r.scheme === "log"), "the successful log-item KILL renders once — in the packet after its turn");
+        assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL is absent immediately");
         assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — renders");
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const laterTurn = await insertTurn(db, loopId, next!.next, 102);
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch3"), "later"), workspaceId, workerId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
         const later = (await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId })).filter((r) => r.op === "KILL");
-        assert.ok(!later.some((r) => r.scheme === "log"), "the log-item KILL receipt dissolved once a later model turn existed");
+        assert.ok(!later.some((r) => r.scheme === "log"), "the log-item KILL receipt remains absent on later turns");
         assert.ok(later.some((r) => r.scheme === "worker"), "the world-mutation KILL stays visible");
     } finally { await db.close(); }
 });

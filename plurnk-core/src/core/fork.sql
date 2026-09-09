@@ -98,6 +98,8 @@ SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
        state, outcome, attrs, initial_folded,
        projection.active AS projection_active,
        projection.folded AS projection_folded,
+       projection.output_admission_turn_id,
+       projection.output_withheld,
        delivery.delivered_at AS native_delivered_at
 FROM log_entries
 JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
@@ -114,7 +116,9 @@ RETURNING id;
 -- PREP: fork_set_log_entry_projection
 UPDATE log_entry_projections
 SET active = $active,
-    folded = $folded
+    folded = $folded,
+    output_admission_turn_id = $output_admission_turn_id,
+    output_withheld = $output_withheld
 WHERE log_entry_id = $log_entry_id;
 
 -- PREP: fork_insert_native_content_delivery
@@ -124,8 +128,7 @@ INSERT INTO native_content_deliveries (log_entry_id, delivered_at)
 VALUES ($log_entry_id, $delivered_at);
 
 -- PREP: fork_get_log_curation_effects
--- Exact log-curation effects are part of the copied log history, not
--- process-local overflow recovery bookkeeping. Both row identities are remapped below.
+-- Both identities in a copied log-curation effect belong to the branch history.
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
        effect.active_before, effect.active_after,
        effect.folded_before, effect.folded_after

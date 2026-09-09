@@ -13,30 +13,6 @@ FROM turns
 WHERE loop_id = $loop_id
 RETURNING id, sequence;
 
--- PREP: turn_become_overflow
--- Packet admission may divert a would-be inference boundary into a kernel
--- recovery turn. Once model-authored rows, a model emission or BARE call, or
--- packet evidence exist, changing the producer would falsify history and is
--- refused.
-UPDATE turns
-SET producer = '_plurnk',
-    kind = 'overflow'
-WHERE id = $id
-  AND producer = 'model'
-  AND kind = 'inference'
-  AND completed_at IS NULL
-  AND packet IS NULL
-  AND usage_curation_budget IS NULL
-  AND finish_reason IS NULL
-  AND model IS NULL
-  AND meta IS NULL
-  AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = turns.id)
-  AND NOT EXISTS (
-      SELECT 1 FROM log_entries
-      WHERE turn_id = turns.id AND origin != '_plurnk'
-  )
-RETURNING id;
-
 -- PREP: turn_record_inference
 -- Preserve the exact admitted/request-only packet and provider metadata while
 -- the operation sequence is still executing. Completion remains a separate

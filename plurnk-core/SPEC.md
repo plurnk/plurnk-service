@@ -47,20 +47,18 @@ their absence never makes a client, plugin, or `_plurnk` turn exceptional.
 | Field | Contract |
 |---|---|
 | `producer` | Required actor class: `model`, `client`, `plugin`, or `_plurnk`. |
-| `kind` | Required purpose: `inference`, `initialization`, `overflow`, `operation`, or `maintenance`. Model iff inference; initialization, overflow, and maintenance require `_plurnk`. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
+| `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
 | `status`, `completed_at` | A new turn is open at status 102 with `completed_at=NULL`. Completion records the exact turn disposition/operation disposition and timestamp; a completed 102 is therefore distinct from an open 102. |
 | Operations | Ordered by `(turn_id, sequence)` on one exact worker/loop/turn chain. Each row's `origin` is the turn producer or `_plurnk` making a system observation; the observation does not impersonate the producer. |
 | `turnOps` | Every admitted source-backed turn preserves its exact disposition-ended program as one actionless `/ops` log item under {§turn-ops-entry}. The item supplements rather than replaces the executed operation rows. |
 | Inference evidence | Model calls, `packet`, model, finish reason, and provider metadata belong only to model/inference turns. Turn fields are nullable until recorded and remain NULL for every other kind. |
 
 One lifecycle owner opens, optionally records inference evidence, and completes
-every turn. Initialization, overflow recovery, client dispatch, and model
+every turn. Initialization, maintenance, client dispatch, and model
 inference use that same path. `plugin` is the producer identity for
 plugin-authored operation turns; exposing that path must not introduce a
-parallel record or lifecycle. The sole identity transition is an open,
-evidence-free model/inference candidate becoming `_plurnk`/overflow before
-provider admission. Process-restart recovery completes any turn whose producer
-vanished.
+parallel record or lifecycle. Producer and kind never change. Process-restart
+recovery completes any turn whose producer vanished.
 
 §turn-ops-admission-path **Source acquisition varies; admitted-turn execution does not.**
 A provider response, deterministic `_plurnk` program, or future client/plugin
@@ -356,7 +354,7 @@ Core's internal owners compose without becoming new package or public seams:
 | `Daemon` | Process/module lifecycle, dependency composition, provider policy, notifications, and the external client façade. |
 | `DrainSupervisor` | One worker's queue consumer, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
 | `Engine` | Loop lifecycle and the public turn, dispatch, derivation, and proposal façades. |
-| `TurnRunner` | Model inference plus `_plurnk` initialization/overflow turns from materialization through operation settlement. |
+| `TurnRunner` | Model inference and `_plurnk` initialization, from materialization and output admission through operation settlement. |
 | `Dispatcher` | Operation admission/routing, scheme execution, proposal waiting, curation, and durable log writes. |
 | `ResourceMutations` | EDIT/COPY/MOVE selection, anchor preconditions, cross-scheme effects, and mutation settlement. |
 
@@ -1414,7 +1412,7 @@ turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream},
 - §log-uniform-query **Log speaks the universal query contract** — ```` ```FIND (log://…) ```` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
-- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§overflow-turn} — this is information, not a second guard.
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-output-admission} — this is information, not a second guard.
 
 - §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
 
@@ -1870,7 +1868,7 @@ through the same packet renderer and calibrated accounting used for the actual
 request. If the complete candidate packet fits, that scope is dispatched;
 otherwise the initial READ selects `<1,16>` or the smaller configured cap.
 Only the chosen READ is recorded. The packet is rebuilt and ordinary
-{§overflow-turn} recovery applies if it still does not fit. No special reasoning
+{§context-output-admission} applies if it still does not fit. No special reasoning
 recovery turn, second token estimator, hidden clipping, or receipt rewriting
 occurs. Candidate construction does not acknowledge stream observations;
 only sending the actual request advances those observation cursors.
@@ -1970,7 +1968,7 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 ### §turn-ops-entry The admitted turn program
 
-§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program** as an actionless log item in addition to the ordinary result row for every dispatched statement. `op` is null, `attrs.kind="turnOps"` identifies the durable type, `origin` is the turn producer, no target exists, `tx` is empty, and the source lives in `rx.content`, typed `text/vnd.plurnk`. Its canonical model-facing address appends the lowercase `/ops` leaf to its three-part coordinate. The packet does not duplicate that identity as `kind` metadata. It is line-numbered and READ/FIND/KILL-able like any active log body. The worker-initialization `turnOps` is born visible because it is the worked orientation example; every other `turnOps`, including model inference and overflow recovery, is born body-suppressed and remains exactly READable until deliberately curated under {§log-readable-projection}. Log-KILL clears the `writableBy` gate for a model-authored item and changes only its active projection under {§log-history-projection}; the exact program remains forensic history. The log has no EDIT surface. The shared executor writes exactly one after every admitted source-backed turn.
+§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program** as an actionless log item in addition to the ordinary result row for every dispatched statement. `op` is null, `attrs.kind="turnOps"` identifies the durable type, `origin` is the turn producer, no target exists, `tx` is empty, and the source lives in `rx.content`, typed `text/vnd.plurnk`. Its canonical model-facing address appends the lowercase `/ops` leaf to its three-part coordinate. The packet does not duplicate that identity as `kind` metadata. It is line-numbered and READ/FIND/KILL-able like any active log body. The worker-initialization `turnOps` is born visible because it is the worked orientation example; every other `turnOps`, including model inference, is born body-suppressed and remains exactly READable until deliberately curated under {§log-readable-projection}. Log-KILL clears the `writableBy` gate for a model-authored item and changes only its active projection under {§log-history-projection}; the exact program remains forensic history. The log has no EDIT surface. The shared executor writes exactly one after every admitted source-backed turn.
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
@@ -1978,9 +1976,21 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
 - §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional body matcher compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
-§log-kill-meta-operation **A log KILL is a meta-operation — a log-curation directive, not a world action.** It changes log visibility, never the underlying resources. A **successful** log KILL **is recorded in the log** and **renders exactly once** — in the packet after its turn, as its path, target, and status — then dissolves from the projection ({§curation-receipt-dissolves}): the actor sees its `200` or `204` at the one moment it decides whether to conclude or repeat, and the row exists for forensics (a curation act with NO trace is how a weak model suppressing its own task frame stayed invisible until a database dig).
+§log-kill-meta-operation **A log KILL changes working context, never the underlying resources or execution history.** Receipt visibility depends on the target and result, not the producer, attribution, or age of the turn:
 
-§curation-receipt-dissolves **Successful log-curation receipts dissolve.** A model-authored KILL of a log item, whole or scoped, renders in exactly the packet immediately after its turn — path, target, and status, no body — and leaves the active projection once a later model turn has rows; history keeps the row, the exact active/body-suppression transition for every target, and the authored `turnOps`. Nothing is left to curate: a receipt that dissolves is not a log item to sweep. A KILL of a log item retires the selected rows from the worker's active projection under {§log-history-projection}; it does not delete their execution history. The dissolving is **scoped to log targets**: a `KILL` of a `worker://` note, an `sh://` stream, or another stored artifact retains its scheme-owned world or process semantics and stays visible. A killed exact coordinate resolves 404 in ordinary log operations; a well-formed broad selection with no active matches remains the 204 no-op of {§log-curation-folder-idiom}, and that 204 renders once like any dissolving receipt. Failed KILLs render like every operation error and persist.
+| KILL result | Packet receipt |
+|---|---|
+| Successful log-item or line curation, including a 204 no-op | Not shown, including the first packet after the operation. |
+| Failed log curation | Visible with its ordinary Problem. |
+| Non-log target: file, worker, stream, or other resource | Ordinary scheme-owned receipt. |
+
+This packet filter does not retire the receipt: the operation, result, authored
+`turnOps`, and each target's curation effects remain durable under
+{§log-history-projection}. The receipt remains explicitly READ/FIND-addressable.
+Whole-item KILL retires the selected target rows; scoped KILL trims their
+readable bodies under {§log-readable-projection}. An exact retired coordinate
+resolves 404; a broad selection with no active matches remains the 204 no-op
+of {§log-curation-folder-idiom}.
 
 ### §log-sensitive-request-evidence Durable request evidence
 
@@ -3574,7 +3584,7 @@ implementation status, and superseded alternatives belong in forge issues.
 
 `PacketBuilder.buildRequestPacket` owns the engine's default ordered section
 list. Trusted scheme plugins may transform that first-class list before it is
-rendered or measured; {§overflow-turn} remains an engine-owned post-build rail.
+rendered or measured; {§context-output-admission} remains an engine-owned post-build rail.
 
 ```mermaid
 flowchart LR
@@ -3661,10 +3671,10 @@ time of measurement.
 - §membership-binary-sniff **Binary truth beats a text label.** Filesystem source acquisition, including tracked members and installed skill resources, inspects up to the first 8192 bytes when extension detection does not identify a binary type. NUL marks `application/octet-stream`; existing binary types retain their declared type. Member projections follow {§membership-source-projection}; installed skill projections follow {§skills-resources}.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
 - §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Curation` section is one JSON object carrying `tokensActiveTotal` and `tokensActiveMax` (and `tokensResponseMax` when an output floor is disclosed), so the block opens as a JSON payload like ```` ```TASK ````. It never presents their difference as free response tokens. The protocol definition directly requires KILL of irrelevant log items and ranges to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe visible cost and curation savings. Generic packet composition and physical-token speculation are absent.
-- §tokenomics-pressure-inventory **Pressure identifies its reclaimable concentration.** When the ordinary two-field packet measurement reaches 80% of `tokensActiveMax`, the JSON object gains a `tokensActiveLargest` array — at most five currently visible, addressed log bodies, each a flat `{path, tokensBody, tokensActive}` object ordered by `tokensActive` descending and then `log:///` path — and the `YOU MUST KILL superseded, stale, or irrelevant log items and ranges.` mandate follows the object, naming the targets it lists. Body-suppressed and bodyless rows cannot enter the list because a scoped KILL would reclaim no body from them. The largest prefix that fits may be shown; this conditional block never pushes an otherwise admissible packet over its maximum. Its own weight participates in the final fixed-point `tokensActiveTotal`.
+- §tokenomics-pressure-inventory **Pressure identifies its reclaimable concentration.** At 80% of `tokensActiveMax`, a Markdown `> [!WARNING]` block follows the JSON with `> YOU MUST KILL superseded, stale, or irrelevant log items and ranges.` New output withholding replaces that mandate under {§context-output-warning}. The JSON may include `tokensActiveLargest`: at most five visible log bodies, each `{path, tokensBody, tokensActive}`, ordered by active weight descending and then path. Suppressed/bodyless rows cannot enter the list. Include the largest prefix that fits; drop the optional list before the warning. Both participate in the final fixed-point total and the complete request admission check.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as stable content identity. `weight` is stored beside that content and is never keyed or recomputed by model.
 - §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Derived `costUsd` sums every USD-expressible request and is `null` only when no request is expressible; a response-less failure or an uncataloged model is skipped, never allowed to erase the expressible evidence. Each derived aggregate usage field independently sums its reported quantity, so heterogeneous detail coverage remains partial rather than becoming fictitiously complete. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
-- §tokenomics-negative-pressure **Negative curation pressure is honest but never submitted.** The provisional readout may report `tokensActiveTotal` above `tokensActiveMax`. Crossing the maximum diverts that would-be model turn into {§overflow-turn}; no over-ceiling packet reaches `provider.generate`. Automatic recovery does not create a strike or consume a model-turn allowance.
+- §tokenomics-negative-pressure **Negative curation pressure is honest but never submitted.** The provisional readout may report `tokensActiveTotal` above `tokensActiveMax`. Crossing the maximum withholds new returned output under {§context-output-admission}; no over-ceiling packet reaches `provider.generate`. Output admission creates neither a strike nor another turn.
 
 ### §membership Workspace identity, membership, disk co-location
 
@@ -3859,23 +3869,20 @@ physical requests. Its constraints distinguish pending calls, response
 evidence, and response-less errors while monetary classification remains
 explicit.
 
-### §overflow-turn Budget enforcement: automated recovery turns
+### §context-output-admission Budget enforcement: returned-output admission
 
-Budget recovery is an ordinary state-machine transition, not a private packet
-mutation. Every candidate model request first crosses the model-facing curation
-ceiling and then, only if admitted, the provider's request-shaped physical
-capacity boundary:
+Operations and their results are execution history. Packet admission controls
+only whether newly presented returned output fits, never what executed or what
+the model's TASK inventory means.
 
 ```mermaid
 flowchart TD
     assemble["Assemble and measure<br/>candidate request"] --> budget{"Weight ≤ curation ceiling?"}
     budget -->|yes| generate["Provider generate"]
-    budget -->|no| recover["Keep turn packetless<br/>reclassify as `_plurnk` overflow"]
-    recover --> curate["Dispatch whole-body scoped KILL ops<br/>and TASK through ordinary dispatch"]
-    curate --> verify{"Rebuilt request fits?"}
-    verify -->|yes| next["Next model turn"]
+    budget -->|no| withhold["Withhold new returned output<br/>retain receipts and add overflow metadata"]
+    withhold --> verify{"Request with warning fits?"}
+    verify -->|yes| generate
     verify -->|no| stop["Terminal 413"]
-    next --> assemble
     generate --> capacity{"Provider capacity failure?"}
     capacity -->|no| response["Classify completed response"]
     capacity -->|yes| prompt{"Withholding automatic<br/>prompt bodies changes request?"}
@@ -3884,33 +3891,23 @@ flowchart TD
     prompt -->|no| stop
 ```
 
-§overflow-turn-only **Recovery occurs only after measured overflow and before
-provider I/O.** After packet assembly, Core compares render weight
-({§tokenomics}) with the provider-derived curation ceiling. An admitted packet
-ships untouched. An over-ceiling candidate is never stored as a model request
-and never reaches `provider.generate`; its already-created database turn instead
-becomes a packetless `_plurnk` turn. A turn with an existing inference call
-cannot change its producer. Packetless initialization and recovery turns
-remain ordinary turn chronology but do not consume `maxTurns`, model-call,
-emission-attempt, usage, or cost accounting.
+§context-output-selection **First presentation, not a turn-number heuristic, owns admission.** Canonical log-body resolution distinguishes authored input from returned output. Before provider I/O, the run boundary records the first admission turn of each newly visible returned body. On measured overflow, that batch's returned bodies and native parts are withheld together. Already-admitted output, authored TASK/program/message bodies, actual statuses and Problems, effects, child state, and immutable evidence remain unchanged. Bodyless and initially suppressed rows require no admission. Packet assembly and speculative reasoning READ measurement are pure. No recovery turn, generated TASK, KILL operation, strike, or extra model attempt is manufactured.
 
-- §overflow-turn-script **Every recovery is an ordinary admitted `_plurnk` program.** Every causal whole-body scoped KILL precedes a final TASK containing one `in_progress` entry: `YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` The successor is directed toward dedicated bulk curation. The exact `turnOps` is born body-suppressed; successful KILL rows follow {§log-kill-meta-operation} and therefore remain durable but packet-suppressed. Every recovery row carries `_plurnk` and `overflow`; no model call, synthetic receipt, or parallel explanation exists.
-- §overflow-turn-curation **The preceding turn owns the pressure it introduced.** Core deterministically selects every nonempty body already created in the packetless candidate turn and every nonempty body created by the immediately preceding completed turn in that worker's chronology. Each selected body is KILLed whole (`<1,-1>`) through ordinary dispatch. Already-fully-suppressed and bodyless rows require no operation. Core performs no relevance judgment, exempts no operation or resource kind, reconstructs no interval delta, re-runs no authored selector, and chooses no unrelated older history.
-- §overflow-turn-hard-413 **Recovery fails hard when causal suppression cannot fit.** After the ordinary scoped KILLs land, Core rebuilds and remeasures once. If the plan changes no visibility or the rebuilt request still exceeds the ceiling, the loop terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem; Core neither submits excess bytes nor chooses unrelated older history. Separately, every `provider.generate` assesses physical capacity under {§provider-surface-capacity}. Core may retry a provider capacity rejection only after withholding automatic prompt-body projection when that changes the request. If it cannot produce changed bytes or the changed request is still rejected, the request-only model turn and provider-owned Problem terminalize at **413 Content Too Large**.
+| Projection fact | Meaning |
+|---|---|
+| No output admission | Not yet presented as returned output; eligible on its first visible request. |
+| Admitted | Normal projection, thereafter controlled only by deliberate curation and existing delivery rules. |
+| Withheld | Body/native parts stay absent in the original receipt; freeing space does not silently restore them. |
 
-- §tokenomics-fetch-fits-free **A retrieval larger than the available packet room retains its receipt and source.** Its complete row lands in the model turn that requested it. If the following candidate packet exceeds the curation ceiling, {§overflow-turn-curation} trims that log body's readable projection in a real `_plurnk` overflow turn. Its immutable evidence survives, and the source resource remains independently retrievable; READ of the trimmed log row cannot undo curation ({§log-readable-projection}).
+§context-output-receipt A withheld receipt adds `overflow: "N output lines not shown; tokensActiveTotal exceeds tokensActiveMax"`, counting the output lines its normal current projection would show, not unrelated source lines. Its original result status and Problem are unchanged. Native output is withheld with its text and is not marked delivered. FORK inherits admission state with the copied log. Explicit KILL still controls readable/active content independently.
+
+§context-output-warning **New omission escalates the one curation warning.** The admitting request renders `> [!WARNING]` followed by `> YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` beneath its JSON readout, replacing the ordinary pressure mandate even when withholding brings usage below 80%. Historical omission alone does not retrigger it. The warning participates in exact packet measurement; optional largest-items entries yield space first.
+
+§context-output-hard-413 **Unfittable retained context fails honestly.** If the request still exceeds the ceiling after withholding newly presented output, it terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem without provider I/O. No unrelated older history or authored inventory is pruned. Separately, provider capacity failures follow {§provider-surface-capacity}: withholding automatic prompt-body projection permits a retry only when it changes the request; otherwise the exact provider-owned 413 terminates the request-only model turn.
+
+- §tokenomics-fetch-fits-free **Withholding is not deletion.** The complete result lands once. READ/FIND of its original log address retain the readable body and original coordinates; scoped READ creates a fresh output occurrence subject to the same admission rule. Source resources and forensic evidence remain unchanged. Deliberate scoped KILL, unlike withholding, removes lines from subsequent readable projections ({§log-readable-projection}).
 
 - §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (all tasks completed) · `499` model-abandoned (a terminal inventory containing failed tasks, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` waiting — a TASK inventory waiting on a live obligation or explicit deadline/poll ({§wait-obligation-matrix}, {§worker-wait-timing}); an empty untimed wait continues at `102`, never implicit success · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
-
-§overflow-turn-surface **The packet is the resulting state, not an account of it.**
-The first request after recovery is assembled by the ordinary packet path from
-the actual durable log after the recovery turn. It therefore carries the prior
-causal rows with their bodies genuinely suppressed, the recovery TASK inventory
-genuinely visible, and the recovery `turnOps` body genuinely suppressed.
-Successful recovery KILL receipts are absent under the universal curation rule.
-No notice, reconstruction, or overflow-specific projection simulates what
-`_plurnk` did; exact READs recover canonical bodies as new retrieval occurrences,
-and ordinary KILL can further curate the active projection.
 
 ### §env-delta The environment delta: what changed since the model last looked
 
@@ -4120,7 +4117,7 @@ leaves the request-only record, while rejected exchanges remain in their
 
 | Turn state                    | `turns.packet`                                  |
 | ----------------------------- | ----------------------------------------------- |
-| No model request assembled (including initialization and overflow turns) | SQL `NULL` |
+| No admitted model request (including initialization and local capacity rejection) | SQL `NULL` |
 | Request assembled             | `{ weight, sections }`                         |
 | Response admitted             | `{ weight, sections, assistant, assistantRaw }` |
 
@@ -4235,8 +4232,8 @@ concludes, ordinal-keyed as `N`; the next turn publishes every entry for which
 that loop has no `op='prompt'` row, oldest first. Every still-undelivered frame
 at conclusion is re-ordinalized into one source-keyed recovery loop; that loop's
 first turn publishes the complete ordered set exactly once. Recovery retries
-complete the same queued loop and never mint duplicate work. The automatic
-overflow turn preserves prompt rows; explicit KILL follows the ordinary log
+complete the same queued loop and never mint duplicate work. Output withholding
+preserves readable prompt rows; explicit KILL follows the ordinary log
 contract.
 
 §packet-catalog **Catalogs are query results, not packet state.** The packet
@@ -4630,7 +4627,8 @@ the transition.
 
 ### §packet-git-status The Git status section — compact repository state
 
-When Git is admitted for the workspace, `## Git Status` reports the current
+When Git is admitted for the workspace, `## Git Status` contains a Markdown
+`> [!NOTE]` block. Its quoted lines report the current
 branch, upstream ahead/behind counts, and staged/unstaged/untracked totals, then
 one bounded line per non-empty class (at most eight paths, `+K more`): staged,
 unstaged, `untracked members` — each path with the inclusion pattern that admits it or

@@ -80,6 +80,10 @@ interface RxView {
     effects?: unknown;
 }
 interface LogEntryView {
+    id?: number | null;
+    output_admission_turn_id?: number | null;
+    output_withheld?: boolean;
+    newOverflow?: boolean;
     coordinate?: unknown;
     op?: unknown;
     origin?: unknown;
@@ -126,6 +130,8 @@ export interface RenderedLog {
     readonly reclaimableBodies: readonly ReclaimableLogBody[];
     // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
+    readonly unadmittedOutput: readonly number[];
+    readonly newOverflow: boolean;
 }
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
 import { imageWeight, pdfWeight } from "./attachments.ts";
@@ -135,6 +141,8 @@ interface RenderedLogRow {
     readonly content: string;
     readonly reclaimableBody: ReclaimableLogBody | null;
     readonly attachment: PacketAttachment | null;
+    readonly unadmittedOutput: number | null;
+    readonly newOverflow: boolean;
 }
 
 interface VisibleLogBody {
@@ -150,7 +158,7 @@ interface VisibleLogBody {
 export default class PacketWire {
     // {§packet-markdown} Render the sections in `slot` to one ChatMessage.content
     // string. Sections render in list order; empties are omitted (no empty headers on the wire);
-    // each is `## {header}\n\n{content}` (or bare content when header is null),
+    // JSON follows its H2 directly; other content has one blank line (null header is bare),
     // trailing newlines stripped, joined with a blank line.
     static renderSlot(sections: SectionView[], slot: "system" | "user"): string {
         return sections
@@ -160,14 +168,14 @@ export default class PacketWire {
             .join("\n\n");
     }
 
-    // One section → its markdown block (`## {header}\n\n{content}`, or bare
-    // content when header is null/empty), trailing newlines stripped. Empty
+    // One section → its markdown block, trailing newlines stripped. Empty
     // content renders to "" so renderSlot drops it. This is the unit the
     // per-section `weight` is measured over.
     static renderSection(s: SectionView): string {
         if (typeof s.content !== "string" || s.content.length === 0) return "";
         const header = typeof s.header === "string" && s.header.length > 0 ? s.header : null;
-        return (header ? `## ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
+        const separator = s.content.startsWith("{") || s.content.startsWith("[") ? "\n" : "\n\n";
+        return (header ? `## ${header}${separator}${s.content}` : s.content).replace(/\n+$/, "");
     }
 
 
@@ -218,7 +226,7 @@ export default class PacketWire {
     // The git section content: the working-tree summary. "" when absent.
     static renderGit(git: unknown): string {
         const status = git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
-        return status;
+        return status.length === 0 ? "" : `> [!NOTE]\n${status.split("\n").map((line) => `> ${line}`).join("\n")}`;
     }
 
     // The log section's content: the model's curated rows as Markdown-framed records ({§log-wire-format}).
@@ -232,13 +240,15 @@ export default class PacketWire {
     // accounting come from one render pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", reclaimableBodies: [], attachments: [] };
+        if (log.length === 0) return { content: "", reclaimableBodies: [], attachments: [], unadmittedOutput: [], newOverflow: false };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         return {
             content: rows.map(({ content }) => content).join("\n\n"),
             reclaimableBodies: rows.flatMap(({ reclaimableBody }) =>
                 reclaimableBody === null ? [] : [reclaimableBody]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
+            unadmittedOutput: rows.flatMap(({ unadmittedOutput }) => unadmittedOutput === null ? [] : [unadmittedOutput]),
+            newOverflow: rows.some(({ newOverflow }) => newOverflow),
         };
     }
 
@@ -706,11 +716,9 @@ export default class PacketWire {
                 }
                 meta.git = git;
             }
-            // Absence = 200 on an ordinary row — the clients' quiet grammar
-            // (plurnk#21) applied to the packet. SEND keeps its disposition,
-            // KILL keeps decisive destructive completion, a dissolving log-KILL
-            // receipt exists only to show its status ({§curation-receipt-dissolves}),
-            // and every non-200 stays explicit (#338).
+            // SEND, TASK, destructive KILL, and non-200 statuses stay explicit.
+            // Successful log-KILL rows never reach this projection
+            // ({§log-kill-meta-operation}).
             if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
             if (typeof tx?.annotation === "string") meta.annotation = tx.annotation;
@@ -972,7 +980,7 @@ export default class PacketWire {
             // neither ⇒ no canonical body.
             const display = bodyVisibility.readableContent.length === 0
                 ? "none"
-                : bodyVisibility.fullyFolded
+                : bodyVisibility.fullyFolded || e.output_withheld === true
                     ? "folded"
                     : body.length === 0
                         ? "none"
@@ -988,6 +996,10 @@ export default class PacketWire {
                 )
                 : projection.chunk;
             if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
+            const outputWithheld = e.output_withheld === true && !bodyVisibility.fullyFolded && body.length > 0;
+            if (outputWithheld) {
+                meta.overflow = `${projectedLineCount} output lines not shown; tokensActiveTotal exceeds tokensActiveMax`;
+            }
             const renderRow = (): string => {
                 const metadata = PacketWire.#canonicalJson(meta);
                 return display === "open"
@@ -1023,6 +1035,12 @@ export default class PacketWire {
                             ? { path, tokensBody, tokensActive }
                             : null,
                         attachment,
+                        unadmittedOutput: display === "open"
+                            && fullBody.provenance === "returned"
+                            && e.output_admission_turn_id == null
+                            && typeof e.id === "number"
+                                ? e.id : null,
+                        newOverflow: outputWithheld && e.newOverflow === true,
                     };
                 }
                 meta.tokensActive = tokensActive;

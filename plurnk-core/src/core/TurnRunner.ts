@@ -55,7 +55,7 @@ import Results, { OperationFailureError, type SchemeResult } from "./results.ts"
 import Turn, { type InferenceEvidence } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 
-// TurnRunner owns one inference cycle and any initialization or overflow turn
+// TurnRunner owns one inference cycle and any initialization turn
 // that precedes provider admission; Engine retains the surrounding loop
 // lifecycle and public facade.
 import NoticeChannel from "./NoticeChannel.ts";
@@ -69,7 +69,6 @@ import { observed, observedSync } from "../observe/spans.ts";
 import { GEN_AI_REQUEST_SPAN, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
-import OverflowTurn from "./OverflowTurn.ts";
 import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
@@ -243,10 +242,9 @@ type EngineTurnResult = {
     rejectedModelEntryId?: number;
     capacityFailure?: SchemeResult;
     curationFailure?: SchemeResult;
-} & (
-    | { producer: "model"; kind: "inference" }
-    | { producer: "_plurnk"; kind: "overflow" }
-);
+    producer: "model";
+    kind: "inference";
+};
 
 export type BareBatchResult = {
     readonly statement: BareStatement;
@@ -269,7 +267,7 @@ export type AdmittedTurnResult = {
     readonly steerStruck: boolean;
 };
 
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: tokensActiveTotal exceeded tokensActiveMax, and the causal overflow turn could not make enough room.";
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: tokensActiveTotal exceeds tokensActiveMax; retained context cannot fit.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -1116,6 +1114,7 @@ export default class TurnRunner {
                 transientOpenLogEntryId,
                 promptProjection,
                 pendingLog,
+                turnId,
             });
         // {§reasoning-initial-read} — preflight the real READ representation,
         // then dispatch only the selected scope. No speculative history writes.
@@ -1133,37 +1132,19 @@ export default class TurnRunner {
             nextActionIndex++;
         }
         let requestPacket = await buildPacket();
-        // {§overflow-turn} — measured overflow diverts this would-be model
-        // turn into an ordinary packetless `_plurnk` operation batch. Every
-        // visibility effect goes through an ordinary Dispatcher scoped KILL; provider I/O is
-        // structurally unreachable on this branch.
-        const pressure = this.#packets.curationOverflow(requestPacket);
-        if (pressure !== null) {
-            const kills = await OverflowTurn.plan(this.#db, loopId, turnId);
-            await Turn.becomeOverflow(this.#db, turnId);
-            const source = TurnOps.renderInternal([
-                ...kills.map(({ statement }) => statement),
-                OverflowTurn.sendStatement(),
-            ]);
-            const executed = await this.executeAdmittedTurn({
-                statements: TurnOps.parseInternal(source), source, sourceFolded: true,
-                origin: "_plurnk", workspaceId, workerId, loopId, turnId,
-                fromSequence: nextActionIndex, failOnOperationError: true,
-                signal: this.#loopSignal(loopId), onDispatch, onSettled,
-            });
-            if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-                throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
-            }
-            const remaining = this.#packets.curationOverflow(await buildPacket());
-            const curationFailure = kills.length === 0 || remaining !== null
-                ? curationOverflowFailure(remaining ?? pressure)
-                : undefined;
+        // {§context-output-admission} — output admission changes no operation
+        // outcome, authored inventory, or turn identity.
+        if (await this.#packets.admitOutput(requestPacket, turnId)) requestPacket = await buildPacket();
+        const remaining = this.#packets.curationOverflow(requestPacket);
+        if (remaining !== null) {
+            const curationFailure = curationOverflowFailure(remaining);
+            await Turn.complete(this.#db, turnId, curationFailure.status);
             return {
                 createdTurnIds,
                 turnId,
-                producer: "_plurnk",
-                kind: "overflow",
-                status: curationFailure?.status ?? TURN_STATUS_IMPLICIT_CONTINUE,
+                producer: "model",
+                kind: "inference",
+                status: curationFailure.status,
                 outcomes: [],
                 fingerprint: "",
                 capacityHardStop: false,
@@ -1171,7 +1152,7 @@ export default class TurnRunner {
                 steerStruck: false,
                 emissionAttempts: 0,
                 emissionExhausted: false,
-                ...(curationFailure === undefined ? {} : { curationFailure }),
+                curationFailure,
             };
         }
         let materializedRequest = await this.#wireMessages(requestPacket, systemCtx, provider);

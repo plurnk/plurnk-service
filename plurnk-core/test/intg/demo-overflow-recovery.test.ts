@@ -76,8 +76,8 @@ ${fixture.answer}
                     db, daemon, workspaceId, workerId: result.modelWorkerId,
                     turnIds: result.turnIds ?? [], fixture,
                 });
-                assert.equal(evidence.overflowTurns, 1);
-                assert.equal(evidence.modelTurns, 2, "neither overflow nor final housekeeping consumes another model response");
+                assert.equal(evidence.overflowRequests, 1);
+                assert.equal(evidence.modelTurns, 2, "withholding and final housekeeping create no extra model response");
                 assert.equal(evidence.receiptActive, !retire);
                 assert.equal(provider.remaining, 0);
             } finally { ws.close(); }

@@ -20,6 +20,7 @@ export interface LogBodyRow {
 }
 
 export interface ResolvedLogBody {
+    readonly provenance: "authored" | "returned";
     readonly content: string;
     readonly mimetype: string;
     readonly startLine: number | null;
@@ -29,6 +30,7 @@ export interface ResolvedLogBody {
 export type ActionlessLogKind = "turnOps" | "emissionAttempt";
 
 const EMPTY_BODY: ResolvedLogBody = Object.freeze({
+    provenance: "returned",
     content: "",
     mimetype: "text/plain",
     startLine: 1,
@@ -71,6 +73,7 @@ export default class LogBody {
             || lineOrdinals.some((line, index) => !Number.isSafeInteger(line) || line < 1 || (index > 0 && line <= lineOrdinals[index - 1]))
         )) throw new TypeError("A sparse receipt requires one increasing source ordinal per body line.");
         return {
+            provenance: "returned",
             content: body.content,
             mimetype: body.projection === ByteView.PROJECTION ? "text/plain"
                 : typeof body.mimetype === "string" ? body.mimetype : (fallbackMimetype ?? "text/plain"),
@@ -84,6 +87,7 @@ export default class LogBody {
         // bounded landed context, not the authored mutation text.
         if (receipts.length === 0) return EMPTY_BODY;
         return {
+            provenance: "returned",
             content: receipts
                 .map((receipt) => "effect" in receipt
                     ? receipt.effect.context
@@ -119,7 +123,7 @@ export default class LogBody {
 
         if (row.op === null) {
             LogBody.actionlessKind({ op: row.op, attrs });
-            return contentBody ?? EMPTY_BODY;
+            return { ...(contentBody ?? EMPTY_BODY), provenance: "authored" };
         }
 
         if (row.op === "READ" || row.op === "FIND" || row.op === "BARE" || row.op === "prompt") {
@@ -136,6 +140,7 @@ export default class LogBody {
                 }
                 if (row.op === "EDIT" && typeof result.span === "string") {
                     return {
+                        provenance: "returned",
                         content: result.span,
                         mimetype: "text/plain",
                         startLine: null,
@@ -161,6 +166,7 @@ export default class LogBody {
             const body = (tx as { body?: unknown }).body;
             if (typeof body === "string") {
                 return {
+                    provenance: "authored",
                     content: body,
                     mimetype: "text/plain",
                     startLine: 1,
@@ -189,7 +195,7 @@ export default class LogBody {
                 fallback: `[ worker concluded with no deliverable (status ${exact.status}) ]`,
             });
             if (presentation === null) return EMPTY_BODY;
-            return { ...presentation, startLine: 1 };
+            return { ...presentation, provenance: "returned", startLine: 1 };
         }
 
         if (row.op !== null && TurnDisposition.isOp(row.op)) {
@@ -203,6 +209,7 @@ export default class LogBody {
                 throw new TypeError(`A durable ${row.op} row carries a noncanonical Plurnk Plan body.`, { cause: error });
             }
             return {
+                provenance: "authored",
                 content,
                 mimetype: "application/json",
                 startLine: 1,
@@ -219,6 +226,7 @@ export default class LogBody {
                         : "";
                 if (content.length > 0) {
                     return {
+                        provenance: "authored",
                         content,
                         mimetype: "text/plain",
                         startLine: 1,
@@ -227,6 +235,7 @@ export default class LogBody {
             }
             if (row.op === "SEND" && typeof rx === "string" && rx.length > 0) {
                 return {
+                    provenance: "returned",
                     content: rx,
                     mimetype: row.mimetypeRx ?? "text/plain",
                     startLine: 1,
@@ -238,6 +247,7 @@ export default class LogBody {
             const message = (rx as { message?: unknown }).message;
             if (typeof message === "string" && message.length > 0) {
                 return {
+                    provenance: "returned",
                     content: message,
                     mimetype: "text/plain",
                     startLine: 1,
@@ -253,6 +263,7 @@ export default class LogBody {
             const body = (tx as { body?: unknown }).body;
             if (typeof body === "string" && body.length > 0) {
                 return {
+                    provenance: "authored",
                     content: body,
                     mimetype: row.mimetypeTx ?? "text/plain",
                     startLine: 1,

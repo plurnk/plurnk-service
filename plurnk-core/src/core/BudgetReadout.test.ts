@@ -34,7 +34,7 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
     for (const specimen of cases) {
         await t.test(specimen.name, () => {
             const { content, usage } = resolve(specimen.ceiling, specimen.baseWeight);
-            const parsed = JSON.parse(content) as { tokensActiveTotal: number; tokensActiveMax: number };
+            const parsed = JSON.parse(content.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
             assert.equal(parsed.tokensActiveTotal, usage, "the displayed total is the exact render-weight");
             assert.equal(parsed.tokensActiveMax, specimen.ceiling);
         });
@@ -43,8 +43,8 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
 
 test("BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
     const { content, usage } = resolve(9, 62);
-    assert.equal(content.split("\n").length, 1);
-    const parsed = JSON.parse(content) as { tokensActiveTotal: number; tokensActiveMax: number };
+    assert.match(content, /\n\n> \[!WARNING\]\n> YOU MUST KILL/u);
+    const parsed = JSON.parse(content.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
     assert.equal(parsed.tokensActiveTotal, usage);
     assert.equal(parsed.tokensActiveMax, 9);
     assert.doesNotMatch(content, /tokensActiveLargest/u, "no inventory without candidate rows");
@@ -72,7 +72,7 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
     );
     assert.match(
         pressured.content,
-        /\]\}\n\nYOU MUST KILL superseded, stale, or irrelevant log items and ranges\.$/u,
+        /\]\}\n\n> \[!WARNING\]\n> YOU MUST KILL superseded, stale, or irrelevant log items and ranges\.$/u,
         "the recovery mandate follows the JSON that names its targets",
     );
     const object = JSON.parse(pressured.content.split("\n\n")[0]!) as {
@@ -93,16 +93,23 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
     assert.equal(object.tokensActiveTotal, pressured.usage, "the displayed total includes the conditional inventory");
 });
 
-test("{§tokenomics-pressure-inventory}: recovery advice never creates an overflow", () => {
+test("{§tokenomics-pressure-inventory}: the optional list yields room before the required warning", () => {
     const item = {
         path: `log:///${"1".repeat(200)}/READ`,
         tokensBody: 100,
         tokensActive: 110,
     };
-    const pressured = resolve(1_000, 950, [item]);
+    const pressured = resolve(1_000, 850, [item]);
     assert.doesNotMatch(pressured.content, /"path":/u, "an inventory that cannot fit is omitted");
-    assert.doesNotMatch(pressured.content, /YOU MUST KILL/u, "the conditional mandate cannot manufacture an overflow either");
-    assert.ok(pressured.usage <= 1_000, "the neutral packet remains admissible");
+    assert.match(pressured.content, /> \[!WARNING\]\n> YOU MUST KILL/u);
+    assert.ok(pressured.usage <= 1_000, "the warned packet remains admissible");
+});
+
+test("{§context-output-warning}: actual new omission overrides pressure even below 80%", () => {
+    const content = BudgetReadout.resolve(BudgetReadout.draft(10_000), 10_000, contentWeight, [], true);
+    assert.match(content, /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
+    assert.equal((content.match(/YOU MUST/gu) ?? []).length, 1);
+    assert.equal(JSON.parse(content.split("\n\n")[0]!).tokensActiveTotal, contentWeight(content));
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {

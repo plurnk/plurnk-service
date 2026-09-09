@@ -213,7 +213,7 @@ test("turns: producer and kind are required and reject incoherent identities", a
     } finally { await db.close(); }
 });
 
-test("Turn: overflow is the sole producer transition and model calls require inference", async () => {
+test("Turn: producer is immutable and model calls require inference", async () => {
     const { db, loopId } = await setup();
     try {
         const operation = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
@@ -225,10 +225,6 @@ test("Turn: overflow is the sole producer transition and model calls require inf
                 model: "mock/model",
             }),
             /inference call requires a valid owning workspace and causal context/,
-        );
-        await assert.rejects(
-            () => Turn.becomeOverflow(db, operation.id),
-            /cannot become overflow/,
         );
         await assert.rejects(
             () => db.test_turns_update_identity.run({
@@ -250,21 +246,19 @@ test("Turn: overflow is the sole producer transition and model calls require inf
         );
 
         const inference = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
-        await Turn.becomeOverflow(db, inference.id);
-        const overflow = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: inference.id });
-        assert.deepEqual(
-            { producer: overflow?.producer, kind: overflow?.kind },
-            { producer: "_plurnk", kind: "overflow" },
+        await assert.rejects(
+            () => db.test_turns_update_identity.run({ id: inference.id, producer: "_plurnk", kind: "operation" }),
+            /turn producer and kind are immutable/,
         );
     } finally { await db.close(); }
 });
 
-test("{§overflow-turn-only} inference history prevents changing the turn producer", async () => {
+test("{§context-output-admission} inference history prevents changing the turn producer", async () => {
     const { db, loopId } = await setup();
     try {
         const emitted = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         await db.engine_open_model_call.get({ turn_id: emitted.id, kind: "emission", attributions: "[]", model: "mock/model" });
-        await assert.rejects(() => Turn.becomeOverflow(db, emitted.id), /cannot become overflow/, "a model emission is history; the producer cannot change beneath it");
+        await assert.rejects(() => db.test_turns_update_identity.run({ id: emitted.id, producer: "_plurnk", kind: "operation" }), /turn producer and kind are immutable/, "a model emission is history; the producer cannot change beneath it");
     } finally { await db.close(); }
 });
 

@@ -32,7 +32,7 @@ export interface PacketFailure {
 export interface TurnRow {
     id: number; loop_id: number; sequence: number;
     producer: "model" | "client" | "_plurnk" | "plugin";
-    kind: "inference" | "initialization" | "overflow" | "operation";
+    kind: "inference" | "initialization" | "operation" | "maintenance";
     status: number; completed_at: string | null; packet: DurablePacket | null;
     packetFailure: PacketFailure | null;
     finish_reason: string | null; model: string | null;

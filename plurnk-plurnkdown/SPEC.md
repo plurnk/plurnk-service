@@ -13,8 +13,9 @@ diagnostics produced by its linter. Core owns packet semantics and emits this fo
 | Section values and lifecycle  | Each producing package      | Producer-owned content under the core packet contract              |
 
 Core renders the transformed section list into one system string and one user string. Within
-each slot, list order is preserved. A nonempty section with a header renders as an H2, one blank
-line, then its content. A null header renders only its content. Empty content is omitted, trailing
+each slot, list order is preserved. A nonempty section with a header renders as an H2
+immediately followed by its JSON object/array content; non-JSON content has one blank
+line after the header. A null header renders only its content. Empty content is omitted, trailing
 newlines are removed from each section, and rendered sections are separated by one blank line.
 
 ## §packet-default-projection Default packet projection

@@ -83,17 +83,17 @@ test("{§packet-git-status}: Git packet state names each class once, bounded, an
     });
     assert.equal(
         out,
-        "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 3 untracked\n"
-        + "staged: `staged.txt`\n"
-        + "unstaged: `tracked.md`\n"
-        + "untracked members: `docs/guide.md` (docs/**) · `out/report.md` (created)\n"
-        + "untracked (not members): `notes.md`",
+        "> [!NOTE]\n> branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 3 untracked\n"
+        + "> staged: `staged.txt`\n"
+        + "> unstaged: `tracked.md`\n"
+        + "> untracked members: `docs/guide.md` (docs/**) · `out/report.md` (created)\n"
+        + "> untracked (not members): `notes.md`",
     );
     const many = PacketWire.renderGit({
         branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 10,
         files: Array.from({ length: 10 }, (_, i) => ({ path: `loose-${i}.txt`, status: "??" })),
     });
-    assert.equal(many.split("\n").length, 2, "one line per class, never one per path");
+    assert.equal(many.split("\n").length, 3, "one note marker and one line per class, never one per path");
     assert.match(many, / \(\+2 more\)$/, "the class line is bounded at eight paths");
 });
 

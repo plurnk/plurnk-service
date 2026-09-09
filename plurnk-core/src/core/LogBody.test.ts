@@ -42,14 +42,14 @@ test("LogBody resolves built-in result-backed bodies", () => {
     for (const op of ["READ", "FIND", "BARE", "prompt"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: "", rx: content(`${op} body`) }),
-            { content: `${op} body`, mimetype: "text/markdown", startLine: 1 },
+            { content: `${op} body`, mimetype: "text/markdown", startLine: 1, provenance: "returned" },
             op,
         );
     }
 
     assert.deepEqual(
         LogBody.resolve({ op: null, attrs: { kind: "turnOps" }, tx: "", rx: content("model body") }),
-        { content: "model body", mimetype: "text/markdown", startLine: 1 },
+        { content: "model body", mimetype: "text/markdown", startLine: 1, provenance: "authored" },
         "the actionless turnOps kind owns its result-backed body without inventing an op",
     );
 
@@ -67,7 +67,7 @@ test("LogBody resolves built-in result-backed bodies", () => {
                 receipt: receipt("10:before\n11:after"),
             },
         }),
-        { content: "10:before\n11:after", mimetype: "text/plain", startLine: null },
+        { content: "10:before\n11:after", mimetype: "text/plain", startLine: null, provenance: "returned" },
     );
 
     assert.deepEqual(
@@ -93,7 +93,7 @@ test("LogBody resolves built-in result-backed bodies", () => {
                 },
             },
         }),
-        { content: "1:reviewer\n2:replacement", mimetype: "text/plain", startLine: null },
+        { content: "1:reviewer\n2:replacement", mimetype: "text/plain", startLine: null, provenance: "returned" },
     );
 
     assert.equal(
@@ -151,7 +151,7 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
                 }],
             },
         }),
-        { content: "1:before\n2:copied", mimetype: "text/plain", startLine: null },
+        { content: "1:before\n2:copied", mimetype: "text/plain", startLine: null, provenance: "returned" },
     );
     assert.deepEqual(
         LogBody.resolve({
@@ -165,7 +165,7 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
                 }],
             },
         }),
-        { content: "1:copied", mimetype: "text/plain", startLine: null },
+        { content: "1:copied", mimetype: "text/plain", startLine: null, provenance: "returned" },
     );
     assert.deepEqual(
         LogBody.resolve({
@@ -188,6 +188,7 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
         }),
         {
             content: "1:destination\n\n1:source",
+            provenance: "returned",
             mimetype: "text/plain",
             startLine: null,
         },
@@ -220,7 +221,7 @@ test("{§kill-scope-entry}: LogBody projects scoped entry KILL through the ordin
     } } };
     assert.deepEqual(
         LogBody.resolve({ op: "KILL", tx: "", rx }),
-        { content: "8:before\n9:after", mimetype: "text/plain", startLine: null },
+        { content: "8:before\n9:after", mimetype: "text/plain", startLine: null, provenance: "returned" },
     );
     assert.deepEqual(
         LogBody.resolve({ op: "KILL", tx: "", rx }),
@@ -257,12 +258,12 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     ];
     assert.deepEqual(
         LogBody.resolve({ op: "TASK", tx: { body: plan }, rx: null }),
-        { content: plan.map((entry) => JSON.stringify(entry)).join(",\n").replace(/^/, "[").concat("]"), mimetype: "application/json", startLine: 1 },
+        { content: plan.map((entry) => JSON.stringify(entry)).join(",\n").replace(/^/, "[").concat("]"), mimetype: "application/json", startLine: 1, provenance: "authored" },
         "PLAN projects through the shared json-result spread — scoped-KILL-trimmable, plain-JSON round-trip (#339)",
     );
     assert.deepEqual(
         LogBody.resolve({ op: "TASK", tx: { body: [] }, rx: null }),
-        { content: "[]", mimetype: "application/json", startLine: 1 },
+        { content: "[]", mimetype: "application/json", startLine: 1, provenance: "authored" },
         "a planless PLAN projects one [] line",
     );
     assert.throws(
@@ -291,7 +292,7 @@ test("LogBody derives loop-termination presentation from the exact result", () =
             rx: JSON.stringify(deliverable),
             mimetypeRx: "application/json",
         }),
-        { content: "child answer", mimetype: "text/markdown", startLine: 1 },
+        { content: "child answer", mimetype: "text/markdown", startLine: 1, provenance: "returned" },
     );
 
     const failure = Results.attachInstance(
@@ -312,6 +313,7 @@ test("LogBody derives loop-termination presentation from the exact result", () =
         }),
         {
             content: "[ cancelled from outside the worker ] The child provider failed.\n\nBranch receipt: `feature/x` failed.",
+            provenance: "returned",
             mimetype: "text/markdown",
             startLine: 1,
         },
@@ -321,11 +323,11 @@ test("LogBody derives loop-termination presentation from the exact result", () =
 test("LogBody gives extension rows the same structural body contract", () => {
     assert.deepEqual(
         LogBody.resolve({ op: "extension", tx: "", rx: content("plugin result", "text/plain") }),
-        { content: "plugin result", mimetype: "text/plain", startLine: 1 },
+        { content: "plugin result", mimetype: "text/plain", startLine: 1, provenance: "returned" },
     );
     assert.deepEqual(
         LogBody.resolve({ op: "extension", tx: { body: "plugin statement" }, rx: null, mimetypeTx: "text/markdown" }),
-        { content: "plugin statement", mimetype: "text/markdown", startLine: 1 },
+        { content: "plugin statement", mimetype: "text/markdown", startLine: 1, provenance: "authored" },
     );
     assert.equal(LogBody.resolve({ op: "extension", tx: "", rx: null }).content, "");
 });
@@ -338,6 +340,6 @@ test("LogBody decodes persisted JSON envelopes before resolving", () => {
             rx: JSON.stringify({ content: "persisted", mimetype: "text/markdown", startLine: null }),
             mimetypeRx: "application/json",
         }),
-        { content: "persisted", mimetype: "text/markdown", startLine: null },
+        { content: "persisted", mimetype: "text/markdown", startLine: null, provenance: "returned" },
     );
 });

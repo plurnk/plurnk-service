@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
 
 export type TurnProducer = WriterTier;
-export type TurnKind = "inference" | "initialization" | "overflow" | "operation" | "maintenance";
+export type TurnKind = "inference" | "initialization" | "operation" | "maintenance";
 
 export interface TurnRow {
     readonly id: number;
@@ -32,13 +32,6 @@ export default class Turn {
         });
         if (turn === undefined) throw new Error("Turn.open: insert returned no row");
         return turn;
-    }
-
-    static async becomeOverflow(db: Db, id: number): Promise<void> {
-        const turn = await db.turn_become_overflow.get<{ id: number }>({ id });
-        if (turn === undefined) {
-            throw new Error(`Turn.becomeOverflow: model inference turn ${id} cannot become overflow`);
-        }
     }
 
     static async recordInference(db: Db, id: number, evidence: InferenceEvidence): Promise<void> {

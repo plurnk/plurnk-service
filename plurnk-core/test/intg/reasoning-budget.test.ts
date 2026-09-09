@@ -60,21 +60,22 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         const originalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         assert.equal(originalPacket.assistant.reasoning, reasoning);
         if (mode === "unfit") {
-            assert.equal(next.status, 102, JSON.stringify(next));
-            assert.equal(next.producer, "_plurnk");
-            assert.equal(next.kind, "overflow");
+            assert.equal(next.status, 200, JSON.stringify(next));
+            assert.equal(next.producer, "model");
+            assert.equal(next.kind, "inference");
             assert.equal(next.createdTurnIds.length, 1);
-            assert.equal(provider.remaining, 1, "no over-budget request reaches inference");
+            assert.equal(provider.remaining, 0, "the fitted request reaches inference in the same turn");
             assert.equal(initial.active, 1);
-            assert.notEqual(initial.folded, "[]", "ordinary recovery suppresses the receipt, not the source");
-            const recovered = await engine.runTurn({ ...context, provider });
-            assert.equal(recovered.status, 200, JSON.stringify(recovered));
-            assert.equal(provider.remaining, 0);
+            assert.equal(initial.folded, "[]", "withholding does not trim the receipt");
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+            const record = parseLogRecords(packet.sections.find(({ name }: { name: string }) => name === "log").content).find(({ target: value }) => value === target)!;
+            assert.equal(record.body, undefined);
+            assert.equal(record.overflow, "16 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
             assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).length, 1, "recovery does not redeliver the same source");
             const exact = await engine.look({ ...context, statement: statement(`\`\`\`READ (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>\`\`\``) });
-            assert.equal(exact.status, 204, "overflow trimmed the log receipt's readable body");
+            assert.equal(exact.status, 200, "withheld reasoning remains readable at the log address");
             assert.ok("content" in exact);
-            assert.equal(exact.content, "");
+            assert.equal(exact.content, initialResult.content);
             const source = await engine.look({ ...context, statement: statement(`\`\`\`READ (${target}) <1,-1>\`\`\``) });
             assert.equal(source.status, 200);
             assert.ok("content" in source);
@@ -107,9 +108,13 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
                 const explicit = rows.find(({ id }) => id === reads[1]!.id);
                 assert.ok(explicit);
                 assert.equal(JSON.parse(explicit.tx).annotation, "inspect selected reasoning", "explicit READs keep their authored annotation");
-                const overflow = await engine.runTurn({ ...context, provider });
-                assert.equal(overflow.producer, "_plurnk");
+                const overflow = await engine.runTurn({ ...context, provider: providerWithCapacity(capacity, [{ assistant: { content: "```TASK\n[{\"content\":\"Review.\",\"status\":\"in_progress\"}]\n```", reasoning: null } }]) });
+                assert.equal(overflow.producer, "model");
                 assert.equal(overflow.status, 102, JSON.stringify(overflow));
+                const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: overflow.turnId }))!.packet);
+                const record = parseLogRecords(packet.sections.find(({ name }: { name: string }) => name === "log").content).find(({ annotation }) => annotation === "inspect selected reasoning")!;
+                assert.equal(record.overflow, "120 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+                assert.equal(record.body, undefined);
             }
         }
     } finally { await db.close(); }

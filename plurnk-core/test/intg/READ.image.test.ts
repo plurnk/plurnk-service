@@ -111,6 +111,47 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });
 
+test("{§context-output-admission}: withholding native output does not deliver it; only another READ reattaches it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-image-overflow-"));
+    try {
+        await writeFile(join(root, "logo.png"), PNG);
+        await writeFile(join(root, "large.txt"), "evidence ".repeat(100_000));
+        const next = '```TASK\n[{"content":"Review the evidence.","status":"in_progress"}]\n```';
+        const provider = new Mock({ contextWindow: 36_000, inputModalities: ["image"], responses: [
+            mockTurn(`\`\`\`READ (logo.png)\`\`\`\n\`\`\`READ (large.txt) <1,-1>\`\`\`\n${next}`),
+            mockTurn(next),
+            mockTurn(`\`\`\`READ (logo.png)\`\`\`\n${next}`),
+            mockTurn('```TASK\n[{"content":"Reviewed.","status":"completed"}]\n```'),
+        ] });
+        await withDaemon(provider, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "native-output-admission", projectRoot: root });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "Review logo.png and large.txt.", policy: { proposals: "accept" } });
+                const loopId = (run.result as { loopId: number }).loopId;
+                await waitForDb(() => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }), (row) => row?.status === 200, { timeoutMs: 20_000 });
+                const loop = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: loopId });
+                const rows = await db.engine_render_log.all<{ op: string; pathname: string; output_withheld: number; native_delivered_at: string | null }>({ worker_id: loop!.worker_id });
+                const images = rows.filter(({ op, pathname }) => op === "READ" && pathname === "logo.png");
+                assert.equal(images.length, 2);
+                assert.equal(images[0]!.output_withheld, 1);
+                assert.equal(images[0]!.native_delivered_at, null, "withheld native output was never delivered");
+                assert.equal(images[1]!.output_withheld, 0);
+                assert.ok(images[1]!.native_delivered_at, "the fresh READ crossed the native delivery boundary");
+            } finally { ws.close(); }
+        });
+        const users = provider.received.map((messages) => messages.find(({ role }) => role === "user")!);
+        assert.equal(typeof users[1]!.content, "string", "the overflow request carries no native part");
+        assert.equal(typeof users[2]!.content, "string", "old omission cannot silently reattach the image");
+        assert.match(String(users[1]!.content), /output lines not shown; tokensActiveTotal exceeds tokensActiveMax/u);
+        assert.match(String(users[1]!.content), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
+        const renewed = users[3]!.content;
+        assert.ok(Array.isArray(renewed));
+        const image = renewed.find((part) => part.type === "file");
+        assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG));
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("{§packet-attachment-parts} a blind route receives the same READ as text alone without the reactive sentence", async () => {
     const requests = await runLoop([]);
     const user = requests[1]?.find((message) => message.role === "user");

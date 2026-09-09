@@ -158,7 +158,6 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
     const inferenceSource = "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
-    let overflowSource = "";
     let initializationSource = "";
     try {
         const workspaceId = await insertWorkspace(db, "turn-artifacts");
@@ -194,9 +193,10 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             messages: [{ role: "user", content: "Conclude." }],
             turnNumber: 2,
         });
-        assert.equal(overflow.producer, "_plurnk");
-        assert.equal(overflow.kind, "overflow");
-        assert.equal(constrained.remaining, 1, "the real overflow turn performs no provider call");
+        assert.equal(overflow.producer, "model");
+        assert.equal(overflow.kind, "inference");
+        assert.equal(overflow.status, 413);
+        assert.equal(constrained.remaining, 1, "the rejected candidate performs no provider call");
 
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
         const initializationRows = await db.test_log_entries_by_turn.all<{
@@ -217,11 +217,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         }>({ turn_id: overflow.turnId });
         const overflowTurnOps = overflowRows.find(({ op, attrs }) =>
             op === null && JSON.parse(attrs).kind === "turnOps");
-        overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
-        assert.match(overflowSource, /^```KILL /, "the digest specimen is the actual admitted recovery program");
-        assert.match(overflowSource, /\n```TASK\n\[\{"content":"YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/);
-        assert.equal(overflowTurnOps?.initial_folded, "[[1,-1]]", "the real recovery source is initially body-suppressed");
-        assert.equal(overflowTurnOps?.folded, "[]", "initial suppression is not deliberate curation");
+        assert.equal(overflowTurnOps, undefined, "no recovery program was executed or fabricated");
     } finally {
         await db.close();
     }
@@ -242,7 +238,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         await access(join(digestDir, "packet001.user.md"));
         await access(join(digestDir, "packet001.assistantRaw.json"));
 
-        assert.equal(await readFile(join(digestDir, "packet002.assistant.md"), "utf8"), overflowSource);
+        await assert.rejects(() => access(join(digestDir, "packet002.assistant.md")), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, "packet002.system.md")), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, "packet002.user.md")), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, "packet002.assistantRaw.json")), { code: "ENOENT" });

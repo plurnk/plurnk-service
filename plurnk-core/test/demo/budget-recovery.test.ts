@@ -22,7 +22,7 @@ test("demo: recover from attachments exceeding the budget and retrieve the recov
                     db: s.db, daemon: s.daemon, workspaceId: s.workspaceId,
                     workerId: result.modelWorkerId, turnIds: result.turnIds, fixture,
                 });
-                console.error(`[overflow-recovery] overflowTurns=${evidence.overflowTurns} modelTurns=${evidence.modelTurns} finalStatus=${result.finalStatus}`);
+                console.error(`[overflow-recovery] overflowRequests=${evidence.overflowRequests} modelTurns=${evidence.modelTurns} finalStatus=${result.finalStatus}`);
                 assert.equal(result.finalStatus, 200, "the model completes the task after real overflow recovery");
                 assert.ok(result.lastContent.includes(fixture.answer), `the model reports the recorded recovery site; got: ${result.lastContent.slice(0, 300)}`);
             } finally { await s.cleanup(); }

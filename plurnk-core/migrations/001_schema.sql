@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS turns (
     -- {§turn-record}: producer and purpose define the turn. Packet/provider
     -- evidence below is an optional inference specialization.
     producer         TEXT    NOT NULL           CHECK (producer IN ('model', 'client', '_plurnk', 'plugin')),
-    kind             TEXT    NOT NULL           CHECK (kind IN ('inference', 'initialization', 'overflow', 'operation', 'maintenance')),
+    kind             TEXT    NOT NULL           CHECK (kind IN ('inference', 'initialization', 'operation', 'maintenance')),
     status           INTEGER NOT NULL           CHECK (status BETWEEN 100 AND 599),
     -- NULL while the producer still owns this turn. Status 102 is both the
     -- provisional running value and the exact completed continue disposition;
@@ -475,7 +475,7 @@ CREATE TABLE IF NOT EXISTS turns (
     meta             TEXT                       CHECK (meta IS NULL OR json_valid(meta)),
     CHECK (completed_at IS NOT NULL OR status = 102),
     CHECK ((producer = 'model') = (kind = 'inference')),
-    CHECK (kind NOT IN ('initialization', 'overflow') OR producer = '_plurnk'),
+    CHECK (kind NOT IN ('initialization', 'maintenance') OR producer = '_plurnk'),
     CHECK (
         kind = 'inference'
         OR (
@@ -502,34 +502,15 @@ BEGIN
     WHERE id = NEW.loop_id AND status = 102;
 END;
 
--- Producer and purpose are immutable except for the single pre-inference
--- diversion into overflow recovery. The transition is allowed only before any
--- model or non-kernel evidence exists.
+-- {§turn-record} Producer and purpose never change beneath execution history.
 CREATE TRIGGER IF NOT EXISTS turns_identity_forward_only
 BEFORE UPDATE OF producer, kind ON turns
 WHEN NOT (
     OLD.producer = NEW.producer
     AND OLD.kind = NEW.kind
 )
-AND NOT (
-    OLD.producer = 'model'
-    AND OLD.kind = 'inference'
-    AND NEW.producer = '_plurnk'
-    AND NEW.kind = 'overflow'
-    AND OLD.completed_at IS NULL
-    AND OLD.packet IS NULL
-    AND OLD.usage_curation_budget IS NULL
-    AND OLD.finish_reason IS NULL
-    AND OLD.model IS NULL
-    AND OLD.meta IS NULL
-    AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = OLD.id)
-    AND NOT EXISTS (
-        SELECT 1 FROM log_entries
-        WHERE turn_id = OLD.id AND origin != '_plurnk'
-    )
-)
 BEGIN
-    SELECT RAISE(ABORT, 'turn producer and kind are immutable outside pre-inference overflow diversion');
+    SELECT RAISE(ABORT, 'turn producer and kind are immutable');
 END;
 
 -- One logical model call owns its lifecycle and physical-request ledger.
@@ -1214,8 +1195,36 @@ CREATE TABLE IF NOT EXISTS log_entry_projections (
     active       INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     folded       TEXT    NOT NULL DEFAULT '[]'
                          CHECK (json_valid(folded) AND json_type(folded) = 'array'),
+    output_admission_turn_id INTEGER,
+    output_withheld INTEGER NOT NULL DEFAULT 0 CHECK (output_withheld IN (0, 1)),
+    CHECK (output_withheld = 0 OR output_admission_turn_id IS NOT NULL),
+    FOREIGN KEY (output_admission_turn_id) REFERENCES turns(id),
     FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+-- {§context-output-selection} Admission is a durable projection decision, not
+-- deletion or proof of provider delivery. It cannot be reset to replay output.
+CREATE TRIGGER IF NOT EXISTS log_output_admission_immutable
+BEFORE UPDATE OF output_admission_turn_id, output_withheld ON log_entry_projections
+WHEN OLD.output_admission_turn_id IS NOT NULL AND (
+    NEW.output_admission_turn_id IS NOT OLD.output_admission_turn_id
+    OR NEW.output_withheld != OLD.output_withheld
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log output admission is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_output_admission_owner
+BEFORE UPDATE OF output_admission_turn_id ON log_entry_projections
+WHEN NEW.output_admission_turn_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM turns turn
+    JOIN loops loop ON loop.id = turn.loop_id
+    JOIN log_entries entry ON entry.worker_id = loop.worker_id
+    WHERE turn.id = NEW.output_admission_turn_id AND entry.id = NEW.log_entry_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log output admission must belong to its worker');
+END;
 
 -- The ordinary operation surface reads this view. Forensic and lifecycle
 -- machinery names log_entries directly and therefore retains complete history.
@@ -1227,7 +1236,8 @@ SELECT le.id, le.version, le.worker_id, le.loop_id, le.turn_id, le.sequence,
        le.hostname, le.port, le.pathname, le.query, le.fragment, le.lineMarker,
        le.tx, le.mimetype_tx,
        le.rx, le.mimetype_rx, le.status_rx, le.weight,
-       le.state, le.outcome, le.attrs, le.initial_folded, projection.folded
+       le.state, le.outcome, le.attrs, le.initial_folded, projection.folded,
+       projection.output_admission_turn_id, projection.output_withheld
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE projection.active = 1;

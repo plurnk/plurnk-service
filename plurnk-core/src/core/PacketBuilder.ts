@@ -125,7 +125,7 @@ export interface CurationOverflow {
 export type PacketLogDraft = LogEntryDraft & { readonly loop_seq: number; readonly turn_seq: number };
 
 // Packet assembly ({§packet-assembly}) and model-facing budget admission
-// ({§overflow-turn}). Body suppression stays in the ordinary scoped-KILL owner.
+// ({§context-output-admission}). Deliberate curation stays in scoped KILL.
 export default class PacketBuilder {
 
     #db: Db;
@@ -133,6 +133,7 @@ export default class PacketBuilder {
     // the allowance captured before this request can change model evidence.
     readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
+    readonly #unadmittedOutput = new WeakMap<readonly StoredPacketSection[], readonly number[]>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
@@ -207,6 +208,7 @@ export default class PacketBuilder {
         transientOpenLogEntryId = null,
         promptProjection = "automatic",
         pendingLog = [],
+        turnId = null,
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
@@ -227,6 +229,7 @@ export default class PacketBuilder {
         // their complete prompt:/// entries addressable.
         promptProjection?: "automatic" | "withheld";
         pendingLog?: readonly PacketLogDraft[];
+        turnId?: number | null;
     }): Promise<RequestPacket> {
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
@@ -262,7 +265,7 @@ export default class PacketBuilder {
                 ? await readFile(Paths.defaultRecap, "utf8")
                 : await readTeachingSource(Paths.defaultRecapTeachingSource);
         // {§emission-admission}: the definition remains the complete language authority.
-        const log = await this.#buildLog(workerId, transientOpenLogEntryId, pendingLog);
+        const log = await this.#buildLog(workerId, transientOpenLogEntryId, pendingLog, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
         const inputCapacity = provider.inputCapacity;
@@ -380,7 +383,7 @@ export default class PacketBuilder {
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
                     + attachmentsWeight;
-            }, reclaimableBodies);
+            }, reclaimableBodies, renderedLog.newOverflow);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.
@@ -393,7 +396,20 @@ export default class PacketBuilder {
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#curationBudgets.set(packet.sections, curationBudget);
         this.#streamObservations.set(packet.sections, openChannels);
+        this.#unadmittedOutput.set(packet.sections, renderedLog.unadmittedOutput);
         return packet;
+    }
+
+    // {§context-output-selection} — one statement commits the first-presentation
+    // decision. Speculative packet builds never call this mutation boundary.
+    async admitOutput(packet: RequestPacket, turnId: number): Promise<boolean> {
+        const ids = this.#unadmittedOutput.get(packet.sections);
+        if (ids === undefined) throw new Error("Cannot admit output from an unbuilt request packet.");
+        if (ids.length === 0) return false;
+        const withheld = this.curationOverflow(packet) !== null;
+        const result = await this.#db.engine_admit_log_outputs.run({ ids: JSON.stringify(ids), turn_id: turnId, withheld: withheld ? 1 : 0 });
+        if (result.changes !== ids.length) throw new Error("Log output admission changed during packet assembly.");
+        return withheld;
     }
 
     async recordObservations(packet: RequestPacket): Promise<void> {
@@ -442,9 +458,7 @@ export default class PacketBuilder {
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
-    // {§overflow-turn-only} — a pure admission fact. TurnRunner owns the
-    // producer-neutral recovery transition; PacketBuilder never mutates log
-    // visibility while measuring a candidate request.
+    // {§context-output-admission} — measurement never mutates visibility.
     curationOverflow(packet: RequestPacket): CurationOverflow | null {
         const budget = this.curationBudgetFor(packet);
         if (budget === null) return null;
@@ -474,7 +488,7 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, pendingLog: readonly PacketLogDraft[]): Promise<object[]> {
+    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, pendingLog: readonly PacketLogDraft[], turnId: number | null): Promise<object[]> {
         // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
@@ -489,9 +503,10 @@ export default class PacketBuilder {
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
+            output_admission_turn_id: number | null; output_withheld: number;
             tx: string; mimetype_tx: string; initial_folded: string; folded: string; native_delivered_at: string | null; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
-        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: "[]", id: null, native_delivered_at: null }))].map((r) => {
+        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: "[]", id: null, native_delivered_at: null, output_admission_turn_id: null, output_withheld: 0 }))].map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
             const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
             const rawLineAnchors = LogEntryProjection.op(r) === "READ"
@@ -523,6 +538,10 @@ export default class PacketBuilder {
             }
             const lineNumberWidth = rawLineNumberWidth;
             return {
+                id: r.id,
+                output_admission_turn_id: r.output_admission_turn_id,
+                output_withheld: r.output_withheld === 1,
+                newOverflow: turnId !== null && r.output_admission_turn_id === turnId,
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 origin: r.origin,
                 op: r.op,

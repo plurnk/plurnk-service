@@ -12,6 +12,7 @@ interface LargestLogItem {
 const PRESSURE_FRACTION = 0.8;
 const LARGEST_LOG_ITEMS_MAX = 5;
 const PRESSURE_MANDATE = "YOU MUST KILL superseded, stale, or irrelevant log items and ranges.";
+const OVERFLOW_MANDATE = "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
 
 export default class BudgetReadout {
     static draft(ceiling: number | null, responseMax: number | null = null): string {
@@ -32,16 +33,16 @@ export default class BudgetReadout {
         ceiling: number,
         measurePacket: MeasurePacket,
         largestLogItems: readonly LargestLogItem[] = [],
+        newOverflow = false,
     ): string {
         BudgetReadout.#assertCeiling(ceiling);
         BudgetReadout.#assertTemplate(template);
         const neutral = BudgetReadout.#resolveTemplate(template, measurePacket);
-        if (neutral.usage < ceiling * PRESSURE_FRACTION || largestLogItems.length === 0) {
+        if (!newOverflow && neutral.usage < ceiling * PRESSURE_FRACTION) {
             return neutral.content;
         }
 
-        // {§tokenomics-pressure-inventory} — take the largest useful prefix that
-        // fits, so recovery advice cannot manufacture the overflow it describes.
+        const warning = `\n\n> [!WARNING]\n> ${newOverflow ? OVERFLOW_MANDATE : PRESSURE_MANDATE}`;
         const ranked = largestLogItems
             .map((item) => BudgetReadout.#assertLargestLogItem(item))
             .toSorted((a, b) => a.tokensActive === b.tokensActive
@@ -49,11 +50,11 @@ export default class BudgetReadout {
                 : a.tokensActive > b.tokensActive ? -1 : 1)
             .slice(0, LARGEST_LOG_ITEMS_MAX);
         for (let count = ranked.length; count > 0; count -= 1) {
-            const pressured = BudgetReadout.#withInventory(template, ranked.slice(0, count));
+            const pressured = BudgetReadout.#withInventory(template, ranked.slice(0, count)) + warning;
             const resolved = BudgetReadout.#resolveTemplate(pressured, measurePacket);
-            if (neutral.usage > ceiling || resolved.usage <= ceiling) return resolved.content;
+            if (resolved.usage <= ceiling) return resolved.content;
         }
-        return neutral.content;
+        return BudgetReadout.#resolveTemplate(template + warning, measurePacket).content;
     }
 
     static #resolveTemplate(
@@ -94,7 +95,7 @@ export default class BudgetReadout {
             .map(({ path, tokensBody, tokensActive }) => JSON.stringify({ path, tokensBody, tokensActive }))
             .join(",");
         const object = template.replace(/\}\s*$/u, () => `,"tokensActiveLargest":[${largest}]}`);
-        return `${object}\n\n${PRESSURE_MANDATE}`;
+        return object;
     }
 
     static #assertLargestLogItem(item: LargestLogItem): LargestLogItem {
