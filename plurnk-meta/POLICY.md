@@ -8,7 +8,7 @@
 > YOU MUST decompose the Active Prompt into tasks, then proceed until each task is completed or failed.
 
 > [!NOTE]
-> YOU SHOULD KILL log items and lines, including prior reasoning, that are irrelevant for task completion.
+> YOU SHOULD KILL log items and lines, including prior reasoning log items and lines, that are irrelevant for task completion.
 
 > [!NOTE]
 > YOU SHOULD verify solutions with relevant tests, including cases beyond examples and happy paths.

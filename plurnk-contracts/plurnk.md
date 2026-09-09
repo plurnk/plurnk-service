@@ -73,7 +73,7 @@ filter pattern?
 * ```KILL (log:///**/READ) <17,-1>``` trims each item's log lines from 17 on.
 
 > [!TIP]
-> A log item or line KILL doesn't delete the source.
+> Log curation must target `log:///` items, not their target source paths.
 
 > [!TIP]
 > Successful KILL op receipts on log items and lines are not shown.
@@ -91,7 +91,7 @@ filter pattern?
 * `failed`: Task has ended unsuccessfully.
 
 > [!IMPORTANT]
-> The final turn may only contain SEND and TASK operations, with all tasks either "completed" or "failed".
+> The final turn must leave no unobserved results or unresolved work; all tasks must be "completed" or "failed".
 
 ## Pattern Filtering
 
