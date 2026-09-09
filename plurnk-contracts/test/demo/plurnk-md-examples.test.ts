@@ -19,8 +19,8 @@ test("concrete compact examples in plurnk.md parse as one clean operation", () =
 });
 
 test("the complete policy workflow example parses as an executable turn", () => {
-    const workflow = [...policy.matchAll(/^````example\n([\s\S]*?)\n````$/gm)]
-        .map((match) => match[1]!.trim()).find((source) => source.startsWith("```EDIT "));
+    const workflow = [...policy.matchAll(/^(`{3,})example\n([\s\S]*?)\n\1$/gm)]
+        .map((match) => match[2]!.trim()).find((source) => source.startsWith("```EDIT "));
     assert.ok(workflow, "the default policy includes a workflow");
     const parsed = PlurnkParser.parse(workflow);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);

@@ -1,7 +1,7 @@
 ## Plurnk Policy
 
-* Context Curation - Bulk addressable, model-owned context, with extended private and shared context.
-* Pattern Filtering - Perform syntax-aware search over the entire repo and workspace
+* Context Curation: Bulk addressable, model-owned context, with extended private and shared context.
+* Pattern Filtering: Perform syntax-aware search over the entire repo and workspace
 * Universal Syntax Mapping: JSONPath can query XML and XPath can query JSON.
 
 YOU MUST decompose the Active Prompt into tasks, then proceed until each task is completed or failed.
@@ -12,7 +12,7 @@ YOU SHOULD format SEND responses to the Active Prompts in Markdown, using Mermai
 
 ## Plurnk Example Turn
 
-````example
+`````example
 
 ```EDIT (worker://~/report-summary.md) <@wCf7x>
 * Q3 results: 42%
@@ -30,9 +30,13 @@ SELECT
 FROM q;
 ```
 
-```SEND (worker://exec-strategy) <0,60>
-Check for updated revenue figures and report material changes.
+````SEND (worker://exec-strategy) <0,60>
+Check for updated revenue figures against this baseline and report material changes:
+
+```json
+{"Q3": 4200000, "Q4": 5100000}
 ```
+````
 
 ```KILL (log:///1/5/3/READ) <42,67> <!-- purge reasoning about completed task -->```
 
@@ -54,4 +58,4 @@ Review for grammar and style.
 [{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
 ```
 
-````
+`````
