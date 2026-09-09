@@ -25,6 +25,9 @@ detects every other interpreter, so one executor adapts to the host.
 | `bc` 🧮                          | bc                | stdin (for example, `6 * 7`)             |
 | `awk` 🪄                         | awk               | program arg, empty stdin (`BEGIN { … }`) |
 
+Each runtime's catalog Summary includes a short executable inline body, with
+literal `\n` separators keeping the invocation on one discovery line.
+
 ### A script — the `(target)` slot
 
 The table above is the **inline** form: the body is the program. A file in the
@@ -34,7 +37,7 @@ selects the working directory. Script arguments use `{args=["arg",...]}`;
 each string is passed literally, without shell expansion ({§executor-metadata}).
 These options work for local, Worker, and Skill script targets alike.
 
-```EXEC (./deploy.sh)
+```sh (./deploy.sh)
 yes
 yes
 no

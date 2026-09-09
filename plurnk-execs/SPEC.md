@@ -408,10 +408,12 @@ directory.** A general runtime's document carries exact H2 `Summary` and
 `Invocation` sections plus its executable witness. Its Summary is that compact
 invocation witness in plain text, with the authored description as an
 operation annotation on its invocation line and a literal `\n` before a
-one-line body. An exact registry instead renders one compact family document
-whose Summary remains the family description and whose H2 `Tools`
-contains one `example` fence with
-every exact annotated EXEC heading and input preview. A schema-backed invocation
+one-line body. The bundled subprocess interpreters declare concrete inline-program
+examples; their catalog summaries include the program body without a script target.
+An exact registry instead renders one compact family document whose Summary is
+authored or derived from its effective tools. Its H2 `Tools` contains one
+executable fence per tool, naming the runtime and exact target, with its annotation
+and input preview. A schema-backed invocation
 links from its annotation to a child document containing the full description and
 original input JSON Schema. Non-schema invocations retain their authored witness
 and supplemental details.

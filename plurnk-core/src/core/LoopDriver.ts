@@ -240,9 +240,8 @@ export default class LoopDriver {
                 modelTurnCount++;
 
                 // {§engine-rails} Contract Strikes: every emission exhaustion is one
-                // frame-contract violation. The next turn is always informed (it carries
-                // the rejected emission), and the strike rail — not a bespoke terminal —
-                // decides how many consecutive violations the loop survives.
+                // frame-contract violation. If the rail permits continuation, the next
+                // packet carries the rejected emission; the rail owns termination.
                 if (turn.emissionExhausted) {
                     if (turn.rejectedModelEntryId === undefined) {
                         throw new Error("an invalid-emission recovery requires its rejected emissionAttempt identity");

@@ -89,7 +89,7 @@ export default class StrikeRail {
         return (await this.#state(loopId)).strike_streak;
     }
 
-    // Per-turn strike accounting, run by runLoop after every admitted turn.
+    // Per-turn strike accounting, including exhausted frame admission.
     // {§engine-rails} owns the complete source list and threshold semantics.
     async assess(loopId: number, turn: {
         waitRevision: number;

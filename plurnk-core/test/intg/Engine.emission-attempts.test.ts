@@ -1111,6 +1111,32 @@ ${body}
         assert.equal(provider.packets.length, 16, "the third consecutive exhaustion crossed; the queued conclusion was never requested");
     } finally { await db.close(); }
 });
+test("{§invalid-emission-attempts} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const rejected = "```SEND\nExample:\n```ts\nconst value = 42;\n```\nReported.\n```\n"
+            + PlurnkParser.frame("TASK", '[{"content":"Reported.","status":"completed"}]');
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                invalid(PlurnkParser.frame("SEND", "First report without an inventory.")),
+                invalid(PlurnkParser.frame("SEND", "Second report without an inventory.")),
+                invalid(rejected), invalid(rejected), invalid(rejected),
+                valid("Not requested."),
+            ],
+        });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxStrikes: 3, messages: [] });
+        assert.equal(result.result.status, 500);
+        assert.equal(result.reason, "strike_threshold");
+        assert.equal(provider.packets.length, 5, "two admitted struck turns plus three private attempts; no fourth engine turn");
+        assert.equal(new Set(provider.packets.slice(2)).size, 1, "private resampling remains cache-stable");
+        assert.ok(provider.packets.every((packet) => !packet.includes("SEND opened at line")), "the terminating exhaustion cannot deliver a future recovery packet");
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnIds.at(-1) });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        assert.ok(attempts.every(({ parse_errors }) => JSON.parse(parse_errors)[0]?.message.includes("SEND opened at line")), "the undelivered diagnostic remains in forensic evidence");
+    } finally { await db.close(); }
+});
+
 test("digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-emission-digest-"));
     const dbPath = join(dir, "plurnk.db");

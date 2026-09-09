@@ -1,22 +1,52 @@
-// {§tools-resource-materialization} — a PLURNK_MCP_EXPANDED server is surveyed tool by tool at
-// turn 0: one FIND row per `### EXEC_` heading of its family document, each carrying the tool
-// heading, annotation, and signature as `matched`. The survey operation itself needs no
-// annotation because its target and tags name the family. No document is delivered unasked (#359).
-
 import assert from "node:assert/strict";
 import test from "node:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
-import { Validator } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { logEntries, openMigrated, packetSection } from "./_helpers.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 
 const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
 
-test("turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async () => {
+test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
+        PlurnkParser.frame("TASK", JSON.stringify([{ content: "Inspected the tools.", status: "completed" }])),
+    )] });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
+    await daemon.start();
+    const ws = await connect({ daemon });
+    try {
+        await rpcCall(ws, 1, "workspace.create", { name: "interpreter-summary-bodies", settings: { filesItems: -1 } });
+        const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
+        assert.equal(finalStatus, 200);
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1]! });
+        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === "worker://~/_plurnk/plurnk/*.md");
+        assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
+        const body = survey.body.replace(/^ *\d+:/gm, "");
+        const groups = JSON.parse(body) as Array<Array<{ path: string; summary?: string }>>;
+        const node = groups.flat().find(({ path }) => path.endsWith("/node.md"));
+        const summary = node?.summary;
+        assert.ok(typeof summary === "string" && summary.includes("\\n"), "Node's summary includes its inline body, not just an empty invocation");
+        const parsed = PlurnkParser.parseStatements(summary.replaceAll("\\n", "\n"));
+        assert.equal(parsed.items.length, 1);
+        const item = parsed.items[0];
+        assert.ok(item?.kind === "statement" && item.statement.op === "EXEC");
+        assert.equal(item.statement.executor, "node");
+        assert.equal(item.statement.target, null, "the program is not a script path or metadata modifier");
+        assert.ok(typeof item.statement.body === "string" && item.statement.body.length > 0);
+        assert.ok(item.statement.annotation?.includes("JavaScript"), "the description stays on the invocation line");
+    } finally {
+        ws.close();
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND\nsurveyed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });

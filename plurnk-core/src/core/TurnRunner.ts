@@ -623,7 +623,7 @@ export default class TurnRunner {
         maxTurns?: number;
         allowUnobservedRetrievalCompletion?: boolean;
         // An id identifies the rejected row informing this turn ({§engine-rails}
-        // Contract Strikes: every exhaustion is informed; the rail bounds them).
+        // Contract Strikes: recovery is informed when the rail permits continuation).
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"

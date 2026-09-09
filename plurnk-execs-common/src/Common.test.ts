@@ -39,11 +39,31 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
         name: string;
         invocation: { example?: { body?: string; target?: string }; signature?: string };
     }>;
-    assert.deepEqual(shell?.invocation.example, { body: "git status --short" }, "bare shell is the one complete ordinary execution witness");
+    assert.deepEqual(shell?.invocation.example, { body: "git status --short" }, "the shell retains its ordinary command witness");
     assert.ok(
-        alternatives.every(({ invocation }) => invocation.example === undefined && typeof invocation.signature === "string"),
-        "equivalent interpreters declare terse signatures instead of repeating toy EXEC examples",
+        alternatives.every(({ invocation }) => typeof invocation.example?.body === "string"
+            && invocation.example.body.length > 0 && !invocation.example.body.includes("\n")
+            && invocation.example.target === undefined && invocation.signature === undefined),
+        "each interpreter supplies one concise inline-program example, without a script target",
     );
+});
+
+test("{§executor-tool-document}: declared interpreter examples execute as raw inline programs", async (t) => {
+    const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+    for (const runtime of pkg.plurnk.runtimes.filter(({ name }: { name: string }) => name !== "sh")) {
+        await t.test(runtime.name, async (t) => {
+            const body = runtime.invocation.example?.body;
+            assert.ok(typeof body === "string" && body.length > 0, "the advertised inline example has a body");
+            const availability = await make(runtime.name).probe();
+            if (!availability.available) {
+                t.skip(availability.detail);
+                return;
+            }
+            const { result, out } = await run(runtime.name, body);
+            assert.equal(result.status, 200, out.stderr);
+            assert.equal(out.stdout.trim(), "42", "the declared example evaluates and prints its result");
+        });
+    }
 });
 
 test("spawnArgs: the subprocess floor (sh/node/python3)", () => {

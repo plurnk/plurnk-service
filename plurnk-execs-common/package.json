@@ -67,7 +67,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "JavaScript code"
+                    "example": { "body": "console.log(42)" }
                 }
             },
             {
@@ -84,7 +84,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "Python code"
+                    "example": { "body": "print(42)" }
                 }
             },
             {
@@ -101,7 +101,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "Perl code"
+                    "example": { "body": "print 42;" }
                 }
             },
             {
@@ -118,7 +118,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "Ruby code"
+                    "example": { "body": "puts 42" }
                 }
             },
             {
@@ -135,7 +135,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "Lua code"
+                    "example": { "body": "print(42)" }
                 }
             },
             {
@@ -152,7 +152,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "TypeScript or JavaScript code"
+                    "example": { "body": "console.log(42)" }
                 }
             },
             {
@@ -169,7 +169,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "TypeScript or JavaScript code"
+                    "example": { "body": "console.log(42)" }
                 }
             },
             {
@@ -186,7 +186,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "Tcl code"
+                    "example": { "body": "puts 42" }
                 }
             },
             {
@@ -203,7 +203,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "bc expression or code"
+                    "example": { "body": "6 * 7" }
                 }
             },
             {
@@ -220,7 +220,7 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "signature": "AWK code"
+                    "example": { "body": "BEGIN { print 42 }" }
                 }
             }
         ]
