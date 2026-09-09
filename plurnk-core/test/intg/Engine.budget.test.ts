@@ -21,7 +21,7 @@ test("input capacity subtracts the total output budget once; reasoning is only i
             const workerId = await insertWorker(db, workspaceId);
             const loopId = await insertLoop(db, workerId, 1, "p");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const provider = new Mock({ contextWindow, responses: [response([dispositionStmt("DONE", "done")])] });
+            const provider = new Mock({ contextWindow, responses: [response([dispositionStmt("completed", "done")])] });
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
@@ -45,7 +45,7 @@ test("Engine.runTurn: context budget readout carries partition-derived maximum a
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 4000, responses: [response([dispositionStmt("DONE", "done")])] });
+        const provider = new Mock({ contextWindow: 4000, responses: [response([dispositionStmt("completed", "done")])] });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],

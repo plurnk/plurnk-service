@@ -232,7 +232,7 @@ for (const specimen of [
             assert.equal(wakes[0].result.status, specimen.status);
 
             const waited = await engine.dispatch({
-                statement: dispositionStmt("WAIT", "waiting"),
+                statement: dispositionStmt("waiting", "waiting"),
                 workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
             });
             assert.equal(

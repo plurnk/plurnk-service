@@ -102,7 +102,6 @@ export default class Engine {
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
-    readonly joinTargets: Set<number> = new Set();
 
     // The collaborators. Engine constructs them (they share its deps via
     // thunks where the value is late-injected — executors, loop signals)
@@ -322,7 +321,6 @@ export default class Engine {
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
-            joinTargets: this.joinTargets,
             liveSubscriptions: this.#liveSubscriptions,
             entryAddresses });
         this.#turnRunner = new TurnRunner({

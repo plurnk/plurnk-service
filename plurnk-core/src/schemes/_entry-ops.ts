@@ -32,7 +32,6 @@ export type ReadResult = SchemeResultBase & {
     region?: TextRegion;
     range?: RangeExtent;
     reason?: string;
-    awaitWorker?: string;
 };
 export type OpenFoldResult = SchemeResultBase;
 

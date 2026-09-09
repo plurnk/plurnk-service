@@ -362,7 +362,7 @@ export default class PacketBuilder {
             { name: "budget", slot: "user", header: "Context Token Budget", content: budgetReadout },
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
-            { name: "prompt", slot: "user", header: "Active User Prompts", content: prompt },
+            { name: "prompt", slot: "user", header: "Active Prompts", content: prompt },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the

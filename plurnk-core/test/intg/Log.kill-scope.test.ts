@@ -305,7 +305,7 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
             await db.engine_insert_log_entry.get({
                 worker_id: workerId, loop_id: loopId, turn_id: candidateTurnId,
                 sequence: index === 0 ? 2 : 1,
-                origin: "model", source: null, model_call_id: null, op: "NEXT",
+                origin: "model", source: null, model_call_id: null, op: "TASK",
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ body: [] }), mimetype_tx: "application/json",
@@ -315,7 +315,7 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
         }
 
         const found = await new Log().find(
-            { ...findStmt(urlPath("log", "/1/[35-46]/*/NEXT")), lineMarker: { marks: [1, -1] } },
+            { ...findStmt(urlPath("log", "/1/[35-46]/*/TASK")), lineMarker: { marks: [1, -1] } },
             ctxOf(context),
         );
         assert.equal(found.status, 200);
@@ -324,35 +324,35 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
             : []);
         assert.deepEqual(
             foundPaths,
-            Array.from({ length: 12 }, (_, index) => `log:///1/${index + 35}/1/NEXT`),
+            Array.from({ length: 12 }, (_, index) => `log:///1/${index + 35}/1/TASK`),
             "FIND uses the same inclusive multi-digit interval as curation",
         );
 
-        const killed = await new Log().kill("/1/[35-46]/*/NEXT", null, ctxOf(context));
+        const killed = await new Log().kill("/1/[35-46]/*/TASK", null, ctxOf(context));
         assert.equal(killed.status, 200);
         assert.equal(killed.matched, 12);
         const plans = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
         assert.deepEqual(
-            plans.filter(({ op }) => op === "NEXT").map(({ turn_seq }) => turn_seq),
+            plans.filter(({ op }) => op === "TASK").map(({ turn_seq }) => turn_seq),
             [...Array.from({ length: 34 }, (_, index) => index + 1), 47],
             "the range includes both boundaries and preserves adjacent turns",
         );
 
-        const documented = await new Log().kill("/1/[1-7]/*/NEXT", null, ctxOf(context));
+        const documented = await new Log().kill("/1/[1-7]/*/TASK", null, ctxOf(context));
         assert.equal(documented.status, 200);
         assert.equal(documented.matched, 7);
         const remaining = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
         assert.deepEqual(
-            remaining.filter(({ op }) => op === "NEXT").map(({ turn_seq }) => turn_seq),
+            remaining.filter(({ op }) => op === "TASK").map(({ turn_seq }) => turn_seq),
             [...Array.from({ length: 27 }, (_, index) => index + 8), 47],
             "the documented single-digit form is an interval too",
         );
 
-        const repeated = await new Log().kill("/1/[35-46]/*/NEXT", null, ctxOf(context));
+        const repeated = await new Log().kill("/1/[35-46]/*/TASK", null, ctxOf(context));
         assert.equal(repeated.status, 204, "a repeated broad KILL is a deterministic no-op");
         assert.equal(repeated.matched, 0);
 
-        const reversed = await new Log().kill("/1/[46-35]/*/NEXT", null, ctxOf(context));
+        const reversed = await new Log().kill("/1/[46-35]/*/TASK", null, ctxOf(context));
         assert.equal(reversed.status, 400, "a reversed numeric interval is malformed rather than an empty selection");
     } finally { await db.close(); }
 });

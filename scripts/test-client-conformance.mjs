@@ -313,10 +313,10 @@ try {
         || cliRecord.finalStatus !== 200
         || cliRecord.workspace?.name !== "installed-cli"
         || cliRecord.turnCount !== 2
-        || JSON.stringify(modelOps) !== JSON.stringify(["DONE"])) {
+        || JSON.stringify(modelOps) !== JSON.stringify(["SEND", "TASK"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
-    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + model DONE\n");
+    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + model SEND/TASK\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-tui",

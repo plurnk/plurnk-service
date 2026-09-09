@@ -13,16 +13,20 @@ const response = (dsl: string) => ({
 });
 
 for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
-    for (const last of ["NEXT", "WAIT"] as const) {
+    for (const last of ["TASK", "TASK"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
             const provider = new Mock({ contextWindow: 100000, responses: [
                 response(`${invalidFind}
-\`\`\`WAIT <1,0>\`\`\``),
+\`\`\`TASK <1,0>
+[{"content":"Await results.","status":"waiting"}]
+\`\`\``),
                 response(`${invalidFind}
-\`\`\`WAIT <1,0>\`\`\``),
+\`\`\`TASK <1,0>
+[{"content":"Await results.","status":"waiting"}]
+\`\`\``),
                 response(`${invalidFind}
-\`\`\`${last}${last === "WAIT" ? " <1,0>" : ""}\`\`\``),
-                response("```DONE\nMust not reach a fourth model call.\n```"),
+\`\`\`${last}${last === "TASK" ? " <1,0>" : ""}\`\`\``),
+                response("```SEND\nMust not reach a fourth model call.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -96,8 +100,8 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
 
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```WAIT <1,0>```")),
-        response("```DONE\nObservation complete.\n```"),
+        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```TASK <1,0>\n[{\"content\":\"Await results.\",\"status\":\"waiting\"}]\n```")),
+        response("```SEND\nObservation complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });

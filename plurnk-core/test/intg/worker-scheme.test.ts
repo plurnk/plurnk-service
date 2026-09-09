@@ -550,14 +550,14 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const missing = await lookThroughScheme("worker", null, readStmt(workerPath("ghost")), ctx);
         assert.equal(missing.status, 404, "a name with no worker is 404");
 
-        // A worker still running (its loop at the default live status 102) hasn't delivered → 425, steer to 202.
+        // {§join-blocking-collect}
         const worker = await insertWorker(db, workspaceId, null, "worker-db");
         const wLoop = await insertLoop(db, worker, 1, "find db");
         const running = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-unfinished");
         assert.equal(running.problem?.detail, "Worker 'worker-db' has unfinished work (status 102).", "425 states the unresolved task and its actual state");
-        assert.equal(running.awaitWorker, "worker-db", "the 425 arms the blocking join");
+        assert.equal("awaitWorker" in running, false, "a READ result does not carry hidden scheduling intent");
 
         // It concludes 200 with a deliverable → READing the worker yields one
         // canonical body channel, projected by the same READ rules as entries.
@@ -947,29 +947,31 @@ test("the reserved runtime worker is an ordinary named space: readable by name, 
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} READ(worker://running-child) makes the turn's bare NEXT park", async () => {
+test("{§join-blocking-collect} READ of a running child does not override an actionable TASK", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-collect-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
         const parentTurn = await insertTurn(db, parentLoop, 1, 200);
-        const worker = await insertWorker(db, workspaceId, null, "worker"); // a worker still running (live loop 102),
+        const worker = await insertWorker(db, workspaceId, parent, "worker"); // a worker still running (live loop 102),
         await insertLoop(db, worker, 1, "count");                     // nothing delivered yet
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        // 1. READ the running worker → 425 (still running) AND arms the join on this loop.
         const read = await engine.dispatch({ statement: readStmt(workerPath("worker")), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(read.status, 425, "the worker hasn't delivered — 425 still-running");
-        // 2. the turn's bare NEXT (continue) becomes a PARK — the blocking join, not a spin.
-        const send = await engine.dispatch({ statement: dispositionStmt("NEXT", null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
-        assert.equal((send.attrs as { join?: boolean } | undefined)?.join, true, "the bare continue was converted to a join-park");
+        const send = await engine.dispatch({ statement: dispositionStmt("in_progress", null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        assert.equal(send.status, 102);
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop }))?.status, 102, "actionable work remains runnable");
+        const nextTurn = await insertTurn(db, parentLoop, 2, 102);
+        const waiting = await engine.dispatch({ statement: dispositionStmt("waiting", "Await the child"), workspaceId, workerId: parent, loopId: parentLoop, turnId: nextTurn, sequence: 1, origin: "model" });
+        assert.equal(waiting.status, 202);
         const parked = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
-        assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know WAIT<-1>");
+        assert.equal(parked?.status, 202, "the explicit waiting inventory parks on the live child");
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} a bare NEXT without an armed join continues normally", async () => {
+test("{§join-blocking-collect} an actionable TASK without live work continues normally", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-none-${crypto.randomUUID()}`);
@@ -977,10 +979,10 @@ test("{§join-blocking-collect} a bare NEXT without an armed join continues norm
         const loop = await insertLoop(db, worker, 1, "go");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const send = await engine.dispatch({ statement: dispositionStmt("NEXT", null), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.notEqual((send.attrs as { join?: boolean } | undefined)?.join, true, "no READ armed a join — a plain continue");
+        const send = await engine.dispatch({ statement: dispositionStmt("in_progress", null), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        assert.equal(send.status, 102);
         const status = await db.test_get_loop_status.get<{ status: number }>({ id: loop });
-        assert.notEqual(status?.status, 202, "the loop did not park — a bare continue without a join stays live");
+        assert.equal(status?.status, 102, "the loop stays live");
     } finally { await db.close(); }
 });
 
@@ -1009,12 +1011,12 @@ test("{§op-synchronous} KILL(worker) is decisive before same-turn DONE", async 
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
-        const send = await engine.dispatch({ statement: dispositionStmt("DONE", "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        const send = await engine.dispatch({ statement: dispositionStmt("completed", "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.notEqual(send.status, 409, `no premature-terminate 409 — the killed child is not live pending work; got ${send.status}`);
     } finally { await db.close(); }
 });
 
-test("WAIT: a live obligation blocks; an empty join completes immediately", async () => {
+test("TASK waiting: a live obligation parks; an empty join continues without inventing completion", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -1025,19 +1027,20 @@ test("WAIT: a live obligation blocks; an empty join completes immediately", asyn
         const child = await insertWorker(db, s1, parent, "worker");
         await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
-        const blocked = await eng1.dispatch({ statement: dispositionStmt("WAIT", "awaiting worker"), workspaceId: s1, workerId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
+        const blocked = await eng1.dispatch({ statement: dispositionStmt("waiting", "awaiting worker"), workspaceId: s1, workerId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
-        // 202 + ∅ (no live work) → successful completion.
+        // {§wait-obligation-matrix}
         const s2 = await insertWorkspace(db, `wait-void-${crypto.randomUUID()}`);
         const worker = await insertWorker(db, s2);
         const loop = await insertLoop(db, worker, 1, "solo");
         const turn = await insertTurn(db, loop, 1, 200);
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
-        const satisfied = await eng2.dispatch({ statement: dispositionStmt("WAIT", "standing by"), workspaceId: s2, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.equal(satisfied.status, 200, "202 on an empty task group completes");
-        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "the empty join is terminal");
+        const satisfied = await eng2.dispatch({ statement: dispositionStmt("waiting", "standing by"), workspaceId: s2, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        assert.equal(satisfied.status, 102);
+        assert.equal(satisfied.detail, "Nothing is in flight and no timed or polled wait is set. Continuing.");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
 
         // 202<-1> + ∅ — the marker cannot turn an empty join into a hang.
         const s3 = await insertWorkspace(db, `wait-hang-${crypto.randomUUID()}`);
@@ -1045,14 +1048,15 @@ test("WAIT: a live obligation blocks; an empty join completes immediately", asyn
         const loop3 = await insertLoop(db, run3, 1, "solo");
         const turn3 = await insertTurn(db, loop3, 1, 200);
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
-        const indef = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
+        const indef = { ...dispositionStmt("waiting", "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
         const noHang = await eng3.dispatch({ statement: indef, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
-        assert.equal(noHang.status, 200, "202<-1> on nothing completes immediately");
-        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 200, "no held-open 202");
+        assert.equal(noHang.status, 102, "an indefinite wait without work continues");
+        assert.equal(noHang.detail, satisfied.detail);
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 102, "no held-open 202");
     } finally { await db.close(); }
 });
 
-test("an already-drained join is a normal deliverable", async () => {
+test("an empty join cannot manufacture a terminal deliverable from its inventory", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `drained-join-${crypto.randomUUID()}`);
@@ -1060,17 +1064,23 @@ test("an already-drained join is a normal deliverable", async () => {
         const wLoop = await insertLoop(db, worker, 1, "test the module");
         const wTurn = await insertTurn(db, wLoop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const waited = await engine.dispatch({ statement: dispositionStmt("WAIT", "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
-        assert.equal(waited.status, 200, "the empty join completes");
-        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop concluded");
+        const waited = await engine.dispatch({ statement: dispositionStmt("waiting", "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
+        assert.equal(waited.status, 102, "the empty join continues");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 102, "the loop remains active");
         const reader = await insertWorker(db, workspaceId);
         const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
-        assert.equal(collected.status, 200);
-        assert.equal(String(collected.content), '[{"content":"Standing by for user input","status":"in_progress"}]', "the model's terminal body is the deliverable");
+        assert.equal(collected.status, 425);
+        const nextTurn = await insertTurn(db, wLoop, 2, 102);
+        const completed = await engine.dispatch({ statement: dispositionStmt("completed", "Finished"), workspaceId, workerId: worker, loopId: wLoop, turnId: nextTurn, sequence: 1, origin: "model" });
+        assert.equal(completed.status, 200);
+        const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
+        assert.equal(done.status, 200);
+        assert.equal(done.content, "[ worker 'req-test' concluded with no deliverable (status 200) ]", "the READ reports absence instead of inventing an answer from the inventory");
+        assert.equal((await new LoopLifecycle(db).result(wLoop))?.content ?? null, null);
     } finally { await db.close(); }
 });
 
-test("an idle join completes in the same turn", async () => {
+test("an empty waiting inventory stays runnable in the same turn", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-concludes-${crypto.randomUUID()}`);
@@ -1078,9 +1088,9 @@ test("an idle join completes in the same turn", async () => {
         const loop = await insertLoop(db, worker, 1, "nothing to do");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "idle"), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 200, "the already-drained join completes");
-        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
+        const r = await engine.dispatch({ statement: dispositionStmt("waiting", "idle"), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        assert.equal(r.status, 102);
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "no completion and no held-open 202");
     } finally { await db.close(); }
 });
 

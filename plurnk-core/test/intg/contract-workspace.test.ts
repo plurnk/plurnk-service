@@ -325,7 +325,7 @@ test("out-of-band change to a member remains truthful runtime-actor evidence", a
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [mockResponse([dispositionStmt("DONE")]), mockResponse([dispositionStmt("DONE")])],
+            responses: [mockResponse([dispositionStmt("completed")]), mockResponse([dispositionStmt("completed")])],
         });
 
         await engine.runTurn({ provider, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, messages: [] });

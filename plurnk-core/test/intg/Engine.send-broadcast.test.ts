@@ -28,12 +28,12 @@ const loopStatus = async (db: Db, loopId: number): Promise<number> => {
     return row.status;
 };
 
-test("```DONE\ndone (null path, terminal success) → loop.status = 200\n```", async () => {
+test("```SEND\ndone (null path, terminal success) → loop.status = 200\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", async () => {
     const { db, env, engine } = await setup();
     try {
         assert.equal(await loopStatus(db, env.loopId), 102, "starts at 102 (continuing)");
         const result = await engine.dispatch({
-            statement: dispositionStmt("DONE", "done"),
+            statement: dispositionStmt("completed", "done"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -44,11 +44,11 @@ test("```DONE\ndone (null path, terminal success) → loop.status = 200\n```", a
     } finally { await db.close(); }
 });
 
-test("```FAIL\ncancelled → loop.status = 499\n```", async () => {
+test("```SEND\ncancelled → loop.status = 499\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: dispositionStmt("FAIL", "cancelled"),
+            statement: dispositionStmt("failed", "cancelled"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -57,11 +57,11 @@ test("```FAIL\ncancelled → loop.status = 499\n```", async () => {
     } finally { await db.close(); }
 });
 
-test("```NEXT\ncontinuing → loop.status unchanged (still 102, non-terminal)\n```", async () => {
+test("```TASK\n[{\"content\":\"continuing → loop.status unchanged (still 102, non-terminal)\",\"status\":\"in_progress\"}]\n```", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: dispositionStmt("NEXT", "continuing"),
+            statement: dispositionStmt("in_progress", "continuing"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -101,13 +101,13 @@ test("multiple SENDs in one turn: the first terminal concludes the loop", async 
     const { db, env, engine } = await setup();
     try {
         await engine.dispatch({
-            statement: dispositionStmt("NEXT", "first"),
+            statement: dispositionStmt("in_progress", "first"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 102);
         await engine.dispatch({
-            statement: dispositionStmt("DONE", "second-terminal"),
+            statement: dispositionStmt("completed", "second-terminal"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -119,13 +119,13 @@ test("successive terminal SENDs preserve and report the first terminal winner", 
     const { db, env, engine } = await setup();
     try {
         await engine.dispatch({
-            statement: dispositionStmt("DONE", "done"),
+            statement: dispositionStmt("completed", "done"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 200);
         const late = await engine.dispatch({
-            statement: dispositionStmt("FAIL", "actually cancel"),
+            statement: dispositionStmt("failed", "actually cancel"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });

@@ -47,7 +47,7 @@ test("{§env-delta-child-termination} generated child documentation is durable w
             "housekeeping is not an unobserved child result that can advance WAIT or refuse TERM");
 
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] }),
             workspaceId, workerId: parentId, loopId: parentLoopId,
             messages: [{ role: "system", content: "Observe the child." }, { role: "user", content: "continue" }],
         });

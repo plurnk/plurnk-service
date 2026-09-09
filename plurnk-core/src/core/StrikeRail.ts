@@ -1,4 +1,3 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -38,9 +37,8 @@ export default class StrikeRail {
             throw new Error("cycle evidence requires one result per executed operation");
         }
         const activity = ops.flatMap((statement, index) => {
-            const disposition = TurnDisposition.is(statement);
             const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
-                !SOURCE_DECORATION.has(key) && !(disposition && key === "body")));
+                !SOURCE_DECORATION.has(key)));
             return [[operation, observedResult(results?.[index])]];
         });
         const canonical = JSON.stringify(activity, (_key, value) =>

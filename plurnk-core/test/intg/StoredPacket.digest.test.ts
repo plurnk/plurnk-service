@@ -18,7 +18,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const source = "```DONE\ndone\n```";
+    const source = "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     try {
         const workspaceId = await insertWorkspace(db, "unknown-source");
         const workerId = await insertWorker(db, workspaceId);
@@ -61,9 +61,9 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const sources = [
-        "```NEXT\nContinue one.\n```",
-        "```NEXT\nContinue two.\n```",
-        "```KILL (log:///1/[1-2]/*/ops)```\n```NEXT\nContinue three.\n```",
+        "```TASK\n[{\"content\":\"Continue one.\",\"status\":\"in_progress\"}]\n```",
+        "```TASK\n[{\"content\":\"Continue two.\",\"status\":\"in_progress\"}]\n```",
+        "```KILL (log:///1/[1-2]/*/ops)```\n```TASK\n[{\"content\":\"Continue three.\",\"status\":\"in_progress\"}]\n```",
     ];
     const db = await openMigrated(dbPath);
     try {
@@ -157,11 +157,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const inferenceSource = [
-        "```DONE",
-        "done",
-        "```",
-    ].join("\n");
+    const inferenceSource = "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     let overflowSource = "";
     let initializationSource = "";
     try {
@@ -223,7 +219,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             op === null && JSON.parse(attrs).kind === "turnOps");
         overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
         assert.match(overflowSource, /^```KILL /, "the digest specimen is the actual admitted recovery program");
-        assert.match(overflowSource, /\n```NEXT\n\[\{"content":"Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"pending"}\]\n```$/);
+        assert.match(overflowSource, /\n```TASK\n\[\{"content":"Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.","status":"in_progress"}\]\n```$/);
         assert.equal(overflowTurnOps?.initial_folded, "[[1,-1]]", "the real recovery source is initially body-suppressed");
         assert.equal(overflowTurnOps?.folded, "[]", "initial suppression is not deliberate curation");
     } finally {

@@ -289,19 +289,14 @@ test("proposal: onProposalPending listener fires with the right payload", async 
     } finally { await db.close(); }
 });
 
-test("{§proposal-202-pauses}: a broadcast WAIT is not a proposal", async () => {
+test("{§proposal-202-pauses}: a timed waiting TASK parks without a proposal", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
         const proposed: number[] = [];
         ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
 
-        // A broadcast WAIT — the model PARKING the loop (no target). It returns
-        // status 202, but it is model speech, not a reviewable side-effect, so it must
-        // not enter the propose/await path.
-        // {§emission-admission}: parse a complete PLAN…SEND frame, then pluck the
-        // broadcast WAIT (target:null) the model would actually emit.
-        const sendParked = parseDsl("```WAIT <-1>\nawaiting your reply\n```").find((s) => s.op === "WAIT");
+        const sendParked = parseDsl("```TASK <60,0>\n[{\"content\":\"awaiting your reply\",\"status\":\"waiting\"}]\n```").find((s) => s.op === "TASK");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
@@ -312,12 +307,11 @@ test("{§proposal-202-pauses}: a broadcast WAIT is not a proposal", async () => 
         });
         const parkId = await parkDeferred.promise;
 
-        // Dispatch handled the already-drained join inline — it never paused.
-        assert.equal(parkResult.status, 200, "the broadcast join ([202]<-1> on nothing) completes inline");
+        assert.equal(parkResult.status, 202, "the timed wait parks without blocking its dispatch");
         // ...the entry is a resolved row, not a proposed one...
         const parkRow = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({ id: parkId });
         assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved row, not a proposed entry");
-        assert.equal(parkRow?.status_rx, 200);
+        assert.equal(parkRow?.status_rx, 202);
         // ...and no loop/proposal was announced for it.
         assert.ok(!proposed.includes(parkId), "no proposal announced for the broadcast WAIT wait");
 

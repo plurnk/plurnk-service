@@ -208,7 +208,7 @@ test("an operation with no external capability demand remains available under an
     try {
         await setLoopPolicy(db, loopId, loopPolicy({ only: [] }));
         const result = await engine.dispatch({
-            statement: dispositionStmt("DONE"),
+            statement: dispositionStmt("completed"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(result.status, 200);

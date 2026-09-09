@@ -37,8 +37,11 @@ test("{§exec-timeout} a `<-1>` spawn outlives its loop's 200, gates no TERM, an
 ${heartbeat(file)}
 \`\`\`
 
-\`\`\`DONE
+\`\`\`SEND
 the server stays up
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``)],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {

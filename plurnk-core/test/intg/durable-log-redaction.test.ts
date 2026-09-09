@@ -165,7 +165,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
         const nextTurn = await engine.runTurn({
             provider,

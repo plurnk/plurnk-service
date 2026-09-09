@@ -267,24 +267,15 @@ export default class AstBuilder {
         const op = (ctx.start?.text ?? "").replace(/^`+/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const raw = AstBuilder.#bodyTextOf(ctx);
-        if (TurnDisposition.isContinuationOp(op)) {
-            return {
-                op,
-                annotation: AstBuilder.#annotationOf(ctx),
-                target: null,
-                metadata: null,
-                lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
-                body: PlanValue.admit(raw ?? ""),
-                position,
-            };
-        }
         return {
             op,
             annotation: AstBuilder.#annotationOf(ctx),
             target: null,
             metadata: null,
-            lineMarker: null,
-            body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
+            lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
+            body: PlanValue.admit(raw ?? "", (message) => AstBuilder.#advisories.push(
+                new PlurnkParseError(position.line, position.column, "visitor", message, "warning"),
+            )),
             position,
         };
     }

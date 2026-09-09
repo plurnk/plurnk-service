@@ -180,8 +180,9 @@ const mid = (op: string, slots = "", body?: string): string => {
     return body === undefined ? "```" + header + "```\n" : "```" + header + "\n" + body + "\n```\n";
 };
 // {§turn-disposition}
-const LABEL: Record<number, string> = { 102: "NEXT", 200: "DONE", 202: "WAIT", 499: "FAIL" };
-const terminal = (code: number, body: string, slots = ""): string => "```" + LABEL[code] + slots + "\n" + body + "\n```";
+const STATE: Record<number, string> = { 102: "in_progress", 200: "completed", 202: "waiting", 499: "failed" };
+const terminal = (code: number, body: string, slots = ""): string =>
+    PlurnkParser.frame("TASK" + slots, JSON.stringify([{ content: body, status: STATE[code] }]));
 const turn = (operations: string[], code = 200, sendBody = "done", sendSlots = ""): string =>
     `${operations.join("")}${terminal(code, sendBody, sendSlots)}`;
 
@@ -226,7 +227,7 @@ test("GBNF root requires one disposition after zero or more operations", () => {
 // {§disposition-ends-turn} — neither rail derives an operation after any disposition; the same operations
 // before it derive, and a second disposition never does.
 test("neither rail derives an operation after any disposition, nor a second disposition", () => {
-    for (const [label, code] of Object.entries({ NEXT: 102, WAIT: 202, DONE: 200, FAIL: 499 })) {
+    for (const [label, code] of Object.entries({ in_progress: 102, waiting: 202, completed: 200, failed: 499 })) {
         const operations = mid("KILL", " (log:///3/3/1/READ)") + mid("READ", " (notes.md)");
         const trailing = terminal(code, "Answer.") + "\n" + operations;
         assert.equal(derivesTurn(trailing), false, label);
@@ -237,7 +238,7 @@ test("neither rail derives an operation after any disposition, nor a second disp
         assert.equal(derivesTurn(closed + "\n" + terminal(200, "Again.")), false, label);
         assert.equal(derivesQwenTurn(closed + "\n" + terminal(200, "Again.")), false, label);
     }
-    assert.equal(derivesTurn(terminal(102, "Nothing.")), false);
+    assert.equal(derivesTurn(terminal(102, "Nothing.")), true);
 });
 // {§disposition-ends-turn} — long sequences derive before the disposition only; the parser admits the
 // same set and drops what followed with one diagnostic.
@@ -245,12 +246,11 @@ test("both rails admit long operation sequences before the one disposition and n
     for (const [before, after] of [[15, 0], [0, 15], [8, 8], [24, 24]]) {
         const operations = (count: number) => Array.from({ length: count }, (_, index) =>
             mid("KILL", ` (log:///1/${index + 1}/*/READ)`)).join("");
-        for (const label of ["NEXT", "WAIT", "DONE", "FAIL"]) {
-            const content = operations(before) + `\`\`\`${label}
-Done.
-\`\`\``
+        for (const code of [102, 202, 200, 499]) {
+            const label = STATE[code];
+            const content = operations(before) + terminal(code, "Task state.")
                 + (after > 0 ? `\n${operations(after)}` : "");
-            const derivable = after === 0 && !(label === "NEXT" && before === 0);
+            const derivable = after === 0;
             assert.equal(derivesTurn(content), derivable, `${label}: ${before} before, ${after} after`);
             assert.equal(derivesQwenTurn(content), derivable, `${label}: ${before} before, ${after} after`);
             const parsed = PlurnkParser.parse(content);
@@ -298,7 +298,7 @@ test("{§section-boundary}: GBNF composes adjacent operation sections without bl
         "```KILL (log:///**/READ)",
         "needle",
         "```",
-        "```NEXT",
+        "```TASK",
         "Continue from the retrieved result.",
         "```",
     ].join("\n");
@@ -333,16 +333,16 @@ test("GBNF emits executable blocks without a document wrapper", () => {
     assert.equal(derivesTurn("````plurnk\n" + content + "\n````"), false);
     assert.equal(derivesTurn("````plurnk\n" + content), false);
 });
-// {§no-idle-102}
-test("GBNF excludes zero-operation 102 and restores it after one internal operation", () => {
-    assert.equal(derivesTurn(turn([], 102, "working")), false);
+// {§inventory-only-turn}
+test("GBNF admits inventory-only continuation without inferring idleness", () => {
+    assert.equal(derivesTurn(turn([], 102, "working")), true);
     assert.equal(derivesTurn(turn([], 102, "working", " (worker://~)")), false);
     assert.equal(derivesTurn(turn([mid("READ", " (worker:///x)")], 102, "working")), true);
     assert.equal(derivesTurn(turn([mid("SEND", "", "progress")], 102, "working")), true);
     for (const code of [200, 202, 499]) {
         assert.equal(derivesTurn(turn([], code, "terminal")), true, String(code));
     }
-    assert.equal(derivesTurn(turn([], 300, "question")), false, "an unknown label is no disposition; the turn has no terminal");
+    assert.equal(derivesTurn(PlurnkParser.frame("TASK", "unstructured inventory")), true, "the parser, not GBNF, normalizes inventory values");
 
     const tolerant = PlurnkParser.parse(`${terminal(102, "working")}`);
     assert.deepEqual(tolerant.items.filter((item) => item.kind === "error"), []);
@@ -402,7 +402,7 @@ test("ANTLR recognizes an operation fence directly after provider preamble text"
     );
     assert.deepEqual(
         result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement.op),
-        ["READ", "DONE"],
+        ["READ", "TASK"],
     );
     assert.deepEqual(
         result.items.find((item) => item.kind === "statement")?.statement.position,
@@ -423,21 +423,21 @@ test("separator-free fence tolerance does not promote ordinary hashes or inline 
         ["ordinary.##", "Heading!", "remains", "preamble"],
     );
     const statements = result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["DONE"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["TASK"]);
     const first = statements[0];
-    assert.equal(first?.op === "DONE" ? first.body?.raw : undefined,
+    assert.equal(first?.op === "TASK" ? first.body[0]?.content : undefined,
         "keep inline ### READ_ (worker:///not-an-operation) as body");
 });
 
 // {§park-202-only} {§waitpid-dispositions}
-test("GBNF terminal labels and the WAIT park scope are bounded", () => {
+test("GBNF bounds TASK timing syntax without interpreting inventory intent", () => {
     assert.equal(derivesTurn(turn([], 202, "bounded", " <30>")), true);
     assert.equal(derivesTurn(turn([], 202, "polled", " <30,5>")), true);
     assert.equal(derivesTurn(turn([], 202, "indefinite", " <-1>")), true);
     assert.equal(derivesTurn(turn([], 202, "targeted", " (worker://parent) <30,5>")), false, "a label SEND names no recipient");
-    assert.equal(derivesTurn(turn([], 200, "no park", " <30>")), false);
+    assert.equal(derivesTurn(turn([], 200, "no park", " <30>")), true, "unused timing is a runtime warning, not grammar rejection");
     assert.equal(derivesTurn(turn([], 499, "abort")), true);
-    assert.equal(derivesTurn(`${PlurnkParser.frame("SEND (DONE)", "invalid")}`), false, "only the four labels conclude a turn");
+    assert.equal(derivesTurn(`${PlurnkParser.frame("SEND (DONE)", "invalid")}`), false, "SEND does not substitute for TASK");
 });
 
 test("GBNF admits canonical authenticated HTTP and WebSocket targets", () => {
@@ -586,7 +586,7 @@ test("GBNF permits one canonical trailing operation annotation", () => {
     assert.equal(derives("statement", mid("gitea", " (list_issues) <!-- Lists issues -->", "{}")), true);
     assert.equal(derives("statement", mid("gitea", " <!-- Lists issues --> (list_issues)", "{}")), false);
     assert.equal(derives("statement", mid("gitea", " (list_issues) <!-- Lists\nissues -->", "{}")), false);
-    assert.equal(derivesTurn("```DONE <!-- Return the answer -->\ndone\n```"), true);
+    assert.equal(derivesTurn("```SEND\ndone\n```\n```TASK <!-- Return the answer -->\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"), true);
 });
 test("GBNF shapes continuation bodies without enforcing the inventory JSON signature", () => {
     for (const code of [102, 202]) {
@@ -619,8 +619,8 @@ test("GBNF allows inline operation quotations without inventing sections", () =>
         assert.ok(edit.op === "EDIT");
         assert.equal(edit.body?.trim(), body);
         const send = statements[1].statement;
-        assert.ok(send.op === "DONE");
-        assert.equal(send.body?.raw.trim(), body);
+        assert.ok(send.op === "TASK");
+        assert.equal(send.body[0]?.content, body);
     }
 });
 
@@ -634,11 +634,11 @@ test("GBNF reserves fence boundaries, not operation stems or Markdown headings",
     const quoted = PlurnkParser.frame("EDIT (note.md)", "```sh\necho hello\n```");
     assert.equal(PlurnkParser.parseStatements(quoted).items.some((item) => item.kind === "error"), false);
 });
-test("GBNF terminal SEND body is required and names no recipient", () => {
+test("GBNF TASK body is required and names no recipient", () => {
     assert.equal(derivesTurn(turn([], 200, "done")), true);
     assert.equal(derivesTurn(turn([], 200, "done", " (worker://parent)")), false);
-    assert.equal(derivesTurn(`${PlurnkParser.frame("DONE", null)}`), false);
-    assert.equal(derivesTurn(`${PlurnkParser.frame("DONE", "")}`), false);
+    assert.equal(derivesTurn(`${PlurnkParser.frame("TASK", null)}`), false);
+    assert.equal(derivesTurn(`${PlurnkParser.frame("TASK", "")}`), false);
 });
 
 test("GBNF admits matching three/four fences and comma scopes while ANTLR accepts longer fences and dash scopes", () => {
@@ -683,19 +683,17 @@ test("{§rail-heading-boundaries}: longer fences preserve literal code in EDIT a
     const body = "Run this command:\n\n```sh\nprintf hello\n```\n\nThen inspect the result.";
     for (const code of [102, 200, 202, 499]) {
         const content = PlurnkParser.frame("EDIT (README.md) <1,-1>", body) + "\n\n"
-            + PlurnkParser.frame(LABEL[code], body);
-        assert.equal(derivesTurn(content), true, LABEL[code]);
-        assert.equal(derivesQwenTurn(content), true, LABEL[code]);
+            + terminal(code, body);
+        assert.equal(derivesTurn(content), true, STATE[code]);
+        assert.equal(derivesQwenTurn(content), true, STATE[code]);
         const parsed = PlurnkParser.parse(content);
         assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(statements.map(({ op }) => op), ["EDIT", LABEL[code]]);
+        assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "TASK"]);
         assert.equal(statements[0].op === "EDIT" ? statements[0].body : null, body);
         const disposition = statements[1];
         assert.ok(TurnDisposition.is(disposition));
-        assert.deepEqual(disposition.body, TurnDisposition.isContinuation(disposition)
-            ? [{ content: body, status: "in_progress" }]
-            : { raw: body, json: null });
+        assert.deepEqual(disposition.body, [{ content: body, status: STATE[code] }]);
     }
 });
 

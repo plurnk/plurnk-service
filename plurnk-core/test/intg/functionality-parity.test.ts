@@ -98,7 +98,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> =
 
 const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
     contextWindow: viableWindow() * 2,
-    responses: Array.from({ length: 12 }, () => makeMockResponse("```DONE\ndone\n```", 20)),
+    responses: Array.from({ length: 12 }, () => makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 20)),
 });
 
 const packetLogRecords = (source: string): Array<Record<string, unknown>> => {

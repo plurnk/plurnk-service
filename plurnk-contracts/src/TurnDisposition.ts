@@ -1,39 +1,33 @@
-import type { ContinuationStatement, DispositionStatement } from "./types.generated.ts";
+import type { Plan, DispositionStatement } from "./types.generated.ts";
 import PlanValue from "./PlanValue.ts";
 
 // {§turn-disposition} — numeric lifecycle outcomes are derived, not model operands.
 export default class TurnDisposition {
-    static readonly #statuses = Object.freeze({ NEXT: 102, WAIT: 202, DONE: 200, FAIL: 499 } as const);
-
     static isOp(op: string): op is DispositionStatement["op"] {
-        return Object.hasOwn(TurnDisposition.#statuses, op);
+        return op === "TASK";
     }
 
     static is(statement: { op: string }): statement is DispositionStatement {
         return TurnDisposition.isOp(statement.op);
     }
 
-    static isContinuationOp(op: string): op is ContinuationStatement["op"] {
-        return op === "NEXT" || op === "WAIT";
-    }
-
-    static isContinuation(statement: { op: string }): statement is ContinuationStatement {
-        return TurnDisposition.isContinuationOp(statement.op);
-    }
-
     static bodyText(statement: DispositionStatement): string {
-        return TurnDisposition.isContinuation(statement)
-            ? PlanValue.render(statement.body)
-            : statement.body?.raw ?? "";
+        return PlanValue.render(statement.body);
     }
 
-    static status(op: DispositionStatement["op"]): 102 | 202 | 200 | 499 {
-        return TurnDisposition.#statuses[op];
+    // {§task-inventory-intent}: order-independent intent, not a second scheduler.
+    static intent(value: Plan): "missing" | "continue" | "wait" | "pending" | "complete" | "fail" {
+        const plan = PlanValue.assertCanonical(value);
+        if (plan.length === 0) return "missing";
+        const states = new Set(plan.map(({ status }) => status));
+        if (states.has("in_progress")) return "continue";
+        if (states.has("waiting")) return "wait";
+        if (states.has("pending")) return "pending";
+        return states.has("failed") ? "fail" : "complete";
     }
 
-    static fromStatus(status: number): DispositionStatement["op"] {
-        const entry = Object.entries(TurnDisposition.#statuses).find(([, value]) => value === status);
-        if (entry === undefined) throw new RangeError(`No turn disposition has status ${status}.`);
-        return entry[0] as DispositionStatement["op"];
+    static status(statement: DispositionStatement): 102 | 202 | 200 | 499 {
+        const intent = TurnDisposition.intent(statement.body);
+        return intent === "complete" ? 200 : intent === "fail" ? 499 : intent === "wait" ? 202 : 102;
     }
 }

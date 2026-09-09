@@ -72,8 +72,8 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
         // mock's third response is filled in once those anchors are known.
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```READ (file:///doc.md) <1,-1>```\n```NEXT\nreading\n```", 50),
-            makeMockResponse("```DONE\nread\n```", 50),
+            makeMockResponse("```READ (file:///doc.md) <1,-1>```\n```TASK\n[{\"content\":\"reading\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\nread\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -81,10 +81,10 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
             calls += 1;
             if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}
 
-\`\`\`NEXT
-editing
+\`\`\`TASK
+[{"content":"editing","status":"in_progress"}]
 \`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```DONE\nedited\n```", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```SEND\nedited\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

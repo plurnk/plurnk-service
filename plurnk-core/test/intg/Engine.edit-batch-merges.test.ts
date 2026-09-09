@@ -32,8 +32,8 @@ test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endp
     try {
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```EDIT (file:///f.go) <2,3>\nfunc resolve() string {\n\treturn \"\"\n}\n\n```\n\n```EDIT (file:///f.go) <3,5>\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n```\n\n```NEXT\nediting\n```", 50),
-            makeMockResponse("```DONE\ndone\n```", 50),
+            makeMockResponse("```EDIT (file:///f.go) <2,3>\nfunc resolve() string {\n\treturn \"\"\n}\n\n```\n\n```EDIT (file:///f.go) <3,5>\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n```\n\n```TASK\n[{\"content\":\"editing\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -57,8 +57,8 @@ test("{§edit-batch-merges} a READ rendering pasted back as a body is stripped o
         await seeded(root);
         const pending: { body: string | null; fake: string | null } = { body: null, fake: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```READ (file:///f.go) <1,-1>```\n```NEXT\nreading\n```", 50),
-            makeMockResponse("```DONE\nread\n```", 50),
+            makeMockResponse("```READ (file:///f.go) <1,-1>```\n```TASK\n[{\"content\":\"reading\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\nread\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -72,10 +72,10 @@ ${pending.body}
 ${pending.fake}
 \`\`\`
 
-\`\`\`NEXT
-editing
+\`\`\`TASK
+[{"content":"editing","status":"in_progress"}]
 \`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```DONE\nedited\n```", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```SEND\nedited\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -109,8 +109,8 @@ test("{§edit-batch-merges} a paste from an older READ still verifies, against t
         await seeded(root);
         const pending: { body: string | null } = { body: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```READ (file:///f.go) <1,-1>```\n```NEXT\nreading\n```", 50),
-            makeMockResponse("```DONE\nread\n```", 50),
+            makeMockResponse("```READ (file:///f.go) <1,-1>```\n```TASK\n[{\"content\":\"reading\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\nread\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -120,10 +120,10 @@ test("{§edit-batch-merges} a paste from an older READ still verifies, against t
 ${pending.body}
 \`\`\`
 
-\`\`\`NEXT
-editing
+\`\`\`TASK
+[{"content":"editing","status":"in_progress"}]
 \`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```DONE\nedited\n```", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```SEND\nedited\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -154,8 +154,8 @@ test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinar
     try {
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```EDIT (file:///f.go) <1>\nvar x int64\n```\n\n```EDIT (file:///f.go) <1>\nvar x int64\n```\n\n```NEXT\nediting\n```", 50),
-            makeMockResponse("```DONE\ndone\n```", 50),
+            makeMockResponse("```EDIT (file:///f.go) <1>\nvar x int64\n```\n\n```EDIT (file:///f.go) <1>\nvar x int64\n```\n\n```TASK\n[{\"content\":\"editing\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -180,8 +180,8 @@ test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an e
         await seeded(root);
         // The outer rewrites requireFn but keeps its return line verbatim; the inner edits that line.
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```EDIT (file:///f.go) <3,5>\nfunc requireFn(a int, debug bool) int {\n\treturn a\n}\n```\n\n```EDIT (file:///f.go) <4>\n\treturn a * 2\n```\n\n```NEXT\nediting\n```", 50),
-            makeMockResponse("```DONE\ndone\n```", 50),
+            makeMockResponse("```EDIT (file:///f.go) <3,5>\nfunc requireFn(a int, debug bool) int {\n\treturn a\n}\n```\n\n```EDIT (file:///f.go) <4>\n\treturn a * 2\n```\n\n```TASK\n[{\"content\":\"editing\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -204,8 +204,8 @@ test("{§edit-batch-merges} a shortened region does not secretly relocate a late
     try {
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```EDIT (file:///f.go) <3,5>\nfunc requireFn(a int) int { return a }\n```\n\n```EDIT (file:///f.go) <4>\n\treturn a * 2\n```\n\n```NEXT\nediting\n```", 50),
-            makeMockResponse("```DONE\ndone\n```", 50),
+            makeMockResponse("```EDIT (file:///f.go) <3,5>\nfunc requireFn(a int) int { return a }\n```\n\n```EDIT (file:///f.go) <4>\n\treturn a * 2\n```\n\n```TASK\n[{\"content\":\"editing\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

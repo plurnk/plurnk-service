@@ -36,9 +36,9 @@ const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
     for (const [name, bytes] of Object.entries(seed)) await writeFile(join(root, name), bytes);
     const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}
 
-\`\`\`NEXT
-working
-\`\`\``), mockTurn("```DONE\ndone\n```")] });
+\`\`\`TASK
+[{"content":"working","status":"in_progress"}]
+\`\`\``), mockTurn("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
     let status = 0;
     let operations: Array<{ op: string; status_rx: number; rx: string | null }> = [];
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -146,15 +146,15 @@ const runRoundTrip = async (dsl0: string, dsl1: string) => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         mockTurn(`${dsl0}
 
-\`\`\`NEXT
-stashed
+\`\`\`TASK
+[{"content":"stashed","status":"in_progress"}]
 \`\`\``),
         mockTurn(`${dsl1}
 
-\`\`\`NEXT
-copied
+\`\`\`TASK
+[{"content":"copied","status":"in_progress"}]
 \`\`\``),
-        mockTurn("```DONE\ndone\n```"),
+        mockTurn("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

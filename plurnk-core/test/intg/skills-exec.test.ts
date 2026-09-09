@@ -28,8 +28,8 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     const installed = join(root, ".agents", "skills", "sample");
     await symlink(join(root, "versions", "first"), installed);
     const responses = [
-        { assistant: { content: "```READ (skill://sample/guide.md) <1,-1>```\n```NEXT\nInspect the source.\n```", reasoning: null } },
-        { assistant: { content: "```DONE\nDone.\n```", reasoning: null } },
+        { assistant: { content: "```READ (skill://sample/guide.md) <1,-1>```\n```TASK\n[{\"content\":\"Inspect the source.\",\"status\":\"in_progress\"}]\n```", reasoning: null } },
+        { assistant: { content: "```SEND\nDone.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
     ];
     const provider = new PacketCapturingMock({ contextWindow: 32768, responses: [...responses, ...responses] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -56,9 +56,9 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
-            { assistant: { content: "\n```DONE\nobserved.\n```", reasoning: null } },
-            { assistant: { content: "\n```READ (skill://review/SKILL.md) <1,-1>```\n```NEXT\nRead the skill.\n```", reasoning: null } },
-            { assistant: { content: "\n```DONE\nobserved.\n```", reasoning: null } },
+            { assistant: { content: "\n```SEND\nobserved.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
+            { assistant: { content: "\n```READ (skill://review/SKILL.md) <1,-1>```\n```TASK\n[{\"content\":\"Read the skill.\",\"status\":\"in_progress\"}]\n```", reasoning: null } },
+            { assistant: { content: "\n```SEND\nobserved.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
         ],
     });
     try {

@@ -86,14 +86,14 @@ for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, asy
         makeMockResponse(`\`\`\`EDIT (${target})
 ${content}
 \`\`\`
-\`\`\`NEXT
-created
+\`\`\`TASK
+[{"content":"created","status":"in_progress"}]
 \`\`\``, 10),
         makeMockResponse(`${fixture.ops.join("\n")}
-\`\`\`NEXT
-verify
+\`\`\`TASK
+[{"content":"verify","status":"in_progress"}]
 \`\`\``, 10),
-        makeMockResponse("```DONE\ndone\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -127,7 +127,9 @@ invalid
 \`\`\`EDIT (${target}) <2>
 TWO
 \`\`\`
-\`\`\`NEXT\`\`\``;
+\`\`\`TASK
+[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\``;
             const execution = engine.executeAdmittedTurn({
                 ...env, origin, source, sourceFolded: true, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
@@ -136,7 +138,7 @@ TWO
             else assert.equal((await execution).status, 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
-                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", "NEXT"]);
+                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", "TASK"]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
             assert.equal(JSON.parse(rows.find(({ op }) => op === null)!.rx).content, source, "the submitted program remains durable even when execution stops at an error");
             const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/ordered.md", name: "body" });

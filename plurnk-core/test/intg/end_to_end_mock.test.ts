@@ -44,7 +44,7 @@ const dispatchTurn = async (
     if (seqRow === undefined) throw new Error("seq query returned no row");
     const ops = (assistant.ops ?? []) as PlurnkStatement[];
     const sendOp = ops.find(TurnDisposition.is);
-    const turnStatus = sendOp === undefined ? 200 : TurnDisposition.status(sendOp.op);
+    const turnStatus = sendOp === undefined ? 200 : TurnDisposition.status(sendOp);
     const turnId = await insertTurn(db, ctx.loopId, seqRow.next, turnStatus);
     const statuses: number[] = [];
     for (const [i, statement] of ops.entries()) {
@@ -64,7 +64,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const provider = new Mock({
             contextWindow: 100000,
             // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues with [102].
-            responses: [response([editStmt("/france/capital", "Paris"), dispositionStmt("NEXT", "answered")])],
+            responses: [response([editStmt("/france/capital", "Paris"), dispositionStmt("in_progress", "answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
@@ -81,7 +81,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         assert.equal(logRows[0]?.sequence, 1);
         assert.equal(logRows[0]?.status_rx, 201);
         assert.equal(logRows[0]?.pathname, "/france/capital");
-        assert.equal(logRows[1]?.op, "NEXT");
+        assert.equal(logRows[1]?.op, "TASK");
         assert.equal(logRows[1]?.sequence, 2);
         assert.equal(logRows[1]?.status_rx, 102);
         assert.equal(logRows[1]?.pathname, null);
@@ -96,7 +96,7 @@ test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", a
             contextWindow: 100000,
             responses: [response([
                 editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
-                dispositionStmt("NEXT", "more"),
+                dispositionStmt("in_progress", "more"),
             ])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -125,11 +125,11 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/state", "from turn 1"), dispositionStmt("NEXT", "continuing")]),
+                response([editStmt("/state", "from turn 1"), dispositionStmt("in_progress", "continuing")]),
                 // The pending set ({§send-premature-terminate}) forbids READ + [200] in one turn —
                 // the retrieval's result arrives next packet. Read, continue, THEN conclude.
-                response([readStmt("/state"), dispositionStmt("NEXT", "reading")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([readStmt("/state"), dispositionStmt("in_progress", "reading")]),
+                response([dispositionStmt("completed", "done")]),
             ],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -156,7 +156,7 @@ test("e2e: Mock queue exhaustion throws after the expected provider call", async
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-exhaust");
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/only", "x"), dispositionStmt("DONE", "")])],
+            responses: [response([editStmt("/only", "x"), dispositionStmt("completed", "")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await dispatchTurn(engine, provider, db, env);

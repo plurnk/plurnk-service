@@ -1179,6 +1179,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (t
 CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
+-- {§loop-response-messages}: executed messages survive curation. This projection
+-- is also used inside atomic cancellation; no second response accumulator exists.
+CREATE VIEW IF NOT EXISTS loop_responses AS
+SELECT le.loop_id,
+    group_concat(json_extract(le.tx, '$.body.raw'), char(10) || char(10)
+        ORDER BY t.sequence, le.sequence) AS content
+FROM log_entries le JOIN turns t ON t.id = le.turn_id
+WHERE le.op = 'SEND' AND le.state = 'resolved' AND le.status_rx BETWEEN 200 AND 299
+  AND le.source IS NULL AND le.inherited_history = 0
+  AND json_valid(le.tx)
+  AND json_type(le.tx, '$.target') = 'null'
+  AND json_type(le.tx, '$.body.raw') = 'text'
+  AND length(json_extract(le.tx, '$.body.raw')) > 0
+GROUP BY le.loop_id;
+
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
     ON log_entries (model_call_id)
     WHERE model_call_id IS NOT NULL;

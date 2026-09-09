@@ -43,7 +43,7 @@ const REAL_PACKET =
     "```PLAN\nFind and verify the answer.\n\n```" +
     "```FIND (known:///**)\n~capital of France\n\n```" +
     "```READ (plurnk:///manifest.json)\n$[?(@.channels.body)]\n\n```" +
-    "```DONE\nParis\n```";
+    "```SEND\nParis\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
 
 export const CORPUS: Case[] = [
     // ---- controlled grammar: the verdict trichotomy, oracle-independent ----
@@ -68,8 +68,11 @@ Read the greeting.
 \`\`\`READ (README.md)
 $.greeting
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 done
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, expect: "accept",
       note: "a well-formed turn: Harmony channel + PLAN + statement + terminal SEND" },
     { name: "plurnk/qwen-plan-read-send", grammar: PLURNK_QWEN_GBNF,
@@ -79,8 +82,11 @@ Read the greeting.
 \`\`\`READ (README.md)
 $.greeting
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 done
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, expect: "accept",
       note: "the Qwen rail begins at sampled token zero after the template-provided opener" },
     { name: "plurnk/prose", grammar: PLURNK_GBNF, input: "Sure! The capital of France is Paris.",
@@ -100,8 +106,11 @@ quoted section:
 literal
 \`\`\`
 
-\`\`\`DONE
+\`\`\`SEND
 done
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, expect: "reject",
       note: "the rail reserves every operation heading stem for lane `_`; ANTLR alone admits alternate-lane literals" },
     ...[
@@ -112,28 +121,37 @@ done
           input: `${prefix}\`\`\`PLAN
 Quote \`### READ_ (x)\`.
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 Use \`## PLAN_\` and \`### SEND2 (TERM)\` as examples.
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, expect: "accept",
           note: "inline quotations do not start new sections ({§rail-heading-boundaries})" },
         { name: `plurnk/${profile}-body-start-heading`, grammar,
           input: `${prefix}\`\`\`PLAN
 ### READ2 (x)
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 Done.
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, expect: "reject",
           note: "the first body line is a structural boundary too" },
         { name: `plurnk/${profile}-long-turn`, grammar,
           input: prefix + "```PLAN\nCurate.\n\n```" + "```KILL (log:///1/1/*/READ)```".repeat(24)
-            + "```NEXT\nContinue.\n\n```" + "```READ (README.md)```".repeat(24), expect: "accept",
+            + "```TASK\n[{\"content\":\"Continue.\\n\",\"status\":\"in_progress\"}]\n```" + "```READ (README.md)```".repeat(24), expect: "accept",
           note: "ordinary operations have no quota before or after disposition ({§gbnf-turn-shape})" },
         { name: `plurnk/${profile}-second-disposition`, grammar,
           input: `${prefix}### SEND_ (TERM)
 Done.
 \`\`\`KILL (log:///1/1/*/READ)\`\`\`
-\`\`\`DONE
+\`\`\`SEND
 Again.
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, expect: "reject",
           note: "post-disposition work cannot introduce a second disposition" },
     ]),

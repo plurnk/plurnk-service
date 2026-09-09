@@ -1251,7 +1251,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
 });
 
 test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-projection tagged sentence", async () => {
-    const content = "<think>🧠reason</think>```DONE\ndone\n```";
+    const content = "<think>🧠reason</think>```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     const config = {
         ...injectedBase,
         contextWindow: 640,
@@ -1269,7 +1269,7 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
     });
 
     assert.equal(response.assistant.reasoning, "🧠reason");
-    assert.equal(response.assistant.content, "```DONE\ndone\n```");
+    assert.equal(response.assistant.content, "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     assert.deepEqual(response.grammarEvidence, {
         input: content,
         contentStart: [..."<think>🧠reason</think>"].length,

@@ -27,16 +27,19 @@ test("a stale hash anchor rejects an EDIT before proposal — no silent clobber"
 
         const staleAnchor = LineAnchors.token("file:///doc.md", 1, "V1 original\n");
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```READ (file:///doc.md)```\n```NEXT\nReview the file.\n```", 50),
-            makeMockResponse("```DONE\nRead complete.\n```", 50),
+            makeMockResponse("```READ (file:///doc.md)```\n```TASK\n[{\"content\":\"Review the file.\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\nRead complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
             makeMockResponse(`\`\`\`EDIT (file:///doc.md) <${staleAnchor}>
 V3 model clobber
 \`\`\`
 
-\`\`\`DONE
+\`\`\`SEND
 done
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, 50),
-            makeMockResponse("```DONE\nStale edit rejected.\n```", 50),
+            makeMockResponse("```SEND\nStale edit rejected.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

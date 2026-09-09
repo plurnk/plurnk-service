@@ -27,7 +27,7 @@ test("the complete policy workflow example parses as an executable turn", () => 
     assert.equal(parsed.unparsedTail, undefined);
     const statements = parsed.items.filter((item) => item.kind === "statement");
     assert.equal(statements[0]?.statement.op, "EDIT");
-    assert.equal(statements.at(-1)?.statement.op, "NEXT");
+    assert.equal(statements.at(-1)?.statement.op, "TASK");
     assert.ok(statements.some(({ statement }) => statement.op === "EXEC"), "the turn composes native OPs and named executors");
 });
 

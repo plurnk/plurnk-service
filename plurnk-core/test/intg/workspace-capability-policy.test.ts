@@ -86,7 +86,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
         const { turnId } = await engine.runTurn({
             provider,
@@ -130,7 +130,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
 
         const result = await engine.runTurn({
@@ -147,7 +147,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null }>({ loop_id: loopId });
         const harnessOps = rows.filter(({ origin }) => origin === "_plurnk").map(({ op }) => op);
         assert.equal(harnessOps.includes("PLAN"), false);
-        assert.equal(harnessOps.includes("NEXT"), true);
+        assert.equal(harnessOps.includes("TASK"), true);
         assert.deepEqual(
             harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),
             [],
@@ -180,7 +180,7 @@ test("{§capability-admission}: Turn 0 catalogs only capabilities admitted by th
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
         });
 
         const result = await engine.runTurn({
@@ -249,7 +249,7 @@ for (const layer of ["service", "workspace", "worker-bound", "worker", "loop"] a
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
                 readStmt({ ...urlPath("worker", "/_plurnk/plurnk/worker.md"), hostname: "~", raw: "worker://~/_plurnk/plurnk/worker.md" }, { marks: [1, -1] }),
-                dispositionStmt("NEXT"),
+                dispositionStmt("in_progress"),
             ] } },
         ] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });

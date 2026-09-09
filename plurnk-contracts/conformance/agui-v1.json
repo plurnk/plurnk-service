@@ -91,7 +91,7 @@
                         "id": 1,
                         "worker_id": 7,
                         "origin": "model",
-                        "op": "NEXT",
+                        "op": "TASK",
                         "coordinate": "1.1.1",
                         "tx": { "body": { "entries": [{ "content": "Work.", "priority": "medium", "status": "in_progress" }] } }
                     }
@@ -559,7 +559,7 @@
                 {
                     "type": "CUSTOM",
                     "name": "plurnk.row",
-                    "value": { "id": 1, "worker_id": 7, "origin": "model", "op": "NEXT", "tx": { "body": { "entries": [] } } }
+                    "value": { "id": 1, "worker_id": 7, "origin": "model", "op": "TASK", "tx": { "body": { "entries": [] } } }
                 }
             ],
             "expect": {

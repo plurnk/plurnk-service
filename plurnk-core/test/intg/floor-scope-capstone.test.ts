@@ -90,9 +90,11 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const skillGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "fixture", pathname: "/france/capital" });
         assert.equal(skillGone, undefined);
 
-        const [sendTerminal] = parse("```DONE\nanswer delivered\n```");
+        const [sendTerminal, inventory] = parse("```SEND\nanswer delivered\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
         const r12 = await dispatch(sendTerminal, 11);
         assert.equal(r12.status, 200);
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: env.loopId }))?.status, 102, "delivering a message does not complete work");
+        assert.equal((await dispatch(inventory, 12)).status, 200);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: env.loopId }))?.status;
         assert.equal(loopStatus, 200);
 
@@ -100,9 +102,9 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.deepEqual(allEntries, [{ scheme: "worker", pathname: "/archive/france/capital" }]);
 
         const logCount = (await db.test_count_log_entries_by_worker.get<{ n: number }>({ worker_id: env.workerId }))?.n;
-        assert.equal(logCount, 9);
+        assert.equal(logCount, 10);
 
         const clientLogCount = (await db.test_count_log_entries_worker_origin.get<{ n: number }>({ worker_id: env.workerId, origin: "client" }))?.n;
-        assert.equal(clientLogCount, 9);
+        assert.equal(clientLogCount, 10);
     } finally { await db.close(); }
 });

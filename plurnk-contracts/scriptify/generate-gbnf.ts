@@ -164,34 +164,18 @@ export const buildModel = (): GModel => {
     ]);
 
     // {§turn-disposition} — native lifecycle operations carry no recipient.
-    const final = (name: string, label: string, park: boolean): void => {
-        fencedSection(model, name, [[
-            lit(label),
-            ...(park ? [opt(ref("park-slot"))] : []),
-        ]], { body: "required", terminal: true });
-    };
-    final("send-102", "NEXT", false);
-    final("send-200", "DONE", false);
-    final("send-202", "WAIT", true);
-    final("send-499", "FAIL", false);
-    model.set("send-final-any", [[ref("send-102")], [ref("send-200")], [ref("send-202")], [ref("send-499")]]);
-    model.set("send-final-first", [[ref("send-200")], [ref("send-202")], [ref("send-499")]]);
+    fencedSection(model, "task", [[lit("TASK"), opt(ref("park-slot"))]], { body: "required", terminal: true });
 
     model.set("op-statement", [
         [ref("find")], [ref("read")], [ref("edit")], [ref("copy")], [ref("move")],
         [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
     ]);
 
-    // {§gbnf-turn-shape} — NEXT needs work before it; other dispositions may stand
-    // alone. Recursion imposes no ordinary-operation quota. {§disposition-ends-turn} — the
-    // disposition's body is the turn's last sampled text: no statement follows it, so a rail
-    // that keeps generating can only lengthen that body, never emit another operation.
-    for (const name of ["tail-0", "tail-work"]) {
-        model.set(name, [
-            [ref("statement"), ref("block-sep"), ref("tail-work")],
-            [ref(name === "tail-0" ? "send-final-first" : "send-final-any")],
-        ]);
-    }
+    // {§gbnf-turn-shape}: TASK can stand alone; its body is not JSON-constrained.
+    model.set("tail", [
+        [ref("statement"), ref("block-sep"), ref("tail")],
+        [ref("task")],
+    ]);
 
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     model.set("blank-line", [[star(cls(C(" \t\r"))), lit("\n")]]);
@@ -213,13 +197,13 @@ export const buildModel = (): GModel => {
     // {§gbnf-turn-shape} — the same rule as the gemma channel: no empty-thought exit.
     model.set("rz-think-first", [[cls([[0x30, 0x39], [0x41, 0x5A], [0x61, 0x7A]])]]);
     model.set("qwen-tail", [[ref("rz-think-first"), ref("rz-think-b0"), lit(thinkClose)]]);
-    model.set("turn", [[ref("tail-0")]]);
+    model.set("turn", [[ref("tail")]]);
     model.set("root-gemma", [[ref("channel"), ref("sep"), ref("turn")]]);
     model.set("root-qwen", [[ref("qwen-tail"), ref("sep"), ref("turn")]]);
     model.set("root-qwen-response", [[lit(thinkOpen), ref("root-qwen")]]);
 
     model.set("statement", [[ref("op-statement")], [ref("send-mid")]]);
-    model.set("send-statement", [[ref("send-mid")], [ref("send-final-any")]]);
+    model.set("send-statement", [[ref("send-mid")]]);
 
     model.set("target-slot", [[lit(" "), ref("target"), star(ref("metadata-slot"))]]);
     model.set("recipient-slot", [[lit(" ("), ref("scheme"), lit("://"), ref("target-inner"), lit(")"), star(ref("metadata-slot"))]]);

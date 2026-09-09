@@ -77,19 +77,20 @@ test("fenced operations: an unfinished block never admits its contents as an exe
 });
 
 test("fenced operations: closed malformed blocks do not discard later valid operations", () => {
-    const result = PlurnkParser.parse("```FIND (src/**) <~retry>\n```\n```READ (a.txt)```\n```NEXT\nInspect the results.\n```");
+    const result = PlurnkParser.parse("```FIND (src/**) <~retry>\n```\n```READ (a.txt)```\n```TASK\n[{\"content\":\"Inspect the results.\",\"status\":\"in_progress\"}]\n```");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
-    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "NEXT"]);
+    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "TASK"]);
 });
 
 test("fenced operations: a message may contain literal executable examples without dispatching them", () => {
-    const result = PlurnkParser.parse('````DONE\nRun this yourself:\n```bash\necho hello\n```\n````');
+    const result = PlurnkParser.parse("````SEND\nRun this yourself:\n```bash\necho hello\n```\n````\n````TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n````");
     assert.equal(result.unparsedTail, undefined);
-    assert.equal(result.items.length, 1);
+    assert.equal(result.items.length, 2);
     const item = result.items[0];
     assert.equal(item.kind, "statement");
-    if (item.kind !== "statement" || item.statement.op !== "DONE") return;
+    assert.equal(item.statement.op, "SEND");
+    if (item.statement.op !== "SEND") throw new Error("missing SEND");
     assert.equal(item.statement.body?.raw, 'Run this yourself:\n```bash\necho hello\n```');
 });
 

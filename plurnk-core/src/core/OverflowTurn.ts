@@ -82,8 +82,8 @@ export default class OverflowTurn {
 
     static sendStatement(): DispositionStatement {
         return {
-            op: "NEXT", annotation: null, target: null, metadata: null, lineMarker: null,
-            body: [{ content: OVERFLOW_SEND, status: "pending" }],
+            op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null,
+            body: [{ content: OVERFLOW_SEND, status: "in_progress" }],
             position: UNKNOWN_POSITION,
         };
     }

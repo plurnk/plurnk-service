@@ -48,8 +48,8 @@ test("Mock.provider: exhausted queue throws", async () => {
 test("Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
-            content: "```DONE\ndone\n```",
-            ops: [dispositionStmt("DONE", "done")],
+            content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+            ops: [dispositionStmt("completed", "done")],
             reasoning: "thought about it",
             finishReason: "stop",
             model: "mock-bench-v1",
@@ -58,7 +58,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     };
     const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
-    assert.equal(result.assistant.content, "```DONE\ndone\n```");
+    assert.equal(result.assistant.content, "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
     assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
     assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
@@ -66,7 +66,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     assert.equal(result.assistant.model, "mock-bench-v1");
     assert.equal(result.assistant.reasoning, "thought about it");
     assert.equal(result.assistant.ops?.length, 1);
-    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "DONE");
+    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "TASK");
 });
 
 test("Mock.provider: request accounting defaults fill when the fixture omits usage", async () => {
@@ -122,11 +122,11 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
     const ops = [
         editStmt("a", "1"),
         editStmt("b", "2"),
-        dispositionStmt("NEXT", "continuing"),
+        dispositionStmt("in_progress", "continuing"),
     ];
-    const content = "```EDIT (worker:///a)\n1\n```\n\n```EDIT (worker:///b)\n2\n```\n\n```NEXT\ncontinuing\n```";
+    const content = "```EDIT (worker:///a)\n1\n```\n\n```EDIT (worker:///b)\n2\n```\n\n```TASK\n[{\"content\":\"continuing\",\"status\":\"in_progress\"}]\n```";
     const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);
-    assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "NEXT"]);
+    assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "TASK"]);
 });

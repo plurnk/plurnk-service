@@ -732,7 +732,7 @@ export default class TurnRunner {
         }
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
-        // example itself: the actual orienting operations and an ordinary NEXT.
+        // example itself: the actual orienting operations and an ordinary TASK.
         if (initializationTurn !== null) {
             // {§worker-initialization-entry} — the prompt is archived into the
             // worker's private space: the worked COPY specimen, and the private
@@ -962,12 +962,12 @@ export default class TurnRunner {
                 initializationStatements.push(...surveys.map(({ statement }) => statement).filter(({ target }) =>
                     this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workerId) !== undefined));
             }
-            const send: DispositionStatement = {
-                op: "NEXT", annotation: null, target: null, metadata: null, lineMarker: null,
-                body: [{ content: "Address the prompt.", status: "pending" }],
+            const task: DispositionStatement = {
+                op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null,
+                body: [{ content: "Address the prompt.", status: "in_progress" }],
                 position: UNKNOWN_POSITION,
             };
-            initializationStatements.push(send);
+            initializationStatements.push(task);
             const admittedInitializationStatements = initializationStatements.filter(initializationAdmits);
             const source = TurnOps.renderInternal(admittedInitializationStatements);
             const admitted = TurnOps.parseInternal(source);
@@ -987,7 +987,7 @@ export default class TurnRunner {
                 onSettled,
             });
             if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-                throw new Error(`initialization SEND returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+                throw new Error(`initialization TASK returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
             }
         }
 
@@ -1831,7 +1831,6 @@ export default class TurnRunner {
             turnId,
             fromSequence: nextActionIndex,
             maxCommands,
-            enforceIdle: true,
             allowUnobservedRetrievalCompletion,
             recoverableParseErrors,
             bare: {
@@ -1976,7 +1975,7 @@ export default class TurnRunner {
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             parseNotices,
             // The ANTLR model-turn parser is authoritative. At least one source
-            // operation lets an omitted disposition default to NEXT; the
+            // operation lets an omitted TASK recover with an empty inventory; the
             // exact defaults and bounded statement failures become durable
             // operation results. Boundary loss and an unparsed tail still reject
             // wholesale. Pre-parsed ops are Mock's trusted test seam.

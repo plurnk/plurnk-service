@@ -10,11 +10,11 @@ test("framing a large body does not spread its backtick runs into function argum
 // {§fence-boundary}
 test("quoted programs are exact body content without speculative diagnostics", () => {
     const body = "```sh\necho hello\n```\n## PLAN_\n### READ_ (example.md)";
-    const input = PlurnkParser.frame("DONE", body);
+    const input = PlurnkParser.frame("SEND", body) + "\n" + PlurnkParser.frame("TASK", '[{"content":"Example delivered.","status":"completed"}]');
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
-    const send = parsed.items.find((item) => item.kind === "statement" && item.statement.op === "DONE");
-    assert.equal(send?.kind === "statement" && send.statement.op === "DONE" ? send.statement.body?.raw : null, body);
+    const send = parsed.items.find((item) => item.kind === "statement" && item.statement.op === "SEND");
+    assert.equal(send?.kind === "statement" && send.statement.op === "SEND" ? send.statement.body?.raw : null, body);
 });
 
 test("an unfinished outer body cannot dispatch inner programs", () => {

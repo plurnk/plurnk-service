@@ -251,7 +251,7 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource, wi
         const context = { workspaceId, workerId, loopId, messages: [] };
         for (const reasoning of [null, ""]) await engine.runTurn({ ...context, provider: provider(reasoning) });
         assert.deepEqual(await db.test_reasoning_resources.all({ worker_id: workerId }), []);
-        const source = "```NEXT\nContinue.\n```";
+        const source = "```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "invalid program", reasoning: "Private rejected reasoning." } },
             { assistant: { content: source, reasoning: "Admitted reasoning." } },

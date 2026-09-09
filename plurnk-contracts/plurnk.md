@@ -1,134 +1,86 @@
 # Plurnk Harness
 
-````syntax
-```OP (path)? <scope>? <!-- terse annotation on same line as the OP -->?
-body?
-```
-````
-
-## Plurnk OPs
-
-* Plurnk Harness contains several internal helper OPs.
+## Plurnk OP Syntax
 
 ### FIND - List matching results by pattern search.
 
-````syntax
 ```FIND (target or glob) <result range>?
 filter pattern?
 ```
-````
 
 ### READ - Read content from files, entries, or streams.
 
-````syntax
 ```READ (path) <text region>?```
-````
 
 ### EDIT - Edit, replace, or delete text in a file or entry.
 
-````syntax
 ```EDIT (path) <text region>?
 literal replacement text
 ```
-````
 
 * An unscoped EDIT only creates a new file or entry.
 
 ### COPY - Copy files, entries, streams, or text regions.
 
-````syntax
 ```COPY (source) <source text region>? (destination) <destination text region>?```
-````
 
 ### MOVE - Move files, entries, streams, or text regions.
 
-````syntax
 ```MOVE (source) <source text region>? (destination) <destination text region>?```
-````
 
 ### SEND - Message workers or endpoints.
 
-````syntax
 ```SEND (recipient)
 message
 ```
-````
+
+* A SEND without a recipient is a response to the Active Prompt.
 
 ### WORK - deploy a child worker (fresh log)
 
-````syntax
 ```WORK (worker://name)
 prompt
 ```
-````
 
 ### FORK - deploy a forked worker (forked log)
 
-````syntax
 ```FORK (worker://name)
 prompt
 ```
-````
 
 ### BARE - Deploy an isolated inference query (no log).
 
-````syntax
 ```BARE (path)?
 prompt
 ```
-````
 
 ### KILL - Delete or terminate.
 
-````syntax
 ```KILL (target) <range or region>?
 filter pattern?
 ```
-````
 
 * ```KILL (worker://~/notes.md)``` without a scope deletes an entry.
 * ```KILL (src/app.js) <@zyxwv>``` removes one line by hash anchor.
 * ```KILL (sh:///1/2/3/EXEC)``` stops a running command.
 * ```KILL (worker://recheck)``` terminates a worker.
-* ```KILL (log:///1/[1-7]/*/{NEXT,READ})``` removes matching log items.
+* ```KILL (log:///1/[1-7]/*/{TASK,READ})``` removes matching log items.
 * ```KILL (log:///**/READ) <17,-1>``` trims each item's log lines from 17 on.
 * A log item or line KILL doesn't delete the source.
 
-### NEXT - Continue to act on results in next turn.
+### TASK - Submit the current task inventory.
 
-````syntax
-```NEXT
-[{"content": string, "status": "pending" | "in_progress" | "completed"}]
+```TASK
+[{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
 ```
-````
 
-* The results of OPs are not observable until after submitting with `NEXT`, or `WAIT`.
+* `pending`: Task is blocked until another task it depends on is `completed`.
+* `waiting`: Task is awaiting an ongoing stream, deployed worker, or external event.
+* `in_progress`: Task is active work.
+* `completed`: Task has been successfully resolved.
+* `failed`: Task has ended unsuccessfully.
 
-### WAIT - Wait for workers or streams to finish.
-
-````syntax
-```WAIT
-[{"content": string, "status": "pending" | "in_progress" | "completed"}]
-```
-````
-
-### FAIL - Abort the current prompt.
-
-````syntax
-```FAIL
-message
-```
-````
-
-### DONE - Successful conclusion.
-
-````syntax
-```DONE
-message
-```
-````
-
-* Do not use DONE unless all results, workers, and streams are already retrieved or resolved.
+* The prompt is completed or failed when all tasks are "completed" or "failed".
 
 ## Pattern Filtering
 
@@ -143,10 +95,7 @@ message
 | `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
 | none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
 
-* The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
-* Mapping is universal: JSONPath can query XML and XPath can query JSON.
-* Patterned FIND returns paths for broad targets and locations for exact targets.
 
 ## `(path)`
 
@@ -155,9 +104,6 @@ message
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
 * Creating a file automatically creates missing parent directories.
-
-* Parent traversal: ```` ```READ (../AGENTS.md)``` ````.
-* Stream channel: ```` ```READ (sh:///1/2/3/EXEC#stderr)``` ````.
 
 ## `<scope>`
 

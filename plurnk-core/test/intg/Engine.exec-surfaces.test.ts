@@ -21,8 +21,8 @@ test("regression: a model's EXEC result surfaces visibly in the NEXT turn withou
     // exec result created in turn 1 must appear in turn 2's packet log so the
     // model can READ it — assert the ENGINE put a <runtime>:///<coord> stream link there.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\necho plurnk-index-probe\n```\n\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```DONE\ndone\n```", 10),
+        makeMockResponse("```EXEC\necho plurnk-index-probe\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -58,8 +58,8 @@ test("regression: a model's EXEC result surfaces visibly in the NEXT turn withou
 test("a generated JSON result publishes its first page with the extent through the next-turn packet", async () => {
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```sqlite\n" + query + "\n```\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```DONE\ndone\n```", 10),
+        makeMockResponse("```sqlite\n" + query + "\n```\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -107,8 +107,8 @@ test("a generated JSON result publishes its first page with the extent through t
 
 test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n```\n\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```DONE\nfailure observed\n```", 10),
+        makeMockResponse("```EXEC\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\nfailure observed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -185,10 +185,10 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
     // EXEC a slow-close command + [102]. Turn 2: the stream is active and represented only by Child
     // Streams. Turn 3: the terminal marker MUST land visibly despite no new bytes — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\necho burst-payload && sleep 2\n```\n\n```NEXT\nspawned\n```", 10),
-        makeMockResponse("```NEXT\nwaiting\n```", 10),
-        makeMockResponse("```NEXT\nchecking\n```", 10),
-        makeMockResponse("```DONE\ndone\n```", 10),
+        makeMockResponse("```EXEC\necho burst-payload && sleep 2\n```\n\n```TASK\n[{\"content\":\"spawned\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```TASK\n[{\"content\":\"waiting\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```TASK\n[{\"content\":\"checking\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

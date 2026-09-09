@@ -72,16 +72,16 @@ test("a child proposal traverses its controlling conversation without losing eit
         responses: [
             makeMockResponse(
                 "```WORK (worker://guesser1)\nCreate child.txt and conclude.\n```\n"
-                + "```WAIT <-1>\nWaiting for guesser1.\n```",
+                + "```TASK <-1>\n[{\"content\":\"Waiting for guesser1.\",\"status\":\"waiting\"}]\n```",
                 10,
             ),
             makeMockResponse(
                 "```EDIT (child.txt)\ncreated by child\n```\n"
-                + "```NEXT\nConfirming the write.\n```",
+                + "```TASK\n[{\"content\":\"Confirming the write.\",\"status\":\"in_progress\"}]\n```",
                 10,
             ),
-            makeMockResponse("```DONE\nChild work complete.\n```", 10),
-            makeMockResponse("```DONE\nDelegated work confirmed.\n```", 10),
+            makeMockResponse("```SEND\nChild work complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```SEND\nDelegated work confirmed.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
     const db = await openTestDatabase();

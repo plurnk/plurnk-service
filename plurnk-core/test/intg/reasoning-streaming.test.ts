@@ -42,7 +42,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
             assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
         } finally {
             clearTimeout(timer);
-            send("</think>```DONE\nDone.\n```", "stop");
+            send("</think>```SEND\nDone.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -116,8 +116,11 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         // Finish in a different order from admission while all three streams overlap.
         for (const index of [1, 2, 0]) {
             const { name } = workers[index]!;
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`DONE
+            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`SEND
 ONLY_${name}
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
             });
@@ -131,7 +134,7 @@ ONLY_${name}
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0]!.response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
-            assert.match(response.assistant.content, new RegExp("ONLY_" + name + "\\n```$"));
+            assert.equal(response.assistant.content, `\`\`\`SEND\nONLY_${name}\n\`\`\`\n\`\`\`TASK\n[{"content":"Task completed.","status":"completed"}]\n\`\`\``);
             for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");
             }

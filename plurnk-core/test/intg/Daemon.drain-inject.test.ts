@@ -12,9 +12,9 @@ import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotific
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "```EDIT (worker:///x)\nhello\n```\n\n```DONE\ndone\n```";
+    const dsl = "```EDIT (worker:///x)\nhello\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("```DONE\ndone\n```", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -35,8 +35,8 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```DONE\nfirst concurrent loop\n```"),
-            sendOnly("```DONE\nsecond concurrent loop\n```"),
+            sendOnly("```SEND\nfirst concurrent loop\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            sendOnly("```SEND\nsecond concurrent loop\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
 
@@ -84,7 +84,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
 test("{§worker-delegation-inherits-policy}: a fresh injection persists delegated authority as its loop policy", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [sendOnly("```DONE\ndone\n```")],
+        responses: [sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-policy-${crypto.randomUUID()}` });
@@ -123,9 +123,9 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```NEXT\nrunning\n```"),
-            sendOnly("```DONE\ndone\n```"),
-            sendOnly("```DONE\ndone\n```"),
+            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
 
@@ -172,7 +172,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
 });
 
 test("loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("```DONE\ndone\n```")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -192,10 +192,10 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```NEXT\nrunning\n```"),
-            sendOnly("```DONE\ndone\n```"),
-            sendOnly("```DONE\ndone\n```"),
-            sendOnly("```DONE\ndone\n```"),
+            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
 
@@ -248,8 +248,8 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\ntrue\n```\n\n```NEXT\ncontinue after review\n```"), // proposal pauses before the required disposition
-            sendOnly("```DONE\ndone\n```"),      // turn 2 consumes the injected prompt, ends
+            sendOnly("```EXEC\ntrue\n```\n\n```TASK\n[{\"content\":\"continue after review\",\"status\":\"in_progress\"}]\n```"), // proposal pauses before the required disposition
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),      // turn 2 consumes the injected prompt, ends
         ],
     });
 
@@ -319,8 +319,8 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```WAIT <-1>\npark\n```"),
-            sendOnly("```FAIL\ndone with the parked work\n```"),
+            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```SEND\ndone with the parked work\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
     const parkedBoundary = Promise.withResolvers<void>();
@@ -395,8 +395,8 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```WAIT <-1>\npark\n```"),
-            sendOnly("```FAIL\ndone with the injected prompt\n```"),
+            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```SEND\ndone with the injected prompt\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
     const parking = Promise.withResolvers<void>();
@@ -465,8 +465,8 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
         responses: [
             // The rejected EXEC is a same-turn failure — {§send-premature-terminate} refuses a [200] over
             // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
-            sendOnly("```EXEC\ntrue\n```\n\n```FAIL\nloop 1 abandons at turn 1\n```"),  // pause, then end
-            sendOnly("```DONE\nreconciled loop ran\n```"),                              // the promoted loop
+            sendOnly("```EXEC\ntrue\n```\n\n```SEND\nloop 1 abandons at turn 1\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),  // pause, then end
+            sendOnly("```SEND\nreconciled loop ran\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),                              // the promoted loop
         ],
     });
 
@@ -571,8 +571,8 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```WAIT <-1>\nbackgrounded\n```"),
-            sendOnly("```DONE\ndone\n```"),
+            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
 
@@ -611,8 +611,8 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```WAIT <-1>\nbackgrounded\n```"),
-            sendOnly("```DONE\nshould never run\n```"),
+            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```SEND\nshould never run\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
 

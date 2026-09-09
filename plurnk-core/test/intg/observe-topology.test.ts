@@ -23,7 +23,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "\n```DONE\nobserved.\n```",
+                    content: "\n```SEND\nobserved.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
                     reasoning: null,
                 },
             }],
@@ -82,14 +82,15 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         // The parse is synchronous and ends before model dispatch.
         const parse = turnChildren.find((s) => s.name === "contracts.parse");
         assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
-        assert.equal(parse.attributes.statements, 1, "parse records the single emitted disposition");
+        assert.equal(parse.attributes.statements, 2, "parse records the emitted SEND and TASK");
 
         const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
         const ops = dispatches.map((s) => s.attributes.op);
         assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
-        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "initialization and inference each dispatch their real SEND");
+        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "initialization and inference each dispatch their inventory");
+        assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's message has its own dispatch span");
         assert.ok(
-            ops.filter((op) => typeof op !== "string" || !TurnDisposition.isOp(op)).every((op) => op === "FIND" || op === "COPY"),
+            ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "FIND" || op === "COPY"),
             `the remaining initialization operations are the prompt-archive COPY and catalog FINDs; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {

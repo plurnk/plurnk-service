@@ -58,17 +58,17 @@ const runLoop = async (
         responses: responses ?? [
             mockTurn(`${read}
 
-\`\`\`NEXT
-looking
+\`\`\`TASK
+[{"content":"looking","status":"in_progress"}]
 \`\`\``),
             renew
                 ? mockTurn(`${read}
 
-\`\`\`NEXT
-keep looking
+\`\`\`TASK
+[{"content":"keep looking","status":"in_progress"}]
 \`\`\``)
-                : mockTurn("```NEXT\ncontinue without image\n```"),
-            mockTurn("```DONE\nseen\n```"),
+                : mockTurn("```TASK\n[{\"content\":\"continue without image\",\"status\":\"in_progress\"}]\n```"),
+            mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     try {
@@ -139,10 +139,10 @@ test("{§packet-attachment-parts} repeating READ creates a new native delivery f
 
 test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materialized native request", async () => {
     const requests = await runLoop(["image"], "```READ (logo.png)```", false, [
-        mockTurn("```READ (logo.png)```\n```NEXT\nlooking\n```"),
+        mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
         { assistant: { content: "not a Plurnk emission", reasoning: null }, assistantRaw: null },
-        mockTurn("```NEXT\nrecovered\n```"),
-        mockTurn("```DONE\nseen\n```"),
+        mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
+        mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ]);
     const attempted = requests.slice(1, 3).map((request) => request.find((message) => message.role === "user"));
     assert.equal(attempted.length, 2);
@@ -157,9 +157,9 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
         contextWindow: viableWindow(),
         inputModalities: ["image"],
         responses: [
-            mockTurn("```READ (logo.png)```\n```NEXT\nlooking\n```"),
-            mockTurn("```NEXT\nrecovered\n```"),
-            mockTurn("```DONE\nseen\n```"),
+            mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
+            mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
+            mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     await runLoop(["image"], "```READ (logo.png)```", false, undefined, provider);

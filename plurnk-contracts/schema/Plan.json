@@ -37,7 +37,7 @@
             "additionalProperties": false
         },
         "PlanEntryStatus": {
-            "description": "ACP v1 plan-entry lifecycle states.",
+            "description": "Model-native task states; ACP projection is separately owned.",
             "oneOf": [
                 {
                     "type": "string",
@@ -49,7 +49,15 @@
                 },
                 {
                     "type": "string",
+                    "const": "waiting"
+                },
+                {
+                    "type": "string",
                     "const": "completed"
+                },
+                {
+                    "type": "string",
+                    "const": "failed"
                 }
             ]
         }

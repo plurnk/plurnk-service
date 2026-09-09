@@ -2,48 +2,49 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser, Validator } from "../../src/index.ts";
 
-for (const op of ["NEXT", "WAIT", "DONE", "FAIL"]) {
-    test(`standalone ${op} is the durable operation, not an executor or SEND alias`, () => {
+for (const status of ["pending", "in_progress", "waiting", "completed", "failed"]) {
+    test(`TASK ${status} is durable inventory, not an executor or SEND alias`, () => {
+        const body = JSON.stringify([{ content: "Task state.", status }]);
         const result = PlurnkParser.parse(`\`\`\`READ (notes.md)\`\`\`
-\`\`\`${op}\nmessage\n\`\`\``);
+\`\`\`TASK\n${body}\n\`\`\``);
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
         const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(statements.map((statement) => statement.op), ["READ", op]);
+        assert.deepEqual(statements.map((statement) => statement.op), ["READ", "TASK"]);
         const last = statements.at(-1)!;
-        assert.equal(Object.hasOwn(last, "status"), false, "the operation determines disposition; no contradictory status operand");
+        assert.equal(Object.hasOwn(last, "status"), false, "inventory determines disposition; no contradictory status operand");
         assert.equal(Validator.validatePlurnkStatement(last).valid, true);
         const again = PlurnkParser.parseStatements(PlurnkParser.stringify(statements));
-        assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", op]);
+        assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
     });
 }
 
-test("SEND messages do not conclude a turn and omitted disposition recovers NEXT", () => {
+test("SEND messages do not conclude a turn and omitted disposition recovers empty TASK", () => {
     const result = PlurnkParser.parse("```SEND (worker://peer)\nhello\n```");
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND", "NEXT"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND", "TASK"]);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
 });
 
 test("a stray closing fence is described as outside a block, not as text before PLAN", () => {
-    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```NEXT\nInspect the note.\n```");
+    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```TASK\n[{\"content\":\"Inspect the note.\",\"status\":\"in_progress\"}]\n```");
     const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []);
     assert.ok(errors.some((message) => message.startsWith("unexpected text outside an operation block")));
     assert.ok(errors.every((message) => !message.includes("before PLAN")));
 });
 
-test("WAIT alone carries numeric parking scope; DONE has no resource operand", () => {
-    const wait = PlurnkParser.parseStatements("```WAIT <5,1>\nwaiting\n```");
+test("TASK admits timing independent of intent but never a resource operand", () => {
+    const wait = PlurnkParser.parseStatements("```TASK <5,1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```");
     assert.deepEqual(wait.items.filter((item) => item.kind === "error"), []);
     const statement = wait.items[0];
     assert.equal(statement?.kind, "statement");
     if (statement?.kind === "statement") {
-        assert.equal(statement.statement.op, "WAIT");
+        assert.equal(statement.statement.op, "TASK");
         assert.deepEqual(statement.statement.lineMarker, { marks: [5, 1] });
-        for (const op of ["NEXT", "DONE", "FAIL"]) {
-            const body = op === "NEXT" ? [] : { raw: "finished", json: null };
-            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, op, body }).valid, false, `${op} cannot carry WAIT timing through the wire schema`);
-            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, op, body, lineMarker: null }).valid, true);
+        for (const status of ["pending", "in_progress", "completed", "failed"]) {
+            const body = [{ content: "Task state.", status }];
+            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, body }).valid, true);
+            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, body, lineMarker: null }).valid, true);
         }
     }
-    const invalid = PlurnkParser.parseStatements("```DONE (notes.md)\ncomplete\n```");
+    const invalid = PlurnkParser.parseStatements("```SEND\ncomplete\n```\n```TASK (notes.md)\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     assert.ok(invalid.items.some((item) => item.kind === "error"));
 });

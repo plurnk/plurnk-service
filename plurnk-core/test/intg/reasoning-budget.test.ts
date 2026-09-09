@@ -18,7 +18,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         const context = { workspaceId, workerId, loopId, messages: [] };
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "unfit" ? 500 : 16)}`).join("\n");
         const first = await engine.runTurn({ ...context, provider: providerWithCapacity(999_000, [{ assistant: {
-            content: "```EDIT (worker:///receipt.txt)\nPreserve this result.\n```\n```READ (worker:///receipt.txt) <1,-1>```\n```NEXT\nContinue.\n```", reasoning,
+            content: "```EDIT (worker:///receipt.txt)\nPreserve this result.\n```\n```READ (worker:///receipt.txt) <1,-1>```\n```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```", reasoning,
         } }]) });
         const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
         const target = `reasoning://${resource.pathname}`;
@@ -31,10 +31,10 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         const provider = providerWithCapacity(capacity, [{ assistant: {
             content: mode === "explicit"
                 ? `\`\`\`READ (${target}) <1,-1> <!-- inspect selected reasoning -->\`\`\`
-\`\`\`NEXT
-Review.
+\`\`\`TASK
+[{"content":"Review.","status":"in_progress"}]
 \`\`\``
-                : "```DONE\nRecovered.\n```", reasoning: null,
+                : "```SEND\nRecovered.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null,
         } }]);
         const build = PacketBuilder.prototype.buildRequestPacket;
         let candidate: Awaited<ReturnType<typeof build>> | undefined;

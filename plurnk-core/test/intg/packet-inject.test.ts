@@ -23,7 +23,7 @@ test("PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section afte
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
 
         const { turnId } = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

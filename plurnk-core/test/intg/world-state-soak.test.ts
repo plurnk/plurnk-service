@@ -42,8 +42,8 @@ test("soak: N turn boundaries with per-turn membership re-resolution — zero gr
         const responses = Array.from({ length: TURNS }, (_, i) => ({
             assistant: {
                 content: `${i % 2 === 0 ? "```READ (a.md)```" : "```FIND (**)```"}
-\`\`\`NEXT
-continue
+\`\`\`TASK
+[{"content":"continue","status":"in_progress"}]
 \`\`\``,
                 reasoning: null,
             },

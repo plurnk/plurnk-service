@@ -87,8 +87,7 @@ copyStatement : OPEN_COPY transferModifiers opAnnotation? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
 dispositionStatement
-    : (OPEN_NEXT | OPEN_DONE | OPEN_FAIL) opAnnotation? statementEnd
-    | OPEN_WAIT lineMarker? opAnnotation? statementEnd
+    : OPEN_TASK lineMarker? opAnnotation? statementEnd
     ;
 sendStatement : OPEN_SEND (targetWithMetadata lineMarker?)? opAnnotation? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;

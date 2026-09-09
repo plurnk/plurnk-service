@@ -20,13 +20,7 @@ const mockTurn = (dsl: string) => ({
 
 // A host exec that arms itself against the polite signals, then sleeps. Only the housekeeping
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
-const stubbornSpawn = `\`\`\`EXEC
-trap '' HUP TERM; sleep 30
-\`\`\`
-
-\`\`\`WAIT <-1>
-parked with a stubborn spawn
-\`\`\``;
+const stubbornSpawn = "```EXEC\ntrap '' HUP TERM; sleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"parked with a stubborn spawn\",\"status\":\"waiting\"}]\n```";
 
 test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
@@ -25,12 +26,10 @@ const fixture = async (t: TestContext) => {
     return { db, workspaceId, workerId, loopId, engine, sends };
 };
 
-const response = (operation: string, disposition = "DONE", body = "The answer is 42.") => ({
+const response = (operation: string, status = "completed", body = "The answer is 42.") => ({
     assistant: {
-        content: `${operation}
-\`\`\`${disposition}
-${body}
-\`\`\``,
+        content: [operation, PlurnkParser.frame("SEND", body),
+            PlurnkParser.frame("TASK", JSON.stringify([{ content: "Report the answer.", status }]))].join("\n"),
         reasoning: null,
     },
 });
@@ -58,7 +57,7 @@ for (const { name, operation, maxStrikes } of [
         });
 
         assert.equal(result.result.status, 200, "the final retrieval-only completion is accepted, not converted into loop failure");
-        assert.equal(result.result.content, "The answer is 42.", "the actual authored conclusion is retained");
+        assert.equal(result.result.content, Array.from({ length: attempts }, () => "The answer is 42.").join("\n\n"), "all delivered messages are retained in order");
         assert.equal(provider.received.length, attempts, "the existing threshold controls the allowance");
         assert.equal(provider.remaining, 1, "completion requires no extra inference");
         assert.deepEqual((await sends()).map(({ status_rx }) => status_rx), [
@@ -84,7 +83,7 @@ test("{§send-final-strike-retrieval}: a clean turn resets the allowance with th
     const { engine, workspaceId, workerId, loopId, sends } = await fixture(t);
     const read = "```READ (worker:///answer.md)```";
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        response(read), response(read), response(read, "NEXT"),
+        response(read), response(read), response(read, "in_progress"),
         response(read), response(read), response(read),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 7, maxStrikes: 3 });
@@ -166,13 +165,13 @@ test("{§send-final-strike-retrieval}: a different loop does not inherit the all
     assert.deepEqual((await sends()).map(({ status_rx }) => status_rx), [409, 409, 409, 409, 200]);
 });
 
-test("{§send-final-strike-retrieval}: the final allowance does not turn an idle NEXT into completion", async (t) => {
+test("{§send-final-strike-retrieval}: the final allowance cannot turn actionable TASK into completion", async (t) => {
     const { engine, workspaceId, workerId, loopId } = await fixture(t);
     const read = "```READ (worker:///answer.md)```";
     const result = await engine.runLoop({
-        provider: new Mock({ contextWindow: 100_000, responses: [response(read), response(read), response("", "NEXT")] }),
-        workspaceId, workerId, loopId, messages: [], maxTurns: 4, maxStrikes: 3,
+        provider: new Mock({ contextWindow: 100_000, responses: [response(read), response(read), response("", "in_progress")] }),
+        workspaceId, workerId, loopId, messages: [], maxTurns: 3, maxStrikes: 3,
     });
-    assert.equal(result.result.status, 500);
-    assert.equal(result.reason, "strike_threshold");
+    assert.equal(result.result.status, 429);
+    assert.equal(result.reason, "max_turns");
 });

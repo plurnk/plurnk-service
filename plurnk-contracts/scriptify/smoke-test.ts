@@ -104,7 +104,7 @@ const assertClean = (label, result) => {
     }
 };
 
-const program = PlurnkParser.frame("NEXT", '[{"content":"smoke","status":"in_progress"}]');
+const program = PlurnkParser.frame("TASK", '[{"content":"smoke","status":"in_progress"}]');
 assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
 assertClean("statement sequence", result);
@@ -139,7 +139,7 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
     || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
     throw new Error("PathSyntax target escape failed");
 }
-if (!PLURNK_OPS.includes("NEXT") || PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || RESERVED_AUTHORITIES.join(",") !== "commons,plurnk") {
+if (!PLURNK_OPS.includes("TASK") || PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || RESERVED_AUTHORITIES.join(",") !== "commons,plurnk") {
     throw new Error("contracts constants are not usable");
 }
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
@@ -172,7 +172,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
         parse(input: string): { items: Array<{ kind: string }> };
     };
-    const browserResult = browserConsumer.parse("```NEXT\n[{\"content\":\"browser bundle initialized\",\"status\":\"in_progress\"}]\n```");
+    const browserResult = browserConsumer.parse("```TASK\n[{\"content\":\"browser bundle initialized\",\"status\":\"in_progress\"}]\n```");
     if (browserResult.items.some(({ kind }) => kind === "error")) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
     }

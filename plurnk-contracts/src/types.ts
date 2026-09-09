@@ -19,7 +19,7 @@ import type PlurnkParseError from "./PlurnkParseError.ts";
 // Runtime protocol alphabet; PlurnkOp is structurally derived from this tuple. {§op-shapes}
 export const PLURNK_OPS = [
     "FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL",
-    "NEXT", "WAIT", "DONE", "FAIL",
+    "TASK",
 ] as const;
 
 // Markerless model-facing retrievals share one fixed first page. Producers use

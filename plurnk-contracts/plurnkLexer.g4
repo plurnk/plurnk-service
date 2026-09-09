@@ -2,7 +2,7 @@ lexer grammar plurnkLexer;
 
 tokens {
     OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
-    OPEN_SEND, OPEN_NEXT, OPEN_WAIT, OPEN_DONE, OPEN_FAIL,
+    OPEN_SEND, OPEN_TASK,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     OPEN_LOOK, OPEN_BUFF,
     LPAREN, RPAREN, LBRACE, RBRACE, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
@@ -27,8 +27,7 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
     EDIT: plurnkLexer.OPEN_EDIT, COPY: plurnkLexer.OPEN_COPY, MOVE: plurnkLexer.OPEN_MOVE,
     SEND: plurnkLexer.OPEN_SEND, EXEC: plurnkLexer.OPEN_EXEC, BARE: plurnkLexer.OPEN_BARE,
-    NEXT: plurnkLexer.OPEN_NEXT, WAIT: plurnkLexer.OPEN_WAIT,
-    DONE: plurnkLexer.OPEN_DONE, FAIL: plurnkLexer.OPEN_FAIL,
+    TASK: plurnkLexer.OPEN_TASK,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
     LOOK: plurnkLexer.OPEN_LOOK, BUFF: plurnkLexer.OPEN_BUFF,
 };

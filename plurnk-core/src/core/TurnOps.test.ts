@@ -11,21 +11,21 @@ test("TurnOps: internal source round-trips through the public parser", () => {
             metadata: ["trace: one", "shape: {nested}"], lineMarker: { marks: [1, -1] }, body: null, position: UNKNOWN_POSITION,
         },
         {
-            op: "NEXT", annotation: null, target: null, metadata: null,
-            lineMarker: null, body: [{ content: "Address the prompt.", status: "pending" }], position: UNKNOWN_POSITION,
+            op: "TASK", annotation: null, target: null, metadata: null,
+            lineMarker: null, body: [{ content: "Address the prompt.", status: "in_progress" }], position: UNKNOWN_POSITION,
         },
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
         "```FIND (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->```",
-        "```NEXT",
-        "[{\"content\":\"Address the prompt.\",\"status\":\"pending\"}]",
+        "```TASK",
+        "[{\"content\":\"Address the prompt.\",\"status\":\"in_progress\"}]",
         "```",
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
-    assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "NEXT"]);
+    assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "TASK"]);
     assert.deepEqual(parsed[0]?.op === "FIND" ? parsed[0].metadata : undefined, ["trace: one", "shape: {nested}"]);
-    assert.deepEqual(parsed[1]?.op === "NEXT" ? parsed[1].body : null, statements[1].body);
+    assert.deepEqual(parsed[1]?.op === "TASK" ? parsed[1].body : null, statements[1].body);
 });
 
 test("TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
@@ -37,8 +37,8 @@ test("TurnOps: internal source preserves trailing body newlines across a section
     const statements: [EditStatement, DispositionStatement] = [
         edit,
         {
-            op: "DONE", annotation: null, target: null, metadata: null,
-            lineMarker: null, body: { raw: "done", json: null }, position: UNKNOWN_POSITION,
+            op: "TASK", annotation: null, target: null, metadata: null,
+            lineMarker: null, body: [{ content: "Edit applied.", status: "completed" }], position: UNKNOWN_POSITION,
         },
     ];
     const parsed = TurnOps.parseInternal(TurnOps.renderInternal(statements));

@@ -71,12 +71,12 @@ test("PlurnkStatement: MOVE with destination resource selection", () => {
 });
 
 test("PlurnkStatement: SEND with integer signal and JSON body", () => {
-    const r = validateRoundTrip("```DONE\n{\"answer\":\"Paris\"}\n```");
+    const r = validateRoundTrip("```SEND\n{\"answer\":\"Paris\"}\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: SEND with plain text body", () => {
-    const r = validateRoundTrip("```NEXT\nstill working\n```");
+    const r = validateRoundTrip("```TASK\n[{\"content\":\"still working\",\"status\":\"in_progress\"}]\n```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -114,9 +114,12 @@ test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: PLAN normalizes a tolerated plaintext body", () => {
-    const r = validateRoundTrip("```PLAN\nDecompose the prompt; discover, record, deliver.\n```");
-    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+test("PlurnkStatement: TASK normalizes a tolerated plaintext body", () => {
+    const parsed = PlurnkParser.parseStatements("```TASK\nDecompose the prompt; discover, record, deliver.\n```");
+    const item = parsed.items.find((item) => item.kind === "statement");
+    assert.ok(item?.kind === "statement" && item.statement.op === "TASK");
+    assert.deepEqual(item.statement.body, [{ content: "Decompose the prompt; discover, record, deliver.", status: "in_progress" }]);
+    assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
 });
 
 test("PlurnkStatement: KILL with bare target", () => {
@@ -172,7 +175,7 @@ test("PlurnkStatement: SEND rejects string signal", () => {
 });
 
 test("PlurnkStatement: WAIT accepts a terminal wait scope", () => {
-    const stmt = { ...baseFields("WAIT"), body: [], lineMarker: { marks: [30] } };
+    const stmt = { ...baseFields("TASK"), body: [], lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });
@@ -188,20 +191,21 @@ test("PlurnkStatement: EXEC accepts a lineMarker (timeout,poll)", () => {
     assert.equal(valid, true);
 });
 
-test("PlurnkStatement: PLAN rejects numeric signal", () => {
-    const stmt = { ...baseFields("PLAN"), signal: 42 };
+test("PlurnkStatement: TASK rejects numeric signal", () => {
+    const stmt = { ...baseFields("TASK"), body: [], signal: 42 };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
 
-test("{§plan-slotless} PlurnkStatement: PLAN rejects every non-null modifier", () => {
+test("{§plan-slotless} PlurnkStatement: TASK permits timing but not targets or metadata", () => {
+    const task = { ...baseFields("TASK"), body: [] };
+    assert.equal(Validator.validatePlurnkStatement(task).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...task, lineMarker: { marks: [1] } }).valid, true);
     for (const patch of [
-        { },
         { target: parsePath("notes.md") },
         { metadata: ["x: y"] },
-        { lineMarker: { marks: [1] } },
     ]) {
-        const { valid } = Validator.validatePlurnkStatement({ ...baseFields("PLAN"), ...patch });
+        const { valid } = Validator.validatePlurnkStatement({ ...task, ...patch });
         assert.equal(valid, false, JSON.stringify(patch));
     }
 });

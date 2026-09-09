@@ -13,7 +13,7 @@ import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -143,7 +143,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```DONE\ndone\n```", 50), makeMockResponse("```DONE\ndone\n```", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -185,7 +185,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT", null],
+                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "TASK", null],
                     "the initialization records every operation outcome beside its exact turnOps",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -194,15 +194,15 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
                 assert.ok(turn?.completed_at !== null, "completed NEXT is distinct from an open turn");
-                const plan = JSON.parse(initializationRows.find(({ op }) => op === "NEXT")!.tx) as { body: Array<{ content: string; status: string }> };
+                const plan = JSON.parse(initializationRows.find(({ op }) => op === "TASK")!.tx) as { body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
                         content: "Address the prompt.",
-                        status: "pending",
+                        status: "in_progress",
                     },
                 ]);
                 const program = JSON.parse(initializationRows.find(({ op }) => op === null)!.rx) as { content: string };
-                assert.match(program.content, /\n```NEXT\n\[/, "initialization ends with an ordinary continuation inventory");
+                assert.match(program.content, /\n```TASK\n\[/, "initialization ends with an ordinary continuation inventory");
             } finally { ws.close(); }
         });
     } finally {
@@ -299,7 +299,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NEXT"],
+                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "TASK"],
                     "the initialization outcomes contain the prompt archive, eight surveys, and NEXT",
                 );
                 const turnOps = initializationRows.find(({ op }) => op === null);
@@ -308,7 +308,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^```COPY[^\n]*\n[\s\S]*\n```NEXT\n\[{"content":"Address the prompt\.","status":"pending"}\]\n```$/,
+                    /^```COPY[^\n]*\n[\s\S]*\n```TASK\n\[{"content":"Address the prompt\.","status":"in_progress"}\]\n```$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

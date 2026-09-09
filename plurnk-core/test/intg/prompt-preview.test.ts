@@ -11,7 +11,7 @@ import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helper
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 
@@ -74,7 +74,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");
             assert.ok(promptSection, "the prompts section exists");
             assert.equal(promptSection!.slot, "user", "the prompt paths list closes the user-slot status clump");
-            assert.equal(promptSection!.header, "Active User Prompts");
+            assert.equal(promptSection!.header, "Active Prompts");
             assert.match(promptSection!.content, /^\["prompt:\/\/\/1\/1"\]$/, "paths-only, owner-keyed prompt:///1/1");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }

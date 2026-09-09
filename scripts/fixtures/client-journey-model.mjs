@@ -9,30 +9,17 @@ const journeys = Object.freeze({
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: [
-                "```DONE",
-                "The installed one-shot journey is complete.",
-                "```",
-            ].join("\n"),
+            content: "```SEND\nThe installed one-shot journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         }],
     },
     tui: {
         marker: "Exercise the installed interactive terminal.",
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.",
-            content: [
-                "```READ (prompt:///1/1)```",
-                "```NEXT",
-                "[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]",
-                "```",
-            ].join("\n"),
+            content: "```READ (prompt:///1/1)```\n```TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n```",
         }, {
             reasoning: "The prompt was retrieved through the terminal, so the journey can conclude.",
-            content: [
-                "```DONE",
-                "The installed interactive journey is complete.",
-                "```",
-            ].join("\n"),
+            content: "```SEND\nThe installed interactive journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         }],
     },
     nvim: {
@@ -40,25 +27,11 @@ const journeys = Object.freeze({
         programs: [
             {
                 reasoning: "I will make one reviewed local change, then verify the settled result.",
-                content: [
-                    "```EXEC",
-                    "printf 'accepted\\n' > journey.txt",
-                    "```",
-                    "```NEXT",
-                    "[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"in_progress\"}]",
-                    "```",
-                ].join("\n"),
+                content: "```EXEC\nprintf 'accepted\\n' > journey.txt\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"in_progress\"}]\n```",
             },
             {
                 reasoning: "The reviewed command succeeded, so I can conclude the requested journey.",
-                content: [
-                    "```SEND",
-                    "The reviewed multiline journey is complete.",
-                    "```",
-                    "```WAIT",
-                    '[{"content":"Create the requested acceptance marker through review.","status":"completed"}]',
-                    "```",
-                ].join("\n"),
+                content: "```SEND\nThe reviewed multiline journey is complete.\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"completed\"}]\n```",
             },
             {
                 reasoning: "I will ask for the named fields and await the answer.",
@@ -69,12 +42,12 @@ const journeys = Object.freeze({
                             branch: { type: "string" }, count: { type: "integer" }, notes: { type: "string" },
                         }, required: ["count"],
                     } }),
-                    "```", "```WAIT", '[{"content":"Awaiting branch details.","status":"pending"}]', "```",
+                    "```", "```TASK", '[{"content":"Awaiting branch details.","status":"waiting"}]', "```",
                 ].join("\n"),
             },
             {
                 reasoning: "The question result has arrived in the continued loop.",
-                content: "```DONE\nThe named-field answer arrived.\n```",
+                content: "```SEND\nThe named-field answer arrived.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
             },
         ],
     },

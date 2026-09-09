@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 50), makeMockResponse("```DONE\ndone\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
 
 test("{§worker-initialization-entry}: turn 0 archives the prompt into worker://~/prompts.md by COPY <-1>", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {

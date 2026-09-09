@@ -133,8 +133,11 @@ class ControlledWorkerProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`\`\`\`DONE
+        return response(`\`\`\`SEND
 child ${index + 1} done
+\`\`\`
+\`\`\`TASK
+[{"content":"Task completed.","status":"completed"}]
 \`\`\``, capacity, grammar);
     }
 
@@ -155,8 +158,8 @@ test("near-simultaneous child conclusions share one parent provider turn", async
         parentTurns: [
             "```WORK (worker://first)\nfinish first\n\n```\n"
             + "```WORK (worker://second)\nfinish second\n\n```\n"
-            + "```WAIT <-1>\nwaiting for both\n```",
-            "```DONE\nboth children landed\n```",
+            + "```TASK <-1>\n[{\"content\":\"waiting for both\",\"status\":\"waiting\"}]\n```",
+            "```SEND\nboth children landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         ],
     });
     try {
@@ -218,8 +221,8 @@ test("a lone child conclusion resumes immediately without paying the settlement 
     const provider = new ControlledWorkerProvider({
         childCount: 1,
         parentTurns: [
-            "```WORK (worker://only)\nfinish the only job\n```\n\n```WAIT <-1>\nwaiting\n```",
-            "```DONE\nonly child landed\n```",
+            "```WORK (worker://only)\nfinish the only job\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```",
+            "```SEND\nonly child landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         ],
     });
     try {
@@ -272,9 +275,9 @@ test("stream conclusions coalesce across the same worker-local settlement window
             makeMockResponse(
                 "```EXEC\nsleep 0.25; echo first-stream\n\n```\n"
                 + "```EXEC\nsleep 0.40; echo second-stream\n\n```\n"
-                + "```WAIT <-1>\nwaiting for both streams\n```",
+                + "```TASK <-1>\n[{\"content\":\"waiting for both streams\",\"status\":\"waiting\"}]\n```",
             ),
-            makeMockResponse("```DONE\nboth streams landed\n```"),
+            makeMockResponse("```SEND\nboth streams landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     try {
@@ -306,8 +309,8 @@ test("a child and stream conclusion share the same settlement window", async () 
         parentTurns: [
             "```WORK (worker://child)\nfinish independently\n\n```\n"
             + "```EXEC\nsleep 0.50; echo stream-done\n\n```\n"
-            + "```WAIT <-1>\nwaiting for child and stream\n```",
-            "```DONE\nchild and stream landed\n```",
+            + "```TASK <-1>\n[{\"content\":\"waiting for child and stream\",\"status\":\"waiting\"}]\n```",
+            "```SEND\nchild and stream landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         ],
     });
     try {
@@ -358,9 +361,9 @@ test("the settlement deadline is bounded and does not slide on later conclusions
             "```WORK (worker://first)\nfinish first\n\n```\n"
             + "```WORK (worker://second)\nfinish second\n\n```\n"
             + "```WORK (worker://third)\nfinish third\n\n```\n"
-            + "```WAIT <-1>\nwaiting for all three\n```",
-            "```WAIT <-1>\ntwo landed; still waiting\n```",
-            "```DONE\nall three landed\n```",
+            + "```TASK <-1>\n[{\"content\":\"waiting for all three\",\"status\":\"waiting\"}]\n```",
+            "```TASK <-1>\n[{\"content\":\"two landed; still waiting\",\"status\":\"waiting\"}]\n```",
+            "```SEND\nall three landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         ],
     });
     try {

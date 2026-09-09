@@ -45,11 +45,11 @@ test("Engine.runLoop: three-turn loop terminating on DONE", async () => {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/a", "1"), dispositionStmt("NEXT", "continuing")]),
-                response([editStmt("/b", "2"), dispositionStmt("NEXT", "still going")]),
-                response([editStmt("/c", "3"), dispositionStmt("DONE", "done")]),
+                response([editStmt("/a", "1"), dispositionStmt("in_progress", "continuing")]),
+                response([editStmt("/b", "2"), dispositionStmt("in_progress", "still going")]),
+                response([editStmt("/c", "3"), dispositionStmt("completed", "done")]),
                 // {§send-premature-terminate} — the third edit's receipt refuses that [200]; the observation turn concludes.
-                response([dispositionStmt("DONE", "done")]),
+                response([dispositionStmt("completed", "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -76,7 +76,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
             contextWindow: 100000,
             // Each turn does real work (distinct EDIT) then continues — a bare NEXT is now an
             // idle-strike ({§send} the terminal contract); distinct paths keep the cycle rail quiet too.
-            responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), dispositionStmt("NEXT", "more")])),
+            responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), dispositionStmt("in_progress", "more")])),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, maxTurns: 3,
@@ -102,11 +102,11 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
             // Non-terminal turns carry a work op (distinct EDIT) so they're real continues, not
             // idle-strikes ({§send} the terminal contract); the final turn terminates on DONE.
             responses: [
-                response([editStmt("/1", "x"), dispositionStmt("NEXT", "1")]),
-                response([editStmt("/2", "x"), dispositionStmt("NEXT", "2")]),
-                response([editStmt("/3", "x"), dispositionStmt("NEXT", "3")]),
-                response([editStmt("/4", "x"), dispositionStmt("NEXT", "4")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([editStmt("/1", "x"), dispositionStmt("in_progress", "1")]),
+                response([editStmt("/2", "x"), dispositionStmt("in_progress", "2")]),
+                response([editStmt("/3", "x"), dispositionStmt("in_progress", "3")]),
+                response([editStmt("/4", "x"), dispositionStmt("in_progress", "4")]),
+                response([dispositionStmt("completed", "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -119,30 +119,22 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
+test("Engine.runLoop: repeated identical TASK-only turns remain subject to the cycle rail", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // A bare NEXT is a continue that did no work — an idle turn ({§send} the terminal contract).
-        // It steers the model (a hint) and strikes (silently); a model that keeps idling spins out to
-        // the engine's 500, never its own 499.
+        // {§engine-cycle-evidence}
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, () => contentResponse(
-                "\n```NEXT\nidling\n```",
+                "\n```TASK\n[{\"content\":\"idling\",\"status\":\"in_progress\"}]\n```",
             )),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
-        assert.equal(result.result.status, 500, "idle spin-out is the engine ruling failure, not the model's 499");
-        assert.equal(result.turnIds.length, 3, "initialization plus two model strikes, well before maxTurns:10");
-        // The idle steer is a terse op='error' log row (409 Idle Turn) — its derived LogCoordinate
-        // pointer reaches the model; the guidance lives in the packet, not the row.
-        let steered = false;
-        for (const id of result.turnIds) {
-            const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}");
-            if (/"status":409,"path":"log:\/\/\/[^"]+\/error"/.test(packetSection(packet, "errors"))) steered = true;
-        }
-        assert.ok(steered, "the idle steer surfaced as a terse 409 log-coordinate error pointer");
+        assert.equal(result.result.status, 508, "identical inventory repetition is a cycle, not an idle-operation violation");
+        assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
+        assert.equal(result.reason, "strike_threshold");
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        assert.deepEqual(errors, [], "the cycle rail does not invent an idle-operation error");
     } finally { await db.close(); }
 });
 
@@ -153,8 +145,8 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
         const entryId = await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, pathname: "/live-stream" });
         await db.open_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response([dispositionStmt("DONE", "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
-            response([dispositionStmt("FAIL", "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
+            response([dispositionStmt("completed", "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
+            response([dispositionStmt("failed", "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.turnIds.length, 3, "initialization plus two model turns prove the premature 200 was not honored");
@@ -163,7 +155,7 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
         // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":409,"path":"log:\/\/\/[^"]+\/DONE"/, "the premature SEND failure surfaced as a terse log-coordinate pointer");
+        assert.match(packetSection(packet, "errors"), /"status":409,"path":"log:\/\/\/[^"]+\/TASK"/, "the premature SEND failure surfaced as a terse log-coordinate pointer");
     } finally { await db.close(); }
 });
 
@@ -171,7 +163,7 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         await new LoopLifecycle(db).finish(loopId, { status: 200 });
-        const provider = new Mock({ contextWindow: 100000, responses: [response([dispositionStmt("DONE", "")])] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response([dispositionStmt("completed", "")])] });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
             messages: [],
@@ -220,7 +212,7 @@ test("Engine.runLoop: 499 model-emitted termination", async () => {
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("NEXT", "thinking")]), response([dispositionStmt("FAIL", "giving up")])],
+            responses: [response([dispositionStmt("in_progress", "thinking")]), response([dispositionStmt("failed", "giving up")])],
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -245,10 +237,10 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/state", "from turn 1"), dispositionStmt("NEXT", "stored")]),
+                response([editStmt("/state", "from turn 1"), dispositionStmt("in_progress", "stored")]),
                 // READ continues (NEXT); its result enters turn 3, where it can be observed.
-                response([readStmt("/state"), dispositionStmt("NEXT", "reading")]),
-                response([dispositionStmt("DONE", "retrieved")]),
+                response([readStmt("/state"), dispositionStmt("in_progress", "reading")]),
+                response([dispositionStmt("completed", "retrieved")]),
             ],
         });
         const result = await engine.runLoop({
@@ -267,7 +259,7 @@ test("Engine.runLoop: signal abort between turns throws AbortError", async () =>
         const controller = new AbortController();
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("NEXT", "1")]), response([dispositionStmt("NEXT", "2")]), response([dispositionStmt("DONE", "3")])],
+            responses: [response([dispositionStmt("in_progress", "1")]), response([dispositionStmt("in_progress", "2")]), response([dispositionStmt("completed", "3")])],
         });
         controller.abort();
         await assert.rejects(
@@ -283,9 +275,9 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([dispositionStmt("NEXT", "1")]),
-                response([dispositionStmt("NEXT", "2")]),
-                response([dispositionStmt("DONE", "3")]),
+                response([dispositionStmt("in_progress", "1")]),
+                response([dispositionStmt("in_progress", "2")]),
+                response([dispositionStmt("completed", "3")]),
             ],
         });
         await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -301,8 +293,9 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "strike out");
-        // Idle turns strike out to the engine's 500 (the run60 shape: repeated failed/no-op turns).
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([dispositionStmt("NEXT", "idling")])) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
+            `\`\`\`EDIT (worker:///note-${i})\nx\n\`\`\``,
+        )) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");
 
@@ -321,7 +314,7 @@ test("the full terminal enumeration names itself — max_turns included", async 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "run to the ceiling");
         // A model that works forever (non-terminal SENDs) runs into the configured ceiling.
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([dispositionStmt("NEXT", "working")])) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([dispositionStmt("in_progress", "working")])) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
         assert.equal(result.result.status, 429);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/max-turns");

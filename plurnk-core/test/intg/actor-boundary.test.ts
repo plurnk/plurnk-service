@@ -101,9 +101,9 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
 test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("```DONE\nfirst done\n```", 10),
-        makeMockResponse("```DONE\nwoke done\n```", 10),
-        makeMockResponse("```DONE\nextra\n```", 10),
+        makeMockResponse("```SEND\nfirst done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\nwoke done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\nextra\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -145,7 +145,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```DONE\ndone\n```", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -201,7 +201,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 const adminOps = adminRows.map(({ op }) => op);
                 assert.equal(adminOps[0], "EDIT");
                 assert.ok(adminOps.slice(0, -2).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-2), ["DONE", null], "the exact disposition-ended program remains durable without a redundant self-KILL");
+                assert.deepEqual(adminOps.slice(-2), ["TASK", null], "the exact disposition-ended program remains durable without a redundant self-KILL");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const turnOps = adminRows.find(({ op }) => op === null);
                 assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");

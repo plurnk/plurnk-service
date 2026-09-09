@@ -19,8 +19,8 @@ test("script oracle recognizes actual shell terminal receipts through the daemon
     try {
         await writeFile(join(workspace, "greet.sh"), "#!/bin/sh\nprintf 'GREETING\\n'\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "```EXEC (greet.sh)```\n```WAIT\nWait for the script.\n```", reasoning: null } },
-            { assistant: { content: "```DONE\nGREETING\n```", reasoning: null } },
+            { assistant: { content: "```EXEC (greet.sh)```\n```TASK\n[{\"content\":\"Wait for the script.\",\"status\":\"waiting\"}]\n```", reasoning: null } },
+            { assistant: { content: "```SEND\nGREETING\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);

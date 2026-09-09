@@ -806,7 +806,7 @@ export default class DrainSupervisor {
             return;
         }
 
-        // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
+        // No slept loop, no active drain — nothing to resume (e.g. a completed worker whose
         // streams were swept). Surface the conclusion without opening a loop.
         this.#emit(workspaceId, "stream/concluded", {
             ...conclusion, wakeAction: "no-loop",
@@ -909,6 +909,7 @@ export default class DrainSupervisor {
         const waits = await this.#lifecycle.parked(workerId);
         let woke = false;
         for (const wait of waits) {
+            if (!this.#acceptingWork || scope?.signal.aborted) return;
             if (await this.#lifecycle.wake(wait.id, { revision: wait.wait_revision, eventOnly: true })) {
                 this.#clearLoopTimer(wait.id);
                 woke = true;

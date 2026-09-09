@@ -9,7 +9,7 @@ import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
 test("{§worker-wait-timing}: a finite WAIT is an obligation without a child or stream", async () => {
     const provider = new Mock({
         contextWindow: 65536,
-        responses: [makeMockResponse("```WAIT <60>\nWait for the next check.\n```")],
+        responses: [makeMockResponse("```TASK <60>\n[{\"content\":\"Wait for the next check.\",\"status\":\"waiting\"}]\n```")],
     });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "timer-only-wait" });
@@ -37,10 +37,10 @@ for (const { scope, delay, maxTurns = 2, status = 200 } of [
 ]) {
     test(`{§worker-wait-timing}: WAIT ${scope} wakes the same task once at its due time`, async (t) => {
         const provider = new Mock({ contextWindow: 65536, responses: [
-            makeMockResponse(`\`\`\`WAIT ${scope}
-Waiting for the next observation.
+            makeMockResponse(`\`\`\`TASK ${scope}
+[{"content":"Waiting for the next observation.","status":"waiting"}]
 \`\`\``),
-            makeMockResponse("```DONE\nThe observation is complete.\n```"),
+            makeMockResponse("```SEND\nThe observation is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "wait-clock" });
@@ -91,9 +91,9 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
     const provider = new Mock({
         contextWindow: 65536,
         responses: [
-            makeMockResponse("```WAIT <60>\nFirst task waits.\n```"),
-            makeMockResponse("```WAIT <60>\nSecond task waits.\n```"),
-            makeMockResponse("```FAIL\nEnd the receiving task.\n```"),
+            makeMockResponse("```TASK <60>\n[{\"content\":\"First task waits.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```TASK <60>\n[{\"content\":\"Second task waits.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```SEND\nEnd the receiving task.\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
     await withDaemon(provider, async (db, daemon) => {
@@ -130,8 +130,8 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
 
 test("{§worker-lifecycle-no-resurrection}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
     const provider = new Mock({ contextWindow: 65536, responses: [
-        makeMockResponse("```WAIT <60>\nWait.\n```"),
-        makeMockResponse("```DONE\nMust not execute the cancelled follow-up.\n```"),
+        makeMockResponse("```TASK <60>\n[{\"content\":\"Wait.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```SEND\nMust not execute the cancelled follow-up.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });

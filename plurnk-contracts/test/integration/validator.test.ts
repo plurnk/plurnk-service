@@ -372,18 +372,18 @@ test("Validator: SendBody rejects missing raw", () => {
 });
 
 test("Round-trip: AST.body (SendBody with JSON) validates", () => {
-    const result = PlurnkParser.parseStatements("```DONE\n{\"answer\":\"Paris\"}\n```");
+    const result = PlurnkParser.parseStatements("```SEND\n{\"answer\":\"Paris\"}\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "DONE") { assert.fail("expected SEND"); return; }
+    if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);
     const { valid, errors } = Validator.validateSendBody(item.statement.body!);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
 test("Round-trip: AST.body (SendBody plain text) validates", () => {
-    const result = PlurnkParser.parseStatements("```DONE\nParis\n```");
+    const result = PlurnkParser.parseStatements("```SEND\nParis\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
     const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "DONE") { assert.fail("expected SEND"); return; }
+    if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);
     const { valid, errors } = Validator.validateSendBody(item.statement.body!);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);

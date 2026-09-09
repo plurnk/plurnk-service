@@ -193,7 +193,7 @@ test("a client DONE operation updates loop status", async () => {
 
             // op.send is the first client op — it lazily creates the
             // client loop. After it runs we can look up that loop.
-            const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("```DONE```") });
+            const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```") });
             assert.equal((response.result as { status: number }).status, 200);
 
             const clientLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });

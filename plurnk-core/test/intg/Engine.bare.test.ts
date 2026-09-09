@@ -191,7 +191,7 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
                 "```BARE (worker://~/prompt.md)",
                 "Compare these findings.",
                 "```",
-                "```NEXT```",
+                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
             ].join("\n"))] }),
         });
         assert.equal(result.status, 102);
@@ -200,7 +200,7 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
             [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
         ]);
         assert.equal(child.maxActive, 2);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "NEXT"], "source reads do not mint extra log receipts");
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "TASK"], "source reads do not mint extra log receipts");
     } finally { await db.close(); }
 });
 
@@ -217,7 +217,7 @@ test("{§bare-inference}: missing resources preserve the source error without ca
                 "```BARE",
                 "survivor",
                 "```",
-                "```NEXT```",
+                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
             ].join("\n"))] }),
         });
         assert.deepEqual(child.completions, ["survivor"]);
@@ -261,7 +261,7 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
                 "```BARE",
                 "last prompt",
                 "```",
-                "```NEXT```",
+                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
             ].join("\n"))] }),
         }), (error: unknown) => error === cancellation);
         assert.equal(child.calls.length, 0);
@@ -294,7 +294,7 @@ for (const [denied, target] of [
                     "```BARE" + target,
                     "inline prompt",
                     "```",
-                    "```NEXT```",
+                    "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
                 ].join("\n"))] }),
             });
             assert.equal(child.calls.length, 0);
@@ -317,7 +317,7 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
                 "last",
                 "```",
                 "```READ (worker://~/source.md) <1,-1>```",
-                "```NEXT```",
+                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
             ].join("\n"))] }),
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number }>({ turn_id: first.turnId });
@@ -332,7 +332,7 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
                 "```KILL (" + (address) + ") <2>```",
                 "```BARE (" + (address) + ")```",
-                "```NEXT```",
+                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
             ].join("\n"))] }),
         });
         assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
@@ -357,7 +357,7 @@ for (const [target, status, problem] of [
                     "```",
                     "```BARE" + (target === null ? "" : ` (${target})`),
                     "```",
-                    "```NEXT```",
+                    "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
                 ].join("\n"))] }),
             });
             const [bare] = result.outcomes.filter(({ op }) => op === "BARE");
@@ -381,12 +381,12 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
         };
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("```BARE\nbefore\n```\n```EDIT (worker:///between)\nwritten\n```\n```BARE\nafter\n```\n```NEXT```")] }),
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("```BARE\nbefore\n```\n```EDIT (worker:///between)\nwritten\n```\n```BARE\nafter\n```\n```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```")] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
         assert.deepEqual(child.completions, ["before", "after"]);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "NEXT"]);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "TASK"]);
     } finally { await db.close(); }
 });
 
@@ -396,19 +396,7 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse([
-                "```BARE",
-                "slow",
-                "```",
-                "",
-                "```BARE",
-                "fast",
-                "```",
-                "",
-                "```NEXT",
-                "Observe both responses next turn.",
-                "```",
-            ].join("\n"))],
+            responses: [mainResponse("```BARE\nslow\n```\n\n```BARE\nfast\n```\n\n```TASK\n[{\"content\":\"Observe both responses next turn.\",\"status\":\"in_progress\"}]\n```")],
         });
         const child = new BareWitness(2);
 
@@ -488,19 +476,7 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse([
-                "```BARE",
-                "first",
-                "```",
-                "",
-                "```BARE",
-                "second",
-                "```",
-                "",
-                "```NEXT",
-                "continue",
-                "```",
-            ].join("\n"))],
+            responses: [mainResponse("```BARE\nfirst\n```\n\n```BARE\nsecond\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```")],
         });
         const child = new CancellingBareWitness(2);
         const controller = new AbortController();
@@ -532,19 +508,7 @@ test("one BARE provider failure is an ordered operation result and does not canc
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse([
-                "```BARE",
-                "fail",
-                "```",
-                "",
-                "```BARE",
-                "ok",
-                "```",
-                "",
-                "```NEXT",
-                "Inspect the isolated failure and success.",
-                "```",
-            ].join("\n"))],
+            responses: [mainResponse("```BARE\nfail\n```\n\n```BARE\nok\n```\n\n```TASK\n[{\"content\":\"Inspect the isolated failure and success.\",\"status\":\"in_progress\"}]\n```")],
         });
         const child = new BareWitness(2, "fail");
 
@@ -575,7 +539,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nquestion\n```\n\n```DONE\ndone\n```")],
+            responses: [mainResponse("```BARE\nquestion\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
@@ -587,22 +551,22 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "DONE"), [{ op: "DONE", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }]);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [{ op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }]);
     } finally {
         await db.close();
     }
 });
 
-for (const label of ["NEXT", "WAIT", "DONE"] as const) {
-    test(`{§bare-inference} {§disposition-ends-turn}: BARE after ${label} is dropped, never called, and diagnosed once`, async () => {
+for (const state of ["in_progress", "waiting", "completed"] as const) {
+    test(`{§bare-inference} {§disposition-ends-turn}: BARE after TASK ${state} is dropped, never called, and diagnosed once`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
             const result = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 32_768,
-                    responses: [mainResponse(`\`\`\`${label}
-Observe the answer.
+                    responses: [mainResponse(`\`\`\`TASK
+${JSON.stringify([{ content: "Observe the answer.", status: state }])}
 \`\`\`
 \`\`\`BARE
 question
@@ -616,14 +580,14 @@ question
             });
             assert.equal(result.status, 102, "the diagnostic is a same-turn failure the model sees in the next packet");
             assert.deepEqual(child.completions, [], "no isolated call was made for the dropped BARE");
-            assert.deepEqual(result.outcomes.map(({ op }) => op), [null, label]);
+            assert.deepEqual(result.outcomes.map(({ op }) => op), [null, "TASK"]);
             assert.deepEqual(result.outcomes.filter(({ op }) => op === null), [
                 { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
             ]);
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === label), [
-                label === "NEXT"
-                    ? { op: label, status: 102, problemType: null }
-                    : { op: label, status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [
+                state === "completed"
+                    ? { op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" }
+                    : { op: "TASK", status: 102, problemType: null },
             ]);
         } finally {
             await db.close();

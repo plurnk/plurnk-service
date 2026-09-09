@@ -19,11 +19,15 @@ for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
                 makeMockResponse(`\`\`\`EDIT (${target})
 ${source}
 \`\`\`
-\`\`\`NEXT\`\`\``, 10),
+\`\`\`TASK
+[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\``, 10),
                 makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
-\`\`\`NEXT\`\`\``, 10),
-                makeMockResponse("```NEXT\ncontinue\n```", 10),
-                makeMockResponse("```DONE\ndone\n```", 10),
+\`\`\`TASK
+[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\``, 10),
+                makeMockResponse("```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```", 10),
+                makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
             ] });
             await withDaemon(mock, async (db, daemon, addr) => {
                 const generate = mock.generate.bind(mock);
@@ -36,7 +40,9 @@ ${source}
                         assert.ok(start && end, "the preceding READ published the coordinates used by KILL");
                         const scope = anchored ? `${start},${end}` : "10,11";
                         return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`KILL (${target}) <${scope}>\`\`\`
-\`\`\`NEXT\`\`\``, 10)] }).generate(args);
+\`\`\`TASK
+[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\``, 10)] }).generate(args);
                     }
                     return generate(args);
                 };
@@ -79,9 +85,9 @@ ${source}
 
 test("whole-entry KILL has a bodyless result, not an invented text mutation receipt", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("```EDIT (worker:///doomed)\ncontent\n```\n```NEXT```", 10),
-        makeMockResponse("```KILL (worker:///doomed)```\n```NEXT```", 10),
-        makeMockResponse("```DONE\ndone\n```", 10),
+        makeMockResponse("```EDIT (worker:///doomed)\ncontent\n```\n```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```KILL (worker:///doomed)```\n```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

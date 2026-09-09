@@ -63,7 +63,7 @@ export default class LogWriter {
         // A proposal (status 202 from a side-effecting op) is written to the log in
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the
         // scheme-supplied payload (file diff, exec command, etc.) the client renders
-        // for review and the scheme consumes on accept. A WAIT disposition is
+        // for review and the scheme consumes on accept. A waiting TASK is
         // parked, not proposed (#isProposal) → state='resolved'.
         const isProposed = this.#isProposal(statement, result);
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
@@ -129,7 +129,7 @@ export default class LogWriter {
             source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
             model_call_id: modelCallId,
             op: durableStatement.op,
-            signal: this.#signalToJson(TurnDisposition.is(durableStatement) ? TurnDisposition.status(durableStatement.op) : null),
+            signal: this.#signalToJson(TurnDisposition.is(durableStatement) ? TurnDisposition.status(durableStatement) : null),
             scheme: target.scheme,
             username: target.username,
             password: target.password,

@@ -31,7 +31,7 @@ test("{§schemes-directory}: stored packets carry language and policy without an
             },
         });
         const engine = new Engine({ db, schemes: registry });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
 
         const { turnId } = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

@@ -76,7 +76,7 @@ export default class PlurnkParser {
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
             }
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
-            const body = TurnDisposition.isContinuation(statement) ? PlanValue.stringify(statement.body)
+            const body = TurnDisposition.is(statement) ? PlanValue.stringify(statement.body)
                 : statement.op === "COPY" || statement.op === "MOVE" || statement.body === null ? null
                 : typeof statement.body === "string" ? statement.body : statement.body.raw;
             const header = `${name}${modifiers.length === 0 ? "" : ` ${modifiers.join(" ")}`}`;
@@ -149,7 +149,7 @@ export default class PlurnkParser {
                     position.line,
                     position.column,
                     "parser",
-                    "The turn ended without NEXT, WAIT, DONE, or FAIL; parser appended `NEXT`.",
+                    "No tasks were supplied. Submit a nonempty TASK inventory.",
                     "error",
                     PlurnkParser.MISSING_DISPOSITION,
                 ),
@@ -199,7 +199,7 @@ export default class PlurnkParser {
                 anchor?.line ?? disposition.position.line,
                 anchor?.column ?? 0,
                 "parser",
-                `The disposition \`${heading}\` ended the turn; ${parts.join(" and ")}. Every OP, including KILL, precedes NEXT, WAIT, DONE, or FAIL.`,
+                `\`${heading}\` ended the turn; ${parts.join(" and ")}. Other operations precede TASK.`,
                 "error",
                 PlurnkParser.OPERATIONS_AFTER_DISPOSITION,
             ),
@@ -219,7 +219,7 @@ export default class PlurnkParser {
         );
         if (!hasDisposition) {
             const disposition: DispositionStatement = {
-                op: "NEXT",
+                op: "TASK",
                 annotation: null,
                 target: null,
                 metadata: null,

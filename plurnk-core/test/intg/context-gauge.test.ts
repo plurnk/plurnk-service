@@ -213,7 +213,7 @@ test("runTurn stores provider-derived curation and request-shaped physical capac
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE", "done")] } }] });
+        const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } }] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
         const usage = await engine.loopUsage(loopId);
         const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
@@ -225,7 +225,7 @@ test("runTurn stores provider-derived curation and request-shaped physical capac
 
 test("providers.list advertises resolved physical input capacity", async () => {
     const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```DONE\ndone\n```", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

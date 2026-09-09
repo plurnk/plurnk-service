@@ -37,8 +37,8 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\nProgress.\n```\n```NEXT\none\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
-            { assistant: { content: "```DONE\ndone\n```", reasoning: null } },
+            { assistant: { content: "```SEND\nProgress.\n```\n```TASK\n[{\"content\":\"one\",\"status\":\"in_progress\"}]\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
+            { assistant: { content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
@@ -52,11 +52,11 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
 
         const refs = await db.test_log_entries_by_worker.all<{ id: number; turn_id: number }>({ worker_id: workerId });
         const wires = await Promise.all(refs.filter(({ turn_id }) => turn_id === t1.turnId).map(({ id }) => LogEntry.fetchLogEntry(db, id)));
-        for (const op of ["SEND", "NEXT"]) {
+        for (const op of ["SEND", "TASK"]) {
             assert.equal(wires.find((row) => row.op === op)?.reasoning, "readable provider reasoning",
                 `${op} derives readable reasoning from the admitted packet`);
         }
-        assert.ok(wires.filter(({ op }) => op !== "SEND" && op !== "NEXT").every((wire) => !Object.hasOwn(wire, "reasoning")), "non-conversational rows do not project provider reasoning");
+        assert.ok(wires.filter(({ op }) => op !== "SEND" && op !== "TASK").every((wire) => !Object.hasOwn(wire, "reasoning")), "non-conversational rows do not project provider reasoning");
 
         // 2. Cross-lane conformance: real core rows → hydration → AG-UI Translator.
         const events = await projectThroughAgui(db, workerId, t1.turnId);
@@ -92,7 +92,7 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const A = `${BLOB}-A`, B = `${BLOB}-B`;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```DONE\ndone\n```", reasoning: null, reasoningEncrypted: [
+            { assistant: { content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null, reasoningEncrypted: [
                 { id: "rs_a", subtype: "message", encrypted: [{ data: A, format: "openai-responses-v1" }] },
                 { id: "rs_b", subtype: "message", encrypted: [{ data: B, format: "openai-responses-v1" }] },
             ] } },

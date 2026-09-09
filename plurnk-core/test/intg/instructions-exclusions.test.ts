@@ -32,7 +32,7 @@ test("an ignored or excluded AGENTS.md is never projected; the standard does not
             await mkdir(join(dir, "packages", sub), { recursive: true });
             await writeFile(join(dir, "packages", sub, "AGENTS.md"), `# ${sub}\n`, "utf8");
         }
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```DONE\ndone\n```", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

@@ -18,11 +18,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 // PlurnkParser rather than Mock's trusted pre-parsed seam.
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
-        // Turns lead with PLAN; the Engine re-parses the supplied content.
-        content: content.startsWith("```PLAN")
-            ? content
-            : `${content}
-`,
+        content,
         reasoning: null,
     },
     assistantRaw: null,
@@ -30,14 +26,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("```DONE\ndrained\n```");
+const drainTurn = contentResponse("```SEND\ndrained\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "\n```DONE\nnoted\n```";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("```DONE") + 3)).length;
+const NOTICE_CONTENT = "\n```SEND\nnoted\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("```SEND") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -161,8 +157,8 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                stmtTurn([scopedRead, dispositionStmt("NEXT", "read")]),
-                stmtTurn([dispositionStmt("DONE", "done")]),
+                stmtTurn([scopedRead, dispositionStmt("in_progress", "read")]),
+                stmtTurn([dispositionStmt("completed", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -202,9 +198,9 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                 stmtTurn([
                     editStmt(target, "A", { marks: [1, 2, 1] }),
                     editStmt(target, "G", { marks: [3, 2, 3] }),
-                    dispositionStmt("NEXT", "edited"),
+                    dispositionStmt("in_progress", "edited"),
                 ]),
-                stmtTurn([dispositionStmt("DONE", "done")]),
+                stmtTurn([dispositionStmt("completed", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -358,7 +354,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "\n```EDIT (src/example.ts<1,-1>)\nbody\n```\n\n```DONE\ndone\n```";
+        const emission = "\n```EDIT (src/example.ts<1,-1>)\nbody\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -439,21 +435,8 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
 test("{§fence-boundary}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const emission = [
-            "````EDIT (worker://~/a.md) <!-- first note -->",
-            "alpha",
-            "```EDIT (worker://~/b.md) <!-- literal example -->",
-            "beta",
-            "```",
-            "```EDIT (worker://~/c.md)",
-            "gamma",
-            "```",
-            "````",
-            "```NEXT",
-            "continue",
-            "```",
-        ].join("\n");
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```DONE\ndone\n```")] });
+        const emission = "````EDIT (worker://~/a.md) <!-- first note -->\nalpha\n```EDIT (worker://~/b.md) <!-- literal example -->\nbeta\n```\n```EDIT (worker://~/c.md)\ngamma\n```\n````\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");

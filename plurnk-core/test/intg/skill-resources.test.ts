@@ -20,8 +20,8 @@ class CapturingMock extends Mock {
 
 const turn = (ops: string, terminal = false) => ({
     assistant: { content: `${ops}
-\`\`\`${terminal ? "DONE" : "NEXT"}
-${terminal ? "Done." : "Inspect results."}
+\`\`\`TASK
+[{"content":"Inspect results.","status":"${terminal ? "completed" : "in_progress"}"}]
 \`\`\``, reasoning: null },
 });
 

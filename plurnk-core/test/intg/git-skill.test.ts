@@ -29,7 +29,7 @@ const mockTurn = (dsl: string) => ({
 const runLoop = async (root: string) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
-        responses: [mockTurn("```FIND (skill://*/SKILL.md) <1,-1>```\n```NEXT\nlisting\n```"), mockTurn("```DONE\ndone\n```")],
+        responses: [mockTurn("```FIND (skill://*/SKILL.md) <1,-1>```\n```TASK\n[{\"content\":\"listing\",\"status\":\"in_progress\"}]\n```"), mockTurn("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
     });
     const rows = await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

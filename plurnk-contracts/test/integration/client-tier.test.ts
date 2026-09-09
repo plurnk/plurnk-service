@@ -103,7 +103,7 @@ test("client: parseStatements (protocol) rejects BUFF", () => {
 });
 
 test("client: a LOOK mid-turn breaks parse() (not a protocol op)", () => {
-    const input = "```LOOK (p)```\n```DONE\ndone\n```";
+    const input = "```LOOK (p)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     const result = PlurnkParser.parse(input);
     // The LOOK is not admissible mid-turn; the turn does not parse cleanly.
     const errors = result.items.filter((i) => i.kind === "error");

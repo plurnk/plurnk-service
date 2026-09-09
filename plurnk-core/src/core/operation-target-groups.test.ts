@@ -9,7 +9,7 @@ import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 
 const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => {
     const parsed = PlurnkParser.parse([
-        source, PlurnkParser.frame("NEXT", null),
+        source, PlurnkParser.frame("TASK", null),
     ].join("\n"));
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === op,

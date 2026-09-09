@@ -13,35 +13,11 @@ const statements = (source: string): PlurnkStatement[] => {
 };
 
 test("operations retain authored order across mutations, observations and asynchronous dispatch", () => {
-    const authored = statements([
-        "",
-        "```READ (notes.md)```",
-        "```EXEC",
-        "node verify.mjs",
-        "```",
-        "",
-        "```EDIT (notes.md) <2>",
-        "new",
-        "```",
-        "",
-        "```FIND (src/**)```",
-        "```BARE",
-        "classify this independently",
-        "```",
-        "",
-        "```WORK (worker://reviewer)",
-        "review",
-        "```",
-        "",
-        "```KILL (node:///3/1/2/EXEC)```",
-        "```DONE",
-        "done",
-        "```",
-    ].join("\n"));
+    const authored = statements("\n```READ (notes.md)```\n```EXEC\nnode verify.mjs\n```\n\n```EDIT (notes.md) <2>\nnew\n```\n\n```FIND (src/**)```\n```BARE\nclassify this independently\n```\n\n```WORK (worker://reviewer)\nreview\n```\n\n```KILL (node:///3/1/2/EXEC)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(({ op }) => op),
-        ["READ", "EXEC", "EDIT", "FIND", "BARE", "WORK", "KILL", "DONE"],
+        ["READ", "EXEC", "EDIT", "FIND", "BARE", "WORK", "KILL", "SEND", "TASK"],
     );
 });
 
@@ -67,9 +43,9 @@ test("scheduling preserves operation identity and does not mutate its input", ()
 });
 
 test("every disposition follows trailing operations without reordering those operations", () => {
-    for (const label of ["NEXT", "WAIT", "DONE", "FAIL"]) {
-        const authored = statements(`\`\`\`${label}
-Disposition.
+    for (const status of ["pending", "in_progress", "waiting", "completed", "failed"]) {
+        const authored = statements(`\`\`\`TASK
+[{"content":"Task progress.","status":"${status}"}]
 \`\`\`
 \`\`\`SEND (worker://reviewer)
 Message.
@@ -78,8 +54,8 @@ Message.
 \`\`\`KILL (log:///1/2/3/READ)\`\`\``);
         const disposition = authored[0];
         const scheduled = scheduleTurnOps(authored);
-        assert.deepEqual(scheduled.map(({ op }) => op), ["SEND", "READ", "KILL", label], label);
-        assert.equal(scheduled.at(-1), disposition, label);
+        assert.deepEqual(scheduled.map(({ op }) => op), ["SEND", "READ", "KILL", "TASK"], status);
+        assert.equal(scheduled.at(-1), disposition, status);
         assert.equal(authored[0], disposition, "scheduling never rewrites authored order");
     }
 });

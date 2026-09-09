@@ -82,7 +82,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
     const { db, workerId, loopId, turnId } = await setup();
     try {
         for (const [sequence, kind, content] of [
-            [4, "turnOps", "```NEXT```"],
+            [4, "turnOps", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({
@@ -279,7 +279,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             origin: "model",
             source: null,
             model_call_id: null,
-            op: "NEXT",
+            op: "TASK",
             scheme: null,
             username: null,
             password: null,
@@ -301,7 +301,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
         });
 
         const result = await readLog(
-            { ...readStmt(urlPath("log", "/1/1/4/NEXT")), lineMarker: { marks: [1, -1] } },
+            { ...readStmt(urlPath("log", "/1/1/4/TASK")), lineMarker: { marks: [1, -1] } },
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);

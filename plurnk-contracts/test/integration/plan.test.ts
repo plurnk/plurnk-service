@@ -3,17 +3,17 @@ import assert from "node:assert/strict";
 import { AcpPlanValue, PlanValue, PlurnkParser, Validator } from "../../src/index.ts";
 
 const parsePlan = (body: string) => {
-    const parsed = PlurnkParser.parse(`\`\`\`WAIT
+    const parsed = PlurnkParser.parse(`\`\`\`TASK
 ${body}
 \`\`\``);
     const errors = parsed.items.filter((item) => item.kind === "error");
     const plan = parsed.items.find(
-        (item) => item.kind === "statement" && item.statement.op === "WAIT",
+        (item) => item.kind === "statement" && item.statement.op === "TASK",
     );
     return {
         parsed,
         errors,
-        plan: plan?.kind === "statement" && plan.statement.op === "WAIT" ? plan.statement : undefined,
+        plan: plan?.kind === "statement" && plan.statement.op === "TASK" ? plan.statement : undefined,
     };
 };
 
@@ -73,7 +73,9 @@ test("{§plan-value}: broken JSON, plain text, and invalid Plans normalize witho
 
     for (const specimen of specimens) {
         const result = parsePlan(specimen);
-        assert.deepEqual(result.errors, [], specimen);
+        assert.equal(result.errors.length, 1, specimen);
+        assert.equal(result.errors[0].error.severity, "warning", specimen);
+        assert.match(result.errors[0].error.message, /^TASK body retained as one in_progress item:/, specimen);
         assert.deepEqual(result.plan?.body, [
             { content: specimen, status: "in_progress" },
         ], specimen);
@@ -102,7 +104,9 @@ test("{§plan-value}: the canonical Plan is {content, status} — a priority nev
 test("{§plan-value}: unrecognized statuses use ordinary lossless plaintext admission", () => {
     const body = '[{"content":"The repository uses one baseline schema.","status":"memory"}]';
     const result = parsePlan(body);
-    assert.deepEqual(result.errors, []);
+    assert.equal(result.errors.length, 1);
+    assert.equal(result.errors[0].error.severity, "warning");
+    assert.equal(result.errors[0].error.message, "TASK body retained as one in_progress item: the JSON does not match the task inventory schema.");
     assert.deepEqual(result.plan?.body, [{
         content: body,
         status: "in_progress",

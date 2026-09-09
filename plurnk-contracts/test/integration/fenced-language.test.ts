@@ -1,35 +1,37 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, TurnDisposition } from "../../src/index.ts";
+import { PlurnkParser, TurnDisposition, type Plan } from "../../src/index.ts";
 
 const ops = (result: ReturnType<typeof PlurnkParser.parse>) =>
     result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const errors = (result: ReturnType<typeof PlurnkParser.parse>) =>
     result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 const frame = PlurnkParser.frame;
+const task = (content: string, status: Plan[number]["status"] = "in_progress") =>
+    frame("TASK", JSON.stringify([{ content, status }]));
 
 // {§canonical-statement}
 test("independent fenced operations retain exact bodies and typed fields", () => {
     const input = [
         frame("EDIT (worker:///note.md) <1,-1>", "alpha\nbeta"),
         frame("READ (worker:///note.md)", null),
-        frame("NEXT", "Waiting for the read result."),
+        task("Waiting for the read result."),
     ].join("\n");
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(errors(parsed), []);
     assert.equal(parsed.unparsedTail, undefined);
     const statements = ops(parsed);
-    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "READ", "NEXT"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "READ", "TASK"]);
     assert.equal(statements[0].op === "EDIT" ? statements[0].body : null, "alpha\nbeta");
     assert.equal(statements[1].op === "READ" ? statements[1].body : "wrong op", null);
-    assert.deepEqual(statements[2].op === "NEXT" ? statements[2].body : null, [
+    assert.deepEqual(statements[2].op === "TASK" ? statements[2].body : null, [
         { content: "Waiting for the read result.", status: "in_progress" },
     ]);
 });
 
 // {§section-boundary}
 test("framing removes its own newline, not body whitespace or interstatement padding", () => {
-    const input = frame("EDIT (notes.md)", "alpha\n") + "\n\n" + frame("DONE", "done");
+    const input = frame("EDIT (notes.md)", "alpha\n") + "\n\n" + task("done", "completed");
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(errors(parsed), []);
     const edit = ops(parsed)[0];
@@ -38,8 +40,8 @@ test("framing removes its own newline, not body whitespace or interstatement pad
 
 // {§fence-boundary}
 test("a quoted turn remains one exact literal body", () => {
-    const body = [frame("DONE", "Paris.")].join("\n");
-    const parsed = PlurnkParser.parse([frame("EDIT (quoted.md)", body), frame("NEXT", "Stored it.")].join("\n"));
+    const body = [frame("SEND", "Paris."), task("Answered.", "completed")].join("\n");
+    const parsed = PlurnkParser.parse([frame("EDIT (quoted.md)", body), task("Stored it.")].join("\n"));
     assert.deepEqual(errors(parsed), []);
     assert.equal(ops(parsed).length, 2);
     const edit = ops(parsed)[0];
@@ -48,20 +50,20 @@ test("a quoted turn remains one exact literal body", () => {
 
 // {§tier-entrypoints}
 test("parseLog retains consecutive turns with independently chosen fence lengths", () => {
-    const source = "```DONE\nOne.\n```\n\n`````DONE\nTwo.\n`````";
+    const source = "```SEND\nOne.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```\n\n`````SEND\nTwo.\n`````\n`````TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n`````";
     const parsed = PlurnkParser.parseLog(source);
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(({ op }) => op), ["DONE", "DONE"]);
-    assert.deepEqual(ops(parsed).filter(TurnDisposition.is).map(TurnDisposition.bodyText), ["One.", "Two."]);
+    assert.deepEqual(ops(parsed).map(({ op }) => op), ["SEND", "TASK", "SEND", "TASK"]);
+    assert.deepEqual(ops(parsed).flatMap((op) => op.op === "SEND" ? [op.body?.raw] : []), ["One.", "Two."]);
 });
 
 // {§disposition-ends-turn}
 test("operations after a disposition are recognized, dropped and diagnosed once", () => {
-    for (const label of ["NEXT", "WAIT", "DONE", "FAIL"]) {
+    for (const status of ["pending", "in_progress", "waiting", "completed", "failed"] as const) {
         for (const precedingRead of [false, true]) {
             const input = [
                 ...(precedingRead ? [frame("READ (early.md)", null)] : []),
-                frame(label, "Answer."),
+                task("Answer.", status),
                 frame("KILL (log:///3/3/1/READ)", null),
                 frame("READ (notes.md)", null),
                 frame("SEND (worker://reviewer)", "Check this."),
@@ -70,14 +72,12 @@ test("operations after a disposition are recognized, dropped and diagnosed once"
             assert.equal(parsed.unparsedTail, undefined);
             const diagnostics = errors(parsed);
             assert.deepEqual(diagnostics.map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
-            assert.equal(diagnostics[0].message, "The disposition `" + label + "` ended the turn; 3 operations after its body were not admitted (KILL ×1, READ ×1, SEND ×1). Every OP, including KILL, precedes NEXT, WAIT, DONE, or FAIL.");
+            assert.equal(diagnostics[0].message, "`TASK` ended the turn; 3 operations after its body were not admitted (KILL ×1, READ ×1, SEND ×1). Other operations precede TASK.");
             assert.equal(diagnostics[0].line, precedingRead ? 5 : 4);
-            assert.deepEqual(ops(parsed).map(({ op }) => op), [...(precedingRead ? ["READ"] : []), label]);
+            assert.deepEqual(ops(parsed).map(({ op }) => op), [...(precedingRead ? ["READ"] : []), "TASK"]);
             const send = ops(parsed).at(-1);
             assert.ok(send !== undefined && TurnDisposition.is(send));
-            assert.deepEqual(send.body, TurnDisposition.isContinuation(send)
-                ? [{ content: "Answer.", status: "in_progress" }]
-                : { raw: "Answer.", json: null });
+            assert.deepEqual(send.body, [{ content: "Answer.", status }]);
         }
     }
 });
@@ -85,19 +85,19 @@ test("operations after a disposition are recognized, dropped and diagnosed once"
 // {§fence-boundary} {§disposition-ends-turn}
 test("literal examples inside a SEND do not count as trailing operations", () => {
     const body = "Example:\n" + frame("KILL (notes.md)", null);
-    const parsed = PlurnkParser.parse(frame("DONE", body) + "\n" + frame("KILL (log:///1/2/3/READ)", null));
+    const parsed = PlurnkParser.parse([frame("SEND", body), task("Explained.", "completed"), frame("KILL (log:///1/2/3/READ)", null)].join("\n"));
     assert.deepEqual(errors(parsed).map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
-    assert.deepEqual(ops(parsed).map(({ op }) => op), ["DONE"]);
+    assert.deepEqual(ops(parsed).map(({ op }) => op), ["SEND", "TASK"]);
     const send = ops(parsed)[0];
-    assert.equal(send.op === "DONE" ? send.body?.raw : null, body);
+    assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
 });
 
 // {§tier-entrypoints}
 test("saved turns end at each disposition and retain operations in execution order", () => {
-    const turn = [frame("KILL (log:///1/1/1/READ)", null), frame("NEXT", "Continue.")].join("\n");
+    const turn = [frame("KILL (log:///1/1/1/READ)", null), task("Continue.")].join("\n");
     const parsed = PlurnkParser.parseLog(turn + "\n" + turn);
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(({ op }) => op), ["KILL", "NEXT", "KILL", "NEXT"]);
+    assert.deepEqual(ops(parsed).map(({ op }) => op), ["KILL", "TASK", "KILL", "TASK"]);
     const unfinished = PlurnkParser.parseLog(turn + "\n" + frame("READ (unfinished.md)", null));
     assert.ok(errors(unfinished).length > 0 || unfinished.unparsedTail !== undefined);
 });

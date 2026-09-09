@@ -12,8 +12,8 @@ test("EXEC <T> kills the spawn after T minutes and closes the stream 504", { tim
     // `sleep 120` under a 1-minute timeout: the spawn MUST be killed near 60s, never run to completion.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
-        makeMockResponse("```EXEC <1>\nsleep 120\n```\n\n```WAIT <-1>\nwaiting for the reap\n```", 10),
-        makeMockResponse("```DONE\nthe spawn timed out; done\n```", 10),
+        makeMockResponse("```EXEC <1>\nsleep 120\n```\n\n```TASK <-1>\n[{\"content\":\"waiting for the reap\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```SEND\nthe spawn timed out; done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

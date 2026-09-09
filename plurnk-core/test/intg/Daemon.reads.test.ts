@@ -246,11 +246,11 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-coord-test" });
             await rpcCall(ws, 2, "op.edit", { target: "worker:///a", content: "alpha" });
-            await rpcCall(ws, 3, "op.dispatch", { statement: Dsl.parseSingleStatement("```DONE\nParis\n```") });
+            await rpcCall(ws, 3, "op.dispatch", { statement: Dsl.parseSingleStatement("```SEND\nParis\n```") });
 
             // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
             const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loop_seq: number; turn_seq: number; sequence: number; tx: unknown }> };
-            const send = all.entries.find((e) => e.op === "DONE" && /Paris/.test(JSON.stringify(e.tx)));
+            const send = all.entries.find((e) => e.op === "SEND" && /Paris/.test(JSON.stringify(e.tx)));
             assert.ok(send, "the SEND entry is in the log");
 
             // {§methods-log-read} — one call by L/T/S returns exactly that entry, full shape.

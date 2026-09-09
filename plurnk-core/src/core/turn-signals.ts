@@ -6,11 +6,6 @@ export const ENGINE_PROBLEMS = Object.freeze({
         code: "max-commands-exceeded",
         detail: "Later operations were not executed because the turn exceeded its operation limit.",
     },
-    idle_turn: {
-        status: 409,
-        code: "idle-turn",
-        detail: "`NEXT` was emitted without an operation to continue from.",
-    },
 } as const);
 
 // Runtime normalization for a disposition the engine refuses or resolves as a

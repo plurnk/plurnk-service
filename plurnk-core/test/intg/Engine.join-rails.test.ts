@@ -13,7 +13,7 @@ const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const collect = "```READ (worker://child)```\n```NEXT\n[{\"content\":\"Collect the child result.\",\"status\":\"in_progress\"}]\n```";
+const collect = "```READ (worker://child)```\n```TASK\n[{\"content\":\"Collect the child result.\",\"status\":\"waiting\"}]\n```";
 const invalidFind = "```FIND (worker:///x)\n$fC\n```";
 
 for (const priorStrike of [false, true]) {
@@ -26,11 +26,14 @@ for (const priorStrike of [false, true]) {
         const childId = await insertWorker(db, workspaceId, workerId, "child");
         const childLoop = await insertLoop(db, childId, 1, "Compute the answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            ...(priorStrike ? [response(`${invalidFind}\n\`\`\`WAIT <60>\`\`\``)] : []),
+            ...(priorStrike ? [response(`${invalidFind}
+\`\`\`TASK <60>
+[{"content":"Await results.","status":"waiting"}]
+\`\`\``)] : []),
             response(collect),
             response(collect),
             response(collect),
-            response("```DONE\n42\n```"),
+            response("```SEND\n42\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -90,10 +93,10 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
 
 test("{§join-blocking-collect} the daemon wakes a collecting parent on actual child completion without consuming a strike", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response("```WAIT <60>\nAwait instructions.\n```"),
+        response("```TASK <60>\n[{\"content\":\"Await instructions.\",\"status\":\"waiting\"}]\n```"),
         response(collect),
-        response("```DONE\nChild answer: 42.\n```"),
-        response("```DONE\nChild answer received: 42.\n```"),
+        response("```SEND\nChild answer: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        response("```SEND\nChild answer received: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     const strikes: Array<number | undefined> = [];
     const generate = provider.generate.bind(provider);

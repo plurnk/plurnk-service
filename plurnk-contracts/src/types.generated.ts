@@ -286,7 +286,7 @@ export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
-export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | (ContinuationStatement | ConclusionStatement))
+export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | DispositionStatement)
 /**
  * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
  */
@@ -583,8 +583,8 @@ body: (MatcherBody | null)
 position: Position
 }
 
-export interface ContinuationStatement {
-op: ("NEXT" | "WAIT")
+export interface DispositionStatement {
+op: "TASK"
 annotation: (string | null)
 metadata: null
 target: null
@@ -604,23 +604,13 @@ content: string
 /**
  * The current execution status of this task.
  */
-status: ("pending" | "in_progress" | "completed")
+status: ("pending" | "in_progress" | "waiting" | "completed" | "failed")
 /**
  * Opaque entry metadata preserved through standards projection.
  */
 _meta?: ({
 [k: string]: unknown
 } | null)
-}
-
-export interface ConclusionStatement {
-op: ("DONE" | "FAIL")
-annotation: (string | null)
-metadata: null
-target: null
-lineMarker: null
-body: (SendBody | null)
-position: Position
 }
 
 export interface LookStatement {
@@ -1125,8 +1115,6 @@ returned?: ReturnedRange
 }
 
 export type SendBodyOrNull = (SendBody | null)
-
-export type DispositionStatement = (ContinuationStatement | ConclusionStatement)
 /**
  * Plurnk's model-native task inventory.
  */
@@ -1171,7 +1159,7 @@ logEntryId: number
 workerId: number
 loopId: number
 turnId: number
-op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "NEXT" | "WAIT" | "DONE" | "FAIL")
+op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "TASK")
 target: {
 scheme: (string | null)
 authority: (string | null)

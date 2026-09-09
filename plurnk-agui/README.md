@@ -22,7 +22,7 @@ delivers it into the parent's log ({§agui-topology-scope}).
 
 | Daemon evidence | Client projection |
 | --- | --- |
-| NEXT / WAIT | Replaceable `ACTIVITY_SNAPSHOT` with an ACP Plan; not reasoning. |
+| TASK | Replaceable `ACTIVITY_SNAPSHOT` with an ACP Plan; not reasoning. |
 | Live provider reasoning | Standard `REASONING_*` deltas, immediately. Retries have separate identities. |
 | SEND | Assistant text; already-streamed reasoning is not repeated. |
 | Other model operations | Standard tool calls and results. |

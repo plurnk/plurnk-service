@@ -6,10 +6,10 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
-const turn = (operation: string, status = "NEXT") => ({
+const turn = (operation: string, status = "in_progress") => ({
     assistant: { content: `${operation}
-\`\`\`${status}
-Continue.
+\`\`\`TASK
+[{"content":"Task progress.","status":"${status}"}]
 \`\`\``, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
@@ -27,7 +27,7 @@ for (const identical of [false, true]) {
                 ...lines.map((line) => turn(`\`\`\`EDIT (worker:///journal) <-1>
 ${line}
 \`\`\``)),
-                turn("", "DONE"),
+                turn("", "completed"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, 200, JSON.stringify(result.result));
@@ -70,7 +70,7 @@ for (const changing of [false, true]) {
             const engine = new Engine({ db, schemes });
             const provider = new Mock({ contextWindow: 100000, responses: [
                 ...Array.from({ length: 6 }, () => turn("```READ (observed-content:///latest)```")),
-                turn("", "DONE"),
+                turn("", "completed"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, changing ? 200 : 508, JSON.stringify(result.result));

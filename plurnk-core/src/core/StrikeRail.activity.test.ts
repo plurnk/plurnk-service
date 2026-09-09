@@ -27,9 +27,15 @@ test("{§engine-cycle-evidence} every operational operand distinguishes activity
     }
 });
 
-test("{§engine-cycle-evidence} framing prose and source decoration do not disguise a cycle", () => {
-    assert.equal(fingerprint("```READ (a) <1>```\n```NEXT\ncontinue\n```"),
-        fingerprint("\n```READ (a) <1> <!-- another annotation -->```\n```NEXT\ncontinue differently\n```"));
+test("{§engine-cycle-evidence} source decoration does not disguise a cycle", () => {
+    assert.equal(fingerprint("```READ (a) <1>```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"),
+        fingerprint("\n```READ (a) <1> <!-- another annotation -->```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"));
+});
+
+test("{§engine-cycle-evidence} native inventory changes are workflow changes", () => {
+    const task = (content: string, status: string) => PlurnkParser.frame("TASK", JSON.stringify([{ content, status }]));
+    assert.notEqual(fingerprint(task("Inspect.", "pending")), fingerprint(task("Inspect.", "in_progress")));
+    assert.notEqual(fingerprint(task("Inspect.", "in_progress")), fingerprint(task("Implement.", "in_progress")));
 });
 
 test("{§engine-cycle-evidence} changing observations distinguish otherwise identical requests", () => {

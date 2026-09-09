@@ -27,7 +27,7 @@ for (const [label, reasoning, reasoningLine] of [
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const resp: MockResponse = {
-            assistant: { content: "", reasoning, ops: [dispositionStmt("DONE", "done")] },
+            assistant: { content: "", reasoning, ops: [dispositionStmt("completed", "done")] },
             usage: {
                 inputTokens: 100,
                 outputTokens: 57,

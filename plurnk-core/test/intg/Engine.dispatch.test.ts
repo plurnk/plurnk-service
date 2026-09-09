@@ -3,7 +3,7 @@ import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import { PlanValue } from "@plurnk/plurnk-contracts";
-import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, ContinuationStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, DispositionStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
@@ -44,12 +44,12 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; bo
     position: { line: 1, column: 1 },
 });
 
-const continuationStmt = (opts: { body?: string | null }): ContinuationStatement => ({
+const continuationStmt = (opts: { body?: string | null }): DispositionStatement => ({
     metadata: null,
-    op: "NEXT", annotation: null,
+    op: "TASK", annotation: null,
     target: null,
     lineMarker: null,
-    body: PlanValue.admit(opts.body ?? ""),
+    body: PlanValue.admit(opts.body ?? "Continue the task."),
     position: { line: 1, column: 1 },
 });
 
@@ -220,7 +220,7 @@ test("Engine.dispatch: NEXT is a continuation whose canonical Plurnk value survi
         assert.equal(plan.status, 102);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("NEXT log_entry not found");
-        assert.equal(log.op, "NEXT");
+        assert.equal(log.op, "TASK");
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
@@ -252,7 +252,7 @@ test("Engine.dispatch: a KILL line scope trims one entry of a projected NEXT row
             ...env, sequence: 1, origin: "model",
         });
         const curated = await engine.dispatch({
-            statement: killStmt({ target: urlPath("log", "/1/1/1/NEXT"), marker: { marks: [2, 2] } }),
+            statement: killStmt({ target: urlPath("log", "/1/1/1/TASK"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(curated.status, 200);
@@ -921,7 +921,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { metadata: null, op: "DONE", annotation: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "SEND", annotation: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });

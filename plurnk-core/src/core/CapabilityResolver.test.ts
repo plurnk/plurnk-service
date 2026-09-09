@@ -51,7 +51,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         source: string;
         expected: readonly CapabilityDescriptor[];
     }[] = [
-        { source: "```NEXT\n[]\n```", expected: [] },
+        { source: "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```", expected: [] },
         { source: "```FIND (README.md)```", expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
         { source: "```READ (README.md)```", expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
         { source: "```EDIT (worker:///notes.md)\nreplacement\n```", expected: [{ operation: "EDIT", scheme: "worker", access: "mutate", traits: [] }] },
@@ -70,10 +70,10 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
                 { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
             ],
         },
-        { source: "```DONE\ndone\n```", expected: [] },
-        { source: "```NEXT\ncontinue\n```", expected: [] },
-        { source: "```WAIT\nwaiting\n```", expected: [] },
-        { source: "```FAIL\nunable to complete\n```", expected: [] },
+        { source: "```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", expected: [] },
+        { source: "```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```", expected: [] },
+        { source: "```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", expected: [] },
+        { source: "```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", expected: [] },
         { source: "```SEND\nupdate\n```", expected: [] },
         { source: "```EXEC\ngit status --short\n```", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: "```BARE\nWhat is 2 + 2?\n```", expected: [{ operation: "BARE", access: "execute", traits: [] }] },

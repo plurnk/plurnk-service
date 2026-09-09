@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 import { dispositionStmt, urlPath } from "./_dsl.ts";
-import type { DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { PlanEntry } from "@plurnk/plurnk-contracts";
 
 class StructuredFixture {
     static manifest = {
@@ -24,18 +24,18 @@ class StructuredFixture {
     } as const;
 }
 
-const response = (op: DispositionStatement["op"]) => ({
+const response = (op: PlanEntry["status"]) => ({
     assistant: {
         content: "",
         reasoning: null,
-        ops: [dispositionStmt(op, op === "DONE" ? "done" : "continue")],
+        ops: [dispositionStmt(op, op === "completed" ? "done" : "continue")],
     },
 });
 
 const setup = async (
     mimetype: string,
     content: string,
-    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response("NEXT"), response("DONE")],
+    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response("in_progress"), response("completed")],
 ) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `structured-${crypto.randomUUID()}`);
@@ -256,15 +256,15 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
         position: { line: 1, column: 1 },
     };
     const fixture = await setup("application/json", "", [
-        response("NEXT"),
+        response("in_progress"),
         {
             assistant: {
                 content: "",
                 reasoning: null,
-                ops: [kill, dispositionStmt("NEXT", "failure observed")],
+                ops: [kill, dispositionStmt("in_progress", "failure observed")],
             },
         },
-        response("DONE"),
+        response("completed"),
     ]);
     try {
         await ChannelWrite.setChannelState(fixture.db, {
@@ -297,7 +297,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
         const curated = await fixture.runTurn();
         assert.deepEqual(curated.outcomes, [
             { op: "KILL", status: 200, problemType: null },
-            { op: "NEXT", status: 102, problemType: null },
+            { op: "TASK", status: 102, problemType: null },
         ]);
         const durableObservations = await structuredRows(fixture.db, observed.turnId);
         assert.equal(durableObservations.length, 1, "the terminal observation remains durable evidence");
@@ -320,7 +320,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
             [],
             "the terminal result is not published again after its observation row is curated away",
         );
-        assert.deepEqual(completed.outcomes, [{ op: "DONE", status: 200, problemType: null }],
+        assert.deepEqual(completed.outcomes, [{ op: "TASK", status: 200, problemType: null }],
             "log curation cannot make an already-published terminal result pending again");
         const source = await fixture.db.test_get_subscription.get<{ close_result: string }>({
             id: fixture.subscriptionId,

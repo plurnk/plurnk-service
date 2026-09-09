@@ -27,8 +27,8 @@ test("{§edit-receipt-anchored-context} the EDIT row renders the landed lines wi
 
         const pending: { anchor: string | null } = { anchor: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```EDIT (file:///f.go) <1>\nvar x int64\n```\n\n```NEXT\nfirst\n```", 50),
-            makeMockResponse("```DONE\ndone\n```", 50),
+            makeMockResponse("```EDIT (file:///f.go) <1>\nvar x int64\n```\n\n```TASK\n[{\"content\":\"first\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -38,10 +38,10 @@ test("{§edit-receipt-anchored-context} the EDIT row renders the landed lines wi
 func requireFn(a int) int { // anchored
 \`\`\`
 
-\`\`\`NEXT
-second
+\`\`\`TASK
+[{"content":"second","status":"in_progress"}]
 \`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```DONE\ndone\n```", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

@@ -85,10 +85,7 @@ export default class CapabilityResolver {
                 if (scheme === "log") return [];
                 return demands(describe("KILL", scheme === "worker" ? "control" : "mutate", statement.target));
             }
-            case "NEXT":
-            case "WAIT":
-            case "DONE":
-            case "FAIL":
+            case "TASK":
                 return [];
             case "SEND": {
                 if (statement.target === null) return [];

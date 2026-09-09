@@ -18,7 +18,7 @@ The exact model-facing language and operation set are owned by
 
 ## Lifecycle model
 
-Workspace = the shared world (one filesystem + membership overlay). Worker = one actor and its private history over that world. Loop = one queued-to-terminal unit of work within a worker; each loop contains turns, and each model turn ends with NEXT, WAIT, DONE, or FAIL. Workers fork and message each other — many clients, many workers, one workspace.
+Workspace = the shared world (one filesystem + membership overlay). Worker = one actor and its private history over that world. Loop = one queued-to-terminal unit of work within a worker; each loop contains turns, and each model turn ends with a TASK inventory that determines its workflow outcome. Workers fork and message each other — many clients, many workers, one workspace.
 
 ## Integration
 

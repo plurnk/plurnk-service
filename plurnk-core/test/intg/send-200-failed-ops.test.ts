@@ -9,9 +9,9 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
     const mock = new Mock({ contextWindow: 16384, responses: [
         // KILL of a nonexistent entry → 404 (a failure that is NOT a retrieval, isolating this gate
         // from the retrievals leg); the same-turn [200] must be refused.
-        makeMockResponse("\n```KILL (worker:///no-such-entry)```\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```KILL (worker:///no-such-entry)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         // Next turn: the 404 is in-log and weighed; concluding now is legitimate.
-        makeMockResponse("\n```DONE\ndone\n```", 10),
+        makeMockResponse("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -22,7 +22,7 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
             assert.equal(turnIds.length, 3, "initialization plus two model turns — the refusal forced one observation turn, no more");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const sends = (rows ?? []).filter((r) => r.op === "DONE" && r.origin === "model");
+            const sends = (rows ?? []).filter((r) => r.op === "TASK" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen failure");
             assert.match(sends[0]?.rx ?? "", /failed operation/, "the refusal names the failure, not a generic error");
         } finally { ws.close(); }
@@ -31,7 +31,7 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
 
 test("{§send-premature-terminate}: FAIL deliberately abandons a same-turn failure", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n```KILL (worker:///no-such-entry)```\n```FAIL\ngiving up\n```", 10),
+        makeMockResponse("\n```KILL (worker:///no-such-entry)```\n```SEND\ngiving up\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

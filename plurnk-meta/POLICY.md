@@ -1,12 +1,14 @@
-* Pattern Filtering - Perform syntax-aware search over the entire repo and workspace
+## Plurnk Policy
+
 * Context Curation - Bulk addressable, model-owned context, with extended private and shared context.
+* Pattern Filtering - Perform syntax-aware search over the entire repo and workspace
+* Universal Syntax Mapping: JSONPath can query XML and XPath can query JSON.
 
-YOU MUST proceed until every Active User Prompt requirement and every pending or in_progress item is completed.
+YOU MUST decompose the Active Prompt into tasks, then proceed until each task is completed or failed.
 
-YOU SHOULD complete every turn with either a NEXT, WAIT, FAIL, or DONE operation.
-YOU SHOULD KILL log items and lines, including prior reasoning, that are neither pending nor in_progress.
-YOU SHOULD verify solutions with relevant tests, including cases beyond examples and happy paths, before DONE.
-YOU SHOULD format DONE messages in Markdown, using Mermaid, tables, lists, or prose as the content warrants.
+YOU SHOULD KILL log items and lines, including prior reasoning, that are irrelevant for task completion.
+YOU SHOULD verify solutions with relevant tests, including cases beyond examples and happy paths.
+YOU SHOULD format SEND responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
 
 ## Plurnk Example Turn
 
@@ -40,11 +42,15 @@ Check for updated revenue figures and report material changes.
 Review for grammar and style.
 ```
 
+```FIND (worker://~/notes/*.md) <!-- search for prior note pertaining to depreciation concern -->
+/EBITDA/i
+```
+
 ```KILL (log:///1/5/4/READ) <!-- purge previous summary chunk -->```
 
 ```READ (report.md) <401,600> <!-- retrieve next summary chunk -->```
 
-```NEXT
+```TASK
 [{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
 ```
 

@@ -2,12 +2,12 @@
 // dispatches an op uses one of these.
 
 import type {
-    ReadStatement, SendStatement, DispositionStatement, ContinuationStatement, ConclusionStatement, KillStatement,
+    ReadStatement, SendStatement, DispositionStatement, KillStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
     LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker, Plan,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import { PlanValue, TurnDisposition } from "@plurnk/plurnk-contracts";
+import { PlanValue } from "@plurnk/plurnk-contracts";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}${fragment !== null ? `#${fragment}` : ""}`,
@@ -45,14 +45,10 @@ export const sendStmt = (recipient: ParsedPath | null = null, body: string | nul
     position: { line: 1, column: 1 },
 });
 
-export function dispositionStmt(op: ContinuationStatement["op"], body?: string | null): ContinuationStatement;
-export function dispositionStmt(op: ConclusionStatement["op"], body?: string | null): ConclusionStatement;
-export function dispositionStmt(op: DispositionStatement["op"], body?: string | null): DispositionStatement;
-export function dispositionStmt(op: DispositionStatement["op"], body: string | null = null): DispositionStatement {
+export function dispositionStmt(status: Plan[number]["status"], body: string | null = null): DispositionStatement {
     const fields = { annotation: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
-    return TurnDisposition.isContinuationOp(op)
-        ? { ...fields, op, body: PlanValue.admit(body ?? "") }
-        : { ...fields, op, body: body === null ? null : { raw: body, json: null } };
+    const entries = body === null ? [{ content: "Task progress.", status }] : PlanValue.admit(body);
+    return { ...fields, op: "TASK", body: entries.map((entry) => ({ ...entry, status })) };
 }
 
 // {§kill-scope} — a scoped KILL suppresses one log body interval or deletes an entry span; a

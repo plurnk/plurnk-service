@@ -45,12 +45,12 @@ export default class DispatchAsPlurnk {
         const program: PlurnkStatement[] = [
             ...statements,
             {
-                op: "DONE",
-                annotation: summary,
+                op: "TASK",
+                annotation: null,
                 target: null,
                 metadata: null,
                 lineMarker: null,
-                body: { raw: "Generated Worker reference documents reconciled.", json: null },
+                body: [{ content: summary, status: "completed" }],
                 position: UNKNOWN_POSITION,
             } satisfies DispositionStatement,
         ];

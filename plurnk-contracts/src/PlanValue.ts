@@ -5,18 +5,20 @@ import { renderJsonResult } from "./JsonResult.ts";
 // One source-admission normalization for the model-native Plan. Exact submitted
 // text remains owned by turnOps evidence; standards projection happens later.
 export default class PlanValue {
-    static admit(raw: string): Plan {
-        if (raw.length === 0) return [];
+    static admit(raw: string, onWarning?: (detail: string) => void): Plan {
+        if (raw.trim().length === 0) return [];
         let parsed: unknown;
         try {
             parsed = JSON.parse(raw);
-        } catch {
+        } catch (cause) {
+            if (!(cause instanceof SyntaxError)) throw cause;
+            onWarning?.("TASK body retained as one in_progress item: the body is not valid JSON.");
             return PlanValue.#fallback(raw);
         }
         const normalized = PlanValue.#stripToSchema(parsed);
-        return Validator.validatePlan(normalized).valid
-            ? normalized as Plan
-            : PlanValue.#fallback(raw);
+        if (Validator.validatePlan(normalized).valid) return normalized as Plan;
+        onWarning?.("TASK body retained as one in_progress item: the JSON does not match the task inventory schema.");
+        return PlanValue.#fallback(raw);
     }
 
     static assertCanonical(value: unknown): Plan {

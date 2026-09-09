@@ -32,7 +32,7 @@ test("a bare WAIT over a just-concluded child continues until the result is deli
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for worker-x."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("waiting", "Waiting for worker-x."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait is NOT on nothing — the child's deliverable is on the doorstep; continue");
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
         assert.notEqual(loop?.status, 200, "the loop did not conclude over the undelivered result");
@@ -62,7 +62,7 @@ test("a child refused before its first turn still announces its death to the par
         const pending = await db.engine_worker_has_undelivered_child_term.get<{ pending: number }>({ worker_id: parent });
         assert.ok(pending !== undefined, "the refused spawn is an undelivered child termination");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for worker-ghost."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("waiting", "Waiting for worker-ghost."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait continues so the failure lands in the next packet instead of parking on a ghost");
     } finally { await db.close(); }
 });
@@ -71,7 +71,7 @@ test("a DONE over a just-concluded child is refused with the steer", async () =>
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.dispatch({ statement: dispositionStmt("DONE", "done"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("completed", "done"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 409, "concluding over an undelivered worker result is refused");
         assert.equal(r.problem?.detail, "Completion encountered pending work or results.");
         assert.deepEqual(r.problem?.pending, ["worker-results"], "the structured fact names the pending kind");

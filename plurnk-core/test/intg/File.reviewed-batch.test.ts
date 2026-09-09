@@ -38,9 +38,9 @@ test("{§edit-execution}: reviewer replacement supersedes only its EDIT; the nex
                 "```PLAN\nedit two disjoint lines\n```\n"
                 + "```EDIT (file:///reviewed.md) <2>\nTWO\n```\n"
                 + "```EDIT (file:///reviewed.md) <4>\nFOUR\n```\n"
-                + "```DONE\ndone\n```",
+                + "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
                 20,
-            ), makeMockResponse("```DONE\ndone\n```", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
+            ), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {

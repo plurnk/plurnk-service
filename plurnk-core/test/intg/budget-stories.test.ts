@@ -32,12 +32,12 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat visible READ
 const TINY = 2;         // absolute wall far below any packet → irreducible overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
-const OVERFLOW_PLAN = [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "pending" }];
+const OVERFLOW_PLAN = [{ content: "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.", status: "in_progress" }];
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([dispositionStmt("DONE", "ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([dispositionStmt("completed", "ok")]));
 // A turn that writes a fat entry then READS it back (the read RESULT renders into
 // the log — that is the budget pressure) then closes. The EDIT body is free; the
 // READ render is not. Repeated n times for multi-turn accumulation.
@@ -45,7 +45,7 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 // (that's what makes the next turn fat). It CONTINUES (NEXT) — the result is for the next turn
 // and therefore cannot be observed in the emission that requested it.
 const fatReads = (chars: number, n = 1): MockResponse[] =>
-    Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), dispositionStmt("NEXT", "ok")]));
+    Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), dispositionStmt("in_progress", "ok")]));
 
 const engineAt = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 const ENVELOPE_KEYS = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
@@ -79,7 +79,7 @@ const overflowPlan = async (db: Db, turnId: number): Promise<Plan> => {
         "the recovery has an explicit producer and purpose",
     );
     const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId });
-    const plan = rows.find((row) => row.op === "NEXT" && row.origin === "_plurnk");
+    const plan = rows.find((row) => row.op === "TASK" && row.origin === "_plurnk");
     assert.ok(plan, "the packetless recovery turn contains its actual NEXT inventory");
     return (JSON.parse(plan.tx) as { body: Plan }).body;
 };
@@ -124,7 +124,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
         // A heavy DELIVERING turn (fat EDIT + terminal DONE, no same-turn READ) — under a wide
         // ceiling it delivers and the packet reads ≤ 100%.
         // {§send-premature-terminate} — the edit's receipt lands next packet; a continuing SEND carries the delivery story.
-        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), dispositionStmt("NEXT", "ok")])];
+        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), dispositionStmt("in_progress", "ok")])];
         const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 102, "delivered");
         assert.equal(t.capacityHardStop, false, "no provider-capacity stop under a wide curation budget");
@@ -225,7 +225,7 @@ test("budget: an irreducible hard-413 short-circuits dispatch — the model is n
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
-        const provider = mockCeiling(TINY, [response([dispositionStmt("DONE", "must not run")])]);
+        const provider = mockCeiling(TINY, [response([dispositionStmt("completed", "must not run")])]);
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413, "the effective context envelope rejects immediately");
         assert.equal(t.producer, "_plurnk");

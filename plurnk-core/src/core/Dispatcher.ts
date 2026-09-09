@@ -133,7 +133,6 @@ export default class Dispatcher {
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
-    #joinTargets: Set<number>;
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
@@ -145,7 +144,7 @@ export default class Dispatcher {
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
-    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, joinTargets, liveSubscriptions, entryAddresses }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, liveSubscriptions, entryAddresses }: {
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -162,7 +161,6 @@ export default class Dispatcher {
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
-        joinTargets?: Set<number>;
         liveSubscriptions: LiveSubscriptions;
         entryAddresses: EntryAddressBinding;
     }) {
@@ -181,7 +179,6 @@ export default class Dispatcher {
         this.#injectWorker = injectWorker;
         this.#cancelWorker = cancelWorker;
         this.#cancelDescendants = cancelDescendants;
-        this.#joinTargets = joinTargets ?? new Set();
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
@@ -208,7 +205,7 @@ export default class Dispatcher {
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, schemes: this.#schemes, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
-        this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
+        this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
@@ -541,7 +538,6 @@ export default class Dispatcher {
         // successful receipts while the exact state effects remain durable.
         // A running-worker READ arms this turn's blocking collect.
         // {§join-blocking-collect}
-        if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
         const logEntryId = await this.#logWriter.writeLog({
             statement,
             result,
@@ -557,7 +553,7 @@ export default class Dispatcher {
         });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
-        // side-effecting op returns status 202 (a WAIT disposition parks rather
+        // side-effecting op returns status 202 (a waiting TASK parks rather
         // than proposing — #isProposal), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
@@ -1151,8 +1147,8 @@ export default class Dispatcher {
     }
 
 
-    // {§send-premature-terminate} The pending set is judged at DONE's dispatch point,
-    // after earlier operations have executed. Log curation does not block DONE;
+    // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,
+    // after earlier operations have executed. Log curation does not block completion;
     // retrieval/mutation receipts, live work and undelivered results do.
     async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
         const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
@@ -1176,8 +1172,8 @@ export default class Dispatcher {
     // Results cross an observation boundary only when they have appeared in a packet;
     // successful log-curation effects likewise become useful through the curated next packet.
     // Keep every next-packet boundary in one classifier while letting the callers apply
-    // their distinct contracts: retrievals block explicit completion, whereas log curation only
-    // prevents an empty wait from being inferred as completion.
+    // their distinct contracts: retrievals block explicit completion, whereas log curation
+    // gives an empty wait a useful next packet.
     async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
         curations: boolean;
@@ -1192,8 +1188,8 @@ export default class Dispatcher {
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            // {§log-kill-scope} — log housekeeping continues an empty WAIT but never
-            // blocks explicit DONE; every other boundary row is a retrieval receipt.
+            // {§log-kill-scope} — log housekeeping continues an empty wait but never
+            // blocks explicit completion; every other boundary row is a retrieval receipt.
             retrievals: turnBoundaries.some(({ op }) => op !== "KILL"),
             curations: turnBoundaries.some(({ op }) => op === "KILL"),
             streamTerminations,
@@ -1224,7 +1220,7 @@ export default class Dispatcher {
         );
     }
 
-    // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
+    // A live obligation to wait on: a spawned child or an open stream (not retrievals, which land
     // next turn regardless). The wait-side twin of #pendingSet's stream+child legs ({§wait-obligation-matrix}).
     async hasLiveWork(workerId: number): Promise<boolean> {
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;

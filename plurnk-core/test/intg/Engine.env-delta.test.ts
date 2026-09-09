@@ -29,7 +29,7 @@ const execFileP = promisify(execFile);
 const okSend = (): MockResponse => ({
     assistant: {
         content: "",
-        ops: [{ op: "DONE", annotation: null, target: null, metadata: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as DispositionStatement],
+        ops: [{ op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Observed.", status: "completed" }], position: { line: 1, column: 1 } } as DispositionStatement],
         reasoning: null,
     },
 });

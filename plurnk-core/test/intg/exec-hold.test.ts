@@ -68,9 +68,9 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
     if (holdSuffix !== undefined) process.env.PLURNK_SERVICE_EXEC_HOLD = `${tag}${holdSuffix}`;
     try {
         const responses = [
-            { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), dispositionStmt("NEXT", "searching")] } },
-            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("WAIT", "waiting on the monitored stream")] } })),
-            { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE", "done")] } },
+            { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), dispositionStmt("in_progress", "searching")] } },
+            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("waiting", "waiting on the monitored stream")] } })),
+            { assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } },
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses as never });
         const t0 = Date.now();
