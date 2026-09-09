@@ -80,8 +80,7 @@ filter pattern?
 * `completed`: Task has been successfully resolved.
 * `failed`: Task has ended unsuccessfully.
 
-* The prompt is finalized when all tasks are "completed" or "failed".
-* The final turn may only contain SEND and TASK operations.
+* The final turn may only contain SEND and TASK operations, with all tasks either "completed" or "failed".
 
 ## Pattern Filtering
 
