@@ -7,11 +7,9 @@ import type {
     EntryEditResult,
     EntryFindResult,
     EntryOperationCaps,
-    EntryReadResult,
     EntryStorageReadResult,
     EntryStorageWriteResult,
     FindStatement,
-    ReadStatement,
     ResolvedEditStatement,
     SchemeManifest,
     SchemeResult,
@@ -54,7 +52,6 @@ export default class DbEntryCaps implements EntryCaps {
         this.#editPrecondition = editPrecondition;
         this.operations = {
             editBatch: (statements) => this.#editBatch(statements),
-            read: (statement) => this.#read(statement),
             find: (statement) => this.#find(statement),
             send: (statement) => this.#send(statement),
         };
@@ -75,13 +72,6 @@ export default class DbEntryCaps implements EntryCaps {
             this.#ownerId,
             this.#editPrecondition,
         )) as EntryEditResult;
-    }
-
-    async #read(statement: ReadStatement): Promise<EntryReadResult> {
-        return this.#result("read", await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, {
-            ownerId: this.#ownerId,
-            authority: this.#authority,
-        })) as EntryReadResult;
     }
 
     async #find(statement: FindStatement): Promise<EntryFindResult> {

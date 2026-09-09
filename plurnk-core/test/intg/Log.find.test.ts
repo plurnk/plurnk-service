@@ -305,7 +305,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
-        assert.equal(result.content, `[${plan.map((entry) => JSON.stringify(entry)).join(",\n")}]`, "the canonical PLAN body is the shared json-result spread (#339)");
+        assert.equal(result.content, `[${plan.map((entry) => JSON.stringify(entry)).join(",\n")}]`, "the canonical TASK body is the shared json-result spread (#339)");
     } finally { await db.close(); }
 });
 

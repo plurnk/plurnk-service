@@ -1,5 +1,5 @@
-// {§send-premature-terminate} extended to child workers — a DONE while a spawned child is still
-// live is premature exactly as a DONE with an open stream is (children and streams are the same
+// {§send-premature-terminate} extended to child workers — completion while a spawned child is still
+// live is premature exactly as completion with an open stream is (children and streams are the same
 // kind of "live thing the worker holds", {§worker-loop-lifecycle}). Engine-level A/B so it's race-free.
 
 import test from "node:test";
@@ -18,7 +18,7 @@ const knownPath = (pathname: string): ParsedPath => ({
     username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null,
 });
 
-test("DONE with a live child worker is refused 409 on the record (no erasure) + steers", async () => {
+test("completion with a live child worker is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
@@ -31,16 +31,16 @@ test("DONE with a live child worker is refused 409 on the record (no erasure) + 
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
 
-        // Baseline: no child → DONE is a clean terminal.
+        // Baseline: no child → completed inventory can conclude.
         const clean = await send200();
-        assert.equal(clean.status, 200, "with no live child, DONE terminates cleanly");
+        assert.equal(clean.status, 200, "with no live child, completed inventory terminates cleanly");
         assert.equal(clean.steerStruck, false);
 
         // Spawn a live child worker (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child");
 
-        // Now DONE is premature — the child is still a live thing the worker holds.
+        // Completion is now premature — the child is still live.
         const premature = await send200();
         assert.equal(premature.status, 102, "the TURN stays a continue (102) — the loop never went terminal");
         assert.equal(premature.steerStruck, true, "and the premature-terminate steer fired");
@@ -54,7 +54,7 @@ test("DONE with a live child worker is refused 409 on the record (no erasure) + 
     } finally { await db.close(); }
 });
 
-test("an _plurnk administrative DONE closes only its own loop while model work remains live", async () => {
+test("an _plurnk administrative completion closes only its own loop while model work remains live", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `admin-terminal-${crypto.randomUUID()}`);
@@ -128,7 +128,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
 // The unified PENDING SET (grammar 0.75.0 / the terminal redesign): a [200] is judged at its own
 // dispatch, post-batch — streams, live children, and this turn's retrievals are ONE rule.
 
-test("READ + DONE same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
+test("READ + completed inventory in the same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
@@ -144,7 +144,7 @@ test("READ + DONE same turn is refused 409 — the pending set includes this tur
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
         assert.equal(result.steerStruck, true, "the false terminal claim strikes while the turn still demotes");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
-        assert.equal(rows.find((r) => r.op === "TASK")?.status_rx, 409, "the DONE row records the refusal as 409");
+        assert.equal(rows.find((r) => r.op === "TASK")?.status_rx, 409, "the TASK row records the refusal as 409");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
         // provisional status pre-dispatch; the refusal must demote the row too, not just the return).
         const storedTurn = await db.test_get_turn.get<{ status: number }>({ id: result.turnId });
@@ -206,7 +206,7 @@ test("model actionable TASK with timing retains valid work and reports unapplied
     } finally { await db.close(); }
 });
 
-test("WAIT cannot complete an empty join over a same-turn failed operation", async () => {
+test("waiting cannot complete an empty join over a same-turn failed operation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-failure-${crypto.randomUUID()}`);
@@ -312,9 +312,7 @@ test("a successful same-turn scoped KILL continues an empty wait and permits exp
     } finally { await db.close(); }
 });
 
-test("a READ + non-terminal NEXT continue does not strike — the live-thing gate is [200]-only", async () => {
-    // The correct shape stays clean: submit the READ, NEXT to receive it next turn. A continue is
-    // never gated — only a terminal [200] over a live thing is.
+test("a READ with in_progress TASK inventory continues without a completion strike", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-read-ok-${crypto.randomUUID()}`);
@@ -327,7 +325,7 @@ test("a READ + non-terminal NEXT continue does not strike — the live-thing gat
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        assert.equal(result.steerStruck, false, "READ + NEXT does not strike — the rail gates only terminal [200]");
+        assert.equal(result.steerStruck, false, "READ with in_progress inventory does not request premature completion");
     } finally { await db.close(); }
 });
 
@@ -483,11 +481,8 @@ test("{§inventory-only-turn} a retrieval refusal does not make subsequent inven
 });
 
 test("a FAILED op row carries its failure message on its META LINE — the record states its why, suppressed or visible", async () => {
-    // The wildcard specimen: the refused SEND's rx held the steer, the row was body-suppressed, and the model
-    // theorized 'SEND[409] probably means bad request?' for 201s. The jumbo specimen: a minted
-    // message-less item read as an "engine error" and bred a 10-turn phantom hunt. The rule now:
-    // the op row IS the model's op result and self-explains — packet-wire projects its
-    // Problem Details detail onto every meta line; the errors section is a terse pointer.
+    // {§log-row-self-explains}: Problem Details stay on the operation's metadata
+    // line even when its body is suppressed; the errors section is only a pointer.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `steer-meta-${crypto.randomUUID()}`);
@@ -503,7 +498,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        // The NEXT packet renders the refused SEND row with its steer ON the meta line.
+        // The next packet renders the refused TASK row with its Problem on the metadata line.
         const t2 = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } }] }),
             workspaceId, workerId, loopId,
@@ -511,9 +506,9 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
-        const send = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
-        assert.ok(send !== undefined, "the refused SEND row renders");
-        assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
+        const inventory = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
+        assert.ok(inventory !== undefined, "the refused TASK row renders");
+        assert.equal((inventory.problem as { detail?: string } | undefined)?.detail, "Completion preceded operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

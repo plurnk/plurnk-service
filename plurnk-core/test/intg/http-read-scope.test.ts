@@ -1,6 +1,4 @@
-// {§universal-read-composition} — issue #282/#283: a scoped READ of a materialized
-// https entry must return exactly the scoped window on every channel. Red tests:
-// they fail on the current tree and are the ground truth for the scope fix.
+// {§universal-read-composition}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
@@ -61,6 +59,59 @@ const readContent = async (
 
 const windowOf = (source: string, first: number, last: number): string =>
     source.split("\n").slice(first - 1, last).join("\n");
+
+for (const pretty of [false, true]) {
+    for (const prepared of [false, true]) {
+        test(`{§universal-read-composition}: HTTP JSONPath locations drive scoped property READs (${pretty ? "pretty" : "compact"}, ${prepared ? "warm" : "cold"})`, async (t) => {
+            const { db, engine, ids } = await setup();
+            t.after(() => db.close());
+            const releases = [
+                { version: "v26.8.1", lts: false },
+                { version: "v24.14.0", lts: "Krypton" },
+                { version: "v22.18.0", lts: "Jod" },
+            ];
+            const requests: string[] = [];
+            t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+                if (String(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+                requests.push(String(input));
+                return new Response(JSON.stringify(releases, null, pretty ? 2 : undefined), {
+                    headers: { "content-type": "application/json", "cache-control": "max-age=120" },
+                });
+            });
+            let sequence = 0;
+            const run = async (header: string, body: string | null = null) => {
+                const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body));
+                assert.equal(parsed.items.length, 1);
+                const item = parsed.items[0];
+                assert.ok(item?.kind === "statement");
+                await engine.dispatch({ statement: item.statement, ...ids, sequence: ++sequence, origin: "model" });
+                return readContent(db, ids, sequence);
+            };
+            const url = `https://${HOST}/dist/index.json`;
+            if (prepared) assert.equal((await run(`READ (${url})`)).status, 200);
+            const found = await run(`FIND (${url})`, "$[?(@.lts != false)].version");
+            assert.equal(found.status, 200);
+            assert.ok(found.content);
+            const locations = JSON.parse(found.content) as Array<{
+                channel: string;
+                region: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+            }>;
+            assert.equal(locations.length, 2, "the filter excludes the current non-LTS release");
+            const values: string[] = [];
+            for (const { channel, region } of locations) {
+                assert.equal(channel, "body");
+                assert.ok(region, "the selected value has readable text coordinates");
+                const { startLine, startColumn, endLine, endColumn } = region;
+                const value = await run(`READ (${url}#${channel}) <${startLine},${startColumn},${endLine},${endColumn}>`);
+                assert.equal(value.status, 200);
+                assert.ok(value.content);
+                values.push(value.content);
+            }
+            assert.deepEqual(values, ['"version": "v24.14.0"', '"version": "v22.18.0"'], "each READ returns the matching property's region, without unrelated fields");
+            assert.deepEqual(requests, [url], "scoped follow-up reads reuse the acquired representation");
+        });
+    }
+}
 
 test("#283: a scoped READ of a materialized https entry's html channel returns exactly the window", async () => {
     const { db, engine, ids } = await setup();

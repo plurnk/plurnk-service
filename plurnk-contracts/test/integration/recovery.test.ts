@@ -15,7 +15,7 @@ test("a scope inside a target is applied with one factual warning per selection"
     const errs = errors(r);
     assert.deepEqual(errs.map((e) => [e.line, e.severity]), [[1, "warning"], [1, "warning"], [2, "warning"]]);
     assert.equal(errs[0].message, "The scope was inside the target slot; it was applied as the operation scope.");
-    assert.equal(errs[0].column, 25);
+    assert.equal(errs[0].column, 26);
     const ops = statements(r);
     assert.deepEqual(ops.map(({ op }) => op), ["COPY", "READ", "TASK"]);
     const copy = ops[0];

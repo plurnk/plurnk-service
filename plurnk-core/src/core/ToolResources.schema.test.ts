@@ -77,7 +77,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0]!.content.split("## Summary\n\n")[1]!.split("\n\n")[0];
     const heading = "```brave (search) <!-- Search documents -->";
-    assert.equal(family(`${heading}\`\`\``), `${heading}\\n{"query": string}\\n\`\`\``);
+    assert.equal(family(`${heading}\`\`\``), `\`${heading}\\n{"query": string}\\n\`\`\`\``);
     for (const authored of [
         "Search documents and news.",
         "```brave (search|news)```",

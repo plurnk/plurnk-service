@@ -7,9 +7,9 @@ Artifacts as addressable Plurnk resources.
 
 ## Invocation
 
-```SEND (a2a://researcher)
+````SEND (a2a://researcher)
 Compare the two proposals and return a recommendation with evidence.
-```
+````
 
 `SEND` to an agent root starts new work. A Task response returns `102` and an
 exact `a2a://<agent>/tasks/<id>` resource; a direct Message returns `200` and an
@@ -18,5 +18,5 @@ sending the requested input to its Task resource.
 
 Task resources default to a concise `#body` and retain the protocol snapshot in
 `#json`. Their Artifact addresses are listed in the body and materialize on
-READ. ```` ```KILL ```` of a live Task resource cancels the local obligation and
+READ. ````` ````KILL ````` of a live Task resource cancels the local obligation and
 requests remote cancellation.

@@ -20,9 +20,9 @@ in prose.
 returns one inert candidate carrying the exact definition. `add` persists and
 enables it for this worker (a host effect, run on acceptance):
 
-```agents (add)
+````agents (add)
 {"alias": "planner", "definition": {"name": "planner", "url": "https://agents.example.com/planner"}}
-```
+````
 
 Authentication is the definition's business (headers or a token the operator
 configured), never something you type into a body. An agent whose card is
@@ -30,9 +30,9 @@ unreachable is listed `unavailable` with its exact Problem.
 
 ## Working with an added agent
 
-```SEND (a2a://planner) <!-- start a task -->
+````SEND (a2a://planner) <!-- start a task -->
 Compare the two proposals in docs/ and return a recommendation with evidence.
-```
+````
 
 A task answers `102` with its `a2a://planner/tasks/<id>` resource and wakes
 your next turn when it concludes; a direct message answers `200` with an

@@ -20,7 +20,6 @@ const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     textEditScopes: true,
     metadataModifier: true,
     lineAnchors: true,
-    foldedByDefault: true,
     traits: true,
     documentation: true,
     glyph: true,
@@ -87,7 +86,7 @@ export default class Manifest {
         }
         Manifest.#boolean(manifest, "volatile");
         Manifest.#boolean(manifest, "modelVisible");
-        for (const field of ["folderScopes", "textEditScopes", "metadataModifier", "lineAnchors", "foldedByDefault"] as const) Manifest.#optionalBoolean(manifest, field);
+        for (const field of ["folderScopes", "textEditScopes", "metadataModifier", "lineAnchors"] as const) Manifest.#optionalBoolean(manifest, field);
         for (const field of ["documentation", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
         Manifest.#optionalNonemptyString(manifest, "glyph");
         Manifest.#traits(manifest.traits, name);

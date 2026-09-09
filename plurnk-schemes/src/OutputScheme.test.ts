@@ -18,14 +18,14 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.deepEqual(m.writableBy, ["plugin"]);
     assert.equal(m.volatile, true);
     assert.equal(m.modelVisible, true);
-    assert.equal(m.foldedByDefault, true); // folded off the ranked surface
+    assert.equal(Object.hasOwn(m, "foldedByDefault"), false, "output manifests do not advertise obsolete entry-folding policy");
 });
 
 test("manifestFromRuntime: presentation is optional", () => {
     const m = OutputScheme.manifestFromRuntime({ name: "bc", channels: { stdout: "text/plain" }, defaultChannel: "stdout" });
     assert.equal(m.name, "bc");
     assert.equal(m.glyph, undefined);
-    assert.equal(m.foldedByDefault, true);
+    assert.equal(m.modelVisible, true);
 });
 
 test("manifestFromRuntime preserves policy traits without interpreting them", () => {

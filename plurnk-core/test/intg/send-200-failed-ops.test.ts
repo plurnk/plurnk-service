@@ -1,4 +1,4 @@
-// {§send-premature-terminate}: same-turn failures are unobserved pending results, so DONE
+// {§send-premature-terminate}: same-turn failures are unobserved pending results, so completion
 // refuses 409 until the next packet observes them; FAIL may abandon them deliberately.
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -35,8 +35,7 @@ test("{§edit-execution}: reviewer replacement supersedes only its EDIT; the nex
         const mock = new Mock({
             contextWindow: 32768,
             responses: [makeMockResponse(
-                "```PLAN\nedit two disjoint lines\n```\n"
-                + "```EDIT (file:///reviewed.md) <2>\nTWO\n```\n"
+                "```EDIT (file:///reviewed.md) <2>\nTWO\n```\n"
                 + "```EDIT (file:///reviewed.md) <4>\nFOUR\n```\n"
                 + "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
                 20,

@@ -54,13 +54,9 @@ interface SchemeManifestBase {
     // preserves ordered blocks but never interprets their contents.
     readonly metadataModifier?: boolean;
     // True when the scheme's stable textual representations publish and accept
-    // shared line anchors without claiming EDIT support. textEditScopes also
-    // implies this capability.
+    // shared line anchors without claiming EDIT support. textEditScopes implies
+    // publication only where the addressed resource authorizes model writes.
     readonly lineAnchors?: boolean;
-    // Entries land FOLDED, off the ranked manifest surface (READable by address,
-    // not poured into the ranked view). Absent/false → first-class ranked.
-    // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).
-    readonly foldedByDefault?: boolean;
     // General policy facts consumed by CapabilitySelector.trait. The scheme
     // declares facts only; it never interprets policy or named modes.
     readonly traits?: ReadonlyArray<string>;

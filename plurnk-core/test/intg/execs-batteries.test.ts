@@ -1,4 +1,4 @@
-// Batteries-included executor coverage — every EXEC[tag] the service-owned
+// Batteries-included executor coverage — every executor the service-owned
 // default executor leaf set ships, driven end-to-end through the REAL Exec
 // scheme (dispatch → run/accept → spawn → read
 // the captured output channel), not sh alone.
@@ -39,7 +39,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-// Drive one EXEC[tag] through the full Exec path and return its captured, ANSI-stripped output —
+// Drive one executor through the full Exec path and return its captured, ANSI-stripped output —
 // from the executor's OWN default channel (subprocess runtimes → stdout; jq/sqlite → results) —
 // plus the one effect fact that drove automatic admission or proposal review.
 const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; effect: Effect; mimetype: string; declaredMimetype: string | undefined }> => {
@@ -82,7 +82,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         const out = entryRow
             ? await db.test_get_channel.get<{ content: string; state: string; mimetype: string }>({ entry_id: entryRow.id, name: channel })
             : undefined;
-        assert.equal(out?.state, "closed", `EXEC[${tag}] output channel settled to closed by idle()`);
+        assert.equal(out?.state, "closed", `${tag} output channel settled to closed by idle()`);
         return { status: result.status, out: stripAnsi(out?.content ?? ""), effect, mimetype: out?.mimetype ?? "", declaredMimetype };
     } finally {
         await db.close();
@@ -131,7 +131,7 @@ test("execs batteries: coverage census — every self-contained default-install 
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
     assert.ok(available.has("jq") && available.has("sqlite"), "the core batteries executors (jq and sqlite) are discovered and available");
-    for (const tag of REMOVED) assert.equal(reg.entry(tag), undefined, `removed EXEC[${tag}] is absent from the composed service`);
+    for (const tag of REMOVED) assert.equal(reg.entry(tag), undefined, `removed executor ${tag} is absent from the composed service`);
 
     // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
     // so consumers route jsonpath/render correctly — sqlite emits one document and jq is a
@@ -142,17 +142,17 @@ test("execs batteries: coverage census — every self-contained default-install 
         const e = reg.entry(tag);
         return e === undefined ? undefined : e.executor.channels[e.executor.defaultChannel]?.mimetype;
     };
-    assert.equal(declMime("sqlite"), "application/json", "EXEC[sqlite] results channel is application/json (single document)");
-    assert.equal(declMime("jq"), "application/jsonl", "EXEC[jq] results channel is application/jsonl (newline-delimited stream)");
-    for (const t of ["node", "awk", "python3"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
+    assert.equal(declMime("sqlite"), "application/json", "sqlite results channel is application/json (single document)");
+    assert.equal(declMime("jq"), "application/jsonl", "jq results channel is application/jsonl (newline-delimited stream)");
+    for (const t of ["node", "awk", "python3"]) assert.equal(declMime(t), "text/stream", `${t} stdout channel is text/stream`);
 });
 
 for (const { tag, body, cwd, expect, gate } of CASES) {
-    const label = `EXEC[${tag}]${cwd === null ? "" : ` (${gate} target)`}`;
+    const label = `${tag}${cwd === null ? "" : ` (${gate} target)`}`;
     test(`execs batteries: ${label} runs through the real Exec scheme, captures output, gates per effect`, async (t) => {
         const reg = await testExecutors();
         if (!reg.availableRuntimes().includes(tag)) {
-            t.skip(`EXEC[${tag}] not available in this env (probe failed / resource-gated)`);
+            t.skip(`${tag} not available in this env (probe failed / resource-gated)`);
             return;
         }
         const { status, out, effect, mimetype, declaredMimetype } = await runExec(tag, body, cwd);

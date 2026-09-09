@@ -153,19 +153,14 @@ export default class EditMutations {
                 `Scheme '${schemeName}' returned READ ${current.status} without textual content while validating an EDIT anchor.`,
             );
         }
-        const lineAnchors = (current as { lineAnchors?: unknown }).lineAnchors;
         const lineAnchorIdentity = (current as { lineAnchorIdentity?: unknown }).lineAnchorIdentity;
-        try {
-            LineAnchors.assertProjection(content, lineAnchors);
-            if (typeof lineAnchorIdentity !== "string" || lineAnchorIdentity.length === 0) {
-                throw new TypeError("READ line anchors require their canonical derivation identity.");
-            }
-        } catch (cause) {
+        if (typeof lineAnchorIdentity !== "string" || lineAnchorIdentity.length === 0) {
             throw new InvalidOperationResultError(
-                `Scheme '${schemeName}' returned READ 200 without its core-owned line-anchor projection.`,
-                { cause },
+                `Scheme '${schemeName}' returned READ 200 without its canonical derivation identity.`,
             );
         }
+        // {§line-anchor-write-authority}: internal validation does not depend on published edit hints.
+        const lineAnchors = LineAnchors.tokens(lineAnchorIdentity, content);
 
         let resolved: ResolvedEditStatement;
         const snapshot = sequence?.observe(lineAnchorIdentity, content);
@@ -297,9 +292,6 @@ export default class EditMutations {
                 `Scheme '${schemeName}' does not accept the {metadata} modifier.`, {},
                 { scheme: schemeName, operation: "EDIT", retryable: false });
         }
-        const identity = await this.#editTargetIdentity(statement, ctx.workspaceId, ctx.functionalityWorkerId);
-        const resolved = await this.#resolveEditAnchors(statement, identity, schemeName, manifest, ctx, sequence);
-        if ("result" in resolved) return resolved.result;
         const addressedScheme = statement.target.kind === "url" ? statement.target.scheme : schemeName;
         const publishedChannel = statement.target.kind === "url"
             ? statement.target.fragment ?? manifest.defaultChannel
@@ -311,6 +303,9 @@ export default class EditMutations {
         if (binding !== null && binding.address === null) {
             return MutationEffects.failure("entry-not-found", 404, "The EDIT target could not be resolved.");
         }
+        const identity = await this.#editTargetIdentity(statement, ctx.workspaceId, ctx.functionalityWorkerId);
+        const resolved = await this.#resolveEditAnchors(statement, identity, schemeName, manifest, ctx, sequence);
+        if ("result" in resolved) return resolved.result;
         const result = Results.assert(await handler.editBatch([resolved.statement], new SchemeCtxImpl(
             ctx,
             addressedScheme ?? schemeName,

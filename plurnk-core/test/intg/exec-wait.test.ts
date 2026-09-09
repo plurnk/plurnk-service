@@ -79,7 +79,7 @@ const idle = async (schemes: SchemeRegistry): Promise<void> => {
     await (schemes.get("exec") as Exec).idle();
 };
 
-test("fast current-turn streams settle before WAIT and do not become monitored work", async () => {
+test("fast current-turn streams settle before waiting and do not become monitored work", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     let startedAt = 0;
@@ -143,8 +143,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
     }
 });
 
-// {§send-premature-terminate} — a fast stream that closes SUCCESSFULLY no longer gates DONE
-// (send-200-stream-success.test.ts); the strike this witness guards arises from a fast FAILURE.
+// {§send-premature-terminate}: a fast failure must settle before strike exhaustion reaps work.
 test("strike settlement cannot reap a fast current-turn failed stream before its optimistic opportunity", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
@@ -161,7 +160,7 @@ test("strike settlement cannot reap a fast current-turn failed stream before its
             maxStrikes: 1,
             messages: [],
         });
-        assert.equal(result.result.status, 500, "the unseen failure still makes DONE dishonest and strikes");
+        assert.equal(result.result.status, 500, "completion past the unseen failure exhausts the strike allowance");
         await idle(fixture.schemes);
         const subscription = await fixture.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
             worker_id: fixture.workerId,

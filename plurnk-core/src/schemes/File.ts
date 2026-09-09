@@ -5,7 +5,7 @@ import { basename, dirname, relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParser } from "@plurnk/plurnk-contracts";
 import EntryManifest from "./_entry-manifest.ts";
 import GitMembership, { type FileCreationAdmission } from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -96,20 +96,9 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
     return MimetypeBinary.normalizeAutoTextMimetype(detected);
 };
 
-// SECURITY — File's exact READ uses the core projector and broad FIND uses the
-// shared entry query over the membership-materialized entries
-// (stored under scheme="file"). The membership gate is now ENTRY-EXISTENCE — a non-member has no
-// entry, so every read-side consumer 404s it at the shared entry boundary
-// (a gitignored `.env` is never a member → never an entry → never readable). Disk
-// I/O is confined to the two edges that own it: the git-membership materialize-IN
-// and edit()/applyResolution()'s proposal-gated write-OUT ({§membership}), where the
-// containment/traversal checks live.
-//
-// Core-only writeEntry() is the proposal-gated write-back: a COPY/MOVE *into* file:/// is a disk
-// write, so it flows through the SAME {§membership} gate as EDIT (#resolveWriteTarget) — a
-// 202 proposal, then applyResolution() writes on accept — never an ungated overwrite (the
-// `.env`-wipe this guard prevents). COPY/MOVE *from* file:/// uses the core-only
-// readEntry adapter.
+// {§membership}: READ and FIND consume membership-backed entries, not arbitrary
+// disk paths. EDIT and COPY/MOVE destinations share proposal-gated write-back;
+// observational write-authority checks also govern READ's edit-anchor publication.
 export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
@@ -124,7 +113,12 @@ export default class File extends CoreSchemeAdapterBase {
         modelVisible: true,
         folderScopes: true,
         textEditScopes: true,
-        documentation: "The project's workspace files (shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Existing non-members are invisible and cannot be clobbered; admitted absent paths may be created.\n\nThe EDIT body is the file text itself:\n\n```EDIT (src/greet.mjs) <!-- create the file from the body -->\nexport const greet = (name) => `hello ${name}`;\n\nconsole.log(greet(\"world\"));\n```\n\nA scoped EDIT replaces the addressed lines; put the replacement text in its body.",
+        documentation: [
+            "The project's workspace files (shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Existing non-members are invisible and cannot be clobbered; admitted absent paths may be created.",
+            "The EDIT body is the file text itself:",
+            PlurnkParser.frame("EDIT (src/greet.mjs) <!-- create the file from the body -->", "export const greet = (name) => `hello ${name}`;\n\nconsole.log(greet(\"world\"));"),
+            "A scoped EDIT replaces the addressed lines; put the replacement text in its body.",
+        ].join("\n\n"),
     };
 
     // {§fs-namei}/{§fs-canonical-name} — the ONE statement-normalizing seam: every model
@@ -153,13 +147,30 @@ export default class File extends CoreSchemeAdapterBase {
         return Namespace.canonicalizeSpelling(raw, root);
     }
 
-    async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<EntryAddress | null> {
+    async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext, access: "read" | "write" = "read"): Promise<EntryAddress | SchemeResultBase | null> {
         const core = this.coreContext(ctx);
         const pathname = File.#canonSpelling(
             target.kind === "url" ? target.pathname : target.raw,
             await loadWorkspaceRoot(core.db, core.workspaceId),
         );
-        return pathname === null ? null : { authority: "", pathname };
+        if (pathname === null) return null;
+        if (access === "write") {
+            const member = await core.db.crud_get_member_sig.get<{ membership_origin: string | null }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", authority: "", pathname });
+            const denied = File.#memberWriteDenial(pathname, member);
+            if (denied !== null) return Results.failure("scheme:file", denied.code, denied.status, denied.detail, {}, denied.extensions);
+        }
+        return { authority: "", pathname };
+    }
+
+    static #memberWriteDenial(pathname: string, member: { membership_origin: string | null } | undefined): Extract<WriteTarget, { ok: false }> | null {
+        if (!pathname.startsWith("../") || member?.membership_origin !== "git") return null;
+        return {
+            ok: false,
+            code: "member-read-only",
+            status: 403,
+            detail: `The mounted member '${pathname}' is read-only.`,
+            extensions: { path: pathname, retryable: false },
+        };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -338,28 +349,13 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 };
             }
-            // {§fs-write-surface} 5 — a git-included mount member is read-only: git's grants
-            // confer rw only within the project; only a pick grant carries write.
-            if (isMount && member.membership_origin === "git") {
-                return {
-                    ok: false,
-                    code: "member-read-only",
-                    status: 403,
-                    detail: `The mounted member '${rel}' is read-only.`,
-                    extensions: { path: rel, retryable: false },
-                };
-            }
+            const denied = File.#memberWriteDenial(rel, member);
+            if (denied !== null) return denied;
             const currentMaterialization = FileMaterialization.classify((await stat(canonical)).size);
             if (currentMaterialization.disposition === "input-limit") {
-                return {
-                    ok: false,
-                    ...FileMaterialization.rejection(rel, currentMaterialization),
-                };
+                return { ok: false, ...FileMaterialization.rejection(rel, currentMaterialization) };
             }
-            // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
-            // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
-            // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
-            // worker's reconcile can't advance it under the paused proposal. {§membership-edit-write-cas}
+            // {§membership-edit-write-cas}: diff against the READ snapshot; CAS protects the disk landing.
             const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;

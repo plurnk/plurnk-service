@@ -1485,7 +1485,7 @@ test("the module setup seam registers a live tag, dispatchable through the engin
             );
             assert.equal(daemon.schemes.has("ownerless"), false, "invalid ownership cannot claim a scheme");
             await daemon.registerRuntime(fakeRegistration("seamtag"));
-            // the tag is live — EXEC[seamtag] dispatches through the engine to the registered executor.
+            // The tag is live — the engine dispatches to the registered executor.
             const exec = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
             assert.equal(exec.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
 

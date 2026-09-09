@@ -193,7 +193,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
                     { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
-                assert.ok(turn?.completed_at !== null, "completed NEXT is distinct from an open turn");
+                assert.ok(turn?.completed_at !== null, "a completed continuation turn is distinct from an open turn");
                 const plan = JSON.parse(initializationRows.find(({ op }) => op === "TASK")!.tx) as { body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
@@ -202,7 +202,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     },
                 ]);
                 const program = JSON.parse(initializationRows.find(({ op }) => op === null)!.rx) as { content: string };
-                assert.match(program.content, /\n```TASK\n\[/, "initialization ends with an ordinary continuation inventory");
+                assert.match(program.content, /\n````TASK\n\[/, "initialization ends with an ordinary continuation inventory");
             } finally { ws.close(); }
         });
     } finally {
@@ -270,13 +270,13 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.summary,
-                    "```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```",
+                    "````sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n````",
                     "Turn 0 teaches a compact executable witness with its authored summary, as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.summary,
-                    "```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```",
+                    "````python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n````",
                     "the interpreter summary teaches an executable inline program without requiring a document READ",
                 );
                 for (const removed of ["git", "isogit"]) {
@@ -300,7 +300,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
                     ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "TASK"],
-                    "the initialization outcomes contain the prompt archive, eight surveys, and NEXT",
+                    "the initialization outcomes contain the prompt archive, eight surveys, and TASK",
                 );
                 const turnOps = initializationRows.find(({ op }) => op === null);
                 assert.equal(turnOps?.origin, "_plurnk");
@@ -308,7 +308,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^```COPY[^\n]*\n[\s\S]*\n```TASK\n\[{"content":"Address the prompt\.","status":"in_progress"}\]\n```$/,
+                    /^````COPY[^\n]*\n[\s\S]*\n````TASK\n\[{"content":"Address the prompt\.","status":"in_progress"}\]\n````$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

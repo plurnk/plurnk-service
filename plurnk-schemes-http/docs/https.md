@@ -15,16 +15,18 @@ are never presented by default.
 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
-| ```` ```READ (https://…) <scope?> ````              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
-| ```` ```FIND (https://…) ```` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
-| ```` ```SEND (https://…) ```` with body             | POST          | Submit the body and stream the response                                  |
-| ```` ```EDIT (https://…) ```` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
-| ```` ```KILL (https://…) ````                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
-| ```` ```KILL (https://…) {remote} ````              | DELETE        | Delete the remote resource and stream the response                       |
+| ````` ````READ (https://…) <scope?> `````              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
+| ````` ````FIND (https://…) ````` with matcher body     | GET if needed | Return matching text regions for a scoped READ                           |
+| ````` ````SEND (https://…) ````` with body             | POST          | Submit the body and stream the response                                  |
+| ````` ````EDIT (https://…) ````` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
+| ````` ````KILL (https://…) `````                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
+| ````` ````KILL (https://…) {remote} `````              | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
-workspace; a pattern cannot discover the remote web. FIND returns navigation
-metadata, not the selected page body. Use READ for content.
+workspace; a pattern cannot discover the remote web. For matched content, READ
+the returned `#channel` using the `region` as
+`<startLine,startColumn,endLine,endColumn>`. Structural matches may include the
+enclosing property; a locator without a region does not supply text coordinates.
 
 Caller cancellation of an exact acquisition returns `499 cancelled`.
 
@@ -101,11 +103,11 @@ channels; it does not mean that the containing URL is missing.
 Request headers are ordered `{Key: value}` metadata blocks after the complete
 target, one header per block:
 
-```READ (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}```
+````READ (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}````
 
-```EDIT (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
+````EDIT (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
 {"done":true}
-```
+````
 
 Metadata stays on one line; nested braces are preserved as content.
 An exact FIND forwards these headers when it must acquire the URL, but the

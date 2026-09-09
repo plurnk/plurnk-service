@@ -9,11 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { viableWindow, openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { viableWindow, openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, lookThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import { resourcePaths } from "./_find.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import EntryOps from "../../src/schemes/_entry-ops.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Owner from "../../src/core/Owner.ts";
@@ -199,7 +198,8 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `binentry-read-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
         const ownerId = await Owner.commonsId(db, workspaceId);
 
         const written = await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker", ownerId);
@@ -208,7 +208,7 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
         assert.equal(rows[0].mimetype, "image/png", "the binary mimetype is preserved");
         assert.equal(rows[0].content, PNG.toString("base64"), "the bytes are stored base64 in TEXT content");
 
-        const read = await EntryOps.readWorkspaceEntry(readStmt("stash.png"), ctx, Worker.manifest, { ownerId });
+        const read = await lookThroughScheme("worker", null, readStmt("stash.png"), ctx);
         assert.equal(read.status, 200, "a default READ of the binary entry succeeds");
         assert.equal(read.mimetype, "image/png", "the byte view never relabels the source mimetype");
         assert.equal(read.projection, "hex", "it projects as the hex byte view");

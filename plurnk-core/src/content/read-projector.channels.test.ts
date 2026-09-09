@@ -19,7 +19,7 @@ for (const channel of ["unknown", "stderr", "constructor", "__proto__"]) {
             op: "READ", target: parsePath(`fixture:///entry#${channel}`), body: null, metadata: null, lineMarker: null,
             annotation: null, position: { line: 1, column: 1 },
         };
-        const result = await ReadProjector.project({ statement, manifest, representation, target: "fixture:///entry", identity: "fixture:///entry", mimetypes: undefined });
+        const result = await ReadProjector.project({ statement, manifest, publishesLineAnchors: false, representation, target: "fixture:///entry", identity: "fixture:///entry", mimetypes: undefined });
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/fixture/channel-not-found");
         assert.equal(result.problem?.requestedChannel, channel);
@@ -36,6 +36,7 @@ test("{§channel-selection-missing} READ exposes a dynamic default without adver
             annotation: null, position: { line: 1, column: 1 },
         },
         manifest: { ...manifest, channels: {} },
+        publishesLineAnchors: false,
         representation: { channels: {
             ...representation.channels,
             internal: { content: "not exposed", mimetype: "text/plain", state: "static" },

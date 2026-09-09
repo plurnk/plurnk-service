@@ -2,10 +2,10 @@
 
 An MCP server is an external process (`stdio`) or endpoint (`http`) that
 publishes tools. Once a server is enabled, it is a runtime here under its own
-name: each tool is a target — ```` ```<server> (<tool>) ```` with a JSON
-body — and its input schema and result channel are documented at
-`worker://~/_plurnk/plurnk/<server>.md` and `worker://~/_plurnk/tools/`. You
-never speak the protocol yourself; one EXEC is one tool call.
+name: each tool is a target — ````` ````<server> (<tool>) ````` with a JSON
+body. `worker://~/_plurnk/tools/<server>.md` lists the invocations and their
+required top-level inputs; each invocation links to the complete raw input
+schema when you need more detail. One fenced call runs one tool.
 
 ## When to reach for a server
 
@@ -23,16 +23,16 @@ never speak the protocol yourself; one EXEC is one tool call.
 connected once, its tool list is read, and one inert candidate comes back
 carrying the exact definition to add. Discovery persists and enables nothing.
 
-```mcp (discover) <!-- inspect before adding -->
+````mcp (discover) <!-- inspect before adding -->
 {"source": "npx -y @modelcontextprotocol/server-filesystem ."}
-```
+````
 
 `add` persists the definition for this worker, connects, and enables it
 atomically. It is a host effect: it proposes and runs only on acceptance.
 
-```mcp (add)
+````mcp (add)
 {"alias": "files", "definition": {"name": "files", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]}}
-```
+````
 
 A `stdio` definition carries `command` and optional `args`, `cwd`, `env`; an
 `http` definition carries `url` and optional `headers`. `tools` narrows the

@@ -151,10 +151,10 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
         assert.equal(initializationSource?.initial_folded, "[]", "Turn 0 turnOps are initially visible");
         assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are untrimmed");
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^```/);
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n```TASK\n\[.*"Address the prompt\.".*\]\n```$/s);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^````/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n````TASK\n\[.*"Address the prompt\.".*\]\n````$/s);
         assert.equal(initializationRows.some(({ op }) => op === "PLAN"), false);
-        assert.ok(initializationRows.some(({ op }) => op === "TASK"), "the raw turn does not replace NEXT's result row");
+        assert.ok(initializationRows.some(({ op }) => op === "TASK"), "the raw turn does not replace TASK's result row");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
         const inferenceSource = inferenceRows.find(({ op }) => op === null);
@@ -479,7 +479,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the action
 test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Every turn continues (NEXT, never terminal), so the turn ceiling is what stops it.
+        // Every turn continues, so the turn ceiling is what stops it.
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => response([editStmt(`/x-${i}`, "v"), dispositionStmt("in_progress", "more")])),
@@ -497,7 +497,7 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
 test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // EDIT sealed:/// → 403 (writableBy denial = hard). NEXT keeps loop going.
+        // EDIT sealed:/// → 403 (writableBy denial = hard). In-progress inventory continues.
         // Vary the path per turn so the failures stay DISTINCT (no cycle) — this isolates
         // the failure path → 500 (an identical-repeat would also trip cycle → 508).
         const provider = new Mock({
@@ -540,7 +540,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
                 response([readMissing("b"), dispositionStmt("in_progress", "2")]),
                 response([readMissing("c"), dispositionStmt("in_progress", "3")]),
                 response([readMissing("d"), dispositionStmt("in_progress", "4")]),
-                // terminate on a clean turn — a READ + same-turn DONE is itself a strike
+                // Complete on a clean turn; a READ plus same-turn completion requires observation.
                 // ({§send-premature-terminate}), which would confound this 404-soft-failure assertion.
                 response([dispositionStmt("completed", "done")]),
             ],
@@ -801,7 +801,7 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
         assert.equal(seqs[0]?.packet, null, "turn 1 is packetless initialization");
         assert.deepEqual([t1.turnId, t2.turnId, t3.turnId], seqs.slice(1).map((s) => s.id));
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 200, "loop terminal after final DONE");
+        assert.equal(loopStatus, 200, "loop terminal after final completed inventory");
     } finally { await db.close(); }
 });
 
@@ -1003,7 +1003,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // The parser tolerates free text before a statement. The prose is
-        // non-executable, while the DONE after it still parses and dispatches.
+        // non-executable, while the TASK after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{ assistant: { content: "Just thinking out loud here.\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } }],
@@ -1020,7 +1020,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: NEXT carries a durable inventory separate from provider reasoning", async () => {
+test("Engine.runTurn: TASK carries a durable inventory separate from provider reasoning", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({

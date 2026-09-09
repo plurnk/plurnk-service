@@ -630,7 +630,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
             rx: string;
         }>({ turn_id: failed.turnId });
         const authored = rows.filter(({ origin, op }) =>
-            origin === "model" && (op === "PLAN" || op === "error" || op === "TASK" || op === "TASK"));
+            origin === "model" && (op === "PLAN" || op === "error" || op === "TASK"));
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
@@ -690,7 +690,6 @@ test("#409: a body-bearing READ with pasted READ lines is refused before FIND di
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    "```PLAN\ninspect the relevant source\n```",
                     `\`\`\`READ (evaluator/functions.go) <2286,2292>
 ${renderedRead}
 \`\`\``,
@@ -780,7 +779,7 @@ test("a bounded malformed operation prevents same-turn completion until the mode
         );
         assert.ok(
             result.outcomes.some(({ op, status }) => op === "TASK" && status === 409),
-            "DONE refuses to conclude past the unseen failure",
+            "completed TASK inventory cannot conclude past the unseen failure",
         );
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
@@ -789,7 +788,7 @@ test("a bounded malformed operation prevents same-turn completion until the mode
             origin: string;
         }>({ turn_id: result.turnId });
         const authored = rows.filter(({ origin, op }) =>
-            origin === "model" && (op === "PLAN" || op === "error" || op === "TASK" || op === "TASK"));
+            origin === "model" && (op === "PLAN" || op === "error" || op === "TASK"));
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
@@ -1636,7 +1635,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                { assistant: { content: "```PLAN\nbig write, cut mid-wo\n```", reasoning: null, finishReason: "length" } },
+                { assistant: { content: "```SEND\nbig write, cut mid-wo\n```", reasoning: null, finishReason: "length" } },
                 { assistant: { content: "\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null, finishReason: "stop" } },
             ],
         });

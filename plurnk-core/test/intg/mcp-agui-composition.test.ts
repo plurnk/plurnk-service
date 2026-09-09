@@ -237,7 +237,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal(observed.at(-1)?.type, "RUN_FINISHED");
         assert.equal((observed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const firstPacket = packet(provider.requests, 0);
-        assert.ok(firstPacket.includes("```mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->```"),
+        assert.ok(firstPacket.includes("````mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->````"),
             "the initial survey teaches the manager's complete lifecycle");
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
         assert.match(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\.md"/);

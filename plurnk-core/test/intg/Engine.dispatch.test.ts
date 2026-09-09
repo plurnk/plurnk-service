@@ -207,7 +207,7 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: NEXT is a continuation whose canonical Plurnk value survives into tx", async () => {
+test("Engine.dispatch: pending TASK inventory continues and its canonical Plurnk value survives into tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
@@ -219,7 +219,7 @@ test("Engine.dispatch: NEXT is a continuation whose canonical Plurnk value survi
         });
         assert.equal(plan.status, 102);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
-        if (log === undefined) throw new Error("NEXT log_entry not found");
+        if (log === undefined) throw new Error("TASK log_entry not found");
         assert.equal(log.op, "TASK");
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
@@ -266,10 +266,8 @@ test("{§send-final-strike-retrieval}: retiring a failed receipt cannot make it 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a KILL line scope trims one entry of a projected NEXT row (#335)", async () => {
-    // NEXT log bodies project line-per-entry JSONL, so the model's ordinary
-    // KILL <line> scope reaches individual plan items — the ruled alternative
-    // to spooky automatic suppression of superseded NEXTs.
+test("Engine.dispatch: a KILL line scope trims one item of a projected TASK row (#335)", async () => {
+    // {§body-projection}: the JSON array spreads one task per line.
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({

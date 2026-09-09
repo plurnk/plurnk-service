@@ -180,7 +180,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
             ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "TASK"],
-            "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
+            "turn 0 exposes the executed prompt COPY, surveys, and TASK outcome sequence",
         );
         assert.deepEqual(
             initialization.filter(({ path }) => String(path).endsWith("/ops")).map((row) => ({ open: "body" in row, origin: row.origin })),
@@ -553,7 +553,7 @@ test("{§definition-table-projection}: canonical inline operation examples survi
 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const inlineGrammar = [...definition.matchAll(/```[A-Za-z]+[^\n`]*```/gu)].map((match) => match[0]);
+        const inlineGrammar = [...definition.matchAll(/````[A-Za-z]+[^\n`]*````/gu)].map((match) => match[0]);
 
         assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
         for (const example of inlineGrammar) {

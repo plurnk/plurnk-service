@@ -20,7 +20,7 @@ test("observe: an invalid first emission retries under the turn without failing 
             responses: [
                 {
                     assistant: {
-                        // Not a legal turn: no PLAN lead and no terminal SEND.
+                        // No executable operation or TASK inventory.
                         content: "this is not a plurnk turn",
                         reasoning: null,
                     },

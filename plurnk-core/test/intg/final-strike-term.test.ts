@@ -121,7 +121,7 @@ test("{§send-final-strike-retrieval}: a clean turn resets the allowance with th
 });
 
 for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-stream-results", "worker-results", "operation-failure", "kill-failure"] as const) {
-    test(`{§send-final-strike-retrieval}: final-strike TERM remains blocked by ${kind}`, async (t) => {
+    test(`{§send-final-strike-retrieval}: final-strike completion remains blocked by ${kind}`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
         const read = "```READ (worker:///answer.md)```";
         const provider = new Mock({ contextWindow: 100_000, responses: [

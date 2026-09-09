@@ -358,12 +358,12 @@ test("same-lane sections compose and section whitespace is structural", () => {
 });
 
 test("an unfinished block establishes an unparsed-tail trust boundary", () => {
-    const result = PlurnkParser.parseStatements(section("EDIT", " (first.md)", "one") + "\n````EDIT (broken\n" + section("EDIT", " (third.md)", "three"));
+    const result = PlurnkParser.parseStatements(section("EDIT", " (first.md)", "one") + "\n`````EDIT (broken\n" + section("EDIT", " (third.md)", "three"));
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.equal(statements.length, 1);
     assert.equal("target" in statements[0].statement ? statements[0].statement.target?.raw : null, "first.md");
     assert.deepEqual(result.unparsedTail?.from, { line: 4, column: 0 });
-    assert.match(result.unparsedTail?.reason ?? "", /not closed with 4 backticks/);
+    assert.match(result.unparsedTail?.reason ?? "", /not closed with 5 backticks/);
 });
 test("only a matching closing fence completes a section", () => {
     assert.equal(PlurnkParser.parseStatements(section("EDIT", " (p)", "body")).unparsedTail, undefined);
@@ -371,11 +371,11 @@ test("only a matching closing fence completes a section", () => {
     assert.ok(PlurnkParser.parseStatements("```EDIT (path").unparsedTail);
     assert.ok(PlurnkParser.parseStatements("```EDIT (p)\nbody").unparsedTail);
 });
-test("turn-shape diagnostics name the heading contract", () => {
-    // {§turn-shape} — PLAN is optional: operations without one raise no PLAN diagnostic.
+test("turn-shape diagnostics name the inventory contract", () => {
+    // {§turn-shape}
     const planless = PlurnkParser.parse(section("READ", " (x)"));
     const planlessErrors = planless.items.flatMap((item) => item.kind === "error" ? [item.error.code] : []);
-    assert.deepEqual(planlessErrors, [PlurnkParser.MISSING_DISPOSITION], "only the missing terminal SEND is diagnosed");
+    assert.deepEqual(planlessErrors, [PlurnkParser.MISSING_DISPOSITION], "only the missing TASK inventory is diagnosed");
 
     const missingSend = PlurnkParser.parse(section("EDIT", " (notes.md)", "inspect"));
     const sendError = missingSend.items.find((item) => item.kind === "error");
@@ -385,7 +385,7 @@ test("turn-shape diagnostics name the heading contract", () => {
     }
 });
 
-test("{§parse-diagnostics}: missing SEND is located at authored EOF and names parser recovery", () => {
+test("{§parse-diagnostics}: missing TASK is located at authored EOF and names parser recovery", () => {
     for (const { source, line, column } of [
         { source: "```sh\ncat <<'EOF'\nhello\nEOF\n```", line: 5, column: 3 },
         { source: "\r\n```READ (notes.md)```", line: 2, column: 21 },
@@ -420,7 +420,7 @@ test("a disposition inside EDIT is data and does not conclude a turn", () => {
     const errors = result.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors.map(({ error }) => error.code), [PlurnkParser.MISSING_DISPOSITION]);
 });
-test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as written", () => {
+test("model turns recover a missing TASK; a turn without SEND stands as written", () => {
     const planless = PlurnkParser.parse(sections(
         section("READ", " (worker:///notes.md)"),
         section("TASK", "", inventory("continue")),
@@ -431,20 +431,20 @@ test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as w
     assert.deepEqual(planlessStatements.map(({ op }) => op), ["READ", "TASK"], "no PLAN is synthesized");
     assert.equal(planless.items.some((item) => item.kind === "error"), false, "no PLAN diagnostic");
 
-    const missingSend = PlurnkParser.parse(sections(
+    const missingTask = PlurnkParser.parse(sections(
         section("READ", " (worker:///notes.md)"),
     ));
-    assert.equal(missingSend.unparsedTail, undefined);
-    const missingSendStatements = missingSend.items.flatMap((item) =>
+    assert.equal(missingTask.unparsedTail, undefined);
+    const missingTaskStatements = missingTask.items.flatMap((item) =>
         item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(missingSendStatements.map(({ op }) => op), ["READ", "TASK"]);
-    const recoveredSend = missingSendStatements.at(-1);
-    assert.equal(recoveredSend?.op, "TASK");
-    if (recoveredSend?.op === "TASK") {
-        assert.deepEqual(recoveredSend.body, []);
+    assert.deepEqual(missingTaskStatements.map(({ op }) => op), ["READ", "TASK"]);
+    const recoveredTask = missingTaskStatements.at(-1);
+    assert.equal(recoveredTask?.op, "TASK");
+    if (recoveredTask?.op === "TASK") {
+        assert.deepEqual(recoveredTask.body, []);
     }
     assert.match(
-        missingSend.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
+        missingTask.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
         /No tasks were supplied/u,
     );
 });
@@ -463,9 +463,9 @@ test("plurnk is an executor name, not a transparent document wrapper", () => {
     assert.equal("body" in result ? result.body : null, body);
 });
 test("EOF does not close an unfinished executor block", () => {
-    const result = PlurnkParser.parseStatements("````plurnk\n" + section("TASK", "", inventory("done", "completed")));
+    const result = PlurnkParser.parseStatements("`````plurnk\n" + section("TASK", "", inventory("done", "completed")));
     assert.equal(result.items.some((item) => item.kind === "statement"), false);
-    assert.match(result.unparsedTail?.reason ?? "", /not closed with 4 backticks/);
+    assert.match(result.unparsedTail?.reason ?? "", /not closed with 5 backticks/);
 });
 test("a longer inner fence cannot terminate a shorter outer block", () => {
     const result = PlurnkParser.parseStatements("```sh\n````\necho hello");
@@ -746,12 +746,12 @@ test("a combined anchor and displayed line number gets one canonical correction"
     }
 });
 
-test("WAIT scope and EXEC timeout/poll are retained", () => {
+test("TASK wait scope and EXEC timeout/poll are retained", () => {
     const terminal = oneStatement(section("TASK", " <30>", "polling"));
-    if (terminal.op !== "TASK") assert.fail("expected SEND");
+    if (terminal.op !== "TASK") assert.fail("expected TASK");
     assert.deepEqual(terminal.lineMarker, { marks: [30] });
     const appended = oneStatement(section("TASK", " <-1>", "standing by"));
-    if (appended.op !== "TASK") assert.fail("expected SEND");
+    if (appended.op !== "TASK") assert.fail("expected TASK");
     assert.deepEqual(appended.lineMarker, { marks: [-1] });
     const exec = oneStatement("```node (./) <60,5>\ncommand\n```");
     if (exec.op !== "EXEC") assert.fail("expected EXEC");
@@ -1076,7 +1076,7 @@ test("body punctuation and Markdown remain opaque", () => {
     }
 });
 
-test("parse accepts one PLAN-anchored turn and rejects another PLAN after its terminal SEND", () => {
+test("parse accepts one TASK-terminated turn and rejects another TASK in that turn", () => {
     const turn = sections(
         section("READ", " (worker:///x)"),
         section("TASK", "", inventory("done", "completed")),

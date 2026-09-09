@@ -36,7 +36,7 @@ Answer.
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
         });
-        // The dropped KILL is a same-turn failure the model has not seen, so the TERM is refused and the loop continues.
+        // The dropped KILL is an unseen same-turn failure, so completion is refused and the loop continues.
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes, [
             { op: "SEND", status: 200, problemType: null },
@@ -115,7 +115,7 @@ ${tail}`),
 });
 
 test("internal turn programs end at the disposition like model turns", () => {
-    const source = "```KILL (log:///1/1/*)```\n```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```";
+    const source = "````KILL (log:///1/1/*)````\n````TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n````";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "TASK"]);
     assert.equal(TurnOps.renderInternal(statements), source);

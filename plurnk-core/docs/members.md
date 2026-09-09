@@ -36,24 +36,24 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-Ask first: ```` ```members (discover) ```` with `{"query": "build/report.json"}`
+Ask first: ````` ````members (discover) ````` with `{"query": "build/report.json"}`
 says `tracked`, `included by …`, `a creation record`, `excluded by …`,
 `ignored`, `untracked`, or `absent`.
 
 - **Untracked and you are allowed to add** (`root` or `namespace`): add a
   definition and it is a member from the next turn.
 
-  ```members (add) <!-- include the generated reports -->
+  ````members (add) <!-- include the generated reports -->
   {"alias": "reports", "definition": {"glob": "build/*.json"}}
-  ```
+  ````
 
 - **Untracked and the scope is `none`** (the shipped default): the refusal
   names the recovery, and it is not a trick — make git track the file. Staging
   is enough; no commit is needed, and membership refreshes at your next turn.
 
-  ```sh <!-- git tracks it, so it becomes a member -->
+  ````sh <!-- git tracks it, so it becomes a member -->
   git add build/report.json
-  ```
+  ````
 
   Or ask the user to add it (`/members add`) or to raise the scope. Do not
   loop on `add`; the scope will not change mid-turn.

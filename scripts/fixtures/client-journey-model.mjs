@@ -16,7 +16,14 @@ const journeys = Object.freeze({
         marker: "Exercise the installed interactive terminal.",
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.",
-            content: "```READ (prompt:///1/1)```\n```TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n```",
+            content: [
+                "````READ (prompt:///1/1)````",
+                "````READ (worker://~/_plurnk/plurnk/worker.md) <1,-1>````",
+                "````READ (worker://~/_plurnk/plurnk/node.md) <1,-1>````",
+                "````READ (skill://plurnk/SKILL.md) <1,-1>````",
+                "````READ (skill://plurnk/.env.defaults) <1,16>````",
+                "````TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n````",
+            ].join("\n"),
         }, {
             reasoning: "The prompt was retrieved through the terminal, so the journey can conclude.",
             content: "```SEND\nThe installed interactive journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
@@ -118,6 +125,19 @@ export const startClientJourneyModel = async () => {
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
             const text = (body.messages ?? []).map((message) => typeof message.content === "string" ? message.content : "").join("\n");
+            if (journey === "tui" && index === 1) {
+                for (const witness of [
+                    /(?:^|\n) *\d+:````WORK \(worker:\/\/capital-checker\)/u,
+                    /(?:^|\n) *\d+:````node <!--/u,
+                    /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
+                    /"target":"skill:\/\/plurnk\/\.env\.defaults"/u,
+                ]) {
+                    if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
+                }
+                if (/@[0-9A-Za-z]{5} +\d+:````(?:WORK|node)/u.test(text)) {
+                    throw new Error("installed read-only teaching advertised model EDIT anchors");
+                }
+            }
             if (journey === "nvim" && index === 3
                 && (!text.includes("typed-through-nvim") || !/"count"\s*:\s*0\b/u.test(text))) {
                 throw new Error("the Neovim continuation did not carry the named-field answer");

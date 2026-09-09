@@ -39,7 +39,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId };
 };
 
-test("Engine.runLoop: three-turn loop terminating on DONE", async () => {
+test("Engine.runLoop: three-turn loop terminating on completed TASK inventory", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -74,8 +74,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            // Each turn does real work (distinct EDIT) then continues — a bare NEXT is now an
-            // idle-strike ({§send} the terminal contract); distinct paths keep the cycle rail quiet too.
+            // Distinct EDIT paths avoid a cycle refusal while testing the turn ceiling.
             responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), dispositionStmt("in_progress", "more")])),
         });
         const result = await engine.runLoop({
@@ -90,17 +89,13 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
     } finally { await db.close(); }
 });
 
-test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
+test("maxTurns=-1 disables the turn terminator — loop ends on completed inventory, not a cap", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Four non-terminal turns then DONE. A positive cap of 3 would
-        // force-terminate at turn 3 (429); -1 = no cap, so the loop runs all
-        // five and ends gracefully on the model's SEND. (A naive `length >= -1`
-        // terminator would also wrongly stop at turn 1 — this guards that too.)
+        // Four continuing turns then completion. A positive cap of 3 would
+        // stop at turn 3; -1 must permit the final completed inventory.
         const provider = new Mock({
             contextWindow: 100000,
-            // Non-terminal turns carry a work op (distinct EDIT) so they're real continues, not
-            // idle-strikes ({§send} the terminal contract); the final turn terminates on DONE.
             responses: [
                 response([editStmt("/1", "x"), dispositionStmt("in_progress", "1")]),
                 response([editStmt("/2", "x"), dispositionStmt("in_progress", "2")]),
@@ -238,7 +233,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             contextWindow: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), dispositionStmt("in_progress", "stored")]),
-                // READ continues (NEXT); its result enters turn 3, where it can be observed.
+                // READ continues; its result enters turn 3, where it can be observed.
                 response([readStmt("/state"), dispositionStmt("in_progress", "reading")]),
                 response([dispositionStmt("completed", "retrieved")]),
             ],

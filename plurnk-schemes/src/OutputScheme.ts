@@ -18,12 +18,8 @@ export interface RuntimeDecl {
 }
 
 export default class OutputScheme {
-    // The read-only-output default. An executor-scheme is a read-VIEW over
-    // produced output: model never writes it (`writableBy: ["plugin"]`), it
-    // re-runs to new output (`volatile`), it lives folded off the ranked surface
-    // (`foldedByDefault`), and its body is `data`, not control/logging. The
-    // per-call output mimetype overrides the channel seed at stream time
-    // (`notifyChunk` mimetype) — the declared channels here are placeholders.
+    // {§executor-scheme-output}: read-only model access to plugin-produced data.
+    // Per-call output mimetypes override the declared channel seeds at stream time.
     static manifestFromRuntime(decl: RuntimeDecl): SchemeManifest {
         return {
             name: decl.name,
@@ -37,7 +33,6 @@ export default class OutputScheme {
             volatile: true,
             modelVisible: true,
             folderScopes: true,
-            foldedByDefault: true,
             glyph: decl.glyph,
             traits: decl.traits,
         };

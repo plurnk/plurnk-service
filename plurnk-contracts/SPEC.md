@@ -257,7 +257,7 @@ generator, and packed-artifact coverage verifies its exports.
 
 §gbnf-turn-shape Both profiles shape zero or more ordinary operation blocks
 and one TASK block ending the turn. Inventory-only turns are valid.
-The rail uses matching three- or four-backtick
+The rail uses matching three-, four-, or five-backtick
 fences; ANTLR also admits longer matching fences. There is no
 turn-wide delimiter, heading lane, or outer program wrapper.
 
@@ -313,7 +313,7 @@ normalize optional bodies to null. TASK normalizes an empty body to `[]`
 under {§plan-value}. Closing fences are required even for bodyless operations.
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
-EXEC executors from the shared AST. It chooses at least three backticks and
+EXEC executors from the shared AST. It chooses at least four backticks and
 more than any run within the body, preserving body bytes on reparse. Fence
 length is syntax, not AST or persistence state. Core-authored programs use
 this serializer and the ordinary admission parser.

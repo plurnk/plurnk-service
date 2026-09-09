@@ -317,7 +317,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
 });
 
 test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
-    // First loop: EXEC echo + WAIT (Accepted) — the loop SLEEPS while the
+    // First loop: EXEC echo + waiting TASK — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
     // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
@@ -429,7 +429,7 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
 });
 
 test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async () => {
-    // Loop emits exec + a NEXT continuation per turn — the loop
+    // Loop emits exec + an in_progress TASK per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;
     // wake should see active loop and skip.
     const continueResponse = mockResponse("```TASK\n[{\"content\":\"thinking\",\"status\":\"in_progress\"}]\n```");
@@ -453,7 +453,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
             await runLoopToTerminal(ws, 2, { prompt: "stay active during exec", policy: { proposals: "accept" } });
             await flush();
             // Event-driven: wait for the exec to conclude (it finishes while the loop is
-            // still emitting NEXT continuations), not a fixed sleep racing the spawn.
+            // still emitting in-progress inventories), not a fixed sleep racing the spawn.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
                 (cs) => cs.some((c) => c.scheme === "sh"),
@@ -470,7 +470,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
 });
 
 test("wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async () => {
-    // A countdown emits 5 lines over ~2.5s. The model WAITs — the loop SLEEPS
+    // A countdown emits 5 lines over ~2.5s. The model waits — the loop SLEEPS
     // while the countdown runs on. When the countdown concludes, the loop RESUMES in
     // place, and the conclusion's summary reflects the COMPLETE stdout (10 bytes for
     // "5\n4\n3\n2\n1\n") — proving the streaming continued past the sleep and the

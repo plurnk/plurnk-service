@@ -1038,7 +1038,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant
     // across READ, FIND, EDIT-span,
-    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies.
+    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and TASK/SEND bodies.
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
@@ -1051,7 +1051,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1/EXEC" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1/EXEC", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "PLAN body → the numbered json-result spread (#339), never a PLAN heading", entry: { ...base, op: "TASK", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## PLAN/m },
+        { label: "TASK body → the numbered json-result spread (#339), never an operation heading", entry: { ...base, op: "TASK", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## (?:PLAN|TASK)/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
@@ -1381,23 +1381,23 @@ test("{§log-wire-format}: body coordinates prevent source Markdown from creatin
     assert.equal(parseLogRecords(out).length, 1, "numbered source headings remain body content");
 });
 
-test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
+test("TASK/READ/FIND bodies bypass the ordinary preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
 
-    // A short PLAN renders whole — no behavior change for a well-formed op.
+    // A short TASK renders whole — no behavior change for a well-formed op.
     const shortOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue("Tidy context, then read the loader.") } },
     ], tok);
-    assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
+    assert.match(shortOut, /Tidy context, then read the loader\./, "a short TASK renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
 
-    // PLAN is the model's task inventory. Its visible projection is
+    // TASK is the model's task inventory. Its visible projection is
     // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
     ], tok);
-    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN");
-    assert.doesNotMatch(planOut, /"chunk"/, "a PLAN never carries an ordinary preview cut");
+    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete TASK inventory");
+    assert.doesNotMatch(planOut, /"chunk"/, "a TASK never carries an ordinary preview cut");
 
     // System-narrated environment spans have no intrinsic receipt bound.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
@@ -1427,7 +1427,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
 });
 
-test("{§body-projection}: PLAN reaches the next model packet without ACP priority or envelope", () => {
+test("{§body-projection}: TASK reaches the next model packet without ACP priority or envelope", () => {
     const plan = [
         { content: "Verify the baseline schema.", status: "pending" },
     ];

@@ -11,11 +11,11 @@ that owner.
 
 | Operation                                      | Effect                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| ```` ```READ (wss://host/path) ````                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
+| ````` ````READ (wss://host/path) `````                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second READ of the same address              | Read the retained representation; reuse the existing owner without reconnecting         |
-| ```` ```EDIT (wss://host/path) ```` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
-| ```` ```SEND (wss://host/path) ```` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
-| ```` ```KILL (wss://host/path) ````                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
+| ````` ````EDIT (wss://host/path) ````` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
+| ````` ````SEND (wss://host/path) ````` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
+| ````` ````KILL (wss://host/path) `````                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
 
 | Owner state  | Meaning                                              | EDIT or directed SEND                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |
@@ -35,11 +35,11 @@ EDIT and directed SEND share the same outbound-frame behavior. Both can follow
 the opening READ in one turn: operations execute in authored order. Only the
 turn's disposition operation is deferred until the other operations have run.
 
-```READ (wss://api.example.com/feed)```
+````READ (wss://api.example.com/feed)````
 
-```EDIT (wss://api.example.com/feed)
+````EDIT (wss://api.example.com/feed)
 {"type":"subscribe","channel":"updates"}
-```
+````
 
 Connection identity includes the owning worker, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket

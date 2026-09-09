@@ -1,5 +1,5 @@
 // Regression guard for the live/demo exec failure: a model workers an EXEC, the
-// entry is created in the DB — but its result must also surface in the NEXT
+// entry is created in the DB — but its result must also surface in the next
 // turn's LOG (the EXEC log row links its output via stream=<runtime>:///<coord>),
 // or the model is blind to its own output and loops forever. The bug only manifested in the
 // e2e tier (model-in-loop); this reproduces it deterministically with a Mock
@@ -14,12 +14,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
-test("regression: a model's EXEC result surfaces visibly in the NEXT turn without an explicit READ", async () => {
-    // Turn 1: EXEC + WAIT (join). Whether echo is still live or has already
-    // closed when SEND dispatches, its unobserved terminal result requires turn 2.
-    // Turn 2: DONE (terminate). The
-    // exec result created in turn 1 must appear in turn 2's packet log so the
-    // model can READ it — assert the ENGINE put a <runtime>:///<coord> stream link there.
+test("regression: a model's EXEC result surfaces visibly in the next turn without an explicit READ", async () => {
+    // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```EXEC\necho plurnk-index-probe\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
@@ -30,7 +26,7 @@ test("regression: a model's EXEC result surfaces visibly in the NEXT turn withou
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", policy: { proposals: "accept" } });
-            assert.equal(finalStatus, 200, "loop terminates on the turn-2 DONE");
+            assert.equal(finalStatus, 200, "loop terminates on the turn-2 completed inventory");
             assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
 
             const turn2 = turnIds![2];
@@ -42,7 +38,7 @@ test("regression: a model's EXEC result surfaces visibly in the NEXT turn withou
                 `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
             // {§exec-stream} — the environment-observation machine foists a READ of the exec stream
-            // into the NEXT turn (origin=_plurnk), visible because the channel closed: the model SEES
+            // into the next turn (origin=_plurnk), visible because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
                 entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout")),

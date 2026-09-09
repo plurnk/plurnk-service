@@ -70,11 +70,11 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         const readable = events.find((e) => e.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
         assert.equal(readable?.delta, "readable provider reasoning", "admitted readable reasoning reaches AG-UI through the derived SEND projection");
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 1,
-            "the same turn's SEND and NEXT do not duplicate its reasoning");
+            "the same turn's SEND and TASK do not duplicate its reasoning");
         assert.ok(events.findIndex(({ type }) => type === "REASONING_MESSAGE_CONTENT")
             < events.findIndex(({ type }) => type === "TEXT_MESSAGE_START"), "reasoning precedes the first speech");
 
-        // 3. Weight safety: the NEXT packet's render must not contain the blob anywhere.
+        // 3. Weight safety: the next packet's render must not contain the blob anywhere.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const packet = (await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet;
         const sections = (JSON.parse(packet) as { sections?: Array<{ content: string }> }).sections ?? [];

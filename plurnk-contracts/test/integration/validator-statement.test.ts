@@ -174,7 +174,7 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: WAIT accepts a terminal wait scope", () => {
+test("PlurnkStatement: TASK accepts a wait scope", () => {
     const stmt = { ...baseFields("TASK"), body: [], lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));

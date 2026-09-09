@@ -26,6 +26,7 @@ import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, type LiveWorkspace } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import { latestStableNodeVersion, namesNodeVersion } from "./_web-oracle.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import WorldState from "../intg/world-state.ts";
 import type { LoopPolicy } from "@plurnk/plurnk-contracts";
@@ -166,15 +167,19 @@ test("story: find a single value in a JSON config", async (t) => {
     } finally { await story.cleanup(); }
 });
 
-test("{§web-search-retrieval} story: answer a question through an attached search MCP tool", async (t) => {
-    // Web discovery is an ordinary MCP attachment ({§web-search-retrieval}): the operator
-    // declares the documented Brave fixture (PLURNK_MCP_BRAVE, demo tier only), and the model
-    // researches through it exactly like any other MCP tool. Without the fixture the story
-    // skips — search is not an owned concern anymore.
+test("{§web-search-retrieval} story: answer a current question with search MCP available", async (t) => {
+    // The attachment provides an option, not an oracle requirement. The independent
+    // release index is never injected into the model's prompt or workspace.
     if (process.env.PLURNK_MCP_BRAVE === undefined) {
         test.skip("PLURNK_MCP_BRAVE is not declared in the operator environment — the search-MCP demo fixture is absent");
         return;
     }
+    const index = await fetch("https://nodejs.org/dist/index.json", {
+        signal: AbortSignal.any([t.signal, AbortSignal.timeout(30_000)]),
+    });
+    assert.equal(index.status, 200, "the independent Node release oracle is available before model spend");
+    const expectedVersion = latestStableNodeVersion(await index.json());
+    console.error(`[story:web-search-mcp] oracle=${expectedVersion} source=https://nodejs.org/dist/index.json`);
     const story = await runStory({
         signal: t.signal,
         label: "web-search-mcp",
@@ -183,12 +188,11 @@ test("{§web-search-retrieval} story: answer a question through an attached sear
         setup: enableMcp("brave"),
     });
     try {
-        const braveEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "brave" });
-        const ok = story.finalStatus === 200 && (braveEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
+        const ok = story.finalStatus === 200 && namesNodeVersion(story.lastContent, expectedVersion);
         if (!ok) await story.dump();
-        assert.ok((braveEntries?.n ?? 0) > 0, "a brave:// output entry exists — the model reached for the MCP tool");
         assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /\d{2}/, `the answer carries a version number; got: ${story.lastContent.slice(0, 200)}`);
+        assert.ok(namesNodeVersion(story.lastContent, expectedVersion),
+            `the answer identifies the current stable release ${expectedVersion}; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 
@@ -201,36 +205,10 @@ test("story: answer a recent general-knowledge question", async (t) => {
         ...(process.env.PLURNK_MCP_BRAVE === undefined ? {} : { setup: enableMcp("brave") }),
     });
     try {
-        const execRows = await story.db.test_log_entries_by_worker_op_full.all<{ tx: string }>({
-            worker_id: story.modelWorkerId,
-            op: "EXEC",
-        });
-        const execNames = execRows.map(({ tx }) => {
-            // {§exec-executor-slot} — the authored executor rides the statement; a bare EXEC is the shell.
-            const executor: unknown = (JSON.parse(tx) as { executor?: unknown }).executor;
-            if (executor === null || executor === undefined) return "sh";
-            assert.equal(typeof executor, "string", "an EXEC's executor slot names one executor");
-            return executor;
-        });
-        const nonRetrievalExecs = execNames
-            .filter((signal) => signal !== "brave");
-        const httpsEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
-        const httpEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "http" });
-        const usedFirstClassRetrieval = execNames.includes("brave")
-            || (httpsEntries?.n ?? 0) > 0
-            || (httpEntries?.n ?? 0) > 0;
         const ok = story.finalStatus === 200
             && /DARA/i.test(story.lastContent)
-            && /Bangaranga/i.test(story.lastContent)
-            && nonRetrievalExecs.length === 0
-            && usedFirstClassRetrieval;
+            && /Bangaranga/i.test(story.lastContent);
         if (!ok) await story.dump();
-        assert.deepEqual(
-            nonRetrievalExecs,
-            [],
-            "recent general knowledge uses first-class retrieval rather than a script executor",
-        );
-        assert.equal(usedFirstClassRetrieval, true, "recent general knowledge is confirmed through first-class retrieval");
         assert.equal(story.finalStatus, 200);
         assert.match(story.lastContent, /DARA/i, `the answer identifies DARA; got: ${story.lastContent.slice(0, 200)}`);
         assert.match(story.lastContent, /Bangaranga/i, `the answer identifies Bangaranga; got: ${story.lastContent.slice(0, 200)}`);

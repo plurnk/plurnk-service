@@ -313,7 +313,7 @@ test("{§proposal-202-pauses}: a timed waiting TASK parks without a proposal", a
         assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved row, not a proposed entry");
         assert.equal(parkRow?.status_rx, 202);
         // ...and no loop/proposal was announced for it.
-        assert.ok(!proposed.includes(parkId), "no proposal announced for the broadcast WAIT wait");
+        assert.ok(!proposed.includes(parkId), "no proposal announced for the broadcast wait");
 
         // Negative control: a genuine side-effecting EDIT[202] DOES propose — proving the
         // listener is live and the SEND is exempt by op, not by a dead listener. Assert

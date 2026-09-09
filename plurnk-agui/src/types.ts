@@ -1,7 +1,7 @@
 // Standard wire shapes come from the protocol package. PLURNK-specific richness
 // rides CUSTOM events under the `plurnk.` namespace.
 //
-// Plurnk-specific richness the core vocabulary can't hold (fold state, coordinates, tags,
+// Plurnk-specific richness the core vocabulary can't hold (curation metadata, coordinates, tags,
 // proposals) rides CUSTOM events under the `plurnk.` namespace — generic frontends skip them,
 // plurnk-aware frontends render them richly ({§agui-custom-namespace}).
 
@@ -34,7 +34,6 @@ export interface LogEntryNotification {
         rx?: unknown;
         status_rx?: number;
         turn_id?: number;
-        expanded?: number;
         attrs?: unknown;
         tags?: string[];
         reasoning?: string;

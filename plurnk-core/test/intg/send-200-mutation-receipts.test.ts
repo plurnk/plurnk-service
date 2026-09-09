@@ -1,5 +1,5 @@
 // {§send-premature-terminate}: a successful same-turn mutation's receipt lands in the next packet,
-// so DONE over it is refused 409 — the model sees what it changed before it claims done.
+// so completion over it is refused 409 — the model sees what it changed before it claims done.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";

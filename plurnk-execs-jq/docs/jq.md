@@ -2,17 +2,17 @@
 
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
-```jq
+````jq
 [1,2,3] | add
-```
+````
 
-```jq (data.json)
+````jq (data.json)
 .users[].name
-```
+````
 
-```jq (sqlite:///1/2/3/EXEC#results)
+````jq (sqlite:///1/2/3/EXEC#results)
 .[] | .name
-```
+````
 
 The first form has no input and uses `-n`. The second filters a file. The third
 filters the result stream at the emitted SQLite address.

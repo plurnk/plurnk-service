@@ -396,6 +396,7 @@ export default class EntryOps {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         address: ReadAddress | null,
+        publishesLineAnchors: boolean,
         bytes?: ByteSource,
     ): Promise<ReadResult> {
         const failure = (
@@ -459,6 +460,7 @@ export default class EntryOps {
         return ReadProjector.project({
             statement,
             manifest: { ...manifest, name: scheme },
+            publishesLineAnchors,
             target: EntryManifest.toPath(scheme, authority, pathname),
             identity,
             representation: stored.entry,

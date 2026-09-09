@@ -24,7 +24,7 @@ client.
 
 The instructions are the skill: `READ (skill://<name>/SKILL.md)` for the
 procedure, `FIND (skill://<name>/**)` for its files, and
-```` ```runtime (skill://<name>/scripts/<program>) ```` to run one of its scripts
+````` ````runtime (skill://<name>/scripts/<program>) ````` to run one of its scripts
 under the ordinary proposal policy. Skill resources are read-only; you do not
 `EDIT` an installed skill.
 
@@ -37,9 +37,9 @@ lists the skills one package contains. Discovery never installs anything.
 
 `add` installs a skill through the standard installer and enables it:
 
-```skills (add) <!-- from a discover candidate -->
+````skills (add) <!-- from a discover candidate -->
 {"alias": "sql-formatter", "definition": {"name": "sql-formatter", "scope": "project", "source": "example/skills"}}
-```
+````
 
 The alias must equal the skill's `name`; `source` is required unless the
 directory already exists; `scope: "project"` needs a project root and writes

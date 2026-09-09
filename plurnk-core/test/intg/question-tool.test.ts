@@ -1,4 +1,4 @@
-// {§question-tool} — the assembled proof: EXEC[question] through the real
+// {§question-tool} — the assembled proof: the question executor through the real
 // Exec scheme pauses on the shared client-interaction lifecycle and resumes
 // with the standard ElicitResult in its results channel.
 
@@ -90,7 +90,7 @@ for (const target of [null, "question", "user"]) test(`{§question-tool}: dispat
 
 for (const timing of ["before park", "after park"] as const) {
     for (const action of ["accept", "cancel"] as const) {
-        test(`{§question-tool}: ${action} ${timing} resumes the same WAIT loop`, async () => {
+        test(`{§question-tool}: ${action} ${timing} resumes the same waiting loop`, async () => {
             const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
             process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = timing === "before park" ? "1000" : "0";
             const body = JSON.stringify({ message: "Which branch?", requestedSchema: {

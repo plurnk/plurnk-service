@@ -183,7 +183,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
     });
 });
 
-test("a client DONE operation updates loop status", async () => {
+test("a client's completed TASK inventory updates loop status", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

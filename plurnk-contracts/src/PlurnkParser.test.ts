@@ -2,9 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import PlurnkParser from "./PlurnkParser.ts";
 
+test("{§statement-rendering}: canonical executable frames use four ticks and preserve ordinary nested code", () => {
+    assert.equal(PlurnkParser.frame("READ (note.md)", null), "````READ (note.md)````");
+    const body = "```json\n{\"ok\":true}\n```";
+    assert.equal(PlurnkParser.frame("SEND", body), `\`\`\`\`SEND\n${body}\n\`\`\`\``);
+    const nested = "````SEND\n" + body + "\n````";
+    assert.equal(PlurnkParser.frame("EDIT (example.md)", nested), "`````EDIT (example.md)\n" + nested + "\n`````");
+});
+
 test("framing a large body does not spread its backtick runs into function arguments", () => {
     const body = "`quoted` ".repeat(100_000);
-    assert.equal(PlurnkParser.frame("EDIT (large.md)", body), "```EDIT (large.md)\n" + body + "\n```");
+    assert.equal(PlurnkParser.frame("EDIT (large.md)", body), "````EDIT (large.md)\n" + body + "\n````");
 });
 
 // {§fence-boundary}

@@ -95,7 +95,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
             assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
             assert.equal(noWorkerResult.problem.detail, "No model worker exists for prompt injection.");
 
-            // Start a worker; DONE ends it, leaving the worker idle. Wait for the terminal
+            // Start a worker; completed inventory ends its loop, leaving the worker idle. Wait for the terminal
             // (loop.run no longer blocks) so the worker is genuinely idle before we inject.
             await runLoopToTerminal(ws, 3, { prompt: "first", policy: { proposals: "accept" } });
 

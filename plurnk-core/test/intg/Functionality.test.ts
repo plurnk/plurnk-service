@@ -124,7 +124,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
             await daemon.invokeModuleAction("worker.fx.list", {}, workerContext(workspaceId, workerId));
             const doc = (await daemon.engine.referenceEntries(workspaceId, workerId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
             assert.ok(doc, "the family document is a reference entry");
-            assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n```fx ("), true, "the generated header owns the H1 and the summary");
+            assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n````fx ("), true, "the generated header owns the H1 and the summary");
             assert.ok(doc.content.includes("## Tools"), "the generated verb table is present");
             assert.ok(doc.content.endsWith("## Choosing a fixture\n\nAuthored fixture teaching."), `the authored body closes the document, its authoring title removed:\n${doc.content}`);
             assert.equal((doc.content.match(/^# /gmu) ?? []).length, 1, "exactly one H1");

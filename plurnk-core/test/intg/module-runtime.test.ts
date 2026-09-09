@@ -82,7 +82,7 @@ test("module runtime registration adds one dispatchable and model-visible tag", 
     try {
         const { schemes, executors, engine } = wire(db);
         engine.registerRuntime("myserver", fakeEntry("myserver"));
-        assert.ok(executors.entry("myserver"), "tag in the executor registry - dispatch resolves EXEC[myserver]");
+        assert.ok(executors.entry("myserver"), "the server is registered for executor dispatch");
         assert.ok(executors.availableRuntimes().includes("myserver"), "available for the workspace's tool-resource projection");
         assert.ok(schemes.has("myserver"), "scheme face registered - READ/FIND/KILL for the tag");
     } finally { await db.close(); }

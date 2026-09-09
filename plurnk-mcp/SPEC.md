@@ -268,7 +268,7 @@ the service at connection preparation.
 
 §mcp-management-actions MCP is one family of Worker Functionality
 ({§functionality-coordinator}): the coordinator publishes `worker.mcp.list |
-discover | add | enable | disable | remove` and the model's `EXEC [mcp]`
+discover | add | enable | disable | remove` and the model's `mcp` executable fence
 family with the common semantics, durable state, and publication; this module
 registers the family adapter and owns protocol truth beneath it. `available`
 is the service environment with its `PLURNK_MCP_ENABLED` defaults; `admit`

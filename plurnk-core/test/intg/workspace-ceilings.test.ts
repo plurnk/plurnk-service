@@ -61,13 +61,11 @@ test("workspace settings.maxCommands min()s the env action cap — tightens, nev
     }
 });
 
-test("maxCommands:0 admits PLAN + the terminal SEND, drops every action", async () => {
+test("maxCommands:0 admits TASK and drops every authored command", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
-        // One turn: two EDIT actions wrapped by the mandatory PLAN and a terminal SEND.
-        // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
-        // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
+        // TASK remains the disposition when the command cap admits neither EDIT nor SEND.
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
             makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
@@ -82,7 +80,7 @@ test("maxCommands:0 admits PLAN + the terminal SEND, drops every action", async 
                     .map((e) => (e as { entry: { op: string; origin: string } }).entry)
                     .filter((e) => e.origin === "model")
                     .map((e) => e.op);
-                assert.deepEqual(modelOps, ["TASK"], "only PLAN + the terminal SEND dispatched — every action capped out");
+                assert.deepEqual(modelOps, ["TASK"], "only TASK dispatched — every authored command capped out");
                 assert.equal(await entryId(db, "/a.md"), undefined, "the first EDIT action never landed at maxCommands:0");
                 assert.equal(await entryId(db, "/b.md"), undefined, "the second EDIT action never landed");
             } finally { ws.close(); }

@@ -281,9 +281,7 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}"
 test("{§exec-target-routing} the target slot remains distinct from cwd", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
-        // A data-source runtime with a target — EXEC[jq](data/users.json):length. The target is the
-        // input file; cwd is the workspace it resolves against. The old contract crammed the target into
-        // cwd (so a relative data path resolved against the daemon's cwd → not found). Now they're distinct.
+        // The jq target supplies input data; cwd independently supplies its resolution base.
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("jq", "data/users.json", "length"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
@@ -309,7 +307,7 @@ test("{§exec-target-routing} a file target with an empty body runs the file", a
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
-                statement: execStmt(null, "greet.sh", ""),  // EXEC[sh](greet.sh): — empty body, FILE target
+                statement: execStmt(null, "greet.sh", ""),  // shell script target, empty body
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
@@ -489,7 +487,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
 // result lives intact on the subscription row's close_result; close_status is
 // its constrained relational projection and channels carry lifecycle state.
 
-test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscription closed at 200", async () => {
+test("sh: clean exit → channels at state=closed, stdout captured, subscription closed at 200", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -526,7 +524,7 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
     });
 });
 
-test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscription closed at 500", async () => {
+test("sh: non-zero exit → channels=errored, stderr captured, subscription closed at 500", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -611,7 +609,7 @@ test("EXEC: cwd defaults to workspace.project_root when statement target is null
     }
 });
 
-test("EXEC[node]: runs node code via -e and captures stdout", async () => {
+test("node: runs code via -e and captures stdout", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({

@@ -48,12 +48,11 @@ class Notes {
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring EDIT support. |
-| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes it implies `lineAnchors`; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
+| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. It implies published anchors only on resources authorized for model writes by {§entry-address-resolution}; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
 | §manifest-metadata-modifier `metadataModifier?` | `true` declares that the scheme owns the opaque, ordered `{metadata}` modifier. Absent/false rejects it before handler invocation. |
 | §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker://~/_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
-| `foldedByDefault?` | Entries land body-suppressed, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up. Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
 The manifest is closed: unknown top-level fields fail admission. Neither field
@@ -196,7 +195,10 @@ target-slot pathname aliases {§path-parentheses} before invocation; query and
 other identity components remain exact. The hook receives capability-free
 `SchemeAddressCtx`, so it cannot access storage before Core has bound a
 principal. The optional access argument defaults to `read`; `write` authorizes
-mutation of that address before binding storage. COPY binds its destination
+mutation of that address before binding storage. Resolution is observational:
+it neither performs the mutation nor creates a proposal. READ also uses model
+`write` resolution to determine implied EDIT-anchor publication, independently
+of the READ's producer ({§line-anchor-write-authority}). COPY binds its destination
 for writing; MOVE also authorizes source deletion before any destination
 effect. This does not expose operation-specific selection to representation
 producers. Its return depends on {§manifest-entry-owner}:
@@ -512,7 +514,10 @@ its implementation.
 
 - `entries` — direct storage over the scheme and authority already bound by core
   (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
-  `READ`/`EDIT`/`FIND`/`SEND` implementation for entry-bearing schemes.
+  `EDIT`/`FIND`/`SEND` implementations for entry-bearing schemes. READ selection
+  and model-facing projection belong to the consumer's universal dispatch
+  ({§universal-read-composition}); `entries.read` returns stored channels, not
+  a projected READ receipt.
   A write may omit channel state to select the `static` default; a successful
   storage read always returns each channel's persisted lifecycle state.
   Optional `attributes` are scheme-private durable metadata. They are scoped to
@@ -551,8 +556,6 @@ An override names an existing channel and is itself an exact
 This permits one multi-channel producer to preserve successful evidence beside
 an independently failed representation without inventing another settlement
 path or reducing a result to a state label.
-
-There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in the index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set.
 
 The consumer passes exactly this public context to every handler. Bundled
 adapters that also implement daemon-owned lifecycle behavior receive those

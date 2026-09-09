@@ -61,6 +61,8 @@ export interface SchemeHandler extends PluginAttributionSource {
     // address context prevents storage access before Core binds the principal.
     // null means no resolvable resource. An expected protocol/authority refusal
     // returns its exact non-success result instead of losing it to a generic miss.
+    // {§line-anchor-write-authority}: READ also checks model write eligibility here;
+    // resolution observes authority without mutation, acquisition, or proposals.
     resolveEntryAddress?(
         target: ParsedPath,
         ctx: SchemeAddressCtx,

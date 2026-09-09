@@ -1,6 +1,6 @@
 // {§send-undelivered-child-term}: workers concluding DURING the parent's generation are no
 // longer live, but their ambient event is newer than the parent's observation cursor and queued
-// for the NEXT packet. Both dispositions must preserve that completed-but-unobserved result.
+// for the next packet. Both dispositions must preserve that completed-but-unobserved result.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -28,7 +28,7 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }
 
-test("a bare WAIT over a just-concluded child continues until the result is delivered", async () => {
+test("waiting on a just-concluded child continues until the result is delivered", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
@@ -67,7 +67,7 @@ test("a child refused before its first turn still announces its death to the par
     } finally { await db.close(); }
 });
 
-test("a DONE over a just-concluded child is refused with the steer", async () => {
+test("completion over a just-concluded child is refused with the steer", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);

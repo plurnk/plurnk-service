@@ -174,21 +174,18 @@ interfaces remain remote protocol authority.
 | Operation | Target | Result |
 |---|---|---|
 | READ | `a2a://<agent>` | Materialize the discovered Agent Card. |
-| SEND `[200]` | `a2a://<agent>` | Send a new user Message. A direct Message creates one static `/messages/<id>` resource and returns `200`; a Task creates one live `/tasks/<id>` resource and returns `102`. |
-| SEND `[200]` | Exact `/tasks/<id>` resource | Continue the same non-terminal Task identity, including an input-required or auth-required Task. |
-| SEND `[499]` | Live Task resource | Cancel the ordinary local subscription, which requests cancellation of the remote Task. |
+| SEND | `a2a://<agent>` | Send a new user Message. A direct Message creates one static `/messages/<id>` resource and returns `200`; a Task creates one live `/tasks/<id>` resource and returns `102`. |
+| SEND | Exact `/tasks/<id>` resource | Continue the same non-terminal Task identity, including an input-required or auth-required Task. |
+| KILL | Live Task resource | Cancel the ordinary local subscription, which requests cancellation of the remote Task. |
 | READ | Exact Task or Artifact resource | Materialize the remote resource's current canonical snapshot. |
 
-§a2a-outbound-turn-rhythm A Task-backed call composes through ordinary model
-turns rather than an adapter-authored continuation. The directed disposition
-SEND is structurally the end of its emission ({§send-mid-reservation}), but its
-target makes `[200]` the A2A operation code rather than the local Loop
-disposition. Core therefore routes the request and naturally presents its
-`102` Task receipt in the next turn. If the model then chooses to wait, a
-pathless `SEND [202]` parks the Loop; subscription completion wakes that same
-Loop with the exact terminal READ, after which a pathless `SEND [200]` may
-conclude under {§wait-obligation-matrix}. No hidden adapter turn or synthetic
-local disposition fills any step.
+§a2a-outbound-turn-rhythm SEND delivers a Message; TASK independently declares
+the local Loop's inventory under {§task-inventory-intent}. A Task-backed SEND
+creates an ordinary live obligation. An `in_progress` inventory continues work;
+a `waiting` inventory joins that obligation. Subscription settlement wakes the
+same Loop with its terminal READ, and a later terminal inventory concludes
+under {§wait-obligation-matrix}. KILL cancels through that same subscription.
+No adapter-authored turn or alternate disposition path fills any step.
 
 Task-backed calls use Core's ordinary live-resource path: the scheme seeds one
 entry, opens one subscription, returns its exact address with `102`, and closes

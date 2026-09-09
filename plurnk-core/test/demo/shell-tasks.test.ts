@@ -47,7 +47,7 @@ const runShellDemo = async ({ label, prompt, expected, signal }: DemoOpts): Prom
                 console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 200)}`);
             }
         }
-        assert.equal(finalStatus, 200, "loop terminated on DONE");
+        assert.equal(finalStatus, 200, "loop completed successfully");
         assert.equal(hitMaxTurns, false, "didn't hit the safety cap");
         assert.match(lastContent, expected,
             `final reply contains the expected value; got: ${lastContent.slice(0, 200)}`);

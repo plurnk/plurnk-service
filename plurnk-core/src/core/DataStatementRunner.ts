@@ -18,7 +18,7 @@ import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddre
 export default class DataStatementRunner {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
-    readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
+    readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
     readonly #fixedEntryOwnerId: (manifest: SchemeManifest, ctx: PlurnkSchemeContext) => Promise<number | null>;
     readonly #prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
@@ -26,7 +26,7 @@ export default class DataStatementRunner {
     constructor({ schemes, liveSubscriptions, resolveDataEntryAddress, fixedEntryOwnerId, prepareDataRepresentation, failure }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
-        resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
+        resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
         fixedEntryOwnerId: (manifest: SchemeManifest, ctx: PlurnkSchemeContext) => Promise<number | null>;
         prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
@@ -140,6 +140,20 @@ export default class DataStatementRunner {
                 publishedChannel,
             },
         );
+        let publishesLineAnchors = manifest.lineAnchors === true;
+        if (statement.op === "READ" && !publishesLineAnchors && manifest.category === "data"
+            && manifest.textEditScopes === true && manifest.writableBy.includes("model") && statement.target !== null) {
+            // {§line-anchor-write-authority}: initialization's producer is not the model's write grant.
+            const writable = await this.#resolveDataEntryAddress({
+                target: statement.target, routedScheme: schemeName,
+                handler: handler as unknown as SchemeWithEntryAddress, manifest,
+                ctx: { ...ctx, writer: "model" }, access: "write",
+            });
+            if (writable.result !== null && writable.result.status >= 500) {
+                return Results.assertReadResult({ ...writable.result, content: null, mimetype: null, channel: null });
+            }
+            publishesLineAnchors = writable.address !== null;
+        }
         const coreRepresentation = coreRepresentationProvider(handler);
         if (statement.op === "READ" && coreRepresentation !== null) {
             const selectionNeutralTarget = statement.target?.kind === "url"
@@ -165,6 +179,7 @@ export default class DataStatementRunner {
             return Results.assertReadResult(await ReadProjector.project({
                 statement,
                 manifest,
+                publishesLineAnchors,
                 target,
                 identity: resolved.identity ?? target,
                 representation: resolved.representation,
@@ -214,6 +229,7 @@ export default class DataStatementRunner {
                         authority: resolved.authority,
                         pathname: resolved.pathname,
                     },
+                publishesLineAnchors,
                 // {§read-bytes} — a scheme that can supply the resource's bytes hands READ its source.
                 resolved === null
                     ? undefined

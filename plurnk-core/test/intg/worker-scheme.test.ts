@@ -570,6 +570,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
         assert.equal(done.content, lines.slice(0, 16).join("\n"));
+        assert.equal(Object.hasOwn(done, "lineAnchors"), false, "an actor's deliverable is not an editable entry");
         assert.deepEqual(done.range, {
             unit: "line",
             total: 20,
@@ -583,6 +584,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         }, ctx);
         assert.equal(tail.content, lines.slice(17).join("\n"));
         assert.equal(tail.mimetype, "text/markdown");
+        assert.equal(Object.hasOwn(tail, "lineAnchors"), false, "scoping an actor READ does not grant entry-edit authority");
 
         const bodyTarget = workerPath("worker-db");
         if (bodyTarget.kind !== "url") throw new Error("worker test target must be a URL");
@@ -630,7 +632,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-entity-not-editable");
         assert.equal(result.problem?.detail, "A worker entity is not an editable entry.");
-        assert.equal(result.problem?.recovery, "Use WORK or FORK to create a worker.");
+        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker://~/notes.md.");
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
@@ -1094,7 +1096,7 @@ test("an empty waiting inventory stays runnable in the same turn", async () => {
     } finally { await db.close(); }
 });
 
-test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — model EDIT, KILL, SEND[410] and COPY/MOVE into it are 403 while it stays readable", async () => {
+test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — model EDIT, KILL and COPY into it are 403 while it stays readable", async () => {
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();

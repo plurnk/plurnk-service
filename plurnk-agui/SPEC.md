@@ -105,7 +105,7 @@ sequence.
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
-  core vocabulary can't hold (fold state, tags, curation weight) stays on the row inside
+  core vocabulary can't hold (curation metadata, tags, coordinates) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
 - §agui-encrypted-reasoning **Encrypted reasoning projects only onto an entity
   AG-UI actually created.** Core supplies the exact normalized provider-detail
@@ -172,7 +172,7 @@ ignore the extension; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
-  carrying the complete client-facing row (fold state, durable tags, curation weight, coordinate)
+  carrying the complete client-facing row (curation metadata, durable tags, coordinate)
   alongside its core projection. TASK `tx.body` follows {§agui-plan-activity}; rich clients
   (TUI/nvim) never receive the internal Plan extension. Generic clients ignore this metadata
   channel.

@@ -1,5 +1,5 @@
 // {§worker-loop-lifecycle} topology join — a child worker finishing is a WAKE EDGE for a parent that parked
-// (WAIT) awaiting it. Without it, a parent that spawns work and hibernates would dead-park.
+// awaiting it. Without it, a parent that spawns work and hibernates would dead-park.
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
 
 import test from "node:test";

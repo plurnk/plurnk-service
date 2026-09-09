@@ -45,7 +45,7 @@ test("live exec: model emits a sh fence and the spawn captures stdout", async (t
         assert.equal(hitMaxTurns, false);
 
         // Verify a real exec-output entry was created and captured the probe string.
-        // {§exec}: EXEC[sh] output persists under the runtime-tag scheme ("sh"),
+        // {§exec}: shell output persists under the runtime-tag scheme ("sh"),
         // addressed sh:///<loop>/<turn>/<seq>/EXEC — NOT scheme="exec" (exec:// is process-control only).
         const execEntryCount = (await s.db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
             workspace_id: s.workspaceId, scheme: "sh",

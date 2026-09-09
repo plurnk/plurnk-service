@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 import { parsePath } from "@plurnk/plurnk-contracts";
 import { readStmt } from "./_dsl.ts";
@@ -14,14 +14,17 @@ test("{§binary-parity} public entry writes retain bytes for ordinary byte READs
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-bytes-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
         const ownerId = await Owner.commonsId(db, workspaceId);
-        const caps = new DbEntryCaps(makeSchemeCtx({ db, workspaceId }), "notes", schemeManifest("notes"), "", ownerId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        class Notes { static manifest = schemeManifest("notes"); }
+        const caps = new DbEntryCaps(ctx, "notes", Notes.manifest, "", ownerId);
         const bytes = Uint8Array.from([0, 255, 128, 65]);
         const written = await caps.write("/binary", {
             channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } },
         });
         assert.equal(written.status, 201);
-        const read = await caps.operations.read(readStmt(parsePath("notes:///binary"), { marks: [1, -1] }));
+        const read = await lookThroughScheme("notes", new Notes(), readStmt(parsePath("notes:///binary"), { marks: [1, -1] }), ctx);
         assert.equal(read.status, 200);
         assert.equal(read.content, "00\nff\n80\n41");
         assert.equal((await caps.read("/binary")).entry?.channels.body.mimetype, "application/octet-stream");

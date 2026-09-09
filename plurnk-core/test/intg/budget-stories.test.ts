@@ -24,8 +24,8 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 // A turn that writes a fat entry then READS it back (the read RESULT renders into
 // the log — that is the budget pressure) then closes. The EDIT body is free; the
 // READ render is not. Repeated n times for multi-turn accumulation.
-// A heavy read turn — EDIT a fat entry then READ it back; the READ appears in the NEXT turn's packet
-// (that's what makes the next turn fat). It CONTINUES (NEXT) — the result is for the next turn
+// A heavy read turn — EDIT a fat entry then READ it back; the READ appears in the next turn's packet
+// (that's what makes the next turn fat). It continues — the result is for the next turn
 // and therefore cannot be observed in the emission that requested it.
 const fatReads = (chars: number, n = 1): MockResponse[] =>
     Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), dispositionStmt("in_progress", "ok")]));
@@ -90,9 +90,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
-        // A heavy DELIVERING turn (fat EDIT + terminal DONE, no same-turn READ) — under a wide
-        // ceiling it delivers and the packet reads ≤ 100%.
-        // {§send-premature-terminate} — the edit's receipt lands next packet; a continuing SEND carries the delivery story.
+        // A large EDIT with in-progress inventory fits under the wide ceiling.
         const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), dispositionStmt("in_progress", "ok")])];
         const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 102, "delivered");

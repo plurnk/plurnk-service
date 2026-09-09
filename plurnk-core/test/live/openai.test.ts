@@ -13,11 +13,8 @@ import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 test("live OpenAI: a multi-turn loop consumes a next-packet READ result and concludes with it", async (t) => {
     const s = await liveWorkspace({ name: `live-loop-${crypto.randomUUID()}` });
     try {
-        // The multi-turn mechanics test, epistemically airtight: a RANDOM secret the model cannot
-        // know or infer from the packet, retrievable only by READ — whose result arrives on the
-        // NEXT turn (under rails the grammar itself makes a same-turn conclude unsampleable after a
-        // retrieval). So a correct conclusion PROVES the loop: turn N retrieves, turn N+1 consumes.
-        // One natural sentence, no ops spelled, no turn choreography (the contract-tier doctrine).
+        // The random secret requires retrieval and consumption of the next packet's result.
+        // Completion after actions is enforced by the runtime, not by the grammar.
         const secret = crypto.randomUUID().slice(0, 8);
         await seedEntry(s.db, s.workspaceId, { pathname: "vault/code.md", content: `the access code is ${secret}` });
         const userPrompt = "What is the access code stored at worker:///vault/code.md? Tell me in one sentence.";

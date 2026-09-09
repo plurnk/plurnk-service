@@ -111,7 +111,7 @@ test("{§worker-delegation-inherits-policy}: a fresh injection persists delegate
 });
 
 test("loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
-    // A fire-and-forget exec outlives the loop that spawned it (NEXT keeps
+    // A fire-and-forget exec outlives the loop that spawned it (in_progress keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
     // must ACTUALLY terminate it — proven by the exec stream concluding 499,
     // not merely cancelled=true. The wall clock used to hide a broken kill
@@ -285,7 +285,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which
             // consumes the injected prompt and ends cleanly.
             await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
-            await firstPromise;  // resolves at the 100 accept; loop 1 finishes async (turn 2 → DONE)
+            await firstPromise;  // resolves at the 100 accept; loop 1 completes asynchronously on turn 2
 
             // Exactly one loop ran for the worker: the second call injected, it did not spin up a
             // parallel drain. Wait for the single termination (loop.run no longer blocks to it).
@@ -454,7 +454,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
     // Edge: next-turn prompts injected into a loop that then terminates before
     // reaching that turn would be silently lost. Forced deterministically: hold
     // loop 1 at a proposal (status=102, turn 1), inject two turn-2 frames, then
-    // let turn 1 emit DONE so loop 1 ends and turn 2 never runs. The drain
+    // let turn 1 complete so loop 1 ends and turn 2 never runs. The drain
     // must promote the orphaned frames to a fresh loop that surfaces them — so two
     // loops terminate for the worker, not one (it would be one if the wake were
     // lost; no other op here spawns a loop — the EXEC proposal is rejected).
@@ -497,7 +497,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             assert.ok(r3.result !== undefined, JSON.stringify(r3.error));
             assert.equal((r3.result as { action: string }).action, "injected_next_turn", JSON.stringify(r3.result));
 
-            // Release the proposal → turn 1 emits DONE → loop 1 ends; the
+            // Release the proposal → turn 1 completes → loop 1 ends; the
             // injected turn 2 never runs (it's now orphaned).
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
             const first = await firstPromise;

@@ -132,6 +132,10 @@ test("Manifest.of admits only declared top-level fields", () => {
         /unknown.*scope/,
     );
     assert.throws(
+        () => Manifest.of({ manifest: { ...ownerManifest, foldedByDefault: true } }, "owner"),
+        /unknown field 'foldedByDefault'/,
+    );
+    assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, glyph: "" } }, "owner"),
         /glyph.*non-empty/,
     );

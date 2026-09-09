@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { dispositionStmt } from "./_dsl.ts";
 
-// Mock can't return `meta`; wrap it so the turn still concludes (DONE) but the
+// Mock can't return `meta`; wrap it so the turn still concludes but the
 // response carries an opaque blob — exactly what a real hosted provider does.
 class MetaProvider implements Provider {
     #base: Mock;

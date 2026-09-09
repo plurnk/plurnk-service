@@ -18,7 +18,6 @@ import {
     type EntryStorageReadResult,
     type EntryStorageWriteResult,
     type SchemeResult,
-    type EntryReadResult,
     type SchemeCtx,
     type SubscriptionHandle,
     type EntryCaps,
@@ -83,7 +82,6 @@ interface CtxOverrides {
     readonly read?: (pathname: string) => Promise<EntryStorageReadResult>;
     readonly write?: (pathname: string, entry: EntryData) => Promise<EntryStorageWriteResult>;
     readonly delete?: (pathname: string) => Promise<SchemeResult>;
-    readonly operationRead?: (statement: ReadStatement) => Promise<EntryReadResult>;
     readonly projection?: ProjectionCaps;
     readonly signal?: AbortSignal;
 }
@@ -101,7 +99,6 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
     let observedStorageRead: string | null = null;
-    let observedRead: ReadStatement | null = null;
     let storedEntry = priorEntry;
     const seq: string[] = []; // {§http-lifecycle} operation order
     const localAbort = new AbortController();
@@ -109,11 +106,6 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     const entries: EntryCaps = {
         operations: {
             async editBatch() { return { status: 501, entryId: null, channel: null }; },
-            async read(statement) {
-                observedRead = statement;
-                if (overrides.operationRead !== undefined) return overrides.operationRead(statement);
-                return { status: 200, content: "selected lines", mimetype: "text/markdown", channel: "body" };
-            },
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0, matchingPathCount: 0, matchLocationCount: 0 }; },
             async send() { return { status: 501 }; },
         },
@@ -189,7 +181,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     };
     return {
         ctx,
-        inspect: () => ({ chunks, opened, closed, deleted, wrote, storedEntry, observedStorageRead, observedRead, seq }),
+        inspect: () => ({ chunks, opened, closed, deleted, wrote, storedEntry, observedStorageRead, seq }),
         forceCancel: () => opened?.handle.cancel(),
         awaitClosed: () => settled.promise,
     };
@@ -849,7 +841,7 @@ test("preparation is line-scope-blind and leaves selection to core", async () =>
         const statement = readStmt(urlTarget("https://example.com/x", "/x"), { marks: [2, 4] });
         const result = await prepareRepresentation(new Http(), statement, ctx);
         assert.equal(result.status, 200);
-        assert.equal(inspect().observedRead, null, "the producer never receives or applies text scope");
+        assert.equal(inspect().storedEntry?.channels.body.content, "complete page", "preparation preserves the complete representation");
     });
     assert.equal(fetched, false, "a range observation never re-enters the network path");
     assert.equal(inspect().wrote, null, "the materialized entry is not replaced with a stream seed");
@@ -868,45 +860,24 @@ test("preparation is channel-blind even when an auxiliary channel was authored",
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
         assert.equal((await prepareRepresentation(new Http(), statement, ctx)).status, 200);
     });
-    assert.equal(inspect().observedRead, null);
+    assert.equal(inspect().storedEntry?.channels.header.content, "HTTP 204 No Content\ncontent-type: text/plain");
     assert.equal(inspect().observedStorageRead, "/x");
     assert.equal(fetched, false, "a scoped auxiliary-channel observation never enters the network path");
 });
 
-test("preparation cannot observe a core selection failure", async () => {
-    const failure = Results.failure(
-        "schemes:slicer",
-        "range-not-satisfiable",
-        416,
-        "The requested line range is outside the selected body.",
-        { content: null, mimetype: null, channel: null },
-        {
-            stage: "selection",
-            recovery: "Request a range within the reported line bounds.",
-            retryable: false,
-        },
-    ) as EntryReadResult;
-    const { ctx } = makeCtx(
-        priorEntry("complete page", "text/markdown", ""),
-        { operationRead: async () => failure },
-    );
+test("preparation leaves out-of-range selection to core", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("complete page", "text/markdown", ""));
     const result = await prepareRepresentation(new Http(),
         readStmt(urlTarget("https://example.com/x", "/x"), { marks: [30, 100] }),
         ctx,
     );
     assert.equal(result.status, 200);
+    assert.equal(inspect().storedEntry?.channels.body.content, "complete page");
+    assert.equal(inspect().wrote, null);
 });
 
 test("channel selection cannot suppress representation acquisition", async () => {
-    const failure = Results.failure(
-        "scheme:http",
-        "entry-not-found",
-        404,
-        "No entry exists at https://example.com/x.",
-        { content: null, mimetype: null, channel: "body" },
-        { retryable: false },
-    ) as EntryReadResult;
-    const { ctx, inspect } = makeCtx(null, { operationRead: async () => failure });
+    const { ctx, inspect } = makeCtx();
     let fetched = false;
     await withFetch(async () => {
         fetched = true;
@@ -920,6 +891,7 @@ test("channel selection cannot suppress representation acquisition", async () =>
     });
     assert.equal(fetched, true);
     assert.equal(inspect().observedStorageRead, "/x");
+    assert.equal(inspect().storedEntry?.channels.body.content, "complete");
     assert.equal(inspect().opened, null);
 });
 
@@ -1757,7 +1729,7 @@ test("{§channel-selection-missing} an absent HTTP response channel is a 404 wit
     assert.equal(inspect().opened, null);
 });
 
-test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", async () => {
+test("KILL {remote} sends DELETE with the authored precondition", async () => {
     const { ctx } = makeCtx();
     let seenMethod = "", seenVersion = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {

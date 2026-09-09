@@ -1694,8 +1694,26 @@ Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts`'s `PlurnkState
 ### §line-anchors Text line anchors
 
 A scheme declaring `lineAnchors: true`, or `textEditScopes: true` with model
-write authority, publishes the contracts-owned {§text-line-anchor-syntax}.
-Model-writable `textEditScopes` implies anchors; `lineAnchors` alone makes no EDIT claim. For canonical model-facing
+write authority for the addressed resource, publishes the contracts-owned
+{§text-line-anchor-syntax}. `lineAnchors` alone makes no EDIT claim.
+
+§line-anchor-write-authority READ publication and mutation share
+{§entry-address-resolution}: implied EDIT anchors require the scheme's model
+write grant and successful model `write` resolution of that resource. Generated
+references, worker-actor deliverables, named-worker read-only addresses, and read-only file members remain
+numerically addressable without advertising EDIT anchors. This decision is
+independent of the READ producer: initialization cannot advertise its own
+harness-only write authority to the model. An authorization refusal suppresses
+anchors, not readable content; an internal failure is not a read-only verdict.
+Resource authority does not decide whether an absent target may be created or
+deleted; those operation-specific preconditions retain their own errors.
+Proposals, content/type validation, and concurrent-write checks still govern
+actual mutation. EDIT authorizes the addressed resource before validating its
+coordinates and derives its internal anchors from canonical content and identity,
+not from whether a model-facing READ publishes them. Explicit log anchors remain
+available for curation without granting source EDIT.
+
+For canonical model-facing
 resource identity `R`, configured non-negative neighbor count `C`, ordered
 content array `W` containing that line and up to `C` complete lines on either
 side (all excluding separators), and the line's offset `O` within `W`
@@ -2372,7 +2390,7 @@ dispatch admission, and pull-document materialization. Core performs no
 protocol discovery while building a packet and has no alternate tool
 catalogue.
 
-Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under ```` ```EXEC ```` or ```` ```EXEC (sh) ````. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
+Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands in a `sh` executable fence. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
 
 **Timeout and poll — `<T,P>` on the `<L>` slot (grammar 0.74.20).** EXEC
 repurposes the line-marker slot as `<timeout, poll>` in **minutes** — agentic
@@ -3779,7 +3797,7 @@ and never re-fetch a match.
   `engine:membership` / `git_inspection_refused` notice names the key, once per
   workspace until it changes or clears. User- and model-requested Git commands
   stay on their explicit execution path.
-- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is ```` ```EXEC (sh) ````'s job, not the file scheme's.
+- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Shell execution reaches beyond file membership; the file scheme does not.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
 **The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
@@ -4255,13 +4273,15 @@ while the separate `notices` section displays transient observations. The two
 retain distinct contracts and lifetimes.
 
 - §operation-result-uniform-error-channel **One uniform error channel within an
-  accepted turn.** Every operation or engine-rail failure — budget overflow,
-  max-commands, and the idle/premature steers — is a `log_entries` row with
+  accepted turn.** Every operation or engine-rail failure — including
+  max-commands and premature completion — is a `log_entries` row with
   `status_rx ≥ 400` and an RFC 9457 Problem Details operation result in `rx`.
   There is no per-category handling or bespoke ephemeral relationship. The
   `errors` section is a derived index over those rows from the current and
   immediately prior turn: one `{status, path}` JSON object per row,
   nothing else. The Problem lives on the curatable row and is READ via the path.
+  Withheld output preserves its original result ({§context-output-receipt});
+  an unfittable retained context fails before inference ({§context-output-hard-413}).
 - §log-row-self-explains **Every ≥400 pointer names a record that states its
   why.** A model-operation failure is the model's own operation result; its
   Problem Details `instance` is that row's `log:///` URI and packet wire renders
@@ -4288,7 +4308,6 @@ retain distinct contracts and lifetimes.
 | action failure | the failed op's own row; the owning scheme supplies Problem Details | 4xx/5xx |
 | provider input capacity | `op='error'`, origin `_plurnk`, source `provider`; exact provider-owned `capacity-exceeded` Problem Details | 413 |
 | max commands exceeded | `op='error'`, origin `_plurnk`, source `rail`; `engine/rail/max-commands-exceeded` Problem Details | 429 |
-| idle turn | `op='error'`, origin `_plurnk`, source `rail`; `engine/rail/idle-turn` Problem Details | 409 |
 
 | notice `kind` | Source | Position |
 |---|---|---|
@@ -4802,7 +4821,8 @@ Text scope meaning does not vary by mimetype.
 §render-rule-line-navigable-prefix Every textual content body with a source
 `startLine` renders with a coordinate prefix on each physical line, independent
 of mimetype. A successful exact READ whose active scheme declares
-`lineAnchors: true`, or `textEditScopes: true` with model write authority, supplies `@hash N:` with one
+`lineAnchors: true`, or `textEditScopes: true` with addressed-resource model write authority
+under {§line-anchor-write-authority}, supplies `@hash N:` with one
 or more ASCII spaces before `N` under
 {§line-anchors}; generated FIND rows render a result ordinal left-padded to the
 complete result total's width; every other body renders `N:` left-padded to its own largest line number's width, so every body keeps one stable content column. JSON, XML, and HTML are therefore just as

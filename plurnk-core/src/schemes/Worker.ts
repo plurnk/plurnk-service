@@ -101,6 +101,11 @@ export default class Worker extends CoreSchemeAdapterBase {
 
     static async #entryPrincipal(authority: string, pathname: string, ctx: PlurnkSchemeContext, access: "read" | "write"):
     Promise<{ ownerId: number } | SchemeResultBase> {
+        if (access === "write" && pathname === "") return Results.failure(
+            "scheme:worker", "worker-entity-not-editable", 400,
+            "A worker entity is not an editable entry.", {},
+            { recovery: "EDIT requires an entry path, such as worker://~/notes.md.", retryable: false },
+        );
         const resolved = await Worker.#resolveAuthority(authority, ctx);
         if (resolved === null) return Results.failure(
             "scheme:worker", "worker-not-found", 404,
@@ -140,7 +145,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // The authority-only form addresses the Worker actor, not its private
         // entries. Bind its principal without resolving an entry;
         // each control operation owns its own visibility and authorization.
-        if (pathname === "") {
+        if (pathname === "" && access === "read") {
             if (authority === "") {
                 return { authority: "", pathname, ownerId: await Owner.commonsId(this.coreContext(ctx).db, ctx.workspaceId) };
             }
@@ -327,20 +332,6 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         const entryPath = Worker.#entryPath(statement.target);
-
-        // The worker ENTITY (path-absent worker://<name>) is not EDITable — EDIT is entry only
-        // WORK on worker://<name> spawns a worker; FORK on that address forks a branch.
-        if (entryPath === "") {
-            return failure(
-                "worker-entity-not-editable",
-                400,
-                "A worker entity is not an editable entry.",
-                {
-                    recovery: "Use WORK or FORK to create a worker.",
-                    retryable: false,
-                },
-            );
-        }
 
         const resolved = await Worker.#entryPrincipal(authority, entryPath, core, "write");
         if ("status" in resolved) return { ...resolved, entryId: null, channel: null };

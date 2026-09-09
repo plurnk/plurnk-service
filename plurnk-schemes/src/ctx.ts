@@ -10,7 +10,6 @@ import type {
     ClientInteractionResolution,
     FindStatement,
     RangeExtent,
-    ReadStatement,
     SendStatement,
 } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
@@ -118,7 +117,6 @@ export interface EntryFindResult extends SchemeResult {
 
 export interface EntryOperationCaps {
     editBatch(statements: readonly ResolvedEditStatement[]): Promise<EntryEditResult>;
-    read(statement: ReadStatement): Promise<EntryReadResult>;
     find(statement: FindStatement): Promise<EntryFindResult>;
     send(statement: SendStatement): Promise<SchemeResult>;
 }
@@ -154,13 +152,6 @@ export interface ChannelCaps {
     replace(pathname: string, channel: string, content: string): Promise<SchemeResult>;
     setState(pathname: string, channel: string, state: ChannelState): Promise<SchemeResult>;
 }
-
-// NOTE: there is no `visibility` capability. Entry-level SHOW/HIDE no longer
-// exists in plurnk-service — the `visibility` table was removed in the
-// index/visibility teardown; SHOW/HIDE now collapse/expand `log://` rows, a
-// log-side concern with no entry-visibility for a scheme to set ({§capability-ctx}).
-// If a sibling ever needs to influence what the model
-// retains, that's a log capability, not an entry one — designed if/when forced.
 
 // ── notify ───────────────────────────────────────────────────────────────
 // Out-of-band, between-turn signal to clients — today's `streamEventNotify`

@@ -1,5 +1,5 @@
 // {§effect-policy-tunable} — the deployment override routes an otherwise-auto
-// EXEC through the human gate: with `pure:propose`, an inline EXEC[jq] (whose
+// EXEC through the human gate: with `pure:propose`, an inline jq invocation (whose
 // default admission is auto) lands in the proposed state and completes only
 // after an explicit accept.
 

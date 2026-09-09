@@ -37,10 +37,9 @@ const response = (
     capacity: ProviderResponse["capacity"],
     grammar?: string,
 ): ProviderResponse => {
-    const turn = content.startsWith("```PLAN") ? content : `${content}`;
     return {
         assistant: {
-            content: turn,
+            content,
             reasoning: null,
             finishReason: "stop",
             model: "controlled-settlement",
@@ -50,7 +49,7 @@ const response = (
         capacity,
         ...(grammar === undefined
             ? {}
-            : { grammarEvidence: { input: turn, contentStart: 0, transported: true } }),
+            : { grammarEvidence: { input: content, contentStart: 0, transported: true } }),
     };
 };
 

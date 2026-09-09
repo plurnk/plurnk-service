@@ -1,5 +1,5 @@
 // {§exec-timeout} — `<-1>` outlives the loop (#494): a detached spawn survives its loop's own 200,
-// is no obligation for that TERM, and still ends with the daemon.
+// is no obligation for that completion, and still ends with the daemon.
 
 import test from "node:test";
 import assert from "node:assert/strict";

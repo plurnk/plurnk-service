@@ -26,7 +26,7 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves its own output", async () => {
+test("fan-out: two sisters execute jq at the same coordinate; each READ resolves its own output", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();

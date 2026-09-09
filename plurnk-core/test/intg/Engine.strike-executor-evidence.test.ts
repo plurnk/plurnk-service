@@ -1,7 +1,7 @@
 // {§engine-rails} #425 F1 — a red test suite is evidence, never a strike. run14's shape:
 // every turn runs a command that exits 1; the engine materializes each failure as a
 // completion READ[500] carrying executor identity. Under the shipped MAX_STRIKES the
-// loop must run through all of them and conclude on the model's own DONE.
+// loop must run through all of them and conclude on the model's own completed inventory.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -27,7 +27,7 @@ echo attempt-${i} >&2; exit 1
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "strike-evidence" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "make the tests pass", policy: { proposals: "accept" } });
-            assert.equal(finalStatus, 200, `the loop concludes on the model's DONE after ${failing} red runs, never the engine's 500`);
+            assert.equal(finalStatus, 200, `the loop concludes on the model's completed inventory after ${failing} red runs, never the engine's 500`);
             assert.equal(turnIds?.length, failing + 2, "initialization + every failing turn + the concluding turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ loop_id: 1 });
             const evidence = rows.filter((r) => r.op === "READ" && r.origin === "_plurnk" && r.status_rx === 500);

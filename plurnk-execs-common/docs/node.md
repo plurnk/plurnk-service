@@ -2,10 +2,10 @@
 
 A JavaScript snippet, run via `node -e`. Node is the daemon's own runtime, so it's always available (no PATH probe).
 
-```node <!-- the body is the snippet -->
+````node <!-- the body is the snippet -->
 const os = require("node:os");
 console.log(JSON.stringify({ platform: os.platform(), cpus: os.cpus().length }));
-```
+````
 
 ## Environment
 
@@ -26,7 +26,7 @@ with its stack on stderr.
 Runs in the workspace project root by default, or the daemon's own cwd in a
 workspace without one; a `{cwd=<directory>}` block on the opening fence line selects
 another. The target is a script, never a command or a directory:
-```` ```node (tool.js) ```` runs that JavaScript file and receives the body as
+````` ````node (tool.js) ````` runs that JavaScript file and receives the body as
 stdin. `{args=["--format","json"]}` passes literal script arguments, also for
 `worker://` and `skill://` targets. Relative imports resolve from the script;
 ordinary relative filesystem paths resolve from cwd. The receipt names cwd

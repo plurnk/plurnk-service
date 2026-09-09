@@ -37,19 +37,19 @@ selects the working directory. Script arguments use `{args=["arg",...]}`;
 each string is passed literally, without shell expansion ({§executor-metadata}).
 These options work for local, Worker, and Skill script targets alike.
 
-```sh (./deploy.sh)
+````sh (./deploy.sh)
 yes
 yes
 no
-```
+````
 
-```python3 (transform.py) {args=["--format","json"]}
+````python3 (transform.py) {args=["--format","json"]}
 3
 1
 4
 1
 5
-```
+````
 
 The first operation answers a shell script's prompts through stdin. The second
 feeds records to a Python script.

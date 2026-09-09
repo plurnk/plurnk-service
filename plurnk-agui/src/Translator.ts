@@ -147,7 +147,7 @@ export default class Translator {
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-row-channel} — the complete client-facing row rides plurnk.row alongside the core projection:
-        // fold state, durable tags, curation weight, coordinates — everything the TUI/nvim render that
+        // curation metadata, durable tags, coordinates — everything the TUI/nvim render that
         // the core vocabulary can't hold. TASK bodies use the same ACP projection as PLAN activity;
         // native extensions do not cross this standards boundary. Rich clients render from
         // plurnk.row; generic clients never see the difference.

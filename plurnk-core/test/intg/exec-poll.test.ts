@@ -1,4 +1,4 @@
-// grammar 0.74.20 — EXEC `<T,P>` poll cadence. While a loop hibernates (WAIT) with a polled
+// EXEC `<T,P>` poll cadence. While a loop hibernates with a polled
 // stream, the daemon wakes it every P MINUTES to inspect progress ({§exec-poll}). Proof: a 1-minute
 // poll resumes the parked loop before its 90s spawn would conclude — and a non-polled 202 would just
 // hang. Own file: real subprocess + timing, process-isolated.

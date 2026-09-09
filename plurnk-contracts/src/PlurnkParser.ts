@@ -47,7 +47,7 @@ export default class PlurnkParser {
 
     static frame(header: string, body: string | null): string {
         const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
-        const fence = "`".repeat(Math.max(3, longest + 1));
+        const fence = "`".repeat(Math.max(4, longest + 1));
         return body === null ? `${fence}${header}${fence}` : `${fence}${header}\n${body}\n${fence}`;
     }
 

@@ -63,7 +63,7 @@ test("execution exhaustion rules a legible 504 loop_timeout terminal", async (t)
     }
 });
 
-test("{§operator-config-loop-timeout}: WAIT preserves one execution allowance across engine reconstruction", async (t) => {
+test("{§operator-config-loop-timeout}: waiting preserves one execution allowance across engine reconstruction", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
     const originalTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
@@ -99,7 +99,7 @@ test("{§operator-config-loop-timeout}: WAIT preserves one execution allowance a
         t.mock.timers.tick(19_999);
         assert.equal(blocked.signal?.aborted, false, "the remaining allowance is available to useful work");
         t.mock.timers.tick(1);
-        assert.equal(blocked.signal?.aborted, true, "40s before WAIT plus 20s after WAIT exhaust the original 60s allowance");
+        assert.equal(blocked.signal?.aborted, true, "40s before waiting plus 20s after resumption exhaust the original 60s allowance");
         const result = await resumed;
         assert.equal(result.reason, "loop_timeout");
         assert.equal(result.result.status, 504);

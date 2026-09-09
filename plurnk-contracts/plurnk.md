@@ -7,70 +7,70 @@
 
 ### FIND - List matching results by pattern search.
 
-```FIND (target or glob) <result range>?
+````FIND (target or glob) <result range>?
 filter pattern?
-```
+````
 
 ### READ - Read content from files, entries, or streams.
 
-```READ (path) <text region>?```
+````READ (path) <text region>?````
 
 ### EDIT - Edit, replace, or delete text in a file or entry.
 
-```EDIT (path) <text region>?
+````EDIT (path) <text region>?
 literal replacement text
-```
+````
 
 > [!CAUTION]
 > An unscoped EDIT only creates a new file or entry.
 
 ### COPY - Copy files, entries, streams, or text regions.
 
-```COPY (source) <source text region>? (destination) <destination text region>?```
+````COPY (source) <source text region>? (destination) <destination text region>?````
 
 ### MOVE - Move files, entries, streams, or text regions.
 
-```MOVE (source) <source text region>? (destination) <destination text region>?```
+````MOVE (source) <source text region>? (destination) <destination text region>?````
 
 ### SEND - Message workers or endpoints.
 
-```SEND (recipient)
+````SEND (recipient)
 message
-```
+````
 
 > [!NOTE]
 > A SEND without a recipient is a response to the Active Prompt.
 
 ### WORK - deploy a child worker (fresh log)
 
-```WORK (worker://name)
+````WORK (worker://name)
 prompt
-```
+````
 
 ### FORK - deploy a forked worker (forked log)
 
-```FORK (worker://name)
+````FORK (worker://name)
 prompt
-```
+````
 
 ### BARE - Deploy an isolated inference query (no log).
 
-```BARE (path)?
+````BARE (path)?
 prompt
-```
+````
 
 ### KILL - Delete or terminate.
 
-```KILL (target) <range or region>?
+````KILL (target) <range or region>?
 filter pattern?
-```
+````
 
-* ```KILL (worker://~/notes.md)``` without a scope deletes an entry.
-* ```KILL (src/app.js) <@zyxwv>``` removes one line by hash anchor.
-* ```KILL (sh:///1/2/3/EXEC)``` stops a running command.
-* ```KILL (worker://recheck)``` terminates a worker.
-* ```KILL (log:///1/[1-7]/*/{TASK,READ})``` removes matching log items.
-* ```KILL (log:///**/READ) <17,-1>``` trims each item's log lines from 17 on.
+* ````KILL (worker://~/notes.md)```` without a scope deletes an entry.
+* ````KILL (src/app.js) <@zyxwv>```` removes one line by hash anchor.
+* ````KILL (sh:///1/2/3/EXEC)```` stops a running command.
+* ````KILL (worker://recheck)```` terminates a worker.
+* ````KILL (log:///1/[1-7]/*/{TASK,READ})```` removes matching log items.
+* ````KILL (log:///**/READ) <17,-1>```` trims each item's log lines from 17 on.
 
 > [!TIP]
 > Log curation must target `log:///` items, not their target source paths.
@@ -80,9 +80,9 @@ filter pattern?
 
 ### TASK - End the turn with the current task inventory.
 
-```TASK
+````TASK
 [{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
-```
+````
 
 * `pending`: Task is blocked until another task it depends on is `completed`.
 * `waiting`: Task is awaiting an ongoing stream, deployed worker, or external event.

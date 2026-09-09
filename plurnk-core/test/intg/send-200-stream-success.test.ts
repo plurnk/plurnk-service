@@ -77,7 +77,7 @@ test("{§send-final-strike-retrieval}: successful EXEC receipts retain the compl
     }));
 });
 
-test("a failed same-turn stream still refuses DONE without echoing its command", async () => {
+test("a failed same-turn stream still refuses completion without echoing its command", async () => {
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [

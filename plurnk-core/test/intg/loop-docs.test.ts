@@ -44,7 +44,7 @@ test("{§env-delta-child-termination} generated child documentation is durable w
         const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0]!.id });
         assert.ok(source.some(({ op, status_rx }) => op === "EDIT" && status_rx === 201), "the source operation receipt remains durable");
         assert.equal(await db.engine_worker_has_undelivered_child_term.get({ worker_id: parentId }), undefined,
-            "housekeeping is not an unobserved child result that can advance WAIT or refuse TERM");
+            "housekeeping is not an unobserved child result that can wake waiting work or refuse completion");
 
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] }),
@@ -171,7 +171,7 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
             pathname: "/_plurnk/plurnk/sh.md", scheme: "worker", name: "body",
         });
         assert.ok(doc, "the installed shell's documentation reaches the worker");
-        const examples = [...doc.content.matchAll(/^```READ[^\n]*```$/gm)];
+        const examples = [...doc.content.matchAll(/^````READ[^\n]*````$/gm)];
         const reads = examples.flatMap(([source]) => {
             const parsed = PlurnkParser.parseStatements(source);
             assert.equal(parsed.unparsedTail, undefined, source);

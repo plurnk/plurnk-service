@@ -51,9 +51,6 @@ const makeCtx = () => {
             async editBatch() {
                 return failure("operation-not-implemented", 501, "EDIT is not implemented.", { entryId: null, channel: null });
             },
-            async read() {
-                return failure("operation-not-implemented", 501, "READ is not implemented.", { content: null, mimetype: null, channel: null });
-            },
             async find() {
                 return failure("operation-not-implemented", 501, "FIND is not implemented.", {
                     content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,

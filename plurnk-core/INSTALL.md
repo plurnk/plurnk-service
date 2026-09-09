@@ -81,7 +81,7 @@ Plurnk's own skill uses the same discovery, READ, and per-Worker enablement as
 installed skills. It is not copied into a universal root.
 
 Clients use `worker.skills.{list,discover,add,enable,disable,remove}`; models use
-the generated ```` ```skills ```` interface. `discover` returns candidates without
+the generated `skills` executor. `discover` returns candidates without
 installation. `add` installs through the standard skills CLI into the chosen
 project or global scope; `remove` uninstalls a Worker-origin installation.
 Service-provided entries can be disabled, not uninstalled through that action.
@@ -90,4 +90,4 @@ An external installer changes the available catalog at the next turn.
 Project installation is local to that project. Global installation intentionally
 shares the skill with other compatible agents using `~/.agents/skills/`.
 Supporting files stay in their original tree, including script siblings.
-READ is not execution, and EXEC still follows ordinary proposal policy.
+READ is not execution; running a script follows ordinary proposal policy.

@@ -28,7 +28,7 @@ const BASE62 = cls([R("0", "9"), R("A", "Z"), R("a", "z")]);
 const WS = cls(C(" \t\r\n"));
 const CONTROL_RANGES: Array<[number, number]> = [[0x00, 0x08], [0x0B, 0x0C], [0x0E, 0x1F], [0x7F, 0x7F]];
 const LINE_TERMINATORS: Array<[number, number]> = [[0x0A, 0x0A], [0x0D, 0x0D]];
-const FENCE_LENGTHS = [3, 4] as const;
+const FENCE_LENGTHS = [3, 4, 5] as const;
 
 const bodyOther = (excluded: string, singleLine = false): GItem =>
     cls([...CONTROL_RANGES, ...(singleLine ? LINE_TERMINATORS : []), ...C(excluded)], true);

@@ -17,10 +17,10 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        "```FIND (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->```",
-        "```TASK",
+        "````FIND (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->````",
+        "````TASK",
         "[{\"content\":\"Address the prompt.\",\"status\":\"in_progress\"}]",
-        "```",
+        "````",
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "TASK"]);

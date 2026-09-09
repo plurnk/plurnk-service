@@ -182,7 +182,7 @@ const mid = (op: string, slots = "", body?: string): string => {
 // {§turn-disposition}
 const STATE: Record<number, string> = { 102: "in_progress", 200: "completed", 202: "waiting", 499: "failed" };
 const terminal = (code: number, body: string, slots = ""): string =>
-    PlurnkParser.frame("TASK" + slots, JSON.stringify([{ content: body, status: STATE[code] }]));
+    mid("TASK", slots, JSON.stringify([{ content: body, status: STATE[code] }])).trimEnd();
 const turn = (operations: string[], code = 200, sendBody = "done", sendSlots = ""): string =>
     `${operations.join("")}${terminal(code, sendBody, sendSlots)}`;
 
@@ -678,10 +678,11 @@ test("GBNF TASK body is required and names no recipient", () => {
     assert.equal(derivesTurn(`${PlurnkParser.frame("TASK", "")}`), false);
 });
 
-test("GBNF admits matching three/four fences and comma scopes while ANTLR accepts longer fences and dash scopes", () => {
+test("GBNF admits matching three/four/five fences and comma scopes while ANTLR accepts longer fences and dash scopes", () => {
     assert.equal(derives("statement", mid("READ", " (x)")), true);
     assert.equal(derives("statement", "````READ (x)````\n"), true);
-    assert.equal(derives("statement", "`````READ (x)`````\n"), false);
+    assert.equal(derives("statement", "`````READ (x)`````\n"), true);
+    assert.equal(derives("statement", "``````READ (x)``````\n"), false);
     assert.equal(derives("statement", mid("READ", " (x) <1,5>")), true);
     assert.equal(derives("statement", mid("READ", " (x) <1-5>")), false);
     for (const source of ["```READ (x) <1-5>```", "````READ (x) <1-5>````"]) {
@@ -689,7 +690,7 @@ test("GBNF admits matching three/four fences and comma scopes while ANTLR accept
     }
 });
 
-test("{§rail-heading-boundaries}: both fence lengths cover the complete operation vocabulary", () => {
+test("{§rail-heading-boundaries}: every supported fence length covers the complete operation vocabulary", () => {
     const blocks = [
         mid("FIND", " (*)"),
         mid("READ", " (notes.md)", ""),
@@ -706,7 +707,7 @@ test("{§rail-heading-boundaries}: both fence lengths cover the complete operati
         mid("SEND", " (worker://review)", "Ready for review."),
         mid("SEND", "", "An update."),
     ];
-    for (const count of [3, 4]) {
+    for (const count of [3, 4, 5]) {
         const fence = "`".repeat(count);
         const content = blocks.map((block) => block.replaceAll("```", fence)).join("\n")
             + terminal(102, "Continue from results.").replaceAll("```", fence);
@@ -714,6 +715,20 @@ test("{§rail-heading-boundaries}: both fence lengths cover the complete operati
         assert.equal(derivesQwenTurn(content), true, `${count} backticks`);
         assert.deepEqual(PlurnkParser.parse(content).items.filter(({ kind }) => kind === "error"), []);
     }
+});
+
+test("{§rail-heading-boundaries}: both rails can quote a four-tick operation containing ordinary triple-tick code", () => {
+    const code = "```json\n{\"ok\":true}\n```";
+    const example = PlurnkParser.frame("EDIT (example.md)", code);
+    const source = PlurnkParser.frame("SEND", example) + "\n" + terminal(200, "Example delivered.");
+    assert.match(source, /^`````SEND\n/);
+    assert.equal(derivesTurn(source), true);
+    assert.equal(derivesQwenTurn(source), true);
+    const parsed = PlurnkParser.parse(source);
+    assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
+    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["SEND", "TASK"]);
+    assert.equal(statements[0].op === "SEND" ? statements[0].body?.raw : null, example);
 });
 
 test("{§rail-heading-boundaries}: longer fences preserve literal code in EDIT and every disposition", () => {

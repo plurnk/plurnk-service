@@ -83,7 +83,7 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
                 t.mock.timers.tick(19_999);
                 assert.equal(signal.aborted, false);
                 t.mock.timers.tick(1);
-                assert.equal(signal.aborted, true, "one shared lifecycle owner retained the pre-WAIT execution time");
+                assert.equal(signal.aborted, true, "one shared lifecycle owner retained the execution time before waiting");
                 assert.equal(await completed.promise, 504);
                 assert.equal((await new LoopLifecycle(db).result(loopId))?.problem?.type,
                     "https://problems.plurnk.xyz/engine/rails/loop-timeout");

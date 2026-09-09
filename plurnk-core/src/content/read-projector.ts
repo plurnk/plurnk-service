@@ -101,6 +101,7 @@ export default class ReadProjector {
     static async project(opts: {
         readonly statement: ReadStatement;
         readonly manifest: SchemeManifest;
+        readonly publishesLineAnchors: boolean;
         readonly target: string;
         readonly identity: string;
         readonly representation: StoredEntryData;
@@ -213,8 +214,7 @@ export default class ReadProjector {
             );
         }
 
-        const publishesLineAnchors = manifest.lineAnchors === true
-            || (manifest.textEditScopes === true && manifest.writableBy.includes("model"));
+        const { publishesLineAnchors } = opts;
         let lineMarker: LineMarker | null;
         if (LineAnchors.hasAnchor(statement.lineMarker)) {
             if (!publishesLineAnchors) {
@@ -314,11 +314,11 @@ export default class ReadProjector {
             }) as EntryReadResult;
         if (
             result.status !== 200
-            || !publishesLineAnchors
             || typeof result.content !== "string"
         ) {
             return result;
         }
+        if (!publishesLineAnchors) return { ...result, lineAnchorIdentity: identity };
         const startLine = result.startLine ?? 1;
         const sourceAnchors = resolved.lineOrdinals === undefined ? undefined : LineAnchors.tokens(identity, selectedRepresentation.content);
         return {

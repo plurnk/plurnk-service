@@ -31,7 +31,6 @@ export default class MemorySchemeContext {
         const entries: EntryCaps = {
             operations: {
                 async editBatch() { throw new Error("editBatch is outside the A2A specimen"); },
-                async read() { throw new Error("operation read is outside the A2A specimen"); },
                 async find() { throw new Error("find is outside the A2A specimen"); },
                 async send() { throw new Error("operation send is outside the A2A specimen"); },
             },

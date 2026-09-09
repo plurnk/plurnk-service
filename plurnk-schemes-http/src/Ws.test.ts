@@ -100,7 +100,6 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     const entries: EntryCaps = {
         operations: {
             async editBatch() { return { status: 501, entryId: null, channel: null }; },
-            async read() { return { status: 501, content: null, mimetype: null, channel: null }; },
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0, matchingPathCount: 0, matchLocationCount: 0 }; },
             async send() { return { status: 501 }; },
         },

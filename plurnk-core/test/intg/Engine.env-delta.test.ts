@@ -777,7 +777,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
             "every death-path lands untargeted, in occurrence order, attributed to the concluding worker",
         );
         const win = terminations.find((r) => r.source === "worker://worker");
-        assert.ok(win, "worker's DONE termination surfaced as a worker delta in A's log");
+        assert.ok(win, "worker's completion surfaced as a worker delta in A's log");
         assert.equal(win!.origin, "_plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");

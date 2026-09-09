@@ -1,12 +1,11 @@
 # sh
 
-A bare `EXEC` is the shell. The body is the command line, run via `sh -c`,
-character-perfect including whitespace. The fence name `sh` selects it explicitly.
+The `sh` fence runs the body via `sh -c`, character-perfect including whitespace.
 
-```sh <!-- the body is the script itself -->
+````sh <!-- the body is the script itself -->
 printf 'hello\n' > hello.txt
 wc -l hello.txt
-```
+````
 
 ## Environment
 
@@ -20,13 +19,13 @@ The working directory is the workspace project root — where file operations
 write — or, in a workspace without one, the directory the shell would run in
 anyway. A `{cwd=<directory>}` block on the opening fence line overrides it for its body:
 
-```sh {cwd=./dir}
+````sh {cwd=./dir}
 pwd
-```
+````
 
 The receipt always names the directory the command ran in.
 
-A script target runs that script: ```` ```sh (greet.sh) ```` runs it with an empty
+A script target runs that script: ````` ````sh (greet.sh) ````` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
@@ -49,7 +48,7 @@ completion, the harness adds one `_plurnk` READ per channel: its first page
 (up to 16 lines), `range` extent, and terminal exit status. READ the `stream`
 address for more; the `log:///…/READ` item holds only its recorded page:
 
-```READ (sh:///1/2/3/EXEC#stdout) <17,40>```
+````READ (sh:///1/2/3/EXEC#stdout) <17,40>````
 
 A nonzero exit closes with status 500; inspect both channels because either
 may carry the useful diagnostic.
@@ -58,21 +57,21 @@ may carry the useful diagnostic.
 
 For a long-running command, the `<L>` slot carries `<timeout, poll>` in minutes:
 
-```sh <30>
+````sh <30>
 npm run build
-```
+````
 
-```sh <30,5>
+````sh <30,5>
 npm run e2e
-```
+````
 
-```sh <-1,5>
+````sh <-1,5>
 npm run test
-```
+````
 
-```sh <-1,0>
+````sh <-1,0>
 tail -f app.log
-```
+````
 
 The first coordinate is the timeout: a positive value kills at that deadline;
 `-1` declines the deadline and the process outlives the loop — it runs until it

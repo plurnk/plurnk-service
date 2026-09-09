@@ -11,8 +11,6 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import EntryOps from "../../src/schemes/_entry-ops.ts";
-import Worker from "../../src/schemes/Worker.ts";
 import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
@@ -29,7 +27,8 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
         const ownerId = await Owner.commonsId(db, workspaceId);
 
         const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker", ownerId);
@@ -38,7 +37,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
         assert.equal(rows[0].mimetype, "text/html", "the authored mimetype is preserved");
 
-        const read = await EntryOps.readWorkspaceEntry(readStmt("roster.html"), ctx, Worker.manifest, { ownerId });
+        const read = await lookThroughScheme("worker", null, readStmt("roster.html"), ctx);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
     } finally { await db.close(); }
 });

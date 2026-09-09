@@ -68,7 +68,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
-        assert.deepEqual(result.statuses, [201, 102], "EDIT created → 201; NEXT continue → 102");
+        assert.deepEqual(result.statuses, [201, 102], "EDIT created → 201; in-progress TASK → 102");
 
         const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: env.workspaceId, scheme: "worker", pathname: "/france/capital",

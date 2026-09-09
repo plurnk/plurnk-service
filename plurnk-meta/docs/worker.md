@@ -21,11 +21,11 @@ remain owner-scoped. `_plurnk/` entries are generated and read-only even in your
 own space. EDIT creates or changes an entry, never a worker. An unscoped EDIT
 creates the entry from its body, which is the content itself.
 
-```EDIT (worker://~/scratch/greet.mjs) <!-- create the entry from the body -->
+````EDIT (worker://~/scratch/greet.mjs) <!-- create the entry from the body -->
 export const greet = (name) => `hello ${name}`;
 
 console.log(greet("world"));
-```
+````
 
 Control addresses contain only scheme and authority: no trailing slash,
 userinfo, port, query, fragment, or `{metadata}` modifier.
@@ -40,9 +40,9 @@ to give an existing worker a follow-up task.
 Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
 as a new task, rather than interrupting an unfinished task:
 
-```SEND (worker://reviewer) <0,60>
+````SEND (worker://reviewer) <0,60>
 Check for new messages and report relevant findings.
-```
+````
 
 `<60>` runs once after an hour; `<0,60>` starts immediately and repeats hourly.
 Delay is nonnegative; an interval is positive. Occurrences never overlap; missed
@@ -57,10 +57,10 @@ BARE makes one isolated call to the child model, not a persistent worker.
 It receives no parent history or tools. Give it a prompt resource, an inline
 prompt, or both; resource text precedes an inline body with a blank line between.
 
-```BARE (worker://~/question.md)```
-```BARE
+````BARE (worker://~/question.md)````
+````BARE
 What is the capital of Germany?
-```
+````
 
 The resource supplies its complete current READ text, not a preview. Neither
 prompt form is truncated to fit; provider capacity still applies. A failed
@@ -73,13 +73,13 @@ Their answers are ordinary BARE receipts, visible in the next packet.
 **Continue or wait.** TASK declares the current inventory. An `in_progress`
 item keeps the loop working while children run; `waiting` joins their activity:
 
-```WORK (worker://capital-checker)
+````WORK (worker://capital-checker)
 Find the capital of France from a primary source
-```
+````
 
-```TASK
+````TASK
 [{"content":"Await capital-checker's answer.","status":"waiting"}]
-```
+````
 
 TASK with waiting intent accepts `<timeout,poll>` in whole minutes. It continues the same loop;
 neither a deadline nor a poll repeats a message or command.
@@ -99,14 +99,14 @@ a nonempty all-failed inventory concludes unsuccessfully.
 
 Each child task's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
-failure preserves its status and Problem. ```` ```READ (worker://capital-checker) ````
+failure preserves its status and Problem. ````` ````READ (worker://capital-checker) `````
 collects the same result explicitly. While the child is running it returns
 `425`; the inventory still chooses whether to continue or wait.
 A result does not imply that every task in that worker has finished.
 
 **Concluding with live workers.** A completion TASK is refused (`409`) while you hold a live worker or
 open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
-Await them with a waiting inventory or ```` ```KILL (worker://<name>) ```` the ones you no longer need.
+Await them with a waiting inventory or ````` ````KILL (worker://<name>) ````` the ones you no longer need.
 KILL settles before the turn's disposition; other live work or unobserved
 results can still prevent completion.
 

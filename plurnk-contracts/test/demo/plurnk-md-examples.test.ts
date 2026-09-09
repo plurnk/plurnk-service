@@ -8,7 +8,7 @@ const teaching = readFileSync(new URL("../../plurnk.md", import.meta.url), "utf8
 const policy = readFileSync(new URL("../../../plurnk-meta/POLICY.md", import.meta.url), "utf8");
 
 test("concrete compact examples in plurnk.md parse as one clean operation", () => {
-    const examples = [...teaching.matchAll(/^[*|].*?(```[A-Z]+[^`\n]*```)/gm)].map((match) => match[1]!);
+    const examples = [...teaching.matchAll(/^[*|].*?((`{3,})[A-Z]+[^`\n]*\2)/gm)].map((match) => match[1]!);
     assert.ok(examples.length > 0, "the reference demonstrates compact operations");
     for (const source of examples) {
         const parsed = PlurnkParser.parseStatements(source);
@@ -20,7 +20,7 @@ test("concrete compact examples in plurnk.md parse as one clean operation", () =
 
 test("the complete policy workflow example parses as an executable turn", () => {
     const workflow = [...policy.matchAll(/^(`{3,})example\n([\s\S]*?)\n\1$/gm)]
-        .map((match) => match[2]!.trim()).find((source) => source.startsWith("```EDIT "));
+        .map((match) => match[2]!.trim()).find((source) => /^`{3,}EDIT /.test(source));
     assert.ok(workflow, "the default policy includes a workflow");
     const parsed = PlurnkParser.parse(workflow);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
@@ -34,6 +34,6 @@ test("the complete policy workflow example parses as an executable turn", () => 
 test("plurnk.md retains broad operation coverage without pinning prose", () => {
     for (const op of PLURNK_OPS) {
         if (op === "EXEC") continue;
-        assert.match(teaching, new RegExp("^```" + op + "(?: |$)", "m"), `operation signature is missing ${op}`);
+        assert.match(teaching, new RegExp("^`{3,}" + op + "(?: |$)", "m"), `operation signature is missing ${op}`);
     }
 });

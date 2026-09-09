@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
 
-test("{§worker-wait-timing}: a finite WAIT is an obligation without a child or stream", async () => {
+test("{§worker-wait-timing}: a finite waiting TASK is an obligation without a child or stream", async () => {
     const provider = new Mock({
         contextWindow: 65536,
         responses: [makeMockResponse("```TASK <60>\n[{\"content\":\"Wait for the next check.\",\"status\":\"waiting\"}]\n```")],
@@ -20,7 +20,7 @@ test("{§worker-wait-timing}: a finite WAIT is an obligation without a child or 
                 () => db.test_get_loop_status.get<{ status: number }>({ id: accepted.loopId }),
                 (value) => value !== undefined && value.status !== 100 && value.status !== 102,
             );
-            assert.equal(row?.status, 202, "WAIT must remain unfinished rather than reporting success");
+            assert.equal(row?.status, 202, "a waiting task must remain unfinished rather than reporting success");
             assert.equal(provider.received.length, 1, "no inference occurs before the wait is due");
         } finally {
             await daemon.cancelWorker({ workspaceId, workerId });
@@ -35,7 +35,7 @@ for (const { scope, delay, maxTurns = 2, status = 200 } of [
     { scope: "<0>", delay: 1 },
     { scope: "<1>", delay: 60_000, maxTurns: 1, status: 429 },
 ]) {
-    test(`{§worker-wait-timing}: WAIT ${scope} wakes the same task once at its due time`, async (t) => {
+    test(`{§worker-wait-timing}: waiting TASK ${scope} wakes the same task once at its due time`, async (t) => {
         const provider = new Mock({ contextWindow: 65536, responses: [
             makeMockResponse(`\`\`\`TASK ${scope}
 [{"content":"Waiting for the next observation.","status":"waiting"}]
