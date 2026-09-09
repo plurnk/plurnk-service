@@ -1,7 +1,7 @@
 // Generates the Gemma- and Qwen-template llama.cpp rails for canonical
 // fenced turns from one shared operation grammar.
-// ANTLR remains the accepted-language authority; this deliberately narrower
-// grammar makes useful, parseable local-model output likely and bounded.
+// ANTLR remains the accepted-language authority; the sampling grammar shapes
+// operation headers and turn structure without interpreting literal bodies.
 import { mkdir, writeFile } from "node:fs/promises";
 
 export type GItem =
@@ -104,7 +104,7 @@ const fencedSection = (
             ...(body === "required" ? [] : [[...open, opt(lit("\n")), opt(lit("\n")), close]]),
             ...(body === "none" ? [] : [[
                 ...open, lit("\n"),
-                ref(`${matcher ? "pattern" : "section"}-body-${length}-ne`),
+                ref(matcher ? `pattern-body-${length}-ne` : "section-body"),
                 lit("\n"), close,
             ]]),
         ];
@@ -113,11 +113,10 @@ const fencedSection = (
 
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    // {§rail-heading-boundaries} — each body reserves its chosen closing fence,
-    // including immediately after the header newline of an empty block.
+    // {§rail-heading-boundaries} — literal bodies do not interpret nested fences.
+    model.set("section-body", [[plus(bodyOther(""))]]);
     for (const length of FENCE_LENGTHS) {
         const closer = `\n${"`".repeat(length)}`;
-        forbidLiterals(model, `section-body-${length}`, [closer], false, "\n");
         forbidLiterals(model, `pattern-body-${length}`, [closer, "\n:"], true, "\n");
     }
     forbidLiterals(model, "annotation-body", ["-->"], true);

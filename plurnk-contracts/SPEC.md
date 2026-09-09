@@ -255,7 +255,7 @@ another parser or a semantic guarantee. The complete build generates both;
 they are not source-controlled. Source and differential tests exercise the
 generator, and packed-artifact coverage verifies its exports.
 
-§gbnf-turn-shape Both profiles generate zero or more ordinary operation blocks
+§gbnf-turn-shape Both profiles shape zero or more ordinary operation blocks
 and one TASK block ending the turn. Inventory-only turns are valid.
 The rail uses matching three- or four-backtick
 fences; ANTLR also admits longer matching fences. There is no
@@ -268,11 +268,13 @@ template supplies `<think>\n`; its sampled root emits nonempty reasoning and
 any template prefix when checking complete provider evidence. The projected
 content alone is not checked as though it still included reasoning.
 
-§rail-heading-boundaries Rail bodies exclude their closing fence sequence,
-including at the start of a one-line matcher. Bodyless operations admit inline
-and empty multiline blocks. Blank lines may separate blocks. OP names and
-Markdown headings remain literal body content. Four-backtick rail blocks admit
-literal triple-backtick code fences in their bodies.
+§rail-heading-boundaries Content bodies are opaque to the rail, including
+internal backticks, OP names, and Markdown headings. One-line matchers reserve
+their closing fence sequence. Bodyless operations admit inline and empty
+multiline blocks; blank lines may separate blocks. Opaque content can span
+what ANTLR recognizes as multiple blocks: the rail's derivation does not prove
+the accepted fence partition or final TASK position. ANTLR alone enforces
+{§fence-boundary} and {§disposition-ends-turn}.
 
 §gbnf-kill-shaping KILL has a required target, optional numeric or anchored
 text scope, and optional one-line matcher. The rail does not prove that a target
@@ -787,7 +789,8 @@ disposition. The shape rules ARE structural:
   A turn admits exactly one TASK, and it ends the
   turn ({§disposition-ends-turn}): ordinary operations precede it, and the
   runtime executes it last. A second disposition is a structural
-  error, not a choice between competing outcomes. GBNF uses the same rule.
+  error, not a choice between competing outcomes. GBNF shapes this order
+  without enforcing body-internal boundaries ({§rail-heading-boundaries}).
 - §disposition-ends-turn The disposition operation and its body end a model turn.
   `PlurnkParser.parse` admits no statement after them: trailing statements are
   recognized as operations, dropped, never executed, and reported as one hard
@@ -799,14 +802,11 @@ disposition. The shape rules ARE structural:
   belong to that dropped source and collapse into the same diagnostic as ignored
   malformed headings; the disposition's own advisories and a second-disposition
   structural error stand as before. A disposition the parser synthesized
-  ({§turn-shape}) closes the source and never has a tail. The GBNF rails derive
-  nothing after the disposition body ({§gbnf-turn-shape}). Saved turns use
-  the same disposition boundary. Origin: on a constrained weak
-  rail, three emissions in one night continued past a correct disposition into
-  the packet they expected next, executing 194, 302, and 481 operations.
+  ({§turn-shape}) closes the source and never has a tail. Saved turns use
+  the same disposition boundary.
 - SEND is communication: an optional recipient path and an optional body.
-- §terminal-body-nonempty The GBNF rail requires a non-empty disposition body — a constrained
-  turn cannot end empty-handed. ANTLR remains tolerant during ingestion.
+- §terminal-body-nonempty The GBNF rail requires a nonempty sampled TASK body,
+  not a valid or nonempty parsed inventory. ANTLR remains tolerant during ingestion.
 - §park-202-only TASK wait intent applies `<T>` (wait up to T minutes),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the

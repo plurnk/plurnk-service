@@ -213,20 +213,19 @@ test("matcher rail boundary protection retains ordinary ticks and a single body 
 
 // {§gbnf-turn-shape}
 // {§turn-shape}
-test("GBNF root requires one disposition after zero or more operations", () => {
+test("GBNF scaffold requires a TASK after zero or more operations", () => {
     assert.equal(derivesTurn(turn([mid("READ", " (worker:///x)")], 102, "reading")), true);
     assert.equal(derivesTurn(turn([], 200, "Paris")), true);
     assert.equal(derivesTurn(`${mid("READ", " (worker:///x)")}${terminal(102, "reading")}`), true, "a PLAN-less turn stands");
     assert.equal(derivesTurn(`${terminal(200, "Paris")}`), true, "a bare conclusion stands");
     assert.equal(derivesTurn(mid("READ", " (notes.md)")), false);
-    // {§disposition-ends-turn} — the disposition body is the last sampled text; an operation after it is not derivable.
+    // An inline trailing block cannot supply the final sampled TASK's multiline closer.
     assert.equal(derivesTurn(`${turn([], 200, "done")}
 \`\`\`READ (worker:///late)\`\`\``), false);
 });
 
-// {§disposition-ends-turn} — neither rail derives an operation after any disposition; the same operations
-// before it derive, and a second disposition never does.
-test("neither rail derives an operation after any disposition, nor a second disposition", () => {
+// {§disposition-ends-turn} {§rail-heading-boundaries}
+test("ANTLR rejects additional TASK blocks even when opaque rail bodies derive them", () => {
     for (const [label, code] of Object.entries({ in_progress: 102, waiting: 202, completed: 200, failed: 499 })) {
         const operations = mid("KILL", " (log:///3/3/1/READ)") + mid("READ", " (notes.md)");
         const trailing = terminal(code, "Answer.") + "\n" + operations;
@@ -235,14 +234,24 @@ test("neither rail derives an operation after any disposition, nor a second disp
         const closed = operations + terminal(code, "Answer.");
         assert.equal(derivesTurn(closed), true, label);
         assert.equal(derivesQwenTurn(closed), true, label);
-        assert.equal(derivesTurn(closed + "\n" + terminal(200, "Again.")), false, label);
-        assert.equal(derivesQwenTurn(closed + "\n" + terminal(200, "Again.")), false, label);
+        const duplicate = closed + "\n" + terminal(200, "Again.");
+        assert.equal(derivesTurn(duplicate), true, label);
+        assert.equal(derivesQwenTurn(duplicate), true, label);
+        const parsed = PlurnkParser.parse(duplicate);
+        assert.deepEqual(parsed.items.filter((item) => item.kind === "error").map(({ error }) => error.code), ["invalid-turn-structure"]);
+        assert.equal(parsed.items.filter((item) => item.kind === "statement" && item.statement.op === "TASK").length, 1);
+
+        const after = closed + "\n" + mid("KILL", " (log:///**/READ)", "needle").trimEnd();
+        assert.equal(derivesTurn(after), true, label);
+        assert.equal(derivesQwenTurn(after), true, label);
+        const trailingParsed = PlurnkParser.parse(after);
+        assert.deepEqual(trailingParsed.items.filter((item) => item.kind === "error").map(({ error }) => error.code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
+        assert.deepEqual(trailingParsed.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["KILL", "READ", "TASK"]);
     }
     assert.equal(derivesTurn(terminal(102, "Nothing.")), true);
 });
-// {§disposition-ends-turn} — long sequences derive before the disposition only; the parser admits the
-// same set and drops what followed with one diagnostic.
-test("both rails admit long operation sequences before the one disposition and none after it", () => {
+// {§disposition-ends-turn} {§rail-heading-boundaries}
+test("ANTLR drops long post-TASK operation sequences even when the rail can absorb them", () => {
     for (const [before, after] of [[15, 0], [0, 15], [8, 8], [24, 24]]) {
         const operations = (count: number) => Array.from({ length: count }, (_, index) =>
             mid("KILL", ` (log:///1/${index + 1}/*/READ)`)).join("");
@@ -258,8 +267,13 @@ test("both rails admit long operation sequences before the one disposition and n
             assert.deepEqual(errors.map((item) => item.error.code), after === 0 ? [] : [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
             if (after > 0) assert.match(errors[0]!.error.message, new RegExp(`${after} operations after its body were not admitted \\(KILL ×${after}\\)`, "u"));
             assert.equal(parsed.items.filter((item) => item.kind === "statement").length, before + 1);
-            assert.equal(derivesTurn(`${content}\n${terminal(200, "Again.")}`), false);
-            assert.equal(derivesQwenTurn(`${content}\n${terminal(200, "Again.")}`), false);
+            const duplicate = `${content}\n${terminal(200, "Again.")}`;
+            assert.equal(derivesTurn(duplicate), true);
+            assert.equal(derivesQwenTurn(duplicate), true);
+            const duplicateParsed = PlurnkParser.parse(duplicate);
+            assert.deepEqual(duplicateParsed.items.filter((item) => item.kind === "error").map(({ error }) => error.code),
+                after === 0 ? ["invalid-turn-structure"] : ["invalid-turn-structure", PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
+            assert.equal(duplicateParsed.items.filter(({ kind }) => kind === "statement").length, before + 1);
         }
     }
 });
@@ -624,15 +638,38 @@ test("GBNF allows inline operation quotations without inventing sections", () =>
     }
 });
 
-test("GBNF reserves fence boundaries, not operation stems or Markdown headings", () => {
+test("{§rail-heading-boundaries}: GBNF content bodies leave internal fences opaque", () => {
     for (const body of ["## PLAN_", "### READ (x)", "PLAN", "DONE", "# Heading\ntext"]) {
         assert.equal(derives("statement", mid("EDIT", " (note.md)", body)), true, body);
     }
     for (const prefix of ["", "text\n", "text\n\n"]) {
-        assert.equal(derives("statement", mid("EDIT", " (note.md)", prefix + "```sh\necho hello\n```")), false);
+        assert.equal(derives("statement", mid("EDIT", " (note.md)", prefix + "```sh\necho hello\n```")), true);
     }
     const quoted = PlurnkParser.frame("EDIT (note.md)", "```sh\necho hello\n```");
     assert.equal(PlurnkParser.parseStatements(quoted).items.some((item) => item.kind === "error"), false);
+});
+
+test("{§rail-heading-boundaries}: nested SEND fence mistakes can finish sampling for parser feedback", () => {
+    const content = turn([
+        mid("KILL", " (log:///1/3/1/READ)"),
+        mid("SEND", "", "The matching note is:\n\n```\nworker:///notes/alpha.md\n```\n\nFound by full-text lookup."),
+        mid("KILL", " (log:///1/2/4/ops)"),
+    ], 200, "Report the matching path.");
+    assert.equal(derivesTurn(content), true);
+    assert.equal(derivesQwenTurn(content), true);
+    const parsed = PlurnkParser.parse(content);
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "error").map(({ error }) => error.code), [
+        "invalid-turn-structure",
+        "missing-turn-disposition",
+    ]);
+    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "SEND", "TASK"]);
+    const send = statements[1];
+    assert.ok(send.op === "SEND");
+    assert.equal(send.body?.raw, "The matching note is:\n");
+    const task = statements[2];
+    assert.ok(task.op === "TASK");
+    assert.deepEqual(task.body, []);
 });
 test("GBNF TASK body is required and names no recipient", () => {
     assert.equal(derivesTurn(turn([], 200, "done")), true);
@@ -753,7 +790,7 @@ test("rail-legal malformed matcher remains one bounded AstBuilder error", () => 
     assert.equal(parsed.unparsedTail, undefined);
 });
 
-test("100 seeded turn derivations preserve exactly one disposition SEND", () => {
+test("100 seeded turn derivations preserve exactly one TASK inventory", () => {
     for (let seed = 1; seed <= 100; seed++) {
         const generated = sample("root-gemma", mulberry32(seed));
         assert.equal(derives("root-gemma", generated), true, `seed ${seed}`);
