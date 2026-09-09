@@ -2158,11 +2158,11 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
-| complete | Model has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
+| complete | Model fired an operation other than SEND/TASK, or has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
 | complete | No blocking obligation, or administrative producer | 200 | None |
 | fail | Always | 499; cancel unresolved descendant scope | `The task inventory ended with failed items.` |
 
-A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. Successful log KILL does not block explicit completion. No-op waiting never invents success.
+A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
 §loop-response-messages **Replies and outcome are independent.** Each successful targetless SEND contributes its complete authored body to the loop's response, in turn and operation order, separated by a blank line. Directed SEND, TASK, annotations, interstitial text, inherited rows and ambient observations do not contribute. Collection reads immutable executed operation evidence, not the curated log projection. KILL cannot retract a delivered message. A later failure, cancellation or refused completion preserves prior messages; a task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content.
 
@@ -2201,15 +2201,15 @@ violations follow the current admission and strike contracts
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-idle-turn **Inventory-only continuation is valid.** An `in_progress` inventory continues whether or not another operation ran, including while children or streams are live. TASK is operational state; neither absence of other operations nor a not-ready READ may replace its intent with an implicit park. Exact repeating activity remains subject to {§engine-cycle-evidence}.
 - §send-premature-terminate **Premature terminate — the pending set.**
-  A model's completion claim is gated by one rule: *nothing pending may be silently
-  discarded*. Pending work has two states: **live obligations** (open
+  A model's completion turn normally contains only SEND and TASK. Every other
+  fired operation requires another packet, regardless of success, stream
+  timing, empty results, or log curation. Execution is judged from durable
+  operation records, never the curated log projection. Pending work has two states:
+  **live obligations** (open
   streams/spawns and live child workers) and **completed-but-unobserved
-  results** (same-turn READ/FIND results, failed operations, failed
-  terminal stream output (close status ≥ 400) without a terminal foisted
-  READ, and child results queued for the next packet). A stream that closed
-  successfully is banked, not pending: its output stays in the Log and `[200]`
-  over it is a legitimate conclusion on the stream's own success; the
-  retrieval members are unchanged. The set is judged at the disposition's own dispatch, after
+  results** (every same-turn non-SEND/TASK operation, terminal stream output
+  without a terminal foisted READ, and child results queued for the next packet).
+  The set is judged at the disposition's own dispatch, after
   earlier operations in the emission. `[200]` over a pending member is refused
   409 and the loop continues, except {§send-final-strike-retrieval}; every refusal
   strikes uniformly, including a retrieval-only refusal. Its Problem reports only the bounded pending kinds
@@ -2217,10 +2217,11 @@ violations follow the current admission and strike contracts
   `worker-results`; it never embeds commands, stream handles, result bodies, or
   a presumed recovery. The pending kind changes the factual Problem class, not
   rail accounting. A terminal inventory containing `failed` deliberately abandons regardless.
-- §send-final-strike-retrieval **Retrieval-only completion at the final strike.**
+- §send-final-strike-retrieval **Receipt-only completion at the final strike.**
   If refusing a model's all-`completed` TASK would reach the loop's existing
   consecutive-strike limit, accept it when `receipts` is the only pending kind
-  and this turn has no failed operations. The same streak and configured limit
+  and this turn has no failed operations. Receipts include successful execution
+  and curation results, not only READ/FIND. The same streak and configured limit
   apply; a clean turn resets the streak and there is no separate refusal counter.
   Live work, undelivered child results, and failed stream results remain blocking.
   Decide at TASK dispatch: record the accepted TASK and terminal normally,

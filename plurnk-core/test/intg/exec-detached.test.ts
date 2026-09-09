@@ -27,7 +27,7 @@ const beating = async (file: string, ms: number): Promise<boolean> => {
     return before !== await beat(file);
 };
 
-test("{§exec-timeout} a `<-1>` spawn outlives its loop's 200, gates no TERM, and ends with the daemon", async () => {
+test("{§exec-timeout} a detached spawn is observed once, then outlives its loop and ends with the daemon", async () => {
     const dir = await mkdtemp(join(tmpdir(), "exec-detached-"));
     const file = join(dir, "beat");
     try {
@@ -42,7 +42,7 @@ the server stays up
 \`\`\`
 \`\`\`TASK
 [{"content":"Task completed.","status":"completed"}]
-\`\`\``)],
+\`\`\``), mockTurn('```TASK\n[{"content":"The server is running.","status":"completed"}]\n```')],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -52,13 +52,15 @@ the server stays up
                 const run = await rpcCall(ws, 2, "loop.run", { prompt: "leave a server running", policy: { proposals: "accept" } });
                 const loopId = (run.result as { loopId: number }).loopId;
 
-                // The TERM lands as 200 with the detached stream still open: it is nobody's obligation.
+                // The detached stream remains live after its invocation is observed.
                 await waitForDb(
                     () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
                     (r) => r?.status === 200,
                     { timeoutMs: 10000 },
                 );
                 await waitForDb(() => beat(file), (b) => b !== "", { timeoutMs: 5000 });
+                assert.equal(mock.received.length, 2, "the invocation still requires a packet before completion");
+                assert.equal(mock.remaining, 0);
                 assert.equal(await beating(file, 400), true, "the detached spawn keeps running after the loop's 200");
                 assert.equal(
                     (concluded() as Array<{ scheme: string }>).some((c) => c.scheme === "sh"),

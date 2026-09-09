@@ -986,7 +986,7 @@ test("{§join-blocking-collect} an actionable TASK without live work continues n
     } finally { await db.close(); }
 });
 
-test("{§op-synchronous} KILL(worker) is decisive before same-turn DONE", async () => {
+test("{§op-synchronous} KILL(worker) settles before its receipt forces continuation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);
@@ -1004,7 +1004,7 @@ test("{§op-synchronous} KILL(worker) is decisive before same-turn DONE", async 
             },
         });
 
-        // Before: the live child would make a DONE a premature-terminate. KILL must fix it IN this turn.
+        // Killing the worker settles immediately; observing that result still requires a packet.
         const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
@@ -1012,7 +1012,8 @@ test("{§op-synchronous} KILL(worker) is decisive before same-turn DONE", async 
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
         const send = await engine.dispatch({ statement: dispositionStmt("completed", "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
-        assert.notEqual(send.status, 409, `no premature-terminate 409 — the killed child is not live pending work; got ${send.status}`);
+        assert.equal(send.status, 409, "the KILL receipt requires observation even though the worker has already stopped");
+        assert.deepEqual(send.problem?.pending, ["receipts"], "the stopped worker is no longer live pending work");
     } finally { await db.close(); }
 });
 

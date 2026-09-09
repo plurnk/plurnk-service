@@ -57,6 +57,7 @@ ${fixture.answer}
 \`\`\`TASK
 [{"content":"Task completed.","status":"completed"}]
 \`\`\``),
+            ...(retire ? [makeMockResponse('```TASK\n[{"content":"Recovery complete.","status":"completed"}]\n```')] : []),
         ],
     });
     try {
@@ -77,7 +78,7 @@ ${fixture.answer}
                     turnIds: result.turnIds ?? [], fixture,
                 });
                 assert.equal(evidence.overflowTurns, 1);
-                assert.equal(evidence.modelTurns, 2, "overflow does not consume a scripted model response");
+                assert.equal(evidence.modelTurns, retire ? 3 : 2, "overflow consumes no response; curation requires an observation turn");
                 assert.equal(evidence.receiptActive, !retire);
                 assert.equal(provider.remaining, 0);
             } finally { ws.close(); }

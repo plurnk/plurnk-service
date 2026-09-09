@@ -41,6 +41,7 @@ for (const { name, operation, maxStrikes } of [
     { name: "READ at five strikes", operation: "```READ (worker:///answer.md)```", maxStrikes: 5 },
     { name: "FIND", operation: "```FIND (worker:///answer.md)```", maxStrikes: 3 },
     { name: "BARE", operation: "```BARE\nWhat is six times seven?\n```", maxStrikes: 3 },
+    { name: "no-op log KILL", operation: "```KILL (log:///999/*/*)```", maxStrikes: 3 },
 ]) {
     test(`{§send-final-strike-retrieval}: ${name} concludes at the existing limit without rewriting prior refusals`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
@@ -92,7 +93,7 @@ test("{§send-final-strike-retrieval}: a clean turn resets the allowance with th
     assert.equal(provider.received.length, 6);
 });
 
-for (const kind of ["workers", "streams", "failed-stream-results", "worker-results", "operation-failure"] as const) {
+for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-stream-results", "worker-results", "operation-failure"] as const) {
     test(`{§send-final-strike-retrieval}: final-strike TERM remains blocked by ${kind}`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
         const read = "```READ (worker:///answer.md)```";
@@ -110,7 +111,20 @@ for (const kind of ["workers", "streams", "failed-stream-results", "worker-resul
                     if (kind === "worker-results") {
                         await new LoopLifecycle(db).finish(childLoop, { status: 200, content: "Child result", mimetype: "text/plain" });
                     }
-                } else if (kind === "streams" || kind === "failed-stream-results") {
+                } else if (kind === "streams" || kind === "failed-stream-results" || kind === "late-failed-stream-results") {
+                    if (kind === "late-failed-stream-results") {
+                        for (let index = 0; index < 8; index++) {
+                            const pathname = `/completed-${index}`;
+                            const entryId = await seedEntryWithChannel(db, {
+                                workspaceId, ownerId: workerId, scheme: "worker", pathname,
+                                channel: "stdout", content: "Done", mimetype: "text/plain", state: "active",
+                            });
+                            const subscriptionId = await ChannelWrite.openSubscription(db, {
+                                workerId, entryId, scheme: "worker", handle: pathname, publishedChannel: "stdout",
+                            });
+                            await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
+                        }
+                    }
                     const entryId = await seedEntryWithChannel(db, {
                         workspaceId, ownerId: workerId, scheme: "worker", pathname: "/running",
                         channel: "stdout", content: "Working", mimetype: "text/plain", state: "active",
@@ -118,7 +132,7 @@ for (const kind of ["workers", "streams", "failed-stream-results", "worker-resul
                     const subscriptionId = await ChannelWrite.openSubscription(db, {
                         workerId, entryId, scheme: "worker", handle: "running", publishedChannel: "stdout",
                     });
-                    if (kind === "failed-stream-results") {
+                    if (kind === "failed-stream-results" || kind === "late-failed-stream-results") {
                         await ChannelWrite.closeSubscription(db, {
                             subscriptionId,
                             result: Results.failure("executor:fixture", "failed", 500, "Fixture stream failed."),
@@ -140,7 +154,8 @@ for (const kind of ["workers", "streams", "failed-stream-results", "worker-resul
             assert.equal(problem.failures, 1);
         } else {
             assert.equal(problem.type, "https://problems.plurnk.xyz/engine/dispatcher/work-remains");
-            assert.deepEqual(problem.pending, kind === "streams" || kind === "workers" ? [kind, "receipts"] : ["receipts", kind]);
+            const pendingKind = kind === "late-failed-stream-results" ? "failed-stream-results" : kind;
+            assert.deepEqual(problem.pending, kind === "streams" || kind === "workers" ? [kind, "receipts"] : ["receipts", pendingKind]);
         }
         const finalTurnId = result.turnIds.at(-1);
         assert.ok(finalTurnId !== undefined);

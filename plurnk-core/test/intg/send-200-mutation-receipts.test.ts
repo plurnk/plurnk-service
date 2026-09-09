@@ -22,7 +22,7 @@ test("{§send-premature-terminate}: an EDIT receipt blocks same-turn 200 until t
             const sends = rows.filter((r) => r.op === "TASK" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen receipt");
             const problem = JSON.parse(sends[0]?.rx ?? "{}") as { problem?: { detail?: string; pending?: string[]; recovery?: string } };
-            assert.equal(problem.problem?.detail, "Completion preceded this turn's operation results; they enter the next packet.");
+            assert.equal(problem.problem?.detail, "Completion preceded operation results; they enter the next packet.");
             assert.deepEqual(problem.problem?.pending, ["receipts"]);
             assert.equal(problem.problem?.recovery, undefined, "the receipt boundary needs no guessed workflow prescription");
             assert.equal(sends[1]?.status_rx, 200);

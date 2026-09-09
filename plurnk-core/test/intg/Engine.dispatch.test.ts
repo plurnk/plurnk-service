@@ -237,6 +237,35 @@ const setup = async () => {
     const engine = new Engine({ db, schemes });
     return { db, engine, env };
 };
+
+test("{§send-final-strike-retrieval}: retiring a failed receipt cannot make it eligible for completion", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const failed = await engine.dispatch({
+            statement: readStmt({ target: urlPath("worker", "/missing.md") }),
+            ...env, sequence: 1, origin: "model",
+        });
+        assert.equal(failed.status, 404);
+        const retired = await engine.dispatch({
+            statement: killStmt({ target: urlPath("log", "/1/1/1/READ") }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(retired.status, 200);
+        const history = await db.test_log_entries_by_turn.all<{ sequence: number; active: number; status_rx: number }>({ turn_id: env.turnId });
+        const receipt = history.find(({ sequence }) => sequence === 1);
+        assert.equal(receipt?.active, 0, "the failed receipt was actually removed from the model's curated view");
+        assert.equal(receipt?.status_rx, 404, "execution evidence retains the failure");
+
+        const result = await engine.dispatch({
+            statement: continuationStmt({ body: '[{"content":"Finished.","status":"completed"}]' }),
+            ...env, sequence: 3, origin: "model", allowUnobservedRetrievalCompletion: true,
+        });
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures");
+        assert.equal(result.problem?.failures, 1);
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: a KILL line scope trims one entry of a projected NEXT row (#335)", async () => {
     // NEXT log bodies project line-per-entry JSONL, so the model's ordinary
     // KILL <line> scope reaches individual plan items — the ruled alternative

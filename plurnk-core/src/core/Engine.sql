@@ -670,17 +670,14 @@ SELECT l.sequence AS loop_seq,
  WHERE le.id = $id;
 
 -- PREP: engine_turn_packet_boundaries
--- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
--- into the next packet: READ/FIND/BARE results, successful EDIT/COPY/MOVE receipts (the model
--- sees what it changed before it claims done — deterministic railing, one cached turn), plus
--- successful log curation. Receipts block explicit DONE; a log KILL blocks only the
--- empty-WAIT inference because explicit final housekeeping remains valid.
-SELECT id, op FROM active_log_entries
+-- {§send-premature-terminate}: executed operations, independent of log curation.
+-- NULL op identifies actionless evidence, not a dispatched statement.
+SELECT id, op FROM log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
-  AND (op IN ('READ', 'FIND', 'BARE')
-       OR (op IN ('EDIT', 'COPY', 'MOVE') AND status_rx < 400)
-       OR (op = 'KILL' AND scheme = 'log' AND status_rx < 400));
+  AND source IS NULL
+  AND inherited_history = 0
+  AND op NOT IN ('SEND', 'TASK');
 
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer
@@ -690,15 +687,14 @@ WHERE turn_id = $turn_id
 -- join cannot conclude over unseen work.
 -- Completion is information independently of payload: an empty success and especially
 -- an empty failure must receive the same terminal observation as a non-empty stream.
--- The close status rides along: the terminal gate lets a successful close through
--- ({§send-premature-terminate}); the empty-join path delivers every close.
-SELECT DISTINCT s.handle AS handle, s.close_status AS closeStatus
+-- Success and failure both require observation. The close status also prevents
+-- the final-strike allowance from discarding an unseen failure.
+SELECT DISTINCT s.close_status AS closeStatus
 FROM subscriptions s
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 WHERE s.worker_id = $worker_id
   AND s.closed_at IS NOT NULL
-  AND sp.terminal_published = 0
-LIMIT 8;
+  AND sp.terminal_published = 0;
 
 -- PREP: engine_turn_failures
 -- {§send-premature-terminate} — THIS turn's failed op results (the model's own ops, status >= 400), whose
@@ -710,7 +706,7 @@ LIMIT 8;
 -- failed grammar parsing is different: source='grammar' records a bounded operation failure
 -- from the accepted emission, unseen until the next packet, so it gates completion like every
 -- other failed model operation.
-SELECT id FROM active_log_entries
+SELECT id FROM log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
   AND status_rx >= 400

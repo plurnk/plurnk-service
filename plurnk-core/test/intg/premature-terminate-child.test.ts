@@ -243,7 +243,7 @@ test("WAIT cannot complete an empty join over a same-turn failed operation", asy
     } finally { await db.close(); }
 });
 
-test("a successful same-turn scoped KILL continues an empty WAIT without blocking explicit DONE housekeeping", async () => {
+test("a successful same-turn scoped KILL continues an empty wait and refuses explicit completion", async () => {
     const db = await openMigrated();
     try {
         const run = async (status: 200 | 202) => {
@@ -307,7 +307,8 @@ test("a successful same-turn scoped KILL continues an empty WAIT without blockin
         assert.equal(continued.result.steerStruck, false, "the normalized continuation is not a model error");
 
         const concluded = await run(200);
-        assert.equal(concluded.result.status, 200, "an explicit done claim may include final log housekeeping");
+        assert.equal(concluded.result.status, 102, "log curation requires another packet before completion");
+        assert.equal(concluded.result.steerStruck, true, "premature completion receives the ordinary refusal strike");
     } finally { await db.close(); }
 });
 
@@ -414,7 +415,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
         assert.equal(
             problem?.detail,
-            "Completion preceded this turn's operation results; they enter the next packet.",
+            "Completion preceded operation results; they enter the next packet.",
         );
         assert.deepEqual(problem?.pending, ["receipts"]);
         assert.equal(problem?.recovery, undefined);
@@ -507,7 +508,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const send = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
         assert.ok(send !== undefined, "the refused SEND row renders");
-        assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded this turn's operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
+        assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

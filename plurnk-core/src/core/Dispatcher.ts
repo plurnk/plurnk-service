@@ -1148,8 +1148,8 @@ export default class Dispatcher {
 
 
     // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,
-    // after earlier operations have executed. Log curation does not block completion;
-    // retrieval/mutation receipts, live work and undelivered results do.
+    // after earlier operations have executed. Every non-SEND/TASK model operation
+    // requires a new packet, independently of its result or log visibility.
     async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
         const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
@@ -1160,38 +1160,28 @@ export default class Dispatcher {
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-        if (boundaries.retrievals) pending.push("receipts");
-        // A stream that closed successfully is banked, not pending: concluding on its own
-        // success is legitimate and its output stays in the Log. A failed close is an unseen
-        // failure — named exactly (bench#5 requiem #9) so the model reads it, not guesses.
+        if (boundaries.operations || boundaries.streamTerminations.length > 0) pending.push("receipts");
+        // The final-strike escape hatch cannot discard an unobserved failure.
         if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
         if (boundaries.childTerminations) pending.push("worker-results");
         return pending;
     }
 
-    // Results cross an observation boundary only when they have appeared in a packet;
-    // successful log-curation effects likewise become useful through the curated next packet.
-    // Keep every next-packet boundary in one classifier while letting the callers apply
-    // their distinct contracts: retrievals block explicit completion, whereas log curation
-    // gives an empty wait a useful next packet.
+    // {§wait-obligation-matrix}: completion and an empty wait share one observation boundary.
     async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
-        retrievals: boolean;
-        curations: boolean;
-        streamTerminations: Array<{ handle: string; closeStatus: number }>;
+        operations: boolean;
+        streamTerminations: Array<{ closeStatus: number }>;
         childTerminations: boolean;
     }> {
         const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
             this.#db.engine_turn_packet_boundaries.all<{ id: number; op: string }>({ turn_id: turnId }),
             this.#db.engine_worker_has_undelivered_stream_term
-                .all<{ handle: string; closeStatus: number }>({ worker_id: workerId }),
+                .all<{ closeStatus: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            // {§log-kill-scope} — log housekeeping continues an empty wait but never
-            // blocks explicit completion; every other boundary row is a retrieval receipt.
-            retrievals: turnBoundaries.some(({ op }) => op !== "KILL"),
-            curations: turnBoundaries.some(({ op }) => op === "KILL"),
+            operations: turnBoundaries.length > 0,
             streamTerminations,
             childTerminations: childTermination !== undefined,
         };
