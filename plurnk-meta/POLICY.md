@@ -55,7 +55,12 @@ Review for grammar and style.
 ```READ (report.md) <401,600> <!-- retrieve next summary chunk -->```
 
 ```TASK
-[{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
+[
+  {"content":"Continue the report summary from lines 401–600 and verify this turn's edits.","status":"in_progress"},
+  {"content":"Review the growth calculation, style feedback, and depreciation-note matches.","status":"in_progress"},
+  {"content":"Receive the revenue check from exec-strategy.","status":"waiting"},
+  {"content":"Deliver the summary after analysis and revenue checks are complete.","status":"pending"}
+]
 ```
 
 `````
