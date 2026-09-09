@@ -440,7 +440,11 @@ test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged syst
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.ok(slot("system").includes("system-policy"), "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
         assert.ok(!slot("system").includes("project-policy"), "the retired project-policy section never renders");
-        assert.match(packetSection(packet, "system-policy"), /NEVER guess a file path/, "the system policy content reaches the model");
+        assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "the authored policy content is preserved");
+        assert.equal(packet.sections.find(({ name }) => name === "system-policy")?.header, null, "the policy owns its heading");
+        const systemMessage = provider.received[0].filter(({ role }) => role === "system").map(({ content }) => content).join("\n");
+        assert.match(systemMessage, /# House rules\nNEVER guess a file path\./, "the authored heading reaches the provider");
+        assert.doesNotMatch(systemMessage, /^## Policy$/m, "the engine adds no enclosing policy heading");
     } finally {
         await db.close();
         if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;

@@ -12,9 +12,8 @@ export const readPacketInject = async (): Promise<string | null> => {
     return readFile(resolveInjectPath(raw), "utf8");
 };
 
-// {§policy-sections} ## Policy and ## Project Policy occupy the privileged system zone,
-// distinct from freeform packet injection. A missing default contributes no section; an explicit
-// unreadable override fails. Both are read per turn.
+// {§policy-sections} The policy owns its headings in the privileged system slot.
+// A missing default contributes no section; an explicit unreadable override fails.
 const readPolicy = async (path: string, explicit: boolean): Promise<string | null> => {
     try { return (await readFile(path, "utf8")).trim() || null; }
     catch (err) { if (explicit) throw err; return null; }

@@ -338,7 +338,7 @@ export default class PacketBuilder {
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy follows the definition for prefix-cache locality.
-            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
+            { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
