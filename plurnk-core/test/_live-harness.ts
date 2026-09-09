@@ -167,6 +167,7 @@ export const liveLoop = async (
     }
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
     const lastContent = term.result.content ?? "";
+    if (typeof lastContent !== "string") throw new TypeError("loop/terminated response content must be text");
     return {
         finalStatus: term.finalStatus, hitMaxTurns: term.hitMaxTurns ?? false,
         turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, lastContent,
