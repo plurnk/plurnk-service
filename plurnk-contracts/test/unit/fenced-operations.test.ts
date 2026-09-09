@@ -49,6 +49,50 @@ test("fenced operations: inner programs and different-length fences remain exact
     assert.equal(edit.body, body);
 });
 
+test("fenced operations: shorter and longer runs stay literal for independently chosen fence counts", () => {
+    for (const count of [3, 4, 5, 8, 16, 33]) {
+        const fence = "`".repeat(count);
+        for (const newline of ["\n", "\r\n"]) {
+            const body = [1, 2, 3, 4, 5, 8, 16, 33, 64]
+                .filter((inner) => inner !== count)
+                .flatMap((inner) => ["`".repeat(inner) + "sh", "echo literal", "`".repeat(inner)])
+                .concat(fence + "not a closer")
+                .join(newline);
+            const [edit] = statements(`${fence}EDIT (notes.md)${newline}${body}${newline}${fence}\t `);
+            assert.equal(edit.op, "EDIT");
+            assert.equal(edit.body, body, `fence count ${count}`);
+        }
+    }
+});
+
+test("fenced operations: a longer backtick run cannot supply a closing-fence suffix in any lexer mode", () => {
+    for (const count of [3, 4, 7]) {
+        const fence = "`".repeat(count);
+        for (const extra of [1, 4]) {
+            const longer = "`".repeat(count + extra);
+            for (const header of ["READ (notes.md)", "READ (notes.md", "sh {broken", "EDIT (notes.md) text", "EDIT (notes.md)\ntext\n"]) {
+                const source = `${fence}${header}${longer}`;
+                const result = PlurnkParser.parseStatements(source);
+                assert.deepEqual(result.unparsedTail?.from, { line: 1, column: 0 }, source);
+                assert.deepEqual(result.items.filter((item) => item.kind === "statement"), [], source);
+            }
+        }
+    }
+});
+
+test("fenced operations: inline-body recovery preserves a longer run until the exact closing fence", () => {
+    const result = PlurnkParser.parseStatements("```EDIT (notes.md) text````\ncontinued\n```");
+    assert.equal(result.unparsedTail, undefined);
+    const admitted = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.equal(admitted.length, 1);
+    assert.equal(admitted[0].op, "EDIT");
+    assert.equal(admitted[0].body, "text````\ncontinued");
+    const diagnostics = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0].severity, "warning");
+    assert.match(diagnostics[0].message, /body text was on the OP line/);
+});
+
 test("fenced operations: framing excludes only its own newlines, preserving CRLF and whitespace", () => {
     for (const body of ["a", " a ", "\na\n\n", "a\r\nb\r\n", "é 🦊\n  "]) {
         const [edit] = statements(`\`\`\`EDIT (example.txt) <1,-1>\r\n${body}\r\n\`\`\``);

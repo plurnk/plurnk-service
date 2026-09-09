@@ -54,6 +54,7 @@ private offsetAfterEol(offset: number): number | null {
 }
 
 private closingAt(offset: number): boolean {
+    if (this.inputStream.LA(offset === 1 ? -1 : offset - 1) === 0x60) return false;
     let cursor = offset;
     while (this.inputStream.LA(cursor) === 0x60) cursor++;
     if (cursor - offset !== this.fenceLength) return false;

@@ -295,7 +295,7 @@ input
 `````
 
 §section-boundary Every statement is one executable backtick block. Its header
-occupies one physical line. A fence has at least three backticks; its closing
+occupies one physical line. A fence is a complete run of at least three backticks; its closing
 fence has exactly the same count and no following text except horizontal
 whitespace. Each statement chooses its own count independently. There are no
 operation suffixes or heading levels.
