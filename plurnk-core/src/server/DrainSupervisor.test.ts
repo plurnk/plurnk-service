@@ -182,6 +182,109 @@ const delivery = {
     reasoningPolicy: "adaptive", systemPrompt: "system",
 } as const;
 
+test("{§worker-lifecycle-durable-disposition}: stopping during prompt delivery preserves admission without waking", async () => {
+    const writing = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let wakes = 0;
+    const drains = supervisor(async () => "system", undefined, {
+        db: {
+            drain_current_loop_for_worker: { get: async () => ({ id: 7 }) },
+        } as unknown as Db,
+        lifecycle: { wake: async () => { wakes++; return true; } } as never,
+        injectPrompt: async (loopId) => {
+            writing.resolve();
+            await release.promise;
+            return { loopId, turnSeq: 2 };
+        },
+    });
+    drains.start();
+    const { sourceLoopId: _source, ...independent } = delivery;
+    const admitted = drains.inject(independent);
+    await writing.promise;
+    drains.beginStop("daemon_stopping");
+    release.resolve();
+    assert.deepEqual(await admitted, { action: "injected_next_turn", loopId: 7, turnSeq: 2 });
+    assert.equal(wakes, 0, "accepted prompt content survives for restart without reopening its parked loop");
+    await drains.idle();
+});
+
+test("{§module-shutdown-order}: stopping during ready-queue selection cannot start a new drain", async () => {
+    const selecting = Promise.withResolvers<void>();
+    const selected = Promise.withResolvers<{ id: number }>();
+    let claims = 0;
+    const drains = supervisor(async () => "system", undefined, {
+        db: {
+            drain_ready_loop: { get: async () => { selecting.resolve(); return selected.promise; } },
+            drain_claim_next_loop: { get: async () => { claims++; return undefined; } },
+        } as unknown as Db,
+    });
+    drains.start();
+    const started = drains.ensureDrain({ workspaceId: 1, workerId: 2, systemPrompt: "system" });
+    await selecting.promise;
+    drains.beginStop("daemon_stopping");
+    selected.resolve({ id: 7 });
+    assert.equal(await started, null, "a stale readiness result cannot create a fresh cancellation scope after stop");
+    await drains.idle();
+    assert.equal(claims, 0, "accepted queued work remains unclaimed for restart");
+});
+
+for (const status of [100, 202] as const) {
+    test(`{§module-shutdown-order}: stopping during ${status} schedule selection cannot install a timer`, async (t) => {
+        const selecting = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const drains = supervisor(async () => "system", undefined, {
+            db: {
+                drain_scheduled_loops: { all: async () => {
+                    selecting.resolve();
+                    await release.promise;
+                    return status === 100 ? [{ id: 7, wait_revision: 1, scheduled_at: Date.now() + 60_000 }] : [];
+                } },
+            } as unknown as Db,
+            lifecycle: { parked: async () => status === 202 ? [{
+                id: 7, wait_revision: 1, wait_deadline_at: Date.now() + 60_000,
+                wait_poll_interval: 0, wait_poll_at: null,
+            }] : [] } as never,
+        });
+        drains.start();
+        const scheduled = drains.scheduleWakes(1, 2, "system");
+        await selecting.promise;
+        drains.beginStop("daemon_stopping");
+        const timers = t.mock.method(globalThis, "setTimeout");
+        release.resolve();
+        try {
+            await scheduled;
+            assert.equal(timers.mock.callCount(), 0, "the scheduler must not recreate timers after shutdown cleared them");
+        } finally { drains.beginStop("fixture_cleanup"); }
+    });
+}
+
+test("{§module-shutdown-order}: stopping during poll persistence cannot install its selected timer", async (t) => {
+    const persisting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const drains = supervisor(async () => "system", undefined, {
+        db: {
+            drain_scheduled_loops: { all: async () => [] },
+            drain_worker_min_poll: { get: async () => ({ open_count: 1, poll_seconds: 60 }) },
+        } as unknown as Db,
+        lifecycle: {
+            parked: async () => [{
+                id: 7, wait_revision: 1, wait_deadline_at: null, wait_poll_interval: null, wait_poll_at: null,
+            }],
+            inheritPoll: async () => { persisting.resolve(); await release.promise; },
+        } as never,
+    });
+    drains.start();
+    const scheduled = drains.scheduleWakes(1, 2, "system");
+    await persisting.promise;
+    drains.beginStop("daemon_stopping");
+    const timers = t.mock.method(globalThis, "setTimeout");
+    release.resolve();
+    try {
+        await scheduled;
+        assert.equal(timers.mock.callCount(), 0, "timer installation rechecks stop even after the durable poll was admitted");
+    } finally { drains.beginStop("fixture_cleanup"); }
+});
+
 test("{§worker-causal-admission}: cancellation follows accepted delivery without blocking another workspace", async (t) => {
     const writing = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

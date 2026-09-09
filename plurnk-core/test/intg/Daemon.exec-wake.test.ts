@@ -244,7 +244,7 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
     }
 });
 
-test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async () => {
+test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async (t) => {
     const boot = new Mock({
         contextWindow: 16384,
         responses: [mockResponse("```SEND\nboot provider must remain unused\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```")],
@@ -262,6 +262,21 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
     ProviderInstantiate.registerInstance(selected, selectedSpec);
 
     const db = await openMigrated();
+    const parked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const schedule = DrainSupervisor.prototype.scheduleWakes;
+    let stopping: Promise<void> | undefined;
+    let held = false;
+    t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (
+        this: DrainSupervisor, ...args: Parameters<typeof schedule>
+    ) {
+        if (!held && (await new LoopLifecycle(db).parked(args[1])).length > 0) {
+            held = true;
+            parked.resolve();
+            await release.promise;
+        }
+        return schedule.apply(this, args);
+    });
     let first: Daemon | undefined;
     let second: Daemon | undefined;
     try {
@@ -276,11 +291,14 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
             selector: "restartb",
             policy: { proposals: "accept" },
         });
+        await parked.promise;
+        stopping = first.stop();
         await waitForDb(
-            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: started.loopId }))?.status,
-            (status) => status === 202,
+            () => db.test_latest_subscription_for_worker.get<{ close_status: number }>({ worker_id: workerId }),
+            (subscription) => subscription?.close_status === 499,
         );
-        await first.stop();
+        release.resolve();
+        await stopping;
         first = undefined;
         assert.equal(
             (await db.test_get_loop_status.get<{ status: number }>({ id: started.loopId }))?.status,
@@ -308,6 +326,8 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
         assert.equal(selected.remaining, 0, "B generated before and after daemon restart");
         assert.equal(boot.remaining, 1, "restart never substituted boot-default A");
     } finally {
+        release.resolve();
+        await stopping;
         if (first !== undefined) await first.stop();
         if (second !== undefined) await second.stop();
         await db.close();

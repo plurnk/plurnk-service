@@ -257,7 +257,7 @@ export default class DrainSupervisor {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
                 // the serialized park-boundary check below supplies the wake edge.
-                await this.#lifecycle.wake(result.loopId);
+                await this.#wakeLoop(workerId, result.loopId);
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq } as const;
             }
             const accepted = await this.#enqueueFreshLoop({
@@ -415,8 +415,7 @@ export default class DrainSupervisor {
                                 loop_id: loopRow.id,
                             });
                             if (undelivered === undefined) return false;
-                            await this.#lifecycle.wake(loopRow.id);
-                            return true;
+                            return this.#wakeLoop(workerId, loopRow.id);
                         });
                         if (promptWaiting) {
                             currentLoopId = null;
@@ -424,7 +423,7 @@ export default class DrainSupervisor {
                         }
                         // {§loop-wake-identity}: events observed by another loop
                         // cannot consume this loop's completion wake.
-                        if (await this.#lifecycle.wake(loopRow.id, { eventOnly: true })) {
+                        if (await this.#wakeLoop(workerId, loopRow.id, { eventOnly: true })) {
                             currentLoopId = null;
                             continue;
                         }
@@ -662,6 +661,7 @@ export default class DrainSupervisor {
                 deferred = true;
                 return null;
             }
+            if (!this.#acceptingWork) return null;
             return this.#startDrain(opts);
         });
         if (deferred) await this.scheduleWakes(opts.workspaceId, opts.workerId, opts.systemPrompt);
@@ -826,6 +826,7 @@ export default class DrainSupervisor {
             const queued = await this.#db.drain_scheduled_loops.all<{
                 id: number; wait_revision: number; scheduled_at: number;
             }>({ worker_id: workerId });
+            if (!this.#acceptingWork) return;
             for (const [loopId, timer] of this.#loopTimers) {
                 if (timer.workerId === workerId && !waits.some(({ id }) => id === loopId)
                     && !queued.some(({ id }) => id === loopId)) this.#clearLoopTimer(loopId);
@@ -833,6 +834,7 @@ export default class DrainSupervisor {
             for (const wait of waits) {
                 if (wait.wait_poll_interval === null && wait.wait_poll_at === null) {
                     const interval = await this.#inheritedPollMs(workerId, wait.id);
+                    if (!this.#acceptingWork) return;
                     if (interval !== null) {
                         wait.wait_poll_at = Date.now() + interval;
                         await this.#lifecycle.inheritPoll(wait.id, wait.wait_revision, wait.wait_poll_at);
@@ -849,6 +851,7 @@ export default class DrainSupervisor {
     }
 
     #armTimer(workspaceId: number, workerId: number, systemPrompt: string, loopId: number, status: 100 | 202, revision: number, dueAt: number): void {
+        if (!this.#acceptingWork) return;
         const prior = this.#loopTimers.get(loopId);
         if (prior?.revision === revision && prior.status === status && prior.dueAt === dueAt) return;
         this.#clearLoopTimer(loopId);
@@ -863,7 +866,7 @@ export default class DrainSupervisor {
 
     async #wakeTimedLoop(workspaceId: number, workerId: number, systemPrompt: string, loopId: number, status: 100 | 202, revision: number): Promise<void> {
         if (!this.#acceptingWork) return;
-        if (status === 100 || await this.#lifecycle.wake(loopId, { revision, dueAt: Date.now() })) {
+        if (status === 100 || await this.#wakeLoop(workerId, loopId, { revision, dueAt: Date.now() })) {
             await this.ensureDrain({ workspaceId, workerId, systemPrompt });
         } else {
             // A capped timer or backwards clock may fire before the durable due time.
@@ -873,6 +876,7 @@ export default class DrainSupervisor {
 
     async #inheritedPollMs(workerId: number, loopId: number): Promise<number | null> {
         const row = await this.#db.drain_worker_min_poll.get<{ open_count: number; poll_seconds: number | null }>({ worker_id: workerId });
+        if (!this.#acceptingWork) return null;
         if ((row?.open_count ?? 0) === 0) {
             this.#pollBackoff.delete(loopId);
             return null;
@@ -901,15 +905,19 @@ export default class DrainSupervisor {
         return Math.max(delayMs, readOptimisticSettlementMs());
     }
 
+    async #wakeLoop(workerId: number, loopId: number, condition: Parameters<LoopLifecycle["wake"]>[1] = {}): Promise<boolean> {
+        // {§worker-lifecycle-durable-disposition}: test admission at the mutation,
+        // after asynchronous prompt, completion, or deadline selection.
+        if (!this.#acceptingWork || this.#workerAborts.get(workerId)?.signal.aborted) return false;
+        return this.#lifecycle.wake(loopId, condition);
+    }
+
     async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         if (!this.#acceptingWork) return;
-        const scope = this.#workerAborts.get(workerId);
-        if (scope?.signal.aborted === true) return;
         const waits = await this.#lifecycle.parked(workerId);
         let woke = false;
         for (const wait of waits) {
-            if (!this.#acceptingWork || scope?.signal.aborted) return;
-            if (await this.#lifecycle.wake(wait.id, { revision: wait.wait_revision, eventOnly: true })) {
+            if (await this.#wakeLoop(workerId, wait.id, { revision: wait.wait_revision, eventOnly: true })) {
                 this.#clearLoopTimer(wait.id);
                 woke = true;
             }

@@ -3061,6 +3061,9 @@ producers, derivations, mimetypes, and schemes before its final worker-settlemen
 barrier. The supervisor owns each asynchronous cancellation and wake task from
 acceptance through settlement, including immediately acknowledged and explicitly
 awaited cancellation; a task failure participates in the shutdown aggregate.
+After asynchronous selection, the supervisor rechecks shutdown before creating
+a drain or installing a timer; parked-loop wake mutations also recheck worker
+cancellation under {§worker-lifecycle-durable-disposition}.
 The database may be released only after the final settlement barrier resolves.
 
 §crash-only-stop The settle sequence is deadline-bounded
