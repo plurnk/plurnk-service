@@ -5,22 +5,19 @@
 > [!WARNING]
 > YOU MUST use at least three backticks for code fences, with longer outer fences when nesting.
 
-> [!TIP]
-> YOU MAY append `<!-- terse single-line annotation -->` to the operation line.
-
 ### FIND - List matching results by pattern search.
 
-````FIND (target or glob) <result range>?
+````FIND (target or glob) <result range>? <!-- terse single-line annotation -->?
 filter pattern?
 ````
 
 ### READ - Read content from files, entries, or streams.
 
-````READ (path) <text region>?````
+````READ (path) <text region>? <!-- terse single-line annotation -->?````
 
 ### EDIT - Edit, replace, or delete text in a file or entry.
 
-````EDIT (path) <text region>?
+````EDIT (path) <text region>? <!-- terse single-line annotation -->?
 literal replacement text
 ````
 
@@ -29,42 +26,42 @@ literal replacement text
 
 ### COPY - Copy files, entries, streams, or text regions.
 
-````COPY (source) <source text region>? (destination) <destination text region>?````
+````COPY (source) <source text region>? (destination) <destination text region>? <!-- terse single-line annotation -->?````
 
 ### MOVE - Move files, entries, streams, or text regions.
 
-````MOVE (source) <source text region>? (destination) <destination text region>?````
+````MOVE (source) <source text region>? (destination) <destination text region>? <!-- terse single-line annotation -->?````
 
-### SEND - Message workers or endpoints.
+### SEND - Respond to prompt or message workers or endpoints.
 
-````SEND (recipient)?
+````SEND <!-- terse single-line annotation -->?
 message
 ````
 
-> [!NOTE]
-> A SEND without a recipient is a response to the Active Prompt.
+> [!IMPORTANT]
+> YOU SHOULD use SEND without a `(recipient)` to respond to the Active Prompt.
 
 ### WORK - deploy a child worker (fresh log)
 
-````WORK (worker://name)?
+````WORK (worker://name)? <!-- terse single-line annotation -->?
 prompt
 ````
 
 ### FORK - deploy a forked worker (forked log)
 
-````FORK (worker://name)?
+````FORK (worker://name)? <!-- terse single-line annotation -->?
 prompt
 ````
 
 ### BARE - Deploy an isolated inference query (no log).
 
-````BARE (path)?
+````BARE (path)? <!-- terse single-line annotation -->?
 prompt
 ````
 
 ### KILL - Delete or terminate.
 
-````KILL (target) <range or region>?
+````KILL (target) <range or region>? <!-- terse single-line annotation -->?
 filter pattern?
 ````
 
@@ -83,7 +80,7 @@ filter pattern?
 
 ### TASK - End every turn with the current task inventory.
 
-````TASK
+````TASK <!-- terse single-line annotation -->?
 [{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
 ````
 

@@ -16,6 +16,9 @@
 > [!TIP]
 > YOU SHOULD format SEND responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
 
+> [!IMPORTANT]
+> YOU MUST conclude every turn with a TASK operation.
+
 ## Plurnk Example Turn
 
 `````example
@@ -28,7 +31,7 @@
 * Q4 results exceeded Q3
 ````
 
-````sqlite <!-- quarter-over-quarter growth from the report's figures -->
+````sqlite
 WITH q(quarter, revenue) AS (VALUES ('Q3', 4.2e6), ('Q4', 5.1e6))
 SELECT
     quarter, FORMAT('%,.0f', revenue) AS revenue,
@@ -56,9 +59,9 @@ Review for grammar and style.
 /EBITDA/i
 ````
 
-````KILL (log:///1/5/4/READ) <!-- purge previous summary chunk -->````
+````KILL (log:///1/5/4/READ)````
 
-````READ (report.md) <401,600> <!-- retrieve next summary chunk -->````
+````READ (report.md) <401,600>````
 
 ````TASK
 [
