@@ -25,7 +25,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
         contextWindow: 100_000,
         responses: [
             makeMockResponse("```EXEC\nseq 1 40\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-            makeMockResponse("```READ (sh:///1/2/2/EXEC#stdout) <38,40>```\n```TASK\n[{\"content\":\"reading the tail\",\"status\":\"in_progress\"}]\n```", 10),
+            makeMockResponse("```READ (sh:///1/2/2/sh#stdout) <38,40>```\n```TASK\n[{\"content\":\"reading the tail\",\"status\":\"in_progress\"}]\n```", 10),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
@@ -38,7 +38,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const rows = await db.test_log_entries_by_turn.all<{ scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
             const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
             assert.ok(foisted, "the stream's terminal observation was foisted");
-            assert.equal(foisted.source, "log:///1/2/2/EXEC", "the observation names the EXEC that produced the stream");
+            assert.equal(foisted.source, "log:///1/2/2/sh", "the observation names the executor that produced the stream");
             const rx = JSON.parse(foisted.rx) as { exitCode: number; content: string; mimetype: string; startLine: number; range: { unit: string; total: number; returned: [number, number] } };
             assert.equal(rx.exitCode, 0, "the exact subprocess conclusion remains durable");
             assert.equal(rx.content.split("\n").filter((l) => l !== "").length, DEFAULT_RETRIEVAL_LIMIT, "exactly the retrieval page");
@@ -54,12 +54,12 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const terminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stdout"));
             assert.ok(terminal, "the terminal observation names its stream under `stream` (#425 F4)");
             assert.equal(terminal.target, undefined, "a stream address is never a target slot");
-            assert.equal(terminal.source, "log:///1/2/2/EXEC");
+            assert.equal(terminal.source, "log:///1/2/2/sh");
             assert.equal(terminal.terminal, true);
             assert.equal(terminal.exitCode, 0);
             const emptyTerminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stderr"));
             assert.ok(emptyTerminal, "an empty selected channel still produces a terminal observation");
-            assert.equal(emptyTerminal.source, "log:///1/2/2/EXEC");
+            assert.equal(emptyTerminal.source, "log:///1/2/2/sh");
             assert.equal(emptyTerminal.terminal, true);
             assert.equal(emptyTerminal.exitCode, 0);
             assert.equal(emptyTerminal.body, undefined, "completion truth does not require fabricated content");
@@ -93,7 +93,7 @@ test("an active stream reaches the model only as a Child Streams pointer with it
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "child-streams");
-            assert.match(pointers, /"status":"active","path":"sh:\/\/\/1\/2\/2\/EXEC","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
+            assert.match(pointers, /"status":"active","path":"sh:\/\/\/1\/2\/2\/sh","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/1\/2\/3#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {
@@ -126,7 +126,7 @@ process.stdout.write(${JSON.stringify(content)});
 \`\`\`TASK
 [{"content":"waiting","status":"waiting"}]
 \`\`\``, 10),
-        makeMockResponse("```READ (node:///1/2/2/EXEC#stdout) <1,-1>```\n```TASK\n[{\"content\":\"Read the full result.\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```READ (node:///1/2/2/node#stdout) <1,-1>```\n```TASK\n[{\"content\":\"Read the full result.\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {

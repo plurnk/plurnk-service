@@ -17,7 +17,7 @@ import Owner from "../core/Owner.ts";
 import EntryFind from "./_entry-find.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
-import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
+import ChannelWrite from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
 import { generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
@@ -53,7 +53,7 @@ interface ExecAttrs {
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     body: string;           // body of the EXEC op
-    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>/EXEC; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
+    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>/<runtime>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: T MINUTES, held in seconds: kill the spawn after T minutes (504). Absent/-1 = unbounded.
@@ -86,22 +86,6 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
     return target.raw;
 };
 
-// EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
-// Dispatcher.#writeLog). Exec owns this convention, so it — not the client — turns
-// the pathname into the entry's coordinate, mirrored onto stream payloads so
-// clients read fields instead of parsing the URI. The
-// coordinate is the numeric triple before the `/EXEC` op segment ({§log-coordinate-hierarchy}:
-// every item address is loop/turn/item/OP); any other pathname yields undefined (no
-// coordinate on the wire).
-// {§notifications-stream-event-on-channel-change}, {§notifications-stream-concluded}
-const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined => {
-    const seg = pathname.split("/").filter(Boolean);
-    if (seg.length < 4 || seg.at(-1) !== "EXEC") return undefined;
-    const [loop_seq, turn_seq, sequence] = seg.slice(-4, -1).map(Number);
-    if (![loop_seq, turn_seq, sequence].every(Number.isInteger)) return undefined;
-    return { loop_seq, turn_seq, sequence };
-};
-
 // {§stream-owner-scoped} — resolve a stream statement's authority to the owning worker and hand
 // back the statement authority-stripped (the storage path is the bare loop coordinate; the owner
 // rides the owner_id column, never the pathname). Empty authority = the CALLING worker — your own
@@ -131,7 +115,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // The slot contract, stated when a resource source cannot be read: the resource IS the
     // program and the body its stdin; a targetless invocation takes a command body.
     static sourceRecovery(source: string, upstream: unknown): string {
-        const contract = `The target \`${source}\` names the program resource; the body is its stdin. Without a target, the EXEC body is the command.`;
+        const contract = `The target \`${source}\` names the program resource; the body is its stdin. Without a target, the body is the command.`;
         return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
     }
 
@@ -297,12 +281,12 @@ export default class Exec extends CoreSchemeAdapterBase {
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
-    // (e.g. sh:///1/1/2/EXEC, {§exec}). The model READs that entry on a subsequent turn.
+    // (e.g. sh:///1/1/2/sh, {§exec}). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         const body = statement.body ?? "";
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
-        // {§exec-executor-slot}: the bracket names the executor; the path is its program.
+        // {§exec-executor-slot}: the fence names the executor; the path is its program.
         const route = execRouteOf(statement);
         const runtime = route.runtime;
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
@@ -384,7 +368,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             return refuse(
                 "body-required",
                 `Executable tool '${runtime}' requires a ${invocation.body.role} body.`,
-                `Provide the ${invocation.body.role} in the EXEC body.`,
+                `Provide the ${invocation.body.role} in the ${runtime} body.`,
             );
         }
         if (invocation.target === undefined && hasTarget) {
@@ -475,7 +459,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         "scheme:exec",
                         "target-classification-failed",
                         500,
-                        `EXEC target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
+                        `${runtime} target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
                         {},
                         { target, stage: "target-classification" },
                     ) as ExecResult;
@@ -484,7 +468,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (kind === "directory") {
                 return refuse(
                     "target-not-a-program",
-                    `EXEC target '${target}' is a directory, not a program.`,
+                    `${runtime} target '${target}' is a directory, not a program.`,
                     "Run in a directory with `{cwd=<directory>}` and put the command in the body.",
                     { target },
                 );
@@ -498,11 +482,11 @@ export default class Exec extends CoreSchemeAdapterBase {
                     : executors.availableRuntimes(core.functionalityWorkerId)
                         .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
                 const recovery = ownerRuntimes.length === 0
-                    ? "The target must name an existing program resource. A targetless EXEC takes the command in its body."
+                    ? `The target must name an existing program resource. A targetless ${runtime} takes the command in its body.`
                     : `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`; use that name on the opening fence.`;
                 return refuse(
                     "target-not-found",
-                    "The EXEC program does not resolve as a script or a registered tool for this executor.",
+                    `The ${runtime} program does not resolve as a script or a registered tool for this executor.`,
                     recovery,
                     { target, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
                 );
@@ -605,7 +589,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     "scheme:exec",
                     "source-content-unavailable",
                     422,
-                    `Scheme '${sourceTarget.scheme}' did not supply content for the EXEC source.`,
+                    `Scheme '${sourceTarget.scheme}' did not supply content for the ${runtime} source.`,
                     { outcome: "scheme_source_content_unavailable" },
                     {
                         scheme: sourceTarget.scheme,
@@ -773,7 +757,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }): Promise<SchemeResult> {
         const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
-        const coordinate = coordinateFromPathname(pathname);
+        const coordinate = LogEntryProjection.streamCoordinate(pathname, runtime);
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.
         let timedOut = false;

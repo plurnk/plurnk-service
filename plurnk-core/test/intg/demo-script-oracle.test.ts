@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { observedScriptExecution, type ScriptReceipt } from "../demo/_script-oracle.ts";
 
-const stream = "sh:///1/2/3/EXEC";
+const stream = "sh:///1/2/3/sh";
 const execution = (target: string | null, body = ""): ScriptReceipt => ({
     scheme: "file", pathname: target, fragment: null,
     tx: JSON.stringify({ target: target === null ? null : { raw: target }, body }), rx: null,
@@ -55,7 +55,7 @@ test("script oracle rejects claimed, unobserved, failed, unrelated and mismatche
         [[execution("greet.sh")], [receipt("GREETING\n", 1)]],
         [[execution("greet.sh")], [receipt("WRONG\n")]],
         [[execution(null, "printf GREETING")], [receipt()]],
-        [[execution("greet.sh")], [receipt("GREETING\n", 0, "sh:///1/2/4/EXEC")]],
+        [[execution("greet.sh")], [receipt("GREETING\n", 0, "sh:///1/2/4/sh")]],
         [[{ ...execution("greet.sh"), status_rx: 403 }], [receipt()]],
         [[execution("greet.sh")], [{ ...receipt(), attrs: JSON.stringify({ terminal: false }) }]],
         [[execution("greet.sh")], [{ ...receipt(), fragment: "stderr" }]],

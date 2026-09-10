@@ -18,6 +18,7 @@ import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
+import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace } from "./_helpers.ts";
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -38,8 +39,7 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
     // 5 lines, 0.5s apart — ~2.5s total. Each line is 2 bytes ("N\n").
     // We sample mid-stream and assert content has GROWN but isn't yet
     // complete, then sample again after idle to assert final state.
-    type Event = { entryId: number; channel: string; state: string; contentLength: number };
-    const events: Event[] = [];
+    const events: StreamEventPayload[] = [];
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -120,6 +120,11 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
         }
         assert.equal(closeEvents.length, 1, "exactly one state=closed event for stdout");
         assert.equal(closeEvents[0].contentLength, 10, "close event reports final byte count (5 lines × 2 bytes)");
+        for (const event of events) {
+            assert.equal(event.target, "sh:///1/1/1/sh");
+            assert.deepEqual([event.loop_seq, event.turn_seq, event.sequence], [1, 1, 1],
+                "clients receive the numeric coordinate independently of the executor leaf");
+        }
     } finally { await db.close(); }
 });
 
@@ -254,7 +259,7 @@ test("an empty-body 0o644 script target survives acceptance and runs", async () 
         const exec = schemes.get("exec") as Exec;
         await exec.idle();
         // the exec entry lives at the l/t/s coordinate (/1/1/1) under the runtime scheme — fail-hard
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1/EXEC" });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1/sh" });
         assert.ok(entryRow, "the sh exec entry exists at /1/1/1");
         const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
         assert.match(ch?.content ?? "", /greetings-from-file-target/, "the script ran and its stdout arrived");

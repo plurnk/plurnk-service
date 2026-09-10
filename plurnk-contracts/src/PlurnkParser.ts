@@ -173,7 +173,8 @@ export default class PlurnkParser {
         let anchor: { line: number; column: number } | undefined;
         for (const item of items.slice(cut)) {
             if (item.kind === "statement") {
-                counts.set(item.statement.op, (counts.get(item.statement.op) ?? 0) + 1);
+                const name = item.statement.op === "EXEC" ? item.statement.executor ?? "sh" : item.statement.op;
+                counts.set(name, (counts.get(name) ?? 0) + 1);
                 anchor ??= item.statement.position;
             } else if (item.kind === "error") {
                 if (item.error.code === "invalid-turn-structure") { kept.push(item); continue; }

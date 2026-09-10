@@ -4,4 +4,4 @@ import type { ExecStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 // its program. Native EXEC without an executor selects the default shell.
 export type ExecRoute = { readonly runtime: string; readonly target: ParsedPath | null };
 
-export const execRouteOf = (statement: ExecStatement): ExecRoute => ({ runtime: statement.executor ?? "sh", target: statement.target });
+export const execRouteOf = (statement: Pick<ExecStatement, "executor" | "target">): ExecRoute => ({ runtime: statement.executor ?? "sh", target: statement.target });

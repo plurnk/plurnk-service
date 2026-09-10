@@ -475,7 +475,7 @@ export default class PacketBuilder {
         coordinate: string;
     }>> {
         const rows = await this.#db.engine_render_errors.all<{
-            origin: string; op: string; attrs: string; sequence: number; status_rx: number;
+            origin: string; op: string; attrs: string; tx: string; sequence: number; status_rx: number;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
         return rows.map((r) => ({

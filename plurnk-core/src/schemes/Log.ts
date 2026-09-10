@@ -43,6 +43,7 @@ type CoordinateRow = {
     origin: string;
     op: string | null;
     attrs: string;
+    tx: string;
 };
 
 export interface LogCurationPlan {
@@ -67,7 +68,7 @@ export interface LogCurationOutcome {
 // or actionless durable type. Parsing accepts it (or omits it), but a supplied
 // leaf must agree. Matching is case-insensitive: model operations render
 // uppercase while `ops`, `attempt`, and engine-minted selectors are lowercase.
-const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
+const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z0-9_.+-]+))?$/;
 // {§log-coordinate-hierarchy} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
@@ -258,7 +259,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
                 // {§log-channel-miss-names-stream} (#502) — an EXEC item's stream link rides as
                 // representation data so the projector's channel miss can name the address the
-                // model meant (`<runtime>:///<coord>/EXEC#<channel>`); selection stays the projector's.
+                // model meant (`<runtime>:///<coord>/<runtime>#<channel>`); selection stays the projector's.
                 ...(typeof stream === "string" ? { attributes: { stream } } : {}),
             },
         };
@@ -576,7 +577,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         ctx: PlurnkSchemeContext,
         maxLogEntryId: number | null,
     ): Promise<number | null> {
-        const row = await ctx.db.log_id_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs">>({
+        const row = await ctx.db.log_id_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs" | "tx">>({
             worker_id: ctx.workerId,
             loop_seq: coordinate.loopSeq,
             turn_seq: coordinate.turnSeq,

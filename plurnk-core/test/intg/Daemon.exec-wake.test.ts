@@ -390,8 +390,8 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 200);
             assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
-            assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+\/EXEC completed \(exit 0\)/,
-                "summary references the stream's item address <runtime>:///<loop>/<turn>/<seq>/EXEC");
+            assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+\/sh completed \(exit 0\)/,
+                "summary references the stream's item address <runtime>:///<loop>/<turn>/<seq>/sh");
             assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
             assert.equal(Object.hasOwn(wake, "wakeLoopId"), false);
 

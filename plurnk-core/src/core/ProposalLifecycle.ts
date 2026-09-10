@@ -25,6 +25,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Results, { OperationFailureError } from "./results.ts";
 import LogBody from "./LogBody.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 
@@ -632,13 +633,18 @@ export default class ProposalLifecycle {
             turn_seq: number;
             sequence: number;
             op: string;
+            origin: string;
             attrs: string;
             tx: string;
             mimetype_tx: string;
             mimetype_rx: string;
         }>({ id: logEntryId });
         if (coordinate === undefined) throw new Error(`ProposalLifecycle.applyResolution: log entry ${logEntryId} has no coordinate`);
-        Results.attachInstance(result, `log:///${coordinate.loop_seq}/${coordinate.turn_seq}/${coordinate.sequence}/${coordinate.op}`);
+        const pathname = LogEntryProjection.coordinate(
+            `${coordinate.loop_seq}/${coordinate.turn_seq}/${coordinate.sequence}`,
+            coordinate,
+        );
+        Results.attachInstance(result, `log:///${pathname}`);
         const rx = JSON.stringify(result);
         const weight = LogBody.weight({
             op: coordinate.op,

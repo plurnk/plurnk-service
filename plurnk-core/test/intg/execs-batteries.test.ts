@@ -198,7 +198,7 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
         });
         assert.equal(shell.status, 400);
         assert.equal(shell.problem?.requestedRuntime, "shell", "an unknown alias does not trigger an intent-presuming correction");
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1/EXEC" });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1/sh" });
         assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }
 });

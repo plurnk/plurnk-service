@@ -41,14 +41,14 @@ target that is not a script is refused before anything runs.
 
 Every shell invocation is host-effecting and proposes for review before it
 runs. Output then streams under the receipt's `stream` address, such as
-`sh:///1/2/3/EXEC`: `#stdout` is the default channel and
+`sh:///1/2/3/sh`: `#stdout` is the default channel and
 `#stderr` is the second; both are `text/stream`. While it runs, Child Streams
 reports each channel's size and growth and READ can inspect any range. On
 completion, the harness adds one `_plurnk` READ per channel: its first page
 (up to 16 lines), `range` extent, and terminal exit status. READ the `stream`
 address for more; the `log:///…/READ` item holds only its recorded page:
 
-````READ (sh:///1/2/3/EXEC#stdout) <17,40>````
+````READ (sh:///1/2/3/sh#stdout) <17,40>````
 
 A nonzero exit closes with status 500; inspect both channels because either
 may carry the useful diagnostic.

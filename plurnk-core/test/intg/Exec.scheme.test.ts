@@ -137,13 +137,13 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         const dispatch = (statement: ReturnType<typeof readStmt>, sequence: number) => engine.dispatch({
             statement, workspaceId, workerId, loopId, turnId, sequence, origin: "model",
         });
-        const own = await dispatch(readStmt(urlPath("sh", "/9/9/9/EXEC")), 1);
+        const own = await dispatch(readStmt(urlPath("sh", "/9/9/9/sh")), 1);
         assert.equal(own.status, 404);
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
-        assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/EXEC` addresses this runtime's result streams/, "the recovery names the coordinate space");
+        assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/sh` addresses this runtime's result streams/, "the recovery names the coordinate space");
         assert.match(ownText, /A tool's own ids are body arguments; the opening fence names the executor and its target names the tool\./, "the recovery routes ids to the tool");
-        const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
+        const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/sh"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
         assert.match(foreignText, /stream-not-found/);
@@ -221,9 +221,9 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.equal(result.status, 400, "refused, never spawned as `sh curl`");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /The EXEC program does not resolve as a script or a registered tool for this executor\./);
+        assert.match(rendered, /The sh program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
-        assert.match(rendered, /The target must name an existing program resource\. A targetless EXEC takes the command in its body\./);
+        assert.match(rendered, /The target must name an existing program resource\. A targetless sh takes the command in its body\./);
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
@@ -271,7 +271,7 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}"
         // Coordinate-only pathname: the runtime lives in the entry's SCHEME (tag authority),
         // so the stream entry at <runtime>:///<loop_seq>/<turn_seq>/<sequence> carries just the
         // coordinate it shares with the log row.
-        assert.match(attrs.pathname, /^\/\d+\/\d+\/\d+\/EXEC$/, "pathname is the log item coordinate, op segment included");
+        assert.match(attrs.pathname, /^\/\d+\/\d+\/\d+\/sh$/, "pathname is the log item coordinate, op segment included");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;

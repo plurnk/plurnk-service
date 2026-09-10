@@ -807,7 +807,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
             loop_id: 7,
             origin: "client",
             op: "EXEC",
-            coordinate: "1/1/1/EXEC",
+            coordinate: "1/1/1/sh",
             tx: { body: "printf done" },
             rx: { status: 200 },
             turn_id: 1,

@@ -276,20 +276,20 @@ test("{§stream-catalog-lifecycle} catalog distinguishes active, closed, killed,
             });
             if (result !== undefined) await ChannelWrite.closeSubscription(db, { subscriptionId, result });
         };
-        await seedStream("/1/1/1/EXEC");
-        await seedStream("/1/1/2/EXEC", { status: 200 });
-        await seedStream("/1/1/3/EXEC", Results.failure("executor:sh", "killed", 499, "killed"));
-        await seedStream("/1/1/4/EXEC", Results.failure("executor:sh", "failed", 503, "failed"));
+        await seedStream("/1/1/1/sh");
+        await seedStream("/1/1/2/sh", { status: 200 });
+        await seedStream("/1/1/3/sh", Results.failure("executor:sh", "killed", 499, "killed"));
+        await seedStream("/1/1/4/sh", Results.failure("executor:sh", "failed", 503, "failed"));
 
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({
             db,
             workspaceId,
             defaultChannelFor: (scheme) => scheme === "sh" ? "stdout" : "body",
         }), undefined, workerId) as CatalogEntry[];
-        const active = catalog.find(([channel]) => channel.path === "sh:///1/1/1/EXEC");
-        const closed = catalog.find(([channel]) => channel.path === "sh:///1/1/2/EXEC");
-        const killed = catalog.find(([channel]) => channel.path === "sh:///1/1/3/EXEC");
-        const failed = catalog.find(([channel]) => channel.path === "sh:///1/1/4/EXEC");
+        const active = catalog.find(([channel]) => channel.path === "sh:///1/1/1/sh");
+        const closed = catalog.find(([channel]) => channel.path === "sh:///1/1/2/sh");
+        const killed = catalog.find(([channel]) => channel.path === "sh:///1/1/3/sh");
+        const failed = catalog.find(([channel]) => channel.path === "sh:///1/1/4/sh");
         const stat = catalog.find(([channel]) => channel.path === "worker:///static/note");
         assert.ok(active !== undefined && closed !== undefined && killed !== undefined && failed !== undefined && stat !== undefined);
         assert.equal(active[0].stream?.state, "active");
@@ -306,8 +306,8 @@ test("[note4] manifest groups addressable channels default-first — default bar
     try {
         const workspaceId = await insertWorkspace(db, `note4-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        // A multi-channel exec stream entry at sh:///1/1/2/EXEC (stdout is the default channel, + stderr).
-        const id = await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "sh", pathname: "/1/1/2/EXEC", channel: "stdout", content: "out", mimetype: "text/stream" });
+        // A multi-channel exec stream entry at sh:///1/1/2/sh (stdout is the default channel, + stderr).
+        const id = await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "sh", pathname: "/1/1/2/sh", channel: "stdout", content: "out", mimetype: "text/stream" });
         await db.test_seed_channel.run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
         await db.test_seed_channel.run({ entry_id: id, name: "preview(\\", content: "detail", mimetype: "text/stream", state: "static" });
         await seedEntryWithChannel(db, {
@@ -323,11 +323,11 @@ test("[note4] manifest groups addressable channels default-first — default bar
         // sh's default channel is stdout (the Exec handler) — resolve it so stdout is [0], stderr a #fragment.
         const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
         const catalog = await EntryManifest.catalogRowsFor(ctx, undefined, workerId);
-        const stream = catalog.find(([channel]) => channel.path === "sh:///1/1/2/EXEC");
+        const stream = catalog.find(([channel]) => channel.path === "sh:///1/1/2/sh");
         assert.ok(stream, "exec stream listed");
         assert.deepEqual(
             stream.map((channel) => channel.path),
-            ["sh:///1/1/2/EXEC", "sh:///1/1/2/EXEC#preview\\(\\\\", "sh:///1/1/2/EXEC#stderr"],
+            ["sh:///1/1/2/sh", "sh:///1/1/2/sh#preview\\(\\\\", "sh:///1/1/2/sh#stderr"],
             "the default is first and bare; non-default channels use target-slot spelling",
         );
         assert.ok(

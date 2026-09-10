@@ -102,7 +102,7 @@ filter pattern?
 
 * ````KILL (worker://~/notes.md)```` without a scope deletes an entry.
 * ````KILL (src/app.js) <@zyxwv>```` removes one line by hash anchor.
-* ````KILL (sh:///1/2/3/EXEC)```` stops a running command.
+* ````KILL (sh:///1/2/3/sh)```` stops a running command.
 * ````KILL (worker://recheck)```` terminates a worker.
 * ````KILL (log:///1/[1-7]/*/{TASK,READ})```` removes matching log items.
 * ````KILL (log:///**/READ) <17,-1>```` trims each item's log lines from 17 on.

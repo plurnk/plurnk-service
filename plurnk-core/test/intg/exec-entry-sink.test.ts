@@ -151,7 +151,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         const resultChannel = await db.test_get_channel_by_pathname_scheme.get<{
             content: string;
             mimetype: string;
-        }>({ pathname: "/1/1/1/EXEC", scheme: "stubsearch", name: "results" });
+        }>({ pathname: "/1/1/1/stubsearch", scheme: "stubsearch", name: "results" });
         assert.equal(resultChannel?.mimetype, "application/json", "the consumer persists the executor's per-write output type");
         assert.deepEqual(JSON.parse(resultChannel?.content ?? "null"), [{
             title: "Turkeys",

@@ -16,7 +16,7 @@ is self-contained.
 | ````` ````jq `````<br>`[1,2,3] \| add`                                  | `jq -n '[1,2,3] \| add'`          | Compute without input.             |
 | ````` ````jq (data.json) `````<br>`.users[].name`                        | `jq '.users[].name' data.json`    | Filter a file.                     |
 | ````` ````jq (data.json) `````                                           | `jq '.' data.json`                | Apply identity to a file.          |
-| ````` ````jq (sqlite:///1/2/3/EXEC#results) `````<br>`.[] \| .name`     | Consumer materializes the target. | Filter a prior runtime's output.   |
+| ````` ````jq (sqlite:///1/2/3/sqlite#results) `````<br>`.[] \| .name`     | Consumer materializes the target. | Filter a prior runtime's output.   |
 
 Output streams to `#results` as `application/jsonl`: one compact JSON value per
 line ({§executor-output-address}).

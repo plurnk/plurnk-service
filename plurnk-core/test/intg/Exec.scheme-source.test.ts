@@ -400,7 +400,7 @@ test("EXEC source READ preserves current and named runtime-stream ownership (#16
             workspaceId: ctx.workspaceId,
             ownerId: ctx.root.workerId,
             scheme: "tool",
-            pathname: "/9/8/7/EXEC",
+            pathname: "/9/8/7/tool",
             channel: "results",
             content: "root stream command",
             state: "closed",
@@ -409,14 +409,14 @@ test("EXEC source READ preserves current and named runtime-stream ownership (#16
             workspaceId: ctx.workspaceId,
             ownerId: child.workerId,
             scheme: "tool",
-            pathname: "/9/8/7/EXEC",
+            pathname: "/9/8/7/tool",
             channel: "results",
             content: "child stream command",
             state: "closed",
         });
 
-        assert.equal((await ctx.dispatch(ctx.root, "tool:///9/8/7/EXEC#results")).status, 200);
-        assert.equal((await ctx.dispatch(ctx.root, "tool://child/9/8/7/EXEC#results")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "tool:///9/8/7/tool#results")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "tool://child/9/8/7/tool#results")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", ""]);
         assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "root stream command",
@@ -476,7 +476,7 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
         // #425 F4 — the owning identity stays; the EXEC slot contract rides the recovery.
-        assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its stdin. Without a target, the EXEC body is the command.");
+        assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its stdin. Without a target, the body is the command.");
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);
@@ -487,7 +487,7 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
         // The recovery states the slot contract and never guesses that the missing resource was a tool call.
         assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "EXEC does not guess that a missing resource was intended as a tool call");
-        assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its stdin. Without a target, the EXEC body is the command.");
+        assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its stdin. Without a target, the body is the command.");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);

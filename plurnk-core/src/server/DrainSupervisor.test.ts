@@ -10,11 +10,11 @@ const payload: WakeWorkerPayload = {
     workerId: 2,
     entryOwnerId: 2,
     entryId: 3,
-    target: "sh:///1/1/1/EXEC",
+    target: "sh:///1/1/1/sh",
     subscriptionId: 4,
     result: { status: 200 },
     scheme: "sh",
-    summary: "sh:///1/1/1/EXEC completed",
+    summary: "sh:///1/1/1/sh completed",
 };
 
 const supervisor = (
@@ -62,11 +62,11 @@ test("{§module-shutdown-order}: supervisor idle owns an accepted conclusion wak
         method: "stream/concluded",
         params: {
             entryId: 3,
-            target: "sh:///1/1/1/EXEC",
+            target: "sh:///1/1/1/sh",
             subscriptionId: 4,
             result: { status: 200 },
             scheme: "sh",
-            summary: "sh:///1/1/1/EXEC completed",
+            summary: "sh:///1/1/1/sh completed",
             workerId: 2,
             wakeAction: "no-loop",
         },

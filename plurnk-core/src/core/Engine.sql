@@ -171,7 +171,7 @@ ORDER BY attribution;
 -- PREP: engine_loop_turn_seqs
 -- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
 -- #writeLog when an op needs to address itself or its output by log
--- coordinate (e.g. EXEC's stream entry at exec:///<loop_seq>/<turn_seq>/<sequence>/EXEC).
+-- coordinate (e.g. a shell stream at sh:///<loop_seq>/<turn_seq>/<sequence>/sh).
 SELECT l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM loops l, turns t
 WHERE l.id = $loop_id AND t.id = $turn_id;
@@ -492,7 +492,7 @@ WITH previous_model_turn AS (
     LIMIT 1
 )
 SELECT
-    le.origin, le.op, le.attrs, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
+    le.origin, le.op, le.attrs, le.tx, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
     t.sequence AS turn_seq, l.sequence AS loop_seq
 FROM active_log_entries le
@@ -615,6 +615,7 @@ SELECT l.sequence AS loop_seq,
        t.sequence AS turn_seq,
        le.sequence AS sequence,
        le.op AS op,
+       le.origin AS origin,
        le.attrs AS attrs,
        le.tx AS tx,
        le.mimetype_tx AS mimetype_tx,

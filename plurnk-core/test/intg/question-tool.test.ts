@@ -155,7 +155,7 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: run.loopId });
         assert.equal(loop?.status, 499);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: "/1/2/2/EXEC" });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: "/1/2/2/question" });
         assert.ok(entry);
         const channel = await waitForDb(
             () => db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" }),
@@ -170,7 +170,7 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
 test("{§client-interactions}: KILL ends the question's own waiter without cancelling its loop", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```TASK\n[{\"content\":\"Continue while the question is pending.\",\"status\":\"in_progress\"}]\n```"),
-        makeMockResponse("```KILL (question:///1/2/2/EXEC)```\n```TASK\n[{\"content\":\"Cancel the question.\",\"status\":\"in_progress\"}]\n```"),
+        makeMockResponse("```KILL (question:///1/2/2/question)```\n```TASK\n[{\"content\":\"Cancel the question.\",\"status\":\"in_progress\"}]\n```"),
         makeMockResponse("```SEND\nDone.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
@@ -180,7 +180,7 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });
         assert.equal(provider.remaining, 0);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: "/1/2/2/EXEC" });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: "/1/2/2/question" });
         assert.ok(entry);
         const channel = await db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" });
         const result = JSON.parse(channel?.producer_result ?? "null");

@@ -10,7 +10,7 @@ The system `jq` as a runtime: the **body is the jq program**, the **`(target)` i
 .users[].name
 ````
 
-````jq (sqlite:///1/2/3/EXEC#results)
+````jq (sqlite:///1/2/3/sqlite#results)
 .[] | .name
 ````
 

@@ -296,7 +296,7 @@ export default class AstBuilder {
 
     static #buildExec(ctx: ExecStatementContext): ExecStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
+        const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, AstBuilder.#executorOf(ctx) ?? "sh");
         return {
             op: "EXEC",
             annotation: AstBuilder.#annotationOf(ctx),
@@ -408,12 +408,12 @@ export default class AstBuilder {
         return null;
     }
 
-    static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position): Slots {
+    static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position, executor: string): Slots {
         // {§exec-executor-slot} — every slot at most once; the grammar admits any order.
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `EXEC accepts ${slot} at most once`);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${executor} accepts ${slot} at most once`);
             }
             return found[0] ?? null;
         };

@@ -11,7 +11,7 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 
 -- PREP: log_id_by_coordinate
 -- Resolve a concrete active log:/// coordinate within the worker.
-SELECT le.id, le.origin, le.op, le.attrs FROM active_log_entries le
+SELECT le.id, le.origin, le.op, le.attrs, le.tx FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
@@ -25,7 +25,7 @@ WHERE l.worker_id = $worker_id
 -- coordinate tree. TypeScript appends the canonical projected OP and applies
 -- the authoritative shell-glob match.
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
-       le.origin, le.op, le.attrs
+       le.origin, le.op, le.attrs, le.tx
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id

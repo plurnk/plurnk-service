@@ -14,6 +14,7 @@ import WorkerControlAddress from "./WorkerControlAddress.ts";
 import Turn from "./Turn.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 
 export default class TurnMaterialization {
     readonly #db: Db;
@@ -175,7 +176,7 @@ export default class TurnMaterialization {
             // {§log-coordinate-hierarchy} — the stream lives at its EXEC item's own address, so the
             // causal source is that address under the log scheme.
             const source = this.#schemes.isRuntimeScheme(ch.runtime, workerId)
-                && /^\/[1-9]\d*\/[1-9]\d*\/[1-9]\d*\/EXEC$/.test(ch.coord)
+                && LogEntryProjection.streamCoordinate(ch.coord, ch.runtime) !== undefined
                 ? `log://${ch.coord}`
                 : null;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });

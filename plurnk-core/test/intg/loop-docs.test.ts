@@ -130,7 +130,8 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
         const runtimeSources = execs.flatMap(({ target }) => target?.kind === "url" && executors.availableRuntimes().includes(target.scheme) ? [target] : []);
         if (runtime === "jq") assert.ok(runtimeSources.length > 0, "jq demonstrates filtering another runtime's output");
         for (const target of runtimeSources) {
-            assert.match(target.pathname, /^\/\d+\/\d+\/\d+\/EXEC$/, `${runtime} uses a complete executor stream address`);
+            assert.match(target.pathname, /^\/\d+\/\d+\/\d+\/[^/]+$/, `${runtime} uses a complete executor stream address`);
+            assert.equal(target.pathname.split("/").at(-1), target.scheme, "the source stream names its invoked executor");
         }
     } finally { await db.close(); }
 });
@@ -184,7 +185,7 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
             assert.equal(read.target?.kind, "url");
             if (read.target?.kind !== "url") throw new Error("The stream example must address a resource");
             assert.equal(read.target.scheme, "sh");
-            assert.match(read.target.pathname, /^\/\d+\/\d+\/\d+\/EXEC$/);
+            assert.match(read.target.pathname, /^\/\d+\/\d+\/\d+\/sh$/);
             assert.equal(read.target.fragment, "stdout");
             assert.equal(read.lineMarker?.marks.length, 2, "the example selects a line interval");
         }

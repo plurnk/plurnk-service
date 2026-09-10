@@ -13,7 +13,7 @@ const statements = (source: string): PlurnkStatement[] => {
 };
 
 test("operations retain authored order across mutations, observations and asynchronous dispatch", () => {
-    const authored = statements("\n```READ (notes.md)```\n```EXEC\nnode verify.mjs\n```\n\n```EDIT (notes.md) <2>\nnew\n```\n\n```FIND (src/**)```\n```BARE\nclassify this independently\n```\n\n```WORK (worker://reviewer)\nreview\n```\n\n```KILL (node:///3/1/2/EXEC)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
+    const authored = statements("\n```READ (notes.md)```\n```EXEC\nnode verify.mjs\n```\n\n```EDIT (notes.md) <2>\nnew\n```\n\n```FIND (src/**)```\n```BARE\nclassify this independently\n```\n\n```WORK (worker://reviewer)\nreview\n```\n\n```KILL (node:///3/1/2/node)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(({ op }) => op),

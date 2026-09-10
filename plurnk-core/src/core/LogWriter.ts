@@ -10,6 +10,7 @@ import type { LogCurationPlan } from "../schemes/Log.ts";
 import { primaryLineMarkerOf, primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
 export default class LogWriter {
@@ -89,23 +90,21 @@ export default class LogWriter {
             throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
         }
         if (statement.op === "READ") Results.assertReadResult(result);
+        const coordinate = seqs === undefined ? null : LogEntryProjection.coordinate(
+            `${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`,
+            { op: durableStatement.op, origin, tx: durableStatement, attrs: attrsObj },
+        );
         if (result.problem !== undefined && seqs !== undefined) {
-            Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/${statement.op}`);
+            Results.attachInstance(result, `log:///${coordinate}`);
         } else {
             Results.assert(result);
         }
-        // EXEC produces a stream entry addressed by RUNTIME TAG as authority ({§exec}): it lives
-        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence>/EXEC (e.g. sh:///1/1/2/EXEC) — the one
-        // loop/turn/item/OP schema every log coordinate follows. That address is a
-        // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
-        // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
-        // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
-        // The runtime is the EXEC's executor slot ({§exec-executor-slot}), known for failed execs
-        // too; a bare heading = the default shell.
+        // {§log-coordinate-hierarchy}: the stream and its invocation share one
+        // item path. The stream link never replaces the authored input target.
         if (statement.op === "EXEC") {
-            if (seqs === undefined) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
+            if (coordinate === null) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
             const { runtime } = execRouteOf(statement);
-            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/${statement.op}`;
+            const coordPathname = `/${coordinate}`;
             attrsObj.pathname = coordPathname;
             attrsObj.stream = `${runtime}://${coordPathname}`;
             // Mutate the in-memory result.attrs too: the dispatch path

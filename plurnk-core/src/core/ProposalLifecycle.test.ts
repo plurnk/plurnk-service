@@ -225,7 +225,7 @@ test("{§proposal-accept-applies}: an accepted scheme's successful application s
                 sequence: 4,
                 op: "EXEC",
                 attrs: "{}",
-                tx: JSON.stringify({ op: "EXEC", body: "long task" }),
+                tx: JSON.stringify({ op: "EXEC", executor: "sh", body: "long task" }),
                 mimetype_tx: "application/json",
                 mimetype_rx: "application/json",
             }),

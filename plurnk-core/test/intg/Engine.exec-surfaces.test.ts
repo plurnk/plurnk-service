@@ -14,6 +14,69 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
+test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async () => {
+    const runtime = "search-api2";
+    const path = `log:///1/2/2/${runtime}`;
+    const task = '```TASK\n[{"content":"Inspect the failed invocation.","status":"in_progress"}]\n```';
+    const mock = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse(`\`\`\`${runtime}\nidentityneedle\n\`\`\`\n${task}`, 10),
+        makeMockResponse(`\`\`\`READ (${path})\`\`\`\n\`\`\`FIND (log:///**/${runtime})\n~identityneedle\n\`\`\`\n${task}`, 10),
+        makeMockResponse(`\`\`\`KILL (log:///**/${runtime})\`\`\`\n${task}`, 10),
+        makeMockResponse('```SEND\nReviewed.\n```\n```TASK\n[{"content":"Reviewed the invocation.","status":"completed"}]\n```', 10),
+    ] });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "executor-receipt-identity" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect an unavailable executor.", policy: { proposals: "accept" } });
+            assert.equal(finalStatus, 200);
+            assert.equal(turnIds?.length, 5);
+            const packets = await Promise.all(turnIds!.slice(2).map(async (id) => {
+                const row = await db.test_get_packet.get<{ packet: string }>({ id });
+                return JSON.parse(row!.packet);
+            }));
+            const invocation = logEntries(packets[0]).find((entry) => entry.path === path);
+            assert.ok(invocation, "the failure is recorded under its invoked executor, including digits and hyphens");
+            assert.equal(invocation.status, 400);
+            assert.equal(invocation.stream, `${runtime}:///1/2/2/${runtime}`);
+            assert.match(packetSection(packets[0], "errors"), /log:\/\/\/1\/2\/2\/search-api2/);
+            const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
+            assert.equal(JSON.parse(dispatched.find((row) => row.op === "EXEC")!.rx).problem.instance, path,
+                "the durable Problem and model-facing pointer address the same receipt");
+            const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds![2]! });
+            assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
+            assert.equal(retrievals.find((row) => row.op === "FIND")?.status_rx, 200);
+            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => String(entry.path).endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
+                "full-text search and path-glob selection return the same canonical leaf");
+            assert.equal(logEntries(packets[2]).some((entry) => entry.path === path), false,
+                "KILL selects that exact executor family and retires the receipt from context");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§log-coordinate-hierarchy}: rejected executor proposals use the same receipt identity as immediate failures", async () => {
+    const mock = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse('```sh\nprintf rejected\n```\n```TASK\n[{"content":"Inspect the decision.","status":"in_progress"}]\n```', 10),
+        makeMockResponse('```SEND\nThe command was not run.\n```\n```TASK\n[{"content":"Reviewed the decision.","status":"completed"}]\n```', 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "executor-rejection-identity" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the proposal decision.", policy: { proposals: "reject" } });
+            assert.equal(finalStatus, 200);
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
+            const problem = JSON.parse(rows.find((row) => row.op === "EXEC")!.rx).problem;
+            assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/rejected");
+            assert.equal(problem.instance, "log:///1/2/2/sh");
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! });
+            const packet = JSON.parse(row!.packet);
+            assert.ok(logEntries(packet).some((entry) => entry.path === problem.instance));
+        } finally { ws.close(); }
+    });
+});
+
 test("regression: a model's EXEC result surfaces visibly in the next turn without an explicit READ", async () => {
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
@@ -136,7 +199,7 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
                 && row.scheme === "sh"
                 && row.status_rx === 500);
             assert.ok(terminal !== undefined, "the next turn contains a failed terminal READ, not a synthetic success");
-            assert.match(terminal.source ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/EXEC$/, "the failed observation names its causal invocation");
+            assert.match(terminal.source ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/sh$/, "the failed observation names its causal invocation");
 
             const result = JSON.parse(terminal.rx) as {
                 status: number;

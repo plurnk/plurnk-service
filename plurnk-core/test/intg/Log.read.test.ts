@@ -182,7 +182,7 @@ test("Log.read: 404 on missing coordinates", async () => {
 test("Log.read: 400 on malformed coordinates", async () => {
     const { db } = await setup();
     try {
-        for (const bad of ["abc", "1/2", "1/2/3/4", "x/y/z"]) {
+        for (const bad of ["abc", "1/2", "1/2/3/READ/4", "x/y/z"]) {
             const result = await readLog(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workerId: 1 }));
             assert.equal(result.status, 400, `path '${bad}' should return 400`);
         }
@@ -366,7 +366,7 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
 });
 
 // {§log-channel-miss-names-stream} (#502) — a channel READ on a log EXEC item is a miss the
-// receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/EXEC#channel.
+// receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/sh#channel.
 test("Log.read: #channel on an EXEC log item names the command's stream address in its 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
@@ -396,19 +396,19 @@ test("Log.read: #channel on an EXEC log item names the command's stream address 
         }
 
         const miss = await readLog(
-            readStmt({ ...urlPath("log", "/1/1/1/EXEC"), raw: "log:///1/1/1/EXEC#stdout", fragment: "stdout" }),
+            readStmt({ ...urlPath("log", "/1/1/1/sh"), raw: "log:///1/1/1/sh#stdout", fragment: "stdout" }),
             makeSchemeCtx({ db, workspaceId, workerId }),
         );
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
         assert.equal(miss.problem?.requestedChannel, "stdout");
-        assert.equal(miss.problem?.stream, "sh:///1/1/1/EXEC", "the receipt carries the stream link the row already records");
-        assert.equal(miss.problem?.recovery, "READ sh:///1/1/1/EXEC#stdout for the command's stdout stream.");
-        assert.match(String(miss.problem?.detail), /the command's streams live at sh:\/\/\/1\/1\/1\/EXEC#stdout\./);
+        assert.equal(miss.problem?.stream, "sh:///1/1/1/sh", "the receipt carries the stream link the row already records");
+        assert.equal(miss.problem?.recovery, "READ sh:///1/1/1/sh#stdout for the command's stdout stream.");
+        assert.match(String(miss.problem?.detail), /the command's streams live at sh:\/\/\/1\/1\/1\/sh#stdout\./);
 
         // The named address is real: the same READ against it returns the output.
         const stream = await engine.look({
-            statement: readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), raw: "sh:///1/1/1/EXEC#stdout", fragment: "stdout" }),
+            statement: readStmt({ ...urlPath("sh", "/1/1/1/sh"), raw: "sh:///1/1/1/sh#stdout", fragment: "stdout" }),
             workspaceId, workerId, loopId, origin: "model",
         });
         assert.equal(stream.status, 200);

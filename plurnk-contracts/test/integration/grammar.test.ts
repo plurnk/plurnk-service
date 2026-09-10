@@ -1080,7 +1080,11 @@ test("multiline EDIT and EXEC bodies remain character-perfect raw strings", () =
 
 test("header diagnostics use PLURNK vocabulary and point to the malformed slot", () => {
     const executor = firstError("```EXEC (node) (./)\ncommand\n```");
-    assert.match(executor.message, /EXEC accepts one `\(program\)` path at most once/);
+    assert.match(executor.message, /sh accepts one `\(program\)` path at most once/);
+    for (const runtime of ["python3", "brave", "search-api"]) {
+        const error = firstError(`\`\`\`${runtime} (first) (second)\ninput\n\`\`\``);
+        assert.equal(error.message, `${runtime} accepts one \`(program)\` path at most once`);
+    }
 
     // {§heading-inline-body} — a matcher after the target on the heading line is the body now.
     const inline = oneStatement("```FIND (data.json) $.role\n```");
