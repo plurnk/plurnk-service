@@ -1,7 +1,12 @@
 # Plurnk Harness
 
-> [!IMPORTANT]
-> Plurnk Harness facilitates workflow management, workspace navigation, file editing, messaging, delegation, and context curation.
+Plurnk Harness facilitates:
+* Workflow Management
+* Workspace Navigation
+* File Editing
+* Messaging
+* Delegation
+* Context Curation
 
 ## Harness Operation Syntax
 
@@ -71,8 +76,6 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 
 ## Delegation
 
-````KILL (worker://recheck) <!-- terminates a worker -->````
-
 > [!TIP]
 > Use `SEND (worker://name)` to message an existing worker.
 
@@ -83,7 +86,10 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 ````KILL (log:///**/READ) <17,-1> <!-- trims each item's log lines from 17 on -->````
 
 > [!TIP]
-> Successful KILL op receipts on log items and lines are not shown.
+> Using KILL on READ log items and lines safely hides rather than deletes the information.
+
+> [!NOTE]
+> Successful KILL log receipts on log items and lines are not shown.
 
 ## `(path)`
 
@@ -118,7 +124,7 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 ## `<!-- aside -->`
 
 > [!NOTE]
-> Optional, terse, one-liner description of intent
+> Asides are optional, terse, one-liner descriptions of intent
 
 ## Pattern Filtering
 
