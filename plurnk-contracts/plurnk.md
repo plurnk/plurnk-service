@@ -5,7 +5,7 @@
 
 ## Harness Operation Syntax
 
-````OP (path)? <scope|range>? <!-- annotation -->?
+````OP (path)? <scope|range>? <!-- aside -->?
 body?
 ````
 
@@ -41,13 +41,15 @@ body?
 * `completed`: Task has been successfully resolved.
 * `failed`: Task has ended unsuccessfully.
 
-> [!IMPORTANT]
-> YOU MUST conclude every turn with one TASK operation.
+> [!NOTE]
+> YOU SHOULD conclude every turn with one TASK operation.
 
-> [!IMPORTANT]
-> The final turn must leave no unobserved results or unresolved work; all tasks must be "completed" or "failed".
+> [!WARNING]
+> The final turn must leave no unobserved results or unresolved work; all tasks in TASK must be "completed" or "failed".
 
 ## Workspace Navigation
+
+````KILL (sh:///1/2/3/sh) <!-- stops a running command -->````
 
 > [!TIP]
 > Use `FIND` to list or locate content, then scoped `READ` to read it; prefer glob-filtered paths over broad scans.
@@ -76,24 +78,12 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 
 ## Context Curation
 
-````KILL (worker://~/notes.md) <!-- without a scope deletes an entry -->````
-
-````KILL (src/app.js) <@zyxwv> <!-- removes one line by hash anchor -->````
-
-````KILL (sh:///1/2/3/sh) <!-- stops a running command -->````
-
 ````KILL (log:///1/[1-7]/*/{TASK,READ}) <!-- removes matching log items -->````
 
 ````KILL (log:///**/READ) <17,-1> <!-- trims each item's log lines from 17 on -->````
 
 > [!TIP]
-> Log curation must target `log:///` items, not their target source paths.
-
-> [!TIP]
 > Successful KILL op receipts on log items and lines are not shown.
-
-> [!NOTE]
-> YOU MAY KILL log items and lines, including prior reasoning log items and lines, that are irrelevant for task completion.
 
 ## `(path)`
 
@@ -106,9 +96,6 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 * Creating a file automatically creates missing parent directories.
 
 ## `<scope|range>`
-
-> [!NOTE]
-> Whether this is line/column scope or a result range is contextual, depending on the operation and path.
 
 > [!NOTE]
 > Text scopes use 1-based lines and Unicode code-point columns consistently across textual mimetypes:
@@ -128,7 +115,7 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 > [!TIP]
 > YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.
 
-## `<!-- annotation -->`
+## `<!-- aside -->`
 
 > [!NOTE]
 > Optional, terse, one-liner description of intent
