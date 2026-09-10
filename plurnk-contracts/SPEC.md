@@ -304,12 +304,20 @@ fence has exactly the same count and no following text except horizontal
 whitespace. Each statement chooses its own count independently. There are no
 operation suffixes or heading levels.
 
-§fence-boundary A matching fence on its own line closes a multiline body;
-a different-length fence or a fence carrying text is literal body content.
-A bodyless statement may close on its header line after its modifiers.
-At top level, a named header identifies a reserved Plurnk operation or an executor;
-an unlabeled fence follows {§unlabeled-fence-send}.
-Inside an open body, no header is executable. An unfinished block establishes
+§fence-boundary Only top-level headers identify executable operations. Inside a
+body, same-width named blocks nest without interpreting their headers or changing
+their bytes. Names use the ordinary header alphabet, independent of registration.
+
+| Fence encountered inside a body | Meaning |
+|---|---|
+| Same-width fence immediately followed by a name at column zero | Opens a nested literal block; a matching closer at the end of that same line makes it a complete inline example |
+| Same-width standalone fence | Closes the innermost nested block, or the operation when none remains |
+| Different-width fence, indented fence, or other backtick text | Literal content; does not change nesting |
+
+A bodyless statement may close on its header line after its modifiers. A top-level
+unlabeled fence follows {§unlabeled-fence-send}; a bare same-width fence inside a
+body is a closer, not a nested opener. Deliberately unfinished named snippets or
+unlabeled examples can use a different outer fence width. An unfinished outer block establishes
 {§unparsed-tail-boundary}; earlier complete operations remain independently
 admissible.
 
@@ -858,8 +866,8 @@ stateDiagram-v2
     METADATA --> SLOTS: }
     SLOTS --> BODY: header newline or tolerated inline body
     SLOTS --> DEFAULT: matching compact closer
-    BODY --> DEFAULT: matching standalone closer
-    BODY --> BODY: literal content, including other fences
+    BODY --> DEFAULT: matching standalone closer, no nested block
+    BODY --> BODY: nested literal block or other body content
 ```
 
 ## §whitespace-contract 11. Whitespace and interstatement text

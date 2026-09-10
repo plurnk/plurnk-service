@@ -15,6 +15,7 @@ private openHeading: string = "";
 private openHeadingLine: number = 0;
 private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
+private nestedFenceDepth: number = 0;
 private started: boolean = false;
 private slotReady: boolean = false;
 private targetDepth: number = 0;
@@ -33,6 +34,7 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
 };
 
 private open(implicitName?: string): void {
+    this.nestedFenceDepth = 0;
     this.fenceLength = 0;
     while (this.text.charCodeAt(this.fenceLength) === 0x60) this.fenceLength++;
     const name = implicitName ?? this.text.slice(this.fenceLength);
@@ -65,6 +67,23 @@ private closingAt(offset: number): boolean {
 private closingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
     return after !== null && this.closingAt(after);
+}
+
+// {§fence-boundary} Names are recognized by NAME, not a second grammar here.
+// A complete same-line example is already balanced and needs no nesting state.
+private nestedOpeningAhead(): boolean {
+    if (this.column !== 0) return false;
+    let cursor = 1;
+    while (this.inputStream.LA(cursor) === 0x60) cursor++;
+    if (cursor - 1 !== this.fenceLength) return false;
+    let last = cursor;
+    while (this.inputStream.LA(cursor) > 0 && this.offsetAfterEol(cursor) === null) {
+        if (this.inputStream.LA(cursor) !== 0x20 && this.inputStream.LA(cursor) !== 0x09) last = cursor;
+        cursor++;
+    }
+    let ticks = 0;
+    while (this.inputStream.LA(last - ticks) === 0x60) ticks++;
+    return ticks !== this.fenceLength;
 }
 
 private targetScopeEnd(): boolean {
@@ -167,8 +186,11 @@ METADATA_NEST_END : { this.metadataDepth > 0 }? '}' { this.metadataDepth--; } ->
 METADATA_END : '}' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACE), mode(SLOTS) ;
 
 mode BODY;
-B_END : { this.closingAfterEol() }? EOL FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
-B_EMPTY_END : { (this.column === 0 || this.inlineBody) && this.closingAt(1) }? FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_NEST_OPEN : { this.nestedOpeningAhead() }? FENCE NAME { this.nestedFenceDepth++; } -> type(BODY_TEXT) ;
+B_NEST_END : { this.nestedFenceDepth > 0 && this.closingAfterEol() }? EOL FENCE [ \t]* { this.nestedFenceDepth--; } -> type(BODY_TEXT) ;
+B_NEST_EMPTY_END : { this.nestedFenceDepth > 0 && this.column === 0 && this.closingAt(1) }? FENCE [ \t]* { this.nestedFenceDepth--; } -> type(BODY_TEXT) ;
+B_END : { this.nestedFenceDepth === 0 && this.closingAfterEol() }? EOL FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_EMPTY_END : { this.nestedFenceDepth === 0 && (this.column === 0 || this.inlineBody) && this.closingAt(1) }? FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;
 B_TICK : '`' -> type(BODY_TEXT) ;
 B_CRLF : '\r\n' { this.inlineBody = false; } -> type(BODY_TEXT) ;

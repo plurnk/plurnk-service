@@ -56,7 +56,7 @@ test("fenced operations: shorter and longer runs stay literal for independently 
             const body = [1, 2, 3, 4, 5, 8, 16, 33, 64]
                 .filter((inner) => inner !== count)
                 .flatMap((inner) => ["`".repeat(inner) + "sh", "echo literal", "`".repeat(inner)])
-                .concat(fence + "not a closer")
+                .concat(fence + "not-a-closer", "a same-width named example", fence)
                 .join(newline);
             const [edit] = statements(`${fence}EDIT (notes.md)${newline}${body}${newline}${fence}\t `);
             assert.equal(edit.op, "EDIT");

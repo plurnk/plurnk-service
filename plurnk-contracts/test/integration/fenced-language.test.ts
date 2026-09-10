@@ -64,19 +64,16 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
     }
 });
 
-test("{§unlabeled-fence-send}: a dangling bare fence after a SEND establishes an unfinished message boundary", () => {
+test("{§fence-boundary}: same-width code examples close before their surrounding SEND", () => {
     for (const newline of ["\n", "\r\n"]) {
         const source = "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```";
         const parsed = PlurnkParser.parse((source + "\n" + task("Done.", "completed")).replaceAll("\n", newline));
-        assert.deepEqual(parsed.unparsedTail, {
-            from: { line: 7, column: 0 },
-            reason: "SEND block opened at line 7 but was not closed with 3 backticks",
-        });
+        assert.equal(parsed.unparsedTail, undefined);
         assert.deepEqual(errors(parsed), []);
         const statements = ops(parsed);
-        assert.deepEqual(statements.map(({ op }) => op), ["SEND"]);
+        assert.deepEqual(statements.map(({ op }) => op), ["SEND", "TASK"]);
         assert.equal(statements[0].op === "SEND" ? statements[0].body?.raw : null,
-            ["Code:", "```ts", "const value = 42;"].join(newline));
+            ["Code:", "```ts", "const value = 42;", "```", "Verified."].join(newline));
     }
 });
 
