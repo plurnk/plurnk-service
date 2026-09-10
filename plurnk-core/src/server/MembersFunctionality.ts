@@ -1,8 +1,8 @@
-// {§members-functionality} — file membership as one Worker Functionality family. The model, the
+// {§members-functionality} — file membership as one workspace Functionality family. The model, the
 // client, and the operator learn one surface (list | discover | add | enable | disable | remove)
 // for what the model may see, exactly as they do for skills and MCP servers. A definition is one
-// gitignore-style glob and `!glob` excludes; definitions are desired state per Worker and the
-// workspace overlay is their union ({§members-projection}) — the one truth every worker sees
+// gitignore-style glob and `!glob` excludes; definitions are workspace desired state and the
+// membership overlay is their projection ({§members-projection}) — the one truth every worker sees
 // ({§membership-baseline}). A model's `add` is admitted against the service ceiling
 // `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the workspace.
 import { stat } from "node:fs/promises";
@@ -23,7 +23,7 @@ import type {
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
-    WorkerCapabilityIdentity,
+    WorkspaceCapabilityIdentity,
 } from "./DaemonModule.ts";
 
 const MEMBERS_FAMILY = "members";
@@ -53,7 +53,6 @@ type MembersResolution = {
     readonly files: readonly string[];
     readonly ignored: number;
 };
-type StateRecord = { origin: "service" | "worker"; enabled: boolean; definition?: MembersDefinition };
 
 // The exact definition one `add` accepts. Provenance is the coordinator's truth, never the
 // caller's claim: `admit` overwrites whatever arrived in the definition.
@@ -190,7 +189,7 @@ const membersDocument = (alias: string, definition: MembersDefinition, resolutio
             "| Field | Value |",
             "| --- | --- |",
             `| definition | \`${JSON.stringify({ glob: definition.glob })}\` |`,
-            `| origin | ${kind === "service-configuration" ? "service" : "worker"} |`,
+            `| origin | ${kind === "service-configuration" ? "service" : "workspace"} |`,
             `| provenance | ${kind}${source} |`,
             ...(resolution.files.length === 0 ? [] : ["", `${resolution.effect === "exclude" ? "Excluded" : "Included"}: ${listed}`]),
             "",
@@ -234,7 +233,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
 
     // Introspection, never a catalog: a path answers why it is or is not visible; a glob previews
     // what `add` would resolve to. Names only, never content.
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
         const raw = typeof query.query === "string" ? query.query : typeof query.source === "string" ? query.source : "";
         const glob = raw.trim();
         if (patternOf(glob).length === 0) {
@@ -292,7 +291,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         return { ...candidate, provenance: { kind: "candidate", source: key }, summary: "not a member — untracked; add this definition to include it" };
     }
 
-    async admit(input: unknown, identity: WorkerCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<FunctionalityDefinitionSource> {
+    async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<FunctionalityDefinitionSource> {
         const { alias, definition } = input as { alias?: unknown; definition?: unknown };
         const validation = Validator.validateJsonSchemaInstance(DEFINITION, definition);
         if (!validation.valid) {
@@ -330,13 +329,13 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         };
     }
 
-    // {§members-projection} — the workspace overlay is the union of every worker's enabled
-    // definitions (ruling (a)): inclusions union, an exclusion wins in resolution, and a
+    // {§members-projection} — project this workspace's enabled definitions:
+    // inclusions union, an exclusion wins in resolution, and a
     // human-authored row outranks a model-proposed row for the same pattern. Each definition's
     // outcome carries what it resolved to, so the model sees what its glob did.
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
-        const { workspaceId, workerId, enabled } = preparation;
-        const rows = await this.#projection(workspaceId, workerId, enabled);
+        const { workspaceId, enabled } = preparation;
+        const rows = this.#projection(enabled);
         const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
         const outcomes = new Map<string, FunctionalityOutcome>();
         const documents: Array<{ pathname: string; content: string }> = [];
@@ -356,35 +355,18 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     }
 
     async teardown(): Promise<void> {
-        // Desired state is durable; the overlay keeps reflecting it after a Worker cools.
+        // Desired state is durable; the overlay keeps reflecting it after the workspace cools.
     }
 
-    async #projection(workspaceId: number, workerId: number, enabled: ReadonlyMap<string, object>): Promise<OverlayRow[]> {
+    #projection(enabled: ReadonlyMap<string, object>): OverlayRow[] {
         const rows = new Map<string, OverlayRow>();
         const admit = (definition: MembersDefinition): void => {
             const row = rowOf(definition);
-            const key = `${row.effect} ${row.glob}`;
+            const key = `${row.effect}\0${row.glob}`;
             const current = rows.get(key);
             if (current === undefined || (current.source === "model" && row.source === "members")) rows.set(key, row);
         };
         for (const definition of enabled.values()) admit(definition as MembersDefinition);
-        const service = new Map((await this.available()).map((entry) => [entry.alias, entry]));
-        const states = await this.#db.worker_module_states_by_workspace.all<{ worker_id: number; state: string | null }>({
-            workspace_id: workspaceId,
-            namespace_owner: MEMBERS_OWNER,
-        });
-        for (const { worker_id, state } of states) {
-            if (worker_id === workerId) continue;
-            const records = state === null ? {} : ((JSON.parse(state) as { definitions?: Record<string, StateRecord> }).definitions ?? {});
-            for (const [alias, entry] of service) {
-                const record = records[alias];
-                const on = record?.origin === "service" ? record.enabled : entry.enabled;
-                if (on) admit(entry.definition as MembersDefinition);
-            }
-            for (const record of Object.values(records)) {
-                if (record.origin === "worker" && record.enabled && record.definition !== undefined) admit(record.definition);
-            }
-        }
         return [...rows.values()];
     }
 

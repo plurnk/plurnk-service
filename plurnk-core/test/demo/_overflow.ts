@@ -73,8 +73,7 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     assert.ok(loop);
     const path = `/${loop.sequence}/${firstModel.sequence}/${attachedRead.sequence}/READ`;
     const recovered = await daemon.look({
-        workspaceId, workerId, functionalityWorkerId: workerId,
-        statement: readStmt(urlPath("log", path), { marks: [1, -1] }),
+        workspaceId, workerId, statement: readStmt(urlPath("log", path), { marks: [1, -1] }),
     });
     if (attachedRead.active === 1) {
         if (attachedRead.folded === "[]") {

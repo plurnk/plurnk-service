@@ -67,7 +67,7 @@ export default class KillHandler {
                 { retryable: false },
             );
         }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
         // {§kill-scope-entry} — a body pattern selects log items; any other KILL that carries one is
         // refused, never silently widened to its whole scope.
         if (statement.body !== null) {
@@ -85,7 +85,7 @@ export default class KillHandler {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as { kill?: (pathname: string, scope: TextLineMarker | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
+        const killable = this.#schemes.get(schemeName, ctx.workspaceId) as { kill?: (pathname: string, scope: TextLineMarker | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
@@ -171,7 +171,7 @@ export default class KillHandler {
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
-        if (!this.#schemes.has(schemeName, ctx.functionalityWorkerId)) {
+        if (!this.#schemes.has(schemeName, ctx.workspaceId)) {
             return this.#failure(
                 "scheme-not-found",
                 501,
@@ -180,7 +180,7 @@ export default class KillHandler {
                 { scheme: schemeName, retryable: false },
             );
         }
-        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeWithEntryAddress | undefined;
+        const handler = this.#schemes.get(schemeName, ctx.workspaceId) as SchemeWithEntryAddress | undefined;
         if (handler === undefined || manifest?.category !== "data") {
             return this.#failure(
                 "entry-operation-unsupported",

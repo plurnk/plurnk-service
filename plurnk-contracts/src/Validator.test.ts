@@ -674,7 +674,7 @@ test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", 
         only: [{ operation: "READ" as const }, { runtime: "brave" }],
         deny: [{ traits: ["interaction"] }],
     };
-    const policy = { capabilities, proposals: "review" as const };
+    const policy = { proposals: "review" as const };
     assert.equal(Validator.assertCapabilityDescriptor(descriptor), descriptor);
     assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
     assert.equal(Validator.assertLoopPolicy(policy), policy);
@@ -715,7 +715,7 @@ test("ProposalProjection validates one complete disposition-bearing client view"
         target: { scheme: null, authority: null, pathname: null },
         body: "",
         attrs: { question: "Which environment?" },
-        policy: { capabilities: {}, proposals: "review" as const },
+        policy: { proposals: "review" as const },
         disposition: { owner: "client" as const },
     };
     assert.equal(Validator.assertProposalProjection(proposal), proposal);

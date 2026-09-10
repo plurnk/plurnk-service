@@ -18,7 +18,7 @@ export default class EditMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #run: RunOperation;
-    readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
+    readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
     readonly #checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
         statement: EditStatement,
@@ -38,7 +38,7 @@ export default class EditMutations {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
-        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
+        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
         checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
@@ -273,15 +273,15 @@ export default class EditMutations {
         ctx: PlurnkSchemeContext,
         sequence?: EditSequence,
     ): Promise<DispatchResult> {
-        const denial = this.#checkWritable(statement, ctx.writer, ctx.functionalityWorkerId)
+        const denial = this.#checkWritable(statement, ctx.writer, ctx.workspaceId)
             ?? await this.#checkCapabilities(statement, ctx);
         if (denial !== null) return denial;
         const schemeName = schemeNameOf(statement.target);
         if (schemeName === null || statement.target === null) {
             return MutationEffects.failure("target-required", 400, "EDIT requires a target scheme.", {}, { retryable: false });
         }
-        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        const handler = this.#schemes.get(schemeName, ctx.workspaceId) as SchemeHandler | undefined;
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
         if (handler?.editBatch === undefined || manifest === undefined) {
             return MutationEffects.failure("operation-not-implemented", 501,
                 `Scheme '${schemeName}' does not implement EDIT.`, {},
@@ -303,7 +303,7 @@ export default class EditMutations {
         if (binding !== null && binding.address === null) {
             return MutationEffects.failure("entry-not-found", 404, "The EDIT target could not be resolved.");
         }
-        const identity = await this.#editTargetIdentity(statement, ctx.workspaceId, ctx.functionalityWorkerId);
+        const identity = await this.#editTargetIdentity(statement, ctx.workspaceId, ctx.workspaceId);
         const resolved = await this.#resolveEditAnchors(statement, identity, schemeName, manifest, ctx, sequence);
         if ("result" in resolved) return resolved.result;
         const result = Results.assert(await handler.editBatch([resolved.statement], new SchemeCtxImpl(

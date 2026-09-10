@@ -67,15 +67,10 @@ WHERE workspace_id = $workspace_id
   AND ($filter_parent = 0 OR parent_worker_id IS $parent_worker_id)
 ORDER BY created_at DESC;
 
--- PREP: worker_settings_read
--- {§worker-settings} — the worker's own behavioral-rules bag.
-SELECT settings, capability_bound FROM workers WHERE id = $id;
-
--- PREP: worker_settings_update
-UPDATE workers
-SET settings = $settings,
-    version = version + 1
-WHERE id = $id
+-- PREP: workspace_capability_policy_update
+-- {§workspace-capability-policy}: one atomic field replacement preserves other settings.
+UPDATE workspaces SET settings = json_set(settings, '$.capabilities', json($policy))
+WHERE id = $workspace_id
 RETURNING id;
 
 -- PREP: worker_generation_policy_read

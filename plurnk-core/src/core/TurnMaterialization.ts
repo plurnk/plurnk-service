@@ -147,9 +147,9 @@ export default class TurnMaterialization {
 
 
     async materializeStreamDeltas(args: {
-        workerId: number; loopId: number; turnId: number; fromSequence: number;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { workerId, loopId, turnId, fromSequence } = args;
+        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; publication_id: number; published_end: number;
             runtime: string; authority: string; coord: string; channel: string; content: string;
@@ -162,7 +162,7 @@ export default class TurnMaterialization {
             // ordinary address to the model; only an explicitly non-default
             // channel earns a fragment in the log.
             const visibleFragment = ch.published_channel !== null
-                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workerId)
+                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
                 ? null
                 : ch.channel;
             const targetParts = authorityParts(ch.authority);
@@ -175,7 +175,7 @@ export default class TurnMaterialization {
             const sequence = fromSequence + written;
             // {§log-coordinate-hierarchy} — the stream lives at its EXEC item's own address, so the
             // causal source is that address under the log scheme.
-            const source = this.#schemes.isRuntimeScheme(ch.runtime, workerId)
+            const source = this.#schemes.isRuntimeScheme(ch.runtime, workspaceId)
                 && LogEntryProjection.streamCoordinate(ch.coord, ch.runtime) !== undefined
                 ? `log://${ch.coord}`
                 : null;

@@ -405,7 +405,7 @@ try {
         { workspace: world },
     );
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
-    await terminal.rpc("worker.capabilities.set", { policy: durableCapabilities });
+    await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
     const discovery = await terminal.rpc("discover");
     for (const [name, clientRoot] of [["plurnk", terminalRoot], ["plurnk.nvim", nvimRoot]]) {
@@ -433,19 +433,19 @@ try {
             join(root, "plurnk-mcp/src/fixtures/echo-server.mjs"),
         ]),
     };
-    const projected = await terminal.rpc("worker.mcp.discover", { configuration: overlay });
+    const projected = await terminal.rpc("workspace.mcp.discover", { configuration: overlay });
     if (!projected.candidates.some((candidate) => candidate.alias === "client-only"
         && candidate.provenance.kind === "client-configuration")) {
         throw new Error("terminal client did not project its configuration as MCP candidates");
     }
-    const durable = await terminal.rpc("worker.mcp.list");
+    const durable = await terminal.rpc("workspace.mcp.list");
     if (durable.definitions.some((definition) => definition.alias === "client-only")) {
-        throw new Error("a discovered client candidate entered the Worker's durable set");
+        throw new Error("a discovered client candidate entered the workspace's durable set");
     }
     for (const family of ["skills", "agents"]) {
-        const listed = await terminal.rpc(`worker.${family}.list`);
+        const listed = await terminal.rpc(`workspace.${family}.list`);
         if (!Array.isArray(listed.definitions)) {
-            throw new Error(`worker.${family}.list returned no Functionality definitions`);
+            throw new Error(`workspace.${family}.list returned no Functionality definitions`);
         }
     }
 
@@ -465,11 +465,11 @@ local function rpc(method, params)
   return segment.result
 end
 local expected_capabilities = vim.json.decode(${JSON.stringify(encodedCapabilities)})
-assert(vim.deep_equal(rpc("worker.capabilities.get").worker, expected_capabilities))
-for _, definition in ipairs(rpc("worker.mcp.list").definitions) do
-  assert(definition.alias ~= "client-only", "a terminal-discovered candidate leaked into the Worker's durable set")
+assert(vim.deep_equal(rpc("workspace.capabilities.get").workspace, expected_capabilities))
+for _, definition in ipairs(rpc("workspace.mcp.list").definitions) do
+  assert(definition.alias ~= "client-only", "a terminal-discovered candidate leaked into the workspace's durable set")
 end
-rpc("worker.members.add", { alias = "cross", definition = { glob = "cross/**" } })
+rpc("workspace.members.add", { alias = "cross", definition = { glob = "cross/**" } })
 print("cross-client Neovim observation GREEN")
 pcall(function() require("plurnk.client").stop() end)
 vim.cmd("qa!")
@@ -483,12 +483,12 @@ vim.cmd("qa!")
         maxBuffer: 16 * 1024 * 1024,
     });
     assertIncludes(`${observation.stdout}\n${observation.stderr}`, "cross-client Neovim observation GREEN", "Neovim state observation");
-    // Neovim's members definition is the Worker's durable state; the terminal reads the same Worker.
+    // Both clients observe the same workspace definition independently of their Worker.
     const membersOf = (listed) => (listed.definitions ?? [])
         .filter((definition) => definition.alias === "cross")
         .map(({ alias, origin, state, definition }) => ({ alias, origin, state, glob: definition?.glob }));
-    const expectedMembers = [{ alias: "cross", origin: "worker", state: "active", glob: "cross/**" }];
-    const members = await terminal.rpc("worker.members.list");
+    const expectedMembers = [{ alias: "cross", origin: "workspace", state: "active", glob: "cross/**" }];
+    const members = await terminal.rpc("workspace.members.list");
     if (JSON.stringify(membersOf(members)) !== JSON.stringify(expectedMembers)) {
         throw new Error(`terminal did not observe Neovim's durable mutation: ${JSON.stringify(members)}`);
     }
@@ -500,13 +500,13 @@ vim.cmd("qa!")
         world,
         { workspace: world },
     );
-    const persistedCapabilities = await afterRestart.rpc("worker.capabilities.get");
-    const persistedMembers = await afterRestart.rpc("worker.members.list");
-    if (JSON.stringify(persistedCapabilities.worker) !== JSON.stringify(durableCapabilities)
+    const persistedCapabilities = await afterRestart.rpc("workspace.capabilities.get");
+    const persistedMembers = await afterRestart.rpc("workspace.members.list");
+    if (JSON.stringify(persistedCapabilities.workspace) !== JSON.stringify(durableCapabilities)
         || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers)) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
-    const afterRestartMcp = await afterRestart.rpc("worker.mcp.list");
+    const afterRestartMcp = await afterRestart.rpc("workspace.mcp.list");
     if (afterRestartMcp.definitions.some((definition) => definition.alias === "client-only")) {
         throw new Error("a discovered client candidate survived daemon reconstruction as durable state");
     }

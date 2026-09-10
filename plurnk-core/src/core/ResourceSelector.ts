@@ -46,8 +46,8 @@ export default class ResourceSelector {
             );
         }
         const binding = access === "read" ? await ResourceBindings.resolve(target, ctx) : undefined;
-        const handler = access === "read" ? binding?.handler : this.#schemes.get(scheme, ctx.functionalityWorkerId);
-        const manifest = access === "read" ? binding?.manifest : this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
+        const handler = access === "read" ? binding?.handler : this.#schemes.get(scheme, ctx.workspaceId);
+        const manifest = access === "read" ? binding?.manifest : this.#schemes.manifestFor(scheme, ctx.workspaceId);
         if (handler === undefined || manifest === undefined) {
             return MutationEffects.failure(
                 "scheme-not-found",

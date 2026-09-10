@@ -1,7 +1,6 @@
 import {
     RESERVED_AUTHORITIES,
     WORKER_NAME,
-    type CapabilityPolicy,
 } from "@plurnk/plurnk-contracts";
 import { randomBytes } from "node:crypto";
 import type { Db } from "./Db.ts";
@@ -19,7 +18,6 @@ interface AutoWorkerOptions {
     parentWorkerId?: number;
     origin: WorkerOrigin;
     forkSnapshot?: boolean;
-    capabilityBound?: CapabilityPolicy;
 }
 
 export class WorkerNameError extends Error {
@@ -82,7 +80,6 @@ export default class WorkerName {
             parentWorkerId,
             origin,
             forkSnapshot = false,
-            capabilityBound = {},
         } = options;
         while (true) {
             const claimed = await db.worker_name_claim.get<WorkerNameClaim>({
@@ -92,7 +89,6 @@ export default class WorkerName {
                 origin,
                 default_conversation: defaultConversation ? 1 : 0,
                 fork_snapshot: forkSnapshot ? 1 : 0,
-                capability_bound: JSON.stringify(capabilityBound),
             });
             if (claimed !== undefined) return claimed;
 
@@ -113,7 +109,7 @@ export default class WorkerName {
     // workspace's one durable default role; both predicates share one write.
     static async ensureDefaultConversation(
         db: Db,
-        options: Pick<AutoWorkerOptions, "workspaceId" | "capabilityBound">,
+        options: Pick<AutoWorkerOptions, "workspaceId">,
     ): Promise<WorkerNameClaim> {
         const existing = await WorkerName.#defaultConversation(db, options.workspaceId);
         if (existing !== undefined) return existing;

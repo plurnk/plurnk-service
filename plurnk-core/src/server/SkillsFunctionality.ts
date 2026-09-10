@@ -1,6 +1,6 @@
-// {§skills-functionality} — standard Agent Skills as one Worker Functionality
+// {§skills-functionality} — standard Agent Skills as one workspace Functionality
 // family. Universal roots and host-provided trees own resources;
-// the Worker's durable state owns enablement; the standard
+// workspace state owns enablement; the standard
 // `skills` CLI is the deterministic installer beneath `add`/`remove` and the
 // registry behind `discover`, and neither is the model's or a client's contract.
 import { execFile } from "node:child_process";
@@ -29,7 +29,7 @@ import type {
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
-    WorkerCapabilityIdentity,
+    WorkspaceCapabilityIdentity,
 } from "./DaemonModule.ts";
 
 const execFileP = promisify(execFile);
@@ -228,8 +228,8 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         this.#handle = handle;
     }
 
-    trees(workerId: number): ReadonlyMap<string, SkillTree> {
-        return this.#snapshots.get(workerId)?.trees ?? new Map();
+    trees(workspaceId: number): ReadonlyMap<string, SkillTree> {
+        return this.#snapshots.get(workspaceId)?.trees ?? new Map();
     }
 
     async #projectRoot(workspaceId: number): Promise<string | null> {
@@ -319,8 +319,8 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     // {§skills-hotload} — filesystem installers operate out of band; before a
     // turn assembles its packet the family republishes when the roots changed.
-    async refreshIfChanged(identity: WorkerCapabilityIdentity): Promise<void> {
-        const published = this.#snapshots.get(identity.workerId)?.signature;
+    async refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
+        const published = this.#snapshots.get(identity.workspaceId)?.signature;
         if (published === undefined) return;
         const current = await this.#signature(await this.#projectRoot(identity.workspaceId));
         if (current === published) return;
@@ -328,7 +328,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         await this.#handle.refresh(identity, { gate: "none" });
     }
 
-    async available(identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
+    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
         const projectRoot = await this.#projectRoot(identity.workspaceId);
         const sources = await this.#lockSources(projectRoot);
         const installedSkills = await this.#scan(projectRoot);
@@ -343,7 +343,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return [...native, ...provided];
     }
 
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
         if (query.configuration !== undefined) {
             throw actionError("configuration-unsupported", 400, "Agent Skills discovery takes a registry query or an explicit source; client configuration contributes nothing.", { retryable: false });
         }
@@ -376,7 +376,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         });
     }
 
-    async admit(input: unknown, identity: WorkerCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
+    async admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
         const params = isRecord(input) ? input : {};
         let definition: SkillDefinition;
         try {
@@ -415,9 +415,9 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return { name: definition.name, scope: definition.scope, dir: join(root, definition.name), file };
     }
 
-    // {§skills-remove} — the coordinator forgets the Worker's own definition;
+    // {§skills-remove} — the coordinator forgets the workspace definition;
     // the adapter uninstalls what that definition installed at its scope.
-    async forget(source: FunctionalityDefinitionSource, identity: WorkerCapabilityIdentity): Promise<void> {
+    async forget(source: FunctionalityDefinitionSource, identity: WorkspaceCapabilityIdentity): Promise<void> {
         const definition = source.definition as SkillDefinition;
         const projectRoot = await this.#projectRoot(identity.workspaceId);
         const root = this.#rootFor(definition.scope, projectRoot);
@@ -435,7 +435,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     async #locate(alias: string, definition: SkillDefinition, installed: Map<string, Installed>, projectRoot: string | null): Promise<Installed | undefined> {
         const shadowing = installed.get(alias);
         if (shadowing === undefined || shadowing.scope === definition.scope) return shadowing;
-        // The Worker's own definition names a root below the one currently
+        // The workspace definition names a root below the one currently
         // shadowing that name; the definition's scope is truth.
         const root = this.#rootFor(definition.scope, projectRoot);
         if (root === null) return undefined;
@@ -492,18 +492,18 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
             trees,
             unavailable: [...outcomes].filter(([, outcome]) => outcome.state === "unavailable").map(([alias]) => alias),
         };
-        const { workerId } = preparation;
+        const { workspaceId } = preparation;
         return {
             runtimes: [],
             documents: [],
             outcomes,
             snapshot,
-            commit: async () => { this.#snapshots.set(workerId, snapshot); },
+            commit: async () => { this.#snapshots.set(workspaceId, snapshot); },
             abort: async () => {},
         };
     }
 
-    async teardown(_snapshot: unknown, identity: WorkerCapabilityIdentity): Promise<void> {
-        this.#snapshots.delete(identity.workerId);
+    async teardown(_snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void> {
+        this.#snapshots.delete(identity.workspaceId);
     }
 }

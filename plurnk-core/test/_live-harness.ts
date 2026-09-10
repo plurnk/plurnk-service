@@ -37,9 +37,6 @@ export interface LiveWorkspace {
     workspaceId: number;
     runDir: string;
     invokeWorkspaceAction: (name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
-    // Worker-scoped module actions (worker.mcp.* etc.) — the Worker owns its
-    // Functionality since the #323 binding; the model worker is the subject.
-    invokeWorkerAction: (name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
     cleanup: () => Promise<void>;
 }
 
@@ -98,7 +95,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     lifetime.defer(async () => { ws?.close(); });
     const cleanup = () => lifetime.disposeAsync();
     try {
-        ServiceModules.registerWorkerCapabilities(daemon);
+        ServiceModules.registerWorkspaceCapabilities(daemon);
         await daemon.start(); // {§rpc} — the harness rides the listenerless seam
         ws = await connect({ daemon });
         // Every live/demo roots at a disposable fixture, never the host repository.
@@ -112,11 +109,6 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
                 name,
                 params,
                 { scope: "workspace", workspaceId: created.id },
-            ),
-            invokeWorkerAction: async (name, params) => daemon.invokeModuleAction(
-                name,
-                params,
-                { scope: "worker", workspaceId: created.id, workerId: await daemon.ensureModelWorker(created.id) },
             ),
             cleanup,
         };
@@ -143,7 +135,6 @@ export const liveLoop = async (
         term = await runLoopToTerminal(s.ws, id, {
             prompt: params.prompt,
             policy: {
-                capabilities: params.policy?.capabilities ?? {},
                 proposals: params.policy?.proposals ?? "accept",
             },
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),

@@ -27,7 +27,7 @@ export default class OutboundModule {
     }
 
     async setup(seam: SetupSeam): Promise<void> {
-        await seam.registerScheme("a2a", new A2a((authority, ctx) => this.#functionality.resolve(authority, ctx.functionalityWorkerId)));
+        await seam.registerScheme("a2a", new A2a((authority, ctx) => this.#functionality.resolve(authority, ctx.workspaceId)));
         this.#functionality.attach(seam.registerFunctionalityAdapter(this.#functionality));
     }
 }

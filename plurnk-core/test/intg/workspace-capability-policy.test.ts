@@ -105,7 +105,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
     } finally { await db.close(); }
 });
 
-test("{§capability-admission}: harness-authored initialization obeys the same loop capability policy", async () => {
+test("{§capability-admission}: harness-authored initialization obeys the same workspace capability policy", async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const db = await openMigrated();
@@ -115,9 +115,9 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         const workspaceId = await insertWorkspace(db, `loop-policy-init-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "finish without external capabilities");
-        await db.engine_set_loop_policy.run({
-            loop_id: loopId,
-            policy: JSON.stringify({
+        await db.test_set_workspace_settings.run({
+            id: workspaceId,
+            settings: JSON.stringify({
                 capabilities: {
                     deny: [
                         { operation: "COPY" },
@@ -125,7 +125,6 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
                         { operation: "READ" },
                     ],
                 },
-                proposals: "accept",
             }),
         });
         const provider = new Mock({
@@ -151,7 +150,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
         assert.deepEqual(
             harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),
             [],
-            "the harness neither advertises nor exercises capabilities denied to this loop",
+            "the harness neither advertises nor exercises capabilities denied to this workspace",
         );
     } finally {
         await db.close();
@@ -160,62 +159,8 @@ test("{§capability-admission}: harness-authored initialization obeys the same l
     }
 });
 
-test("{§capability-admission}: Turn 0 catalogs only capabilities admitted by this loop", async () => {
-    const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        engine.setExecutors(await testExecutors());
-        const workspaceId = await insertWorkspace(db, `loop-policy-catalog-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 2, "inspect the admitted catalog");
-        await db.engine_set_loop_policy.run({
-            loop_id: loopId,
-            policy: JSON.stringify({
-                capabilities: { deny: [{ runtime: "node" }] },
-                proposals: "accept",
-            }),
-        });
-        const provider = new Mock({
-            contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }],
-        });
 
-        const result = await engine.runTurn({
-            provider,
-            workspaceId,
-            workerId,
-            loopId,
-            messages: [
-                { role: "system", content: "definition" },
-                { role: "user", content: "finish" },
-            ],
-        });
-        assert.equal(result.status, 200);
-        const rows = await db.test_log_entries_by_loop.all<{
-            op: string | null;
-            pathname: string | null;
-            rx: string;
-        }>({ loop_id: loopId });
-        const survey = rows.find(({ op, pathname }) =>
-            op === "FIND" && pathname?.startsWith("/_plurnk/plurnk/") === true);
-        assert.ok(survey !== undefined, "the admitted reference catalog remains available");
-        const resultBody = JSON.parse(survey.rx) as { content?: string; results?: unknown[] };
-        const items = (resultBody.results
-            ?? (resultBody.content === undefined ? [] : JSON.parse(resultBody.content) as unknown[])) as Array<Array<{ path: string }>>;
-        const paths = items.flat().map(({ path }) => path);
-        assert.equal(paths.some((path) => path.endsWith("/node.md")), false, "a denied runtime is not taught");
-        assert.equal(paths.some((path) => path.endsWith("/sh.md")), true, "an admitted peer remains taught");
-    } finally {
-        await db.close();
-        if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
-        else process.env.PLURNK_SERVICE_FILES_ITEMS = previousFilesItems;
-    }
-});
-
-for (const layer of ["service", "workspace", "worker-bound", "worker", "loop"] as const) test(`{§schemes-directory}: ${layer} read-only policy preserves discoverable, readable worker reference`, async (t) => {
+for (const layer of ["service", "workspace"] as const) test(`{§schemes-directory}: ${layer} read-only policy preserves discoverable, readable worker reference`, async (t) => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     const previousCapabilities = process.env.PLURNK_SERVICE_CAPABILITIES;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -232,20 +177,13 @@ for (const layer of ["service", "workspace", "worker-bound", "worker", "loop"] a
         const capabilities: CapabilityPolicy = { only: [{ access: "observe" }] };
         const { id: workerId } = await WorkerName.claimAuto(db, {
             workspaceId, origin: "model",
-            capabilityBound: layer === "worker-bound" ? capabilities : {},
         });
         if (layer === "service") process.env.PLURNK_SERVICE_CAPABILITIES = JSON.stringify(capabilities);
         if (layer === "workspace") await db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities }),
         });
-        if (layer === "worker") await db.worker_settings_update.get({
-            id: workerId, settings: JSON.stringify({ capabilities }),
-        });
         await LoopDocs.materialize(engine, db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 2, "Read the worker reference.");
-        if (layer === "loop") await db.engine_set_loop_policy.run({
-            loop_id: loopId, policy: JSON.stringify({ capabilities, proposals: "accept" }),
-        });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
                 readStmt({ ...urlPath("worker", "/_plurnk/plurnk/worker.md"), hostname: "~", raw: "worker://~/_plurnk/plurnk/worker.md" }, { marks: [1, -1] }),
@@ -318,7 +256,7 @@ test("{§worker-generated-subtree}: runtime maintenance preserves external polic
         assert.equal(deniedCopy.problem?.access, "observe");
         await policy({ only: [] });
         assert.equal((await dispatch(editStmt(generated, "owned state"))).status, 201);
-        assert.equal((await dispatch(readStmt(generated))).status, 403, "runtime reads still use the worker policy");
+        assert.equal((await dispatch(readStmt(generated))).status, 403, "runtime reads still use the workspace policy");
     } finally { await db.close(); }
 });
 

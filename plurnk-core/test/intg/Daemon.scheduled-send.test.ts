@@ -122,8 +122,8 @@ for (const [recurring, statuses] of [
                 restarted = new Daemon({ db, provider });
                 const activations: number[] = [];
                 restarted.registerModule({ setup: (seam) => {
-                    seam.registerWorkerCapabilityProvider("scheduled residency", {
-                        activate: async ({ workerId: id }) => { activations.push(id); },
+                    seam.registerWorkspaceCapabilityProvider("scheduled residency", {
+                        activate: async ({ workspaceId: id }) => { activations.push(id); },
                         deactivate: async () => undefined,
                     });
                 } });
@@ -138,7 +138,7 @@ for (const [recurring, statuses] of [
                 assert.equal(first.loopId, accepted.loopId);
                 assert.equal(first.result.status, 200);
                 assert.equal(provider.received.length, 1);
-                assert.deepEqual(activations, [workerId]);
+                assert.deepEqual(activations, [workspaceId]);
                 const loops = await restarted.listWorkerLoops({ workspaceId, workerId });
                 const tasks = loops.filter(({ prompt }) => prompt === "Check the latest revenue figures.");
                 assert.equal(tasks.length, recurring ? 2 : 1);

@@ -244,8 +244,6 @@ traits?: [string, ...(string)[]]
 export interface CapabilityProjection {
 service: CapabilityPolicy
 workspace: CapabilityPolicy
-workerBound: CapabilityPolicy
-worker: CapabilityPolicy
 effective: CapabilityPolicy
 }
 /**
@@ -719,7 +717,7 @@ reference?: string
 
 export type FunctionalityDefinitionState = {
 alias: string
-origin: ("service" | "worker")
+origin: ("service" | "workspace")
 /**
  * disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.
  */
@@ -782,12 +780,8 @@ removed?: true
  */
 
 export interface LoopPolicy {
-capabilities: CapabilityPolicy
 proposals: ("review" | "accept" | "reject")
 }
-/**
- * One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.
- */
 
 export interface McpConfigurationOverlay {
 [k: string]: string
@@ -1173,7 +1167,7 @@ policy: LoopPolicy
 disposition: ProposalDisposition
 }
 /**
- * The complete immutable policy snapshot for one loop. Capability admission precedes proposal disposition.
+ * The immutable proposal disposition for one loop. Workspace capability admission precedes proposals.
  */
 
 export type ProviderCost = ({

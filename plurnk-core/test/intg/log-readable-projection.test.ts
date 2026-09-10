@@ -167,15 +167,15 @@ test("{§log-readable-projection}: initially suppressed programs remain readable
         assert.equal(copied.status, 201, JSON.stringify(copied));
     });
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <2>\`\`\``)).status, 200);
-    const branch = await Fork.fork(db, ids.workerId, "branch", {}, () => "none");
-    const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workerId: branch }));
+    const branch = await Fork.fork(db, ids.workerId, "branch", () => "none");
+    const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
     assert.equal(forkRead.content, "```TASK\n```");
     const forkRows = await db.fork_get_log_entries.all<{ initial_folded: string; projection_folded: string }>({ worker_id: branch });
     assert.equal(forkRows[0]?.initial_folded, "[[1,-1]]");
     assert.equal(forkRows[0]?.projection_folded, "[[2,2]]");
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <1,-1>\`\`\``)).status, 200);
     assert.equal((await dispatch(`\`\`\`READ (${target}) <1,-1>\`\`\``)).status, 204);
-    const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workerId: branch }));
+    const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
     assert.equal(stillReadable.content, forkRead.content, "parent curation does not change the branch's projection");
     const original = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence });
     assert.equal(JSON.parse(original!.rx).content, content);

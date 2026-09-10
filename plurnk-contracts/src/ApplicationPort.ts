@@ -121,7 +121,6 @@ export interface ApplicationPort {
     ): Promise<void>;
     ensureModelWorker(
         workspaceId: number,
-        settings?: { readonly capabilities?: CapabilityPolicy },
     ): Promise<number>;
     runLoop(args: {
         readonly workspaceId: number;
@@ -149,7 +148,6 @@ export interface ApplicationPort {
     dispatchClientAction(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-        readonly functionalityWorkerId: number;
         readonly statements: PlurnkStatement[];
     }): Promise<OperationResult[]>;
     readLog(args: {
@@ -216,7 +214,6 @@ export interface ApplicationPort {
     look(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-        readonly functionalityWorkerId: number;
         readonly statement: PlurnkStatement;
     }): Promise<OperationResult>;
     readEntry(args: {
@@ -238,7 +235,6 @@ export interface ApplicationPort {
     createConversationWorker(args: {
         readonly workspaceId: number;
         readonly name?: string;
-        readonly settings?: { readonly capabilities?: CapabilityPolicy };
     }): Promise<{ readonly workerId: number; readonly workerName: string }>;
     readWorkerModel(args: {
         readonly workspaceId: number;
@@ -272,13 +268,11 @@ export interface ApplicationPort {
         readonly source: "explicit";
         readonly supportedPolicies: readonly ReasoningPolicy[];
     }>;
-    readWorkerCapabilities(args: {
+    readWorkspaceCapabilities(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
     }): Promise<CapabilityProjection>;
-    setWorkerCapabilities(args: {
+    setWorkspaceCapabilities(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
         readonly policy: CapabilityPolicy;
     }): Promise<CapabilityProjection>;
 }

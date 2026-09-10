@@ -60,7 +60,7 @@ test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — 
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
+            db, workspaceId, workerId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
@@ -167,7 +167,7 @@ test("automatic inspection never runs a repository-supplied core.fsmonitor helpe
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
+            db, workspaceId, workerId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
@@ -231,7 +231,7 @@ test("automatic inspection refuses a supplied repository declaring a filter prog
         const turnId = await insertTurn(db, loopId, 1, 102);
         const notices: Array<Record<string, unknown>> = [];
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
+            db, workspaceId, workerId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
             pushNotice: (notice) => { notices.push(notice as Record<string, unknown>); },
@@ -265,7 +265,7 @@ test("automatic inspection refuses a supplied repository declaring a filter prog
         const plainTurn = await insertTurn(db, plainLoop, 1, 102);
         const plainNotices: unknown[] = [];
         await GitMembership.indexGitMembership({
-            ...ctx, workspaceId: plainWorkspace, workerId: plainWorker, functionalityWorkerId: plainWorker, loopId: plainLoop, turnId: plainTurn,
+            ...ctx, workspaceId: plainWorkspace, workerId: plainWorker, loopId: plainLoop, turnId: plainTurn,
             pushNotice: (notice) => { plainNotices.push(notice); },
         });
         const plainMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: plainWorkspace, owner_id: await Owner.commonsId(db, plainWorkspace), scheme: "file", authority: "", pathname: "ok.md" });

@@ -283,7 +283,7 @@ for (const [denied, target] of [
     test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
         try {
-            await db.engine_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ capabilities: { deny: [denied] }, proposals: "review" }) });
+            await db.workspace_capability_policy_update.run({ workspace_id: workspaceId, policy: JSON.stringify({ deny: [denied] }) });
             const child = new BareWitness(1);
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,

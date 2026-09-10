@@ -2,13 +2,13 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/FunctionalityDefinitionState.json",
     "title": "FunctionalityDefinitionState",
-    "description": "One managed definition as a Worker sees it: its origin, desired enabledness, and current preparation outcome. Credentials never appear.",
+    "description": "One workspace definition: its origin, desired enabledness, and current preparation outcome. Credentials never appear.",
     "type": "object",
     "additionalProperties": false,
     "required": ["alias", "origin", "state"],
     "properties": {
         "alias": { "type": "string", "minLength": 1 },
-        "origin": { "enum": ["service", "worker"] },
+        "origin": { "enum": ["service", "workspace"] },
         "state": {
             "description": "disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.",
             "enum": ["disabled", "active", "unavailable", "authorization-required"]

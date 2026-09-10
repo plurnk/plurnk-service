@@ -296,7 +296,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body. Bare EXEC remains the default-shell form.
-        const resolved = core.executors.entry(runtime, core.functionalityWorkerId);
+        const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
             return Results.failure(
                 "scheme:exec",
@@ -306,7 +306,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 {},
                 {
                     requestedRuntime: runtime,
-                    executors: core.executors.availableRuntimes(core.functionalityWorkerId),
+                    executors: core.executors.availableRuntimes(core.workspaceId),
                     retryable: false,
                 },
             ) as ExecResult;
@@ -326,7 +326,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             ) as ExecResult;
         }
 
-        const registry = core.executors.toolRegistry(runtime, core.functionalityWorkerId);
+        const registry = core.executors.toolRegistry(runtime, core.workspaceId);
         const exactTarget = route.target === null ? null : route.target.raw;
         const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
         if (registry !== null && registeredTool === undefined) {
@@ -483,8 +483,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const executors = core.executors;
                 const ownerRuntimes = executors === undefined
                     ? []
-                    : executors.availableRuntimes(core.functionalityWorkerId)
-                        .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
+                    : executors.availableRuntimes(core.workspaceId)
+                        .filter((tag) => executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === target) === true);
                 const recovery = ownerRuntimes.length === 0
                     ? `The target must name an existing program resource. A targetless ${runtime} takes the command in its body.`
                     : `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`; use that name on the opening fence.`;
@@ -552,7 +552,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const found = [...this.#activeAborts.entries()].find(([, entry]) =>
             entry.workerId === owner && entry.runtime === runtime && entry.pathname === target.pathname);
         if (found !== undefined) {
-            if (core.executors?.entry(runtime, core.functionalityWorkerId)?.executor !== found[1].executor) {
+            if (core.executors?.entry(runtime, core.workspaceId)?.executor !== found[1].executor) {
                 return failure("input-unavailable", 409, "This execution's input receiver is no longer enabled.");
             }
             return { found };
@@ -690,7 +690,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (core.executors === undefined) {
             throw new InvalidOperationResultError("An accepted EXEC proposal has no executor registry.");
         }
-        const resolved = core.executors.entry(runtime, core.functionalityWorkerId);
+        const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
         }
@@ -804,13 +804,13 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (executors === undefined || result.problem === undefined) return result;
         const program = body.trim().split(/\s+/u, 1)[0] ?? "";
         if (program.length === 0) return result;
-        const owners = executors.availableRuntimes(core.functionalityWorkerId)
+        const owners = executors.availableRuntimes(core.workspaceId)
             .filter((tag) => tag !== runtime
-                && executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === program) === true);
+                && executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === program) === true);
         if (owners.length === 0) return result;
         const owner = owners[0]!;
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
-        const root = executors.entry(owner, core.functionalityWorkerId)?.resourcesPath ?? "/plurnk";
+        const root = executors.entry(owner, core.workspaceId)?.resourcesPath ?? "/plurnk";
         const contract = `worker://~${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.md`)}`;
         return {
             ...result,

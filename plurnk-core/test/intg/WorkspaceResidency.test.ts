@@ -1,4 +1,4 @@
-// {§module-worker-residency} {§module-worker-quiescence} — the residency owner
+// {§module-workspace-residency} {§module-workspace-quiescence} — the residency owner
 // in isolation: provider registration, demand-driven activation order,
 // replacement gate modes, durable state round-trips, and atomic rollback. The
 // composed behavior (cooling policy, document reconciliation, coordinator
@@ -8,9 +8,9 @@ import assert from "node:assert/strict";
 import type { ProblemDetails } from "@plurnk/plurnk-contracts";
 import type Engine from "../../src/core/Engine.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
-import WorkerResidency from "../../src/server/WorkerResidency.ts";
+import WorkspaceResidency from "../../src/server/WorkspaceResidency.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, openMigrated } from "./_helpers.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {
@@ -24,21 +24,20 @@ const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> =
 const harness = async () => {
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `residency-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "resident", "model");
     const calls: string[] = [];
     let rollbacks = 0;
     const engine = {
-        prepareWorkerRuntimes: async (targetWorkerId: number, owner: string, normalized: unknown[]) => {
-            calls.push(`prepare:${targetWorkerId}:${owner}:${normalized.length}`);
+        prepareWorkspaceRuntimes: async (targetWorkspaceId: number, owner: string, normalized: unknown[]) => {
+            calls.push(`prepare:${targetWorkspaceId}:${owner}:${normalized.length}`);
             return () => {
-                calls.push(`commit:${targetWorkerId}:${owner}`);
+                calls.push(`commit:${targetWorkspaceId}:${owner}`);
                 return () => { rollbacks += 1; };
             };
         },
         referenceEntries: async () => [],
     } as unknown as Engine;
     const workspaceGate = new WorkspaceGate(async () => false);
-    const residency = new WorkerResidency({
+    const residency = new WorkspaceResidency({
         db,
         engine: () => engine,
         workspaceGate,
@@ -47,7 +46,7 @@ const harness = async () => {
             return { tag: registration.decl.name, entry: {} as never, scheme: undefined };
         },
     });
-    return { db, workspaceId, workerId, residency, workspaceGate, calls, rollbacks: () => rollbacks };
+    return { db, workspaceId, residency, workspaceGate, calls, rollbacks: () => rollbacks };
 };
 
 test("provider registration is validated and exactly-once per namespace owner", async () => {
@@ -63,13 +62,13 @@ test("provider registration is validated and exactly-once per namespace owner", 
     }
 });
 
-test("acquire binds Worker to workspace, activates providers in order with a working retain, and refuses ghosts", async () => {
-    const { db, workspaceId, workerId, residency, calls } = await harness();
+test("acquire validates the workspace, activates providers in order with a working retain, and refuses ghosts", async () => {
+    const { db, workspaceId, residency, calls } = await harness();
     try {
         const order: string[] = [];
         residency.registerProvider("first", {
             activate: async (context) => {
-                order.push(`first:${context.workspaceId}/${context.workerId}`);
+                order.push(`first:${context.workspaceId}`);
                 const release = context.retain();
                 release();
             },
@@ -79,17 +78,17 @@ test("acquire binds Worker to workspace, activates providers in order with a wor
             activate: async () => { order.push("second"); },
             deactivate: async () => { order.push("second:down"); },
         });
-        assert.equal((await problemOf(() => residency.acquire(workspaceId + 999, workerId))).type, "https://problems.plurnk.xyz/daemon/worker-functionality/worker-not-found");
-        assert.equal((await problemOf(() => residency.identity(workerId + 999))).status, 404);
-        const release = await residency.acquire(workspaceId, workerId);
-        assert.deepEqual(order, [`first:${workspaceId}/${workerId}`, "second"], "providers activate in registration order with the Worker identity");
-        assert.equal(residency.isActive(workerId), true);
-        assert.deepEqual(residency.activeWorkerIds(), [workerId]);
-        const again = await residency.acquire(workspaceId, workerId);
+        assert.equal((await problemOf(() => residency.acquire(workspaceId + 999))).type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-not-found");
+        assert.equal((await problemOf(() => residency.identity(workspaceId + 999))).status, 404);
+        const release = await residency.acquire(workspaceId);
+        assert.deepEqual(order, [`first:${workspaceId}`, "second"], "providers activate in registration order with the workspace identity");
+        assert.equal(residency.isActive(workspaceId), true);
+        assert.deepEqual(residency.activeWorkspaceIds(), [workspaceId]);
+        const again = await residency.acquire(workspaceId);
         assert.deepEqual(order.length, 2, "a second demand reuses the resident activation");
         release();
         again();
-        assert.deepEqual(await residency.identity(workerId), { workspaceId, workerId });
+        assert.deepEqual(await residency.identity(workspaceId), { workspaceId });
         void calls;
     } finally {
         await db.close();
@@ -97,7 +96,7 @@ test("acquire binds Worker to workspace, activates providers in order with a wor
 });
 
 test("a failed provider activation deactivates what activated and surfaces the cause", async () => {
-    const { db, workspaceId, workerId, residency } = await harness();
+    const { db, workspaceId, residency } = await harness();
     try {
         const order: string[] = [];
         residency.registerProvider("ok", {
@@ -108,16 +107,16 @@ test("a failed provider activation deactivates what activated and surfaces the c
             activate: async () => { throw new Error("activation refused"); },
             deactivate: async () => { order.push("broken:down"); },
         });
-        await assert.rejects(() => residency.acquire(workspaceId, workerId), /activation refused/);
+        await assert.rejects(() => residency.acquire(workspaceId), /activation refused/);
         assert.deepEqual(order, ["ok:up", "broken:down", "ok:down"], "cleanup deactivates in reverse order");
-        assert.equal(residency.isActive(workerId), false);
+        assert.equal(residency.isActive(workspaceId), false);
     } finally {
         await db.close();
     }
 });
 
 test("activation failure unwinds while the requesting workspace turn remains held", async () => {
-    const { db, workspaceId, workerId, residency, workspaceGate } = await harness();
+    const { db, workspaceId, residency, workspaceGate } = await harness();
     const held = workspaceGate.tryExclusive(workspaceId);
     assert.ok(held);
     await held.acquired;
@@ -127,7 +126,7 @@ test("activation failure unwinds while the requesting workspace turn remains hel
         activate: async () => { throw cause; },
         deactivate: async () => { deactivated = true; },
     });
-    const failed = assert.rejects(() => residency.acquire(workspaceId, workerId), (error) => error === cause);
+    const failed = assert.rejects(() => residency.acquire(workspaceId), (error) => error === cause);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         await Promise.race([
@@ -135,7 +134,7 @@ test("activation failure unwinds while the requesting workspace turn remains hel
             new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("activation cleanup waited for its requesting turn")), 1000); }),
         ]);
         assert.equal(deactivated, true);
-        assert.equal(residency.isActive(workerId), false);
+        assert.equal(residency.isActive(workspaceId), false);
     } finally {
         clearTimeout(timer);
         held.release();
@@ -145,7 +144,7 @@ test("activation failure unwinds while the requesting workspace turn remains hel
 });
 
 test("replacement: gate modes, durable state round-trip, owner mismatch, and atomic rollback", async () => {
-    const { db, workspaceId, workerId, residency, workspaceGate, calls, rollbacks } = await harness();
+    const { db, workspaceId, residency, workspaceGate, calls, rollbacks } = await harness();
     try {
         const registration = (owner: string, name: string) => ({
             namespaceOwner: owner,
@@ -158,46 +157,46 @@ test("replacement: gate modes, durable state round-trip, owner mismatch, and ato
         const held = workspaceGate.tryExclusive(workspaceId);
         assert.ok(held !== null);
         await held.acquired;
-        const refused = await problemOf(() => residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 1 }, runtimes: [] }));
-        assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/worker-functionality/workspace-busy");
-        await residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 1 }, runtimes: [] }, { gate: "none" });
-        assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 1 });
-        const waited = residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 2 }, runtimes: [registration("own", "tag-a")] }, { gate: "wait" });
-        assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 1 }, "a waiting replacement has not run while the gate is held");
+        const refused = await problemOf(() => residency.replace({ workspaceId, namespaceOwner: "own", state: { v: 1 }, runtimes: [] }));
+        assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
+        await residency.replace({ workspaceId, namespaceOwner: "own", state: { v: 1 }, runtimes: [] }, { gate: "none" });
+        assert.deepEqual(await residency.readModuleState(workspaceId, "own"), { v: 1 });
+        const waited = residency.replace({ workspaceId, namespaceOwner: "own", state: { v: 2 }, runtimes: [registration("own", "tag-a")] }, { gate: "wait" });
+        assert.deepEqual(await residency.readModuleState(workspaceId, "own"), { v: 1 }, "a waiting replacement has not run while the gate is held");
         held.release();
         await waited;
-        assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 2 });
-        assert.ok(calls.includes("normalize:tag-a") && calls.includes(`prepare:${workerId}:own:1`) && calls.includes(`commit:${workerId}:own`), `replacement normalized, prepared, and committed: ${calls.join(",")}`);
+        assert.deepEqual(await residency.readModuleState(workspaceId, "own"), { v: 2 });
+        assert.ok(calls.includes("normalize:tag-a") && calls.includes(`prepare:${workspaceId}:own:1`) && calls.includes(`commit:${workspaceId}:own`), `replacement normalized, prepared, and committed: ${calls.join(",")}`);
         // Identity and ownership are exact.
-        assert.equal((await problemOf(() => residency.replace({ workspaceId: workspaceId + 999, workerId, namespaceOwner: "own", state: null, runtimes: [] }))).type, "https://problems.plurnk.xyz/daemon/worker-functionality/workspace-mismatch");
+        assert.equal((await problemOf(() => residency.replace({ workspaceId: workspaceId + 999, namespaceOwner: "own", state: null, runtimes: [] }))).type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-not-found");
         await assert.rejects(
-            () => residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: null, runtimes: [registration("other", "tag-b")] }),
+            () => residency.replace({ workspaceId, namespaceOwner: "own", state: null, runtimes: [registration("other", "tag-b")] }),
             /does not match 'own'/,
         );
         // A refused publication rolls the committed runtimes and durable state back.
-        const engineRefusal = residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 3 }, runtimes: [] }, { gate: "none" });
+        const engineRefusal = residency.replace({ workspaceId, namespaceOwner: "own", state: { v: 3 }, runtimes: [] }, { gate: "none" });
         await engineRefusal;
-        assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 3 });
+        assert.deepEqual(await residency.readModuleState(workspaceId, "own"), { v: 3 });
         residency.publish();
         const before = rollbacks();
         const failing = {
-            prepareWorkerRuntimes: async () => { throw new Error("host refused the runtime set"); },
+            prepareWorkspaceRuntimes: async () => { throw new Error("host refused the runtime set"); },
         };
-        const failingResidency = new WorkerResidency({
+        const failingResidency = new WorkspaceResidency({
             db,
             engine: () => failing as unknown as Engine,
             workspaceGate,
             normalizeRuntime: () => ({ tag: "t", entry: {} as never, scheme: undefined }),
         });
         await assert.rejects(
-            () => failingResidency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 4 }, runtimes: [] }),
+            () => failingResidency.replace({ workspaceId, namespaceOwner: "own", state: { v: 4 }, runtimes: [] }),
             /host refused the runtime set/,
         );
-        assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 3 }, "durable state is unchanged after a refused preparation");
+        assert.deepEqual(await residency.readModuleState(workspaceId, "own"), { v: 3 }, "durable state is unchanged after a refused preparation");
         assert.equal(rollbacks(), before, "nothing was committed, so nothing rolled back");
         // state: null forgets the durable row.
-        await residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: null, runtimes: [] }, { gate: "none" });
-        assert.equal(await residency.readModuleState(workerId, "own"), null);
+        await residency.replace({ workspaceId, namespaceOwner: "own", state: null, runtimes: [] }, { gate: "none" });
+        assert.equal(await residency.readModuleState(workspaceId, "own"), null);
     } finally {
         await db.close();
     }

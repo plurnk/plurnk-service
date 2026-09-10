@@ -141,7 +141,7 @@ export default class PacketBuilder {
     #capabilities: CapabilityResolver;
     // {§functionality-documents} — family-generated documents of a Worker's
     // published Functionality, reconciled with its other reference entries.
-    #functionalityDocuments: (workerId: number) => Array<{ pathname: string; content: string }> = () => [];
+    #functionalityDocuments: (workspaceId: number) => Array<{ pathname: string; content: string }> = () => [];
     // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
     // through the same environment contract as provider configuration.
 
@@ -160,7 +160,7 @@ export default class PacketBuilder {
         this.#promptProjectionFor(bootAlias);
     }
 
-    setFunctionalityDocuments(documents: (workerId: number) => Array<{ pathname: string; content: string }>): void {
+    setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ pathname: string; content: string }>): void {
         this.#functionalityDocuments = documents;
     }
 
@@ -233,8 +233,8 @@ export default class PacketBuilder {
     }): Promise<RequestPacket> {
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
-        const policy = await LoopPolicyReader.read(this.#db, loopId);
-        await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
+        await LoopPolicyReader.read(this.#db, loopId);
+        await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
@@ -370,7 +370,7 @@ export default class PacketBuilder {
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
-        let drafts = await this.#schemes.transformSections(defaults, workerId);
+        let drafts = await this.#schemes.transformSections(defaults, workspaceId);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined && curationBudget !== null) {
             const transformedLog = drafts.find((section) => section.name === "log");
@@ -423,26 +423,26 @@ export default class PacketBuilder {
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
     // one reserved reference set, materialized by LoopDocs.
     async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
-        const layers = await CapabilityPolicies.workerLayers(this.#db, workspaceId, workerId);
+        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const policies = layers.map((layer) => layer.policy);
-        const out = (await this.#schemes.docs(workerId))
-            .filter(({ name }) => this.#capabilities.allowsSchemeAcross(name, workerId, policies))
+        const out = (await this.#schemes.docs(workspaceId))
+            .filter(({ name }) => this.#capabilities.allowsSchemeAcross(name, workspaceId, policies))
             .map(({ name, content }) => ({
                 pathname: generatedPathname(`/plurnk/${name}.md`),
                 content,
             }));
         const executors = this.#executors();
         if (executors !== undefined) {
-            for (const tag of executors.availableRuntimes(workerId)) {
-                const entry = executors.entry(tag, workerId);
+            for (const tag of executors.availableRuntimes(workspaceId)) {
+                const entry = executors.entry(tag, workspaceId);
                 if (entry === undefined) continue;
-                const registry = executors.toolRegistry(tag, workerId);
+                const registry = executors.toolRegistry(tag, workspaceId);
                 const filteredRegistry = registry === null ? null : {
                     tools: registry.tools.filter((tool) =>
-                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workerId, policies)),
+                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
                 };
                 if (registry === null) {
-                    if (!this.#capabilities.allowsRuntimeAcross(tag, null, workerId, policies)) continue;
+                    if (!this.#capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;
                 } else if (filteredRegistry!.tools.length === 0) continue;
                 out.push(...ToolResources.render({
                     runtime: tag,
@@ -454,7 +454,7 @@ export default class PacketBuilder {
                 }));
             }
         }
-        out.push(...this.#functionalityDocuments(workerId));
+        out.push(...this.#functionalityDocuments(workspaceId));
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 

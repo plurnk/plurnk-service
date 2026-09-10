@@ -91,7 +91,6 @@ export type PrepareDataRepresentation = (args: {
 export type ProposalIds = {
     workspaceId: number;
     workerId: number;
-    functionalityWorkerId: number;
     loopId: number;
     turnId: number;
 };

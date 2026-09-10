@@ -46,5 +46,5 @@ directory already exists; `scope: "project"` needs a project root and writes
 under `.agents/skills`. Installation is a host effect, so it proposes and runs
 only on acceptance. A skill that fails to install or has invalid frontmatter is
 listed `unavailable` with its exact Problem — one bad skill never disables the
-family. `remove` uninstalls what this worker installed; service skills can only
+family. `remove` uninstalls the workspace-added skill; service skills can only
 be disabled.

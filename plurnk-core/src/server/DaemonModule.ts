@@ -55,28 +55,27 @@ export interface RuntimeRegistration {
     readonly scheme?: RuntimeSchemeFacet;
 }
 
-export interface WorkerCapabilityIdentity {
+export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
-    readonly workerId: number;
 }
 
-interface WorkerCapabilityContext extends WorkerCapabilityIdentity {
+interface WorkspaceCapabilityContext extends WorkspaceCapabilityIdentity {
     retain(): () => void;
 }
 
-export interface WorkerCapabilityProvider {
-    activate(context: WorkerCapabilityContext): void | Promise<void>;
-    deactivate(identity: WorkerCapabilityIdentity): void | Promise<void>;
+export interface WorkspaceCapabilityProvider {
+    activate(context: WorkspaceCapabilityContext): void | Promise<void>;
+    deactivate(identity: WorkspaceCapabilityIdentity): void | Promise<void>;
 }
 
-export interface WorkerCapabilityReplacement extends WorkerCapabilityIdentity {
+export interface WorkspaceCapabilityReplacement extends WorkspaceCapabilityIdentity {
     readonly namespaceOwner: string;
     readonly state: unknown | null;
     readonly runtimes: readonly RuntimeRegistration[];
 }
 
 // {§functionality-adapter} — one family of managed Functionality (Agent Skills,
-// MCP servers, outbound A2A agents) beneath the shared Worker coordinator. The
+// MCP servers, outbound A2A agents) beneath the shared workspace coordinator. The
 // adapter owns protocol truth: definitions, inert discovery, admission,
 // preparation, teardown, and any protocol continuation it registers as its own
 // action. The coordinator owns lifecycle, durable state, serialization,
@@ -93,7 +92,7 @@ export interface FunctionalityDefinitionSource {
 }
 
 // A service- or configuration-contributed definition with its default
-// enabledness; a Worker's durable state may override the enabledness only.
+// enabledness; a workspace's durable state may override the enabledness only.
 export interface FunctionalityServiceDefinition extends FunctionalityDefinitionSource {
     readonly enabled: boolean;
 }
@@ -112,10 +111,9 @@ interface FunctionalityDocument {
 
 export interface FunctionalityPreparation {
     readonly workspaceId: number;
-    readonly workerId: number;
     // The enabled definitions to prepare, in alias order.
     readonly enabled: ReadonlyMap<FunctionalityAlias, object>;
-    // The adapter's previous process snapshot for this Worker, when one exists.
+    // The adapter's previous process snapshot for this workspace, when one exists.
     readonly previous: unknown | null;
     // Whether failures publish as unavailable outcomes (activation, model
     // mutations) or reject the mutation (explicit client mutations).
@@ -141,7 +139,7 @@ export interface FunctionalityPrepared {
 }
 
 export interface FunctionalityAdapter {
-    // The action segment (`worker.<family>.<verb>`) and the EXEC family tag.
+    // The action segment (`workspace.<family>.<verb>`) and the EXEC family tag.
     readonly family: string;
     // The one publication owner for this family's runtimes and state.
     readonly namespaceOwner: string;
@@ -155,14 +153,14 @@ export interface FunctionalityAdapter {
     // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
     // authored teaching beneath the family document's generated header, by the runtime doc-file rule.
     readonly docsDir?: string;
-    available(identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkerCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityDefinitionSource>;
+    available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
+    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared>;
-    teardown(snapshot: unknown, identity: WorkerCapabilityIdentity): Promise<void>;
-    // Release what the Worker's own definition installed or provisioned, before
+    teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
+    // Release what the workspace definition installed or provisioned, before
     // the coordinator forgets it on `remove`; a failure rejects the removal.
-    forget?(definition: FunctionalityDefinitionSource, identity: WorkerCapabilityIdentity): Promise<void>;
+    forget?(definition: FunctionalityDefinitionSource, identity: WorkspaceCapabilityIdentity): Promise<void>;
 }
 
 // The coordinator's re-entry surface for one registered family: a protocol
@@ -172,27 +170,34 @@ export interface FunctionalityFamilyHandle {
     invoke(
         verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
         params: unknown,
-        identity: WorkerCapabilityIdentity,
+        identity: WorkspaceCapabilityIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkerCapabilityIdentity, options?: { readonly gate?: WorkerCapabilityGate }): Promise<void>;
+    refresh(identity: WorkspaceCapabilityIdentity, options?: { readonly gate?: WorkspaceCapabilityGate }): Promise<void>;
 }
 
 // How a capability replacement meets the workspace gate: `try` fails 409 while
 // the workspace is held (an explicit client mutation), `wait` queues behind the
 // holder (a Worker's own accepted mutation), `none` publishes inside the gate
 // context its demand already holds (activation, turn-admission refresh).
-export type WorkerCapabilityGate = "none" | "try" | "wait";
+export type WorkspaceCapabilityGate = "none" | "try" | "wait";
+
+export interface WorkspaceCapabilityPublication {
+    readonly gate?: WorkspaceCapabilityGate;
+    // Publish the coordinator's view in the same synchronous commit as the registries.
+    // The returned undo runs before failed-publication document reconciliation.
+    readonly publish?: () => () => void;
+}
 
 export interface ModuleSetupSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerScheme(name: string, handler: object): Promise<void>;
     registerModuleAction(registration: ModuleActionRegistration): void;
-    registerWorkerCapabilityProvider(
+    registerWorkspaceCapabilityProvider(
         namespaceOwner: string,
-        provider: WorkerCapabilityProvider,
+        provider: WorkspaceCapabilityProvider,
     ): void;
-    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
-    replaceWorkerCapabilities(replacement: WorkerCapabilityReplacement): Promise<void>;
+    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
+    replaceWorkspaceCapabilities(replacement: WorkspaceCapabilityReplacement): Promise<void>;
     registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle;
 }
 

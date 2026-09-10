@@ -65,16 +65,16 @@ test("discover composes installed scheme and MIME display metadata through the r
         assert.equal(Object.keys(discovery.actions).length, 45, "25 built-ins, six core Skills lifecycle verbs, six core members lifecycle verbs, and eight installed MCP actions (six lifecycle verbs and two continuations)");
         assert.equal(Object.hasOwn(discovery.actions, "workspace.derivation"), false, "indexing activity uses the status stream, not a polling action");
         assert.deepEqual(
-            Object.keys(discovery.actions).filter((name) => name.startsWith("worker.mcp.")).toSorted(),
+            Object.keys(discovery.actions).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
             [
-                "worker.mcp.add",
-                "worker.mcp.complete",
-                "worker.mcp.disable",
-                "worker.mcp.discover",
-                "worker.mcp.enable",
-                "worker.mcp.list",
-                "worker.mcp.oauth.complete",
-                "worker.mcp.remove",
+                "workspace.mcp.add",
+                "workspace.mcp.complete",
+                "workspace.mcp.disable",
+                "workspace.mcp.discover",
+                "workspace.mcp.enable",
+                "workspace.mcp.list",
+                "workspace.mcp.oauth.complete",
+                "workspace.mcp.remove",
             ],
         );
         for (const [name, action] of Object.entries(discovery.actions)) {

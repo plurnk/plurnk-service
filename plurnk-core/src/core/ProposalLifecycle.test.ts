@@ -60,7 +60,7 @@ test("pending projection rejects malformed durable review material at its owner"
         pathname: "/x",
         rx: JSON.stringify({ status: 202 }),
         attrs: "{}",
-        loop_policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
+        loop_policy: JSON.stringify({ proposals: "review" }),
     };
     const cases = [
         {
@@ -68,7 +68,7 @@ test("pending projection rejects malformed durable review material at its owner"
             error: /Pending proposal 7 has invalid attrs JSON/,
         },
         {
-            row: { ...base, loop_policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }) },
+            row: { ...base, loop_policy: JSON.stringify({ proposals: "sometimes" }) },
             error: /Loop 13 has invalid persisted policy/,
         },
     ];
@@ -135,7 +135,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         statement,
         { status: 202, attrs: { operation: "publish" } },
         { decision: "accept", body: "accepted body" },
-        { workspaceId: 11, workerId: 12, functionalityWorkerId: 12, loopId: 13, turnId: 14 },
+        { workspaceId: 11, workerId: 12, loopId: 13, turnId: 14 },
     );
 
     assert.ok(receivedContext);

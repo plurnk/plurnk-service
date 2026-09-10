@@ -26,8 +26,7 @@ const documentation = await readFile(new URL("../docs/a2a.md", import.meta.url),
 const OWNER = "scheme:a2a";
 
 // {§a2a-outbound-definition} — the scheme resolves an alias against the
-// Functionality of the Worker the operation acts in (`ctx.functionalityWorkerId`);
-// `null` means no such agent is enabled for that Worker.
+// workspace Functionality; `null` means no such agent is enabled.
 export type A2aClientResolver = (authority: string, ctx: SchemeCtx) => Client | null | Promise<Client | null>;
 
 interface A2aAddress {

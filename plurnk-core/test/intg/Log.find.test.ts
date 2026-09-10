@@ -46,11 +46,11 @@ const setup = async () => {
 };
 
 test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture works", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
         const r = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(r.status, 200, "no more 501 — log speaks the universal FIND");
         const foundPaths = paths(r);
@@ -64,9 +64,9 @@ test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture 
 });
 
 test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
-        const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
+        const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
         const projected = JSON.parse(r.content!) as Array<Array<Record<string, unknown>>>;
@@ -79,7 +79,7 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
 });
 
 test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by their canonical leaves", async () => {
-    const { db, workerId, loopId, turnId } = await setup();
+    const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         for (const [sequence, kind, content] of [
             [4, "turnOps", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```"],
@@ -115,7 +115,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
             });
         }
         const log = new Log();
-        const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
         const turn = await log.find({ ...findStmt(urlPath("log", "/1/1")), lineMarker: { marks: [1, -1] } }, ctx);
         assert.ok(paths(turn).includes("log:///1/1/4/ops"));
         assert.ok(paths(turn).includes("log:///1/1/5/attempt"));
@@ -130,11 +130,11 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
 });
 
 test("an exact body-less log FIND returns 404 when the resource does not exist", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
             findStmt(urlPath("log", "/9/9/9/READ")),
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/log/entry-not-found");
@@ -143,11 +143,11 @@ test("an exact body-less log FIND returns 404 when the resource does not exist",
 });
 
 test("an exact log FIND rejects a supplied /OP delimiter that disagrees with an existing row", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
             findStmt(urlPath("log", "/1/1/1/READ")),
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
         assert.equal(result.problem?.target, "log:///1/1/1/READ");
@@ -169,7 +169,7 @@ test("markerless log FIND returns the first 16 rows with a compact selection ext
             });
         }
         const log = new Log();
-        const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
         const bounded = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
         assert.equal(bounded.results.length, 16);
         assert.equal(bounded.range?.total, 20);
@@ -187,10 +187,10 @@ test("markerless log FIND returns the first 16 rows with a compact selection ext
 });
 
 test("a single-star log FIND maps one coordinate level without crossing separators", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
         const log = new Log();
-        const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
 
         const root = await log.find(findStmt(urlPath("log", "/*")), ctx);
         assert.equal(root.status, 200);
@@ -212,13 +212,13 @@ test("a single-star log FIND maps one coordinate level without crossing separato
 });
 
 test("FIND pagination misses carry the exact result extent", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
         const statement = {
             ...findStmt(urlPath("log", "/1/1")),
             lineMarker: { marks: [9] as [number] },
         };
-        const r = await new Log().find(statement, makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
+        const r = await new Log().find(statement, makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 416);
         assert.deepEqual(r.problem?.range, {
             unit: "resource",
@@ -241,7 +241,7 @@ test("log FIND reports an exact readable region for structural matches", async (
         });
         const result = await new Log().find(
             findStmt(urlPath("log", "/1/1/5/READ"), { dialect: "jsonpath", raw: "$.second" } as MatcherBody),
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
         const match = matchLocations(result)[0];
@@ -267,7 +267,7 @@ test("FIND(log:///**):/pattern/ — FIND locates matching log entries", async ()
 });
 
 test("READ(log://)<1,-1> returns a composed row's complete canonical body", async () => {
-    const { db, workerId, loopId, turnId } = await setup();
+    const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
         const plan = planValue(full);
@@ -302,7 +302,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
 
         const result = await readLog(
             { ...readStmt(urlPath("log", "/1/1/4/TASK")), lineMarker: { marks: [1, -1] } },
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
         assert.equal(result.content, `[${plan.map((entry) => JSON.stringify(entry)).join(",\n")}]`, "the canonical TASK body is the shared json-result spread (#339)");
@@ -310,16 +310,16 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
 });
 
 test("zero content matches → 204; an unwarmed relation query fails with structured index state", async () => {
-    const { db, workerId } = await setup();
+    const { db, workerId, workspaceId } = await setup();
     try {
         const none = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/absent-phrase-xyz/", pattern: "absent-phrase-xyz", flags: "" } as MatcherBody),
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(none.status, 204, "a sweep that found nothing steers nothing");
         const sem = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "fts", raw: "~engine" } as MatcherBody),
-            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(sem.status, 503, "an advertised matcher is unavailable only while its persistent index is incomplete");
         assert.deepEqual(sem.problem?.search, { state: "incomplete", indexed: 0, total: 3 });

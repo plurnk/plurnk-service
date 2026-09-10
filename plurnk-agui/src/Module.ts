@@ -318,8 +318,7 @@ export default class Module {
 
     // Resolve the thread's conversation worker within its world. Cached per
     // workspace + threadId; worker names are immutable so the binding cannot rot. Durable
-    // capability changes use worker.capabilities.set; per-run attenuation belongs
-    // to the loop policy forwarded below.
+    // capability changes use workspace.capabilities.set; LoopPolicy controls proposals.
     async #conversationWorker(threadId: string, env: ClientEnvelope): Promise<number> {
         const key = Module.#threadKey(env.workspaceName, threadId);
         const cached = this.#threadWorkers.get(key);

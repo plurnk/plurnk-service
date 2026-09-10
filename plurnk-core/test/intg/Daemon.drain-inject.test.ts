@@ -97,13 +97,11 @@ test("{§worker-delegation-inherits-policy}: a fresh injection persists delegate
             reasoningPolicy: "adaptive",
             systemPrompt: "test system",
             freshLoopPolicy: {
-                capabilities: { deny: [{ operation: "EXEC" }] },
                 proposals: "accept",
             },
         });
         const row = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: accepted.loopId });
         assert.deepEqual(JSON.parse(row!.policy), {
-            capabilities: { deny: [{ operation: "EXEC" }] },
             proposals: "accept",
         });
         await accepted.drainPromise;
@@ -479,7 +477,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
                 prompt: "kick off",
-                policy: { capabilities: { deny: [{ traits: ["web"] }] } },
+                policy: { proposals: "review" },
             });
             const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (p) => p.length >= 1);
 

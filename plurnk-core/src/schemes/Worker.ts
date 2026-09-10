@@ -1,7 +1,6 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { taskTiming } from "../core/LoopLifecycle.ts";
-import CapabilityPolicies from "../core/CapabilityPolicies.ts";
 import { isGeneratedPathname } from "../core/plurnk-uri.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult } from "./_entry-ops.ts";
@@ -542,19 +541,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
-        // {§worker-delegation-inherits-policy} — an irc that RESUMES a parked loop keeps that loop's
-        // own policy (inject ignores these there); a fresh loop raised by the message acts on
-        // the sender's behalf and carries the sender's authority.
-        const policy = await LoopPolicyReader.read(core.db, core.loopId);
-        const freshLoopPolicy = {
-            ...policy,
-            capabilities: await CapabilityPolicies.delegationBound(
-                core.db,
-                core.workspaceId,
-                core.workerId,
-                policy,
-            ),
-        };
+        // {§worker-delegation-inherits-policy} Only fresh loops inherit proposal
+        // disposition; resumed loops retain their immutable policy.
+        const freshLoopPolicy = await LoopPolicyReader.read(core.db, core.loopId);
         const accepted = await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,

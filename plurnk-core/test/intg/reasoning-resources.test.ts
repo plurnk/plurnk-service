@@ -182,7 +182,7 @@ Retained determination.
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
         assert.equal(found.matchLocationCount, 1);
-        const forkId = await Fork.fork(db, workerId, "reasoning-branch", {}, (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
+        const forkId = await Fork.fork(db, workerId, "reasoning-branch", (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
         const forkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: forkId });
         assert.ok(forkLoop);
         const forkContext = { workspaceId, workerId: forkId, loopId: forkLoop.id };
@@ -213,7 +213,7 @@ Revised conclusion.
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
             statement: statement(`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\``),
         })).status, 200);
-        const forkAfterRead = await Fork.fork(db, workerId, "already-observed", {}, (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
+        const forkAfterRead = await Fork.fork(db, workerId, "already-observed", (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
         await db.close();
         db = await openMigrated(dbPath);
         engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

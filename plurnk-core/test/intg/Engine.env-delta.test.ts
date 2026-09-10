@@ -479,7 +479,7 @@ test("a fork inherits observed progress and independently receives pending event
             workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
         });
 
-        const branch = await Fork.fork(db, parent, "branch", {}, () => "none");
+        const branch = await Fork.fork(db, parent, "branch", () => "none");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
         await eng.runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
@@ -805,7 +805,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
             "child terminal results never broadcast to an independent root",
         );
         // A fork copies the observed conclusions as inherited history: same attribution, still untargeted.
-        const branch = await Fork.fork(db, workerA, "branch", {}, () => "none");
+        const branch = await Fork.fork(db, workerA, "branch", () => "none");
         const branchRows = await db.engine_render_log.all<{ origin: string; op: string; scheme: string | null; pathname: string | null; source: string | null; status_rx: number | null }>({ worker_id: branch });
         assert.deepEqual(
             branchRows.filter((r) => r.origin === "_plurnk" && r.op === "SEND" && r.source?.startsWith("worker://") === true)

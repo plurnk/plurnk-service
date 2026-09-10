@@ -72,7 +72,6 @@ import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError 
 import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
@@ -92,16 +91,8 @@ const regexLiteral = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 const workerCatalogTarget = (
     namespace: "plurnk" | "tools",
-    availableNames: readonly string[],
-    admittedNames: readonly string[],
-): UrlPath | null => {
-    if (availableNames.length > 0 && admittedNames.length === 0) return null;
-    const leaf = availableNames.length === 0 || admittedNames.length === availableNames.length
-        ? "*.md"
-        : admittedNames.length === 1
-            ? `${admittedNames[0]}.md`
-            : `{${admittedNames.join(",")}}.md`;
-    const pathname = generatedPathname(`/${namespace}/${leaf}`);
+): UrlPath => {
+    const pathname = generatedPathname(`/${namespace}/*.md`);
     return {
         kind: "url",
         raw: `worker://~${pathname}`,
@@ -591,7 +582,7 @@ export default class TurnRunner {
             const resolved = await this.#dispatcher.bindEntryAddress(target, ctx);
             if (resolved?.result != null) throw new OperationFailureError(resolved.result);
             if (resolved?.address == null) return null;
-            const handler = this.#schemes.get(attachment.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+            const handler = this.#schemes.get(attachment.scheme, ctx.workspaceId) as SchemeHandler | undefined;
             let source = handler?.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
             if (source === undefined && handler?.manifest !== undefined) {
                 const stored = await EntryCrud.readEntry(resolved.address, ctx, resolved.address.scheme, resolved.address.ownerId);
@@ -672,11 +663,9 @@ export default class TurnRunner {
             : (await CapabilityPolicies.layers(
                 this.#db,
                 workspaceId,
-                workerId,
-                await LoopPolicyReader.read(this.#db, loopId),
             )).map((layer) => layer.policy);
         const initializationAdmits = (statement: InternalTurnStatement): boolean =>
-            this.#capabilities.allowsAcross(statement, workerId, initializationPolicies);
+            this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies);
         let modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
@@ -693,14 +682,14 @@ export default class TurnRunner {
         // Threaded per turn, never engine state, so concurrent loops on
         // different providers each read their own honest tokenizer values.
         const systemContext = (contextTurnId: number): PlurnkSchemeContext => ({
-            db: this.#db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId: contextTurnId,
+            db: this.#db, workspaceId, workerId, loopId, turnId: contextTurnId,
             writer: "_plurnk",
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workerId),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                 request,
@@ -824,48 +813,15 @@ export default class TurnRunner {
                 // {§tools-resource-materialization} — expanded families project complete
                 // invocation blocks, paged through ordinary FIND result ranges.
                 const registry = this.#executors();
-                const references = await this.#packets.referenceEntries(workspaceId, workerId);
-                const referenceNames = (namespace: "plurnk" | "tools"): string[] => {
-                    const prefix = generatedPathname(`/${namespace}/`);
-                    return [...new Set(references.flatMap(({ pathname }) => {
-                        if (!pathname.startsWith(prefix) || !pathname.endsWith(".md")) return [];
-                        const name = pathname.slice(prefix.length, -3);
-                        return name.includes("/") ? [] : [name];
-                    }))].toSorted();
-                };
-                const runtimeAdmitted = (runtime: string): boolean => {
-                    const tools = registry?.toolRegistry(runtime, workerId);
-                    return tools === null || tools === undefined
-                        ? this.#capabilities.allowsRuntimeAcross(runtime, null, workerId, initializationPolicies)
-                        : tools.tools.some((tool) =>
-                            this.#capabilities.allowsRuntimeAcross(runtime, tool.target, workerId, initializationPolicies));
-                };
-                const referenceAdmitted = (namespace: "plurnk" | "tools", name: string): boolean => {
-                    const entry = registry?.entry(name, workerId);
-                    const entryNamespace = entry?.resourcesPath === "/tools" ? "tools" : "plurnk";
-                    if (entry !== undefined && entryNamespace === namespace) return runtimeAdmitted(name);
-                    return !this.#schemes.has(name, workerId)
-                        || this.#capabilities.allowsSchemeAcross(name, workerId, initializationPolicies);
-                };
-                const plurnkReferences = referenceNames("plurnk");
-                const toolReferences = referenceNames("tools");
-                const plurnkCatalog = workerCatalogTarget(
-                    "plurnk",
-                    plurnkReferences,
-                    plurnkReferences.filter((name) => referenceAdmitted("plurnk", name)),
-                );
-                const toolsCatalog = workerCatalogTarget(
-                    "tools",
-                    toolReferences,
-                    toolReferences.filter((name) => referenceAdmitted("tools", name)),
-                );
+                const plurnkCatalog = workerCatalogTarget("plurnk");
+                const toolsCatalog = workerCatalogTarget("tools");
                 const toolExpansions: Array<{ statement: FindStatement | ReadStatement }> = [];
-                for (const tag of registry?.availableRuntimes(workerId) ?? []) {
-                    const entry = registry?.entry(tag, workerId);
+                for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
+                    const entry = registry?.entry(tag, workspaceId);
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
-                    const tools = registry?.toolRegistry(tag, workerId);
+                    const tools = registry?.toolRegistry(tag, workspaceId);
                     const admittedTools = tools?.tools.filter((tool) =>
-                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workerId, initializationPolicies)) ?? [];
+                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, initializationPolicies)) ?? [];
                     if (admittedTools.length === 0) continue;
                     const targetFilter = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
                         ? " \\((?:" + admittedTools.map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target))).join("|") + ")\\)"
@@ -962,7 +918,7 @@ export default class TurnRunner {
                     },
                 ];
                 initializationStatements.push(...surveys.map(({ statement }) => statement).filter(({ target }) =>
-                    this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workerId) !== undefined));
+                    this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined));
             }
             const task: DispositionStatement = {
                 op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null,
@@ -1090,7 +1046,7 @@ export default class TurnRunner {
         // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
         nextActionIndex += await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materialization.materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
 
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.

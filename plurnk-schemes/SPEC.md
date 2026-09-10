@@ -517,9 +517,9 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`functionalityWorkerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
 
-§scheme-ctx-functionality-worker `functionalityWorkerId` names the caller's Functionality and admission policy. It equals `workerId` for model and runtime dispatches; a client operation carries its attached conversation Worker while journaling in its own worker. Core selects the addressed resource handler and binds its entry principal before supplying this context. A qualified resource's backend may belong to another Worker; handlers must not reselect it from caller identity ({§runtime-resource-binding}).
+§scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and selects its private log/scratchpad. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
 
 - `entries` — direct storage over the scheme and authority already bound by core
   (`address`/`read`/`write`/`delete`) plus `operations`, the standard PLURNK

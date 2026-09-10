@@ -8,7 +8,6 @@ import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
-import CapabilityPolicies from "./CapabilityPolicies.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
 export default class WorkerControlHandler {
@@ -56,20 +55,7 @@ export default class WorkerControlHandler {
         if (denied !== null) return denied;
         const prompt = statement.body;
 
-        // {§worker-delegation-inherits-policy} — authority flows down the
-        // delegation edge. The child receives the delegator's complete loop
-        // policy and an immutable snapshot of its effective capability bound.
-        const policy = await LoopPolicyReader.read(this.#db, ctx.loopId);
-        const capabilityBound = await CapabilityPolicies.delegationBound(
-            this.#db,
-            ctx.workspaceId,
-            ctx.workerId,
-            policy,
-        );
-        const delegationPolicy: LoopPolicy = {
-            ...policy,
-            capabilities: capabilityBound,
-        };
+        const delegationPolicy: LoopPolicy = await LoopPolicyReader.read(this.#db, ctx.loopId);
 
         // A name is frozen per worker but reclaimable across time ({§machine-processes-worker-origin}): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
@@ -89,8 +75,7 @@ export default class WorkerControlHandler {
                 this.#db,
                 ctx.workerId,
                 name,
-                capabilityBound,
-                (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, ctx.workerId),
+                (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, ctx.workspaceId),
             );
         } else {
             const row = name === undefined
@@ -98,12 +83,10 @@ export default class WorkerControlHandler {
                     workspaceId: ctx.workspaceId,
                     parentWorkerId: ctx.workerId,
                     origin,
-                    capabilityBound,
                 })
                 : await this.#db.fork_insert_worker.get<{ id: number }>({
                     workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin,
                     fork_snapshot: 0,
-                    capability_bound: JSON.stringify(capabilityBound),
                 });
             if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
             workerId = row.id;

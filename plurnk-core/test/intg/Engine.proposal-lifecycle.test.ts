@@ -346,7 +346,7 @@ test("proposal: loop acceptance is core-owned and needs no daemon listener", asy
         // Daemon listener is needed to make the policy effective.
         await db.engine_set_loop_policy.run({
             loop_id: ctx.loopId,
-            policy: JSON.stringify({ capabilities: {}, proposals: "accept" }),
+            policy: JSON.stringify({ proposals: "accept" }),
         });
 
         const idDeferred = deferred<number>();
@@ -372,7 +372,7 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
         const ctx = await setupEngine(db);
         await db.engine_set_loop_policy.run({
             loop_id: ctx.loopId,
-            policy: JSON.stringify({ capabilities: {}, proposals: "accept" }),
+            policy: JSON.stringify({ proposals: "accept" }),
         });
         const observerCause = new Error("observer failed");
         ctx.engine.onProposalPending(() => { throw observerCause; });
@@ -401,7 +401,7 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
         const ctx = await setupEngine(db, new ProposingTest(async () => {
             await db.engine_set_loop_policy.run({
                 loop_id: loopId,
-                policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }),
+                policy: JSON.stringify({ proposals: "sometimes" }),
             });
         }));
         loopId = ctx.loopId;

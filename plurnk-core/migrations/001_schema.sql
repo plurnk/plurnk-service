@@ -66,15 +66,6 @@ CREATE TABLE IF NOT EXISTS workers (
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
     -- {§worker-causal-admission}: cancellation retires unread arrivals without rewriting history.
     cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),
-    -- {§worker-settings}: the worker's own behavioral rules inside the workspace's
-    -- world — the workspace is how things are; each worker carries the rules its
-    -- loops obey. Client-declared at worker creation, mutable between loops,
-    -- validated at the client-input boundary (closed known-key set; unknown keys
-    -- never persist).
-    settings TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(settings)),
-    -- Parent-derived capability ceiling, copied by value at child creation.
-    -- Root workers have the unrestricted empty policy.
-    capability_bound TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(capability_bound)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
     -- Creation captures the workspace high-water; a fork instead copies its
     -- parent's cursor and records the closed event boundary of its snapshot.
@@ -112,29 +103,15 @@ BEGIN
     SELECT RAISE(ABORT, 'workers.fork_event_boundary is immutable');
 END;
 
--- {§module-worker-state}: one opaque, provider-validated JSON snapshot per
--- module owner and Worker. Core owns isolation, inheritance, and lifecycle;
--- the module owns its state schema and semantics.
-CREATE TABLE IF NOT EXISTS worker_module_state (
-    worker_id         INTEGER NOT NULL,
+-- {§module-workspace-state}: one provider-validated snapshot per workspace.
+CREATE TABLE IF NOT EXISTS workspace_module_state (
+    workspace_id      INTEGER NOT NULL,
     namespace_owner  TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
     state             TEXT    NOT NULL CHECK (json_valid(state)),
     updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    PRIMARY KEY (worker_id, namespace_owner),
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
+    PRIMARY KEY (workspace_id, namespace_owner),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT;
-
--- A child snapshots every initialized module state at birth. Later parent
--- mutations do not propagate; the child and parent are independent authorities.
-CREATE TRIGGER IF NOT EXISTS worker_module_state_inherit
-AFTER INSERT ON workers
-WHEN NEW.parent_worker_id IS NOT NULL
-BEGIN
-    INSERT INTO worker_module_state (worker_id, namespace_owner, state, updated_at)
-    SELECT NEW.id, namespace_owner, state, updated_at
-    FROM worker_module_state
-    WHERE worker_id = NEW.parent_worker_id;
-END;
 
 -- {§env-delta-log-pull}: one append-only occurrence journal gives every
 -- producer a shared monotonic order. Audience is structural: direct parent,
@@ -243,8 +220,7 @@ BEGIN
 END;
 
 -- loops
--- policy: complete immutable per-loop capability attenuation and proposal
--- disposition ({§loop-policy-effective-read}).
+-- policy: immutable per-loop proposal disposition ({§loop-policy-effective-read}).
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
@@ -255,7 +231,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§prompt-causal-source}: canonical actor address for the initial prompt;
     -- NULL means the owning worker itself.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
-    policy   TEXT    NOT NULL DEFAULT '{"capabilities":{},"proposals":"review"}' CHECK (json_valid(policy)),
+    policy   TEXT    NOT NULL DEFAULT '{"proposals":"review"}' CHECK (json_valid(policy)),
     -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),

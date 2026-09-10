@@ -10,13 +10,12 @@ import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
 
-type CapabilityScope = "service" | "workspace" | "worker-bound" | "worker" | "loop";
+type CapabilityScope = "service" | "workspace";
 
 export interface CapabilityDenial {
     readonly descriptor: CapabilityDescriptor;
@@ -36,7 +35,7 @@ export default class CapabilityResolver {
 
     descriptors(
         statement: PlurnkStatement,
-        workerId: number,
+        workspaceId: number,
         writer: WriterTier = "model",
         observeManifest?: (target: ParsedPath) => SchemeManifest | undefined,
     ): readonly CapabilityDescriptor[] {
@@ -50,12 +49,12 @@ export default class CapabilityResolver {
                 const manifest = observeManifest(target);
                 return manifest === undefined ? null : [{ operation, access, scheme, traits: [...(manifest.traits ?? [])].toSorted() }];
             }
-            if (scheme === null || !this.#schemes.has(scheme, workerId)) return null;
+            if (scheme === null || !this.#schemes.has(scheme, workspaceId)) return null;
             // {§worker-generated-subtree}: owned-state mutation is intrinsic;
             // observation and unrelated effects retain their independent demands.
             if (writer === "_plurnk" && access !== "observe" && scheme === "worker"
                 && target?.kind === "url" && isGeneratedPathname(target.pathname)) return [];
-            return [this.#schemeDescriptor(operation, access, scheme, workerId)];
+            return [this.#schemeDescriptor(operation, access, scheme, workspaceId)];
         };
         const demands = (...items: readonly (CapabilityDescriptor[] | null)[]): CapabilityDescriptor[] =>
             items.flatMap((item) => item ?? []);
@@ -92,7 +91,7 @@ export default class CapabilityResolver {
             case "KILL": {
                 const scheme = schemeNameOf(statement.target);
                 if (scheme === "log") return [];
-                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workerId) !== undefined);
+                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
                 return demands(describe("KILL", control ? "control" : "mutate", statement.target));
             }
             case "TASK":
@@ -100,16 +99,16 @@ export default class CapabilityResolver {
             case "SEND": {
                 if (statement.target === null) return [];
                 const scheme = schemeNameOf(statement.target);
-                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workerId) !== undefined);
+                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
                 return demands(describe("SEND", control ? "control" : "mutate", statement.target));
             }
             case "EXEC": {
                 const executors = this.#executors();
                 const route = execRouteOf(statement);
                 const runtime = route.runtime;
-                const entry = executors?.entry(runtime, workerId);
+                const entry = executors?.entry(runtime, workspaceId);
                 if (entry === undefined) return [];
-                const registry = executors?.toolRegistry(runtime, workerId) ?? null;
+                const registry = executors?.toolRegistry(runtime, workspaceId) ?? null;
                 const target = route.target === null ? null : route.target.raw;
                 const tool = registry?.tools.find((candidate) => candidate.target === target)?.target ?? null;
                 // A finite tool registry owns exact target resolution. Missing
@@ -117,7 +116,7 @@ export default class CapabilityResolver {
                 // tool-required/tool-not-enabled failures; policy cannot
                 // misrepresent absence as denied authority.
                 if (registry !== null && tool === null) return [];
-                const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workerId)];
+                const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workspaceId)];
                 const targetKind = entry.invocation.target?.kind;
                 const execTarget = route.target;
                 if ((targetKind === "resource" || targetKind === "script") && execTarget === null) {
@@ -135,8 +134,6 @@ export default class CapabilityResolver {
     async denial(
         statement: PlurnkStatement,
         workspaceId: number,
-        workerId: number,
-        loopId: number,
         writer: WriterTier = "model",
         resolveResource?: (target: ParsedPath) => Promise<SchemeManifest | undefined>,
     ): Promise<CapabilityDenial | null> {
@@ -144,15 +141,14 @@ export default class CapabilityResolver {
         if (resolveResource !== undefined) {
             // Derive read operands through the same operation-demand mapping;
             // resolve their backend manifests without borrowing owner policy.
-            this.descriptors(statement, workerId, writer, (target) => {
+            this.descriptors(statement, workspaceId, writer, (target) => {
                 manifests.set(target, undefined);
                 return undefined;
             });
             for (const target of manifests.keys()) manifests.set(target, await resolveResource(target));
         }
-        const policy = await LoopPolicyReader.read(this.#db, loopId);
-        const layers = await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
-        for (const descriptor of this.descriptors(statement, workerId, writer,
+        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
+        for (const descriptor of this.descriptors(statement, workspaceId, writer,
             resolveResource === undefined ? undefined : (target) => manifests.get(target))) {
             const denied = layers.find((layer) => !CapabilityAdmission.allows(layer.policy, descriptor));
             if (denied !== undefined) return { descriptor, scope: denied.scope };
@@ -160,8 +156,8 @@ export default class CapabilityResolver {
         return null;
     }
 
-    async projection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
-        const layers = await CapabilityPolicies.workerLayers(this.#db, workspaceId, workerId);
+    async projection(workspaceId: number): Promise<CapabilityProjection> {
+        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const policy = (scope: (typeof layers)[number]["scope"]): CapabilityPolicy => {
             const layer = layers.find((candidate) => candidate.scope === scope);
             if (layer === undefined) throw new Error(`Capability policy layer '${scope}' is missing.`);
@@ -170,18 +166,16 @@ export default class CapabilityResolver {
         return {
             service: policy("service"),
             workspace: policy("workspace"),
-            workerBound: policy("worker-bound"),
-            worker: policy("worker"),
             effective: CapabilityAdmission.intersect(layers.map((layer) => layer.policy)),
         };
     }
 
     allowsAcross(
         statement: PlurnkStatement,
-        workerId: number,
+        workspaceId: number,
         policies: readonly CapabilityPolicy[],
     ): boolean {
-        return this.descriptors(statement, workerId)
+        return this.descriptors(statement, workspaceId)
             .every((descriptor) => CapabilityAdmission.allowsAcross(policies, descriptor));
     }
 
@@ -189,14 +183,14 @@ export default class CapabilityResolver {
     // resource capability makes that reference useful. Examples are not policy.
     allowsSchemeAcross(
         scheme: string,
-        workerId: number,
+        workspaceId: number,
         policies: readonly CapabilityPolicy[],
     ): boolean {
-        const manifest = this.#schemes.manifestFor(scheme, workerId);
-        const handler = this.#schemes.get(scheme, workerId) as SchemeHandler | undefined;
+        const manifest = this.#schemes.manifestFor(scheme, workspaceId);
+        const handler = this.#schemes.get(scheme, workspaceId) as SchemeHandler | undefined;
         if (manifest?.modelVisible !== true || handler === undefined) return false;
         const allows = (operation: CapabilityDescriptor["operation"], access: CapabilityDescriptor["access"]): boolean =>
-            CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workerId));
+            CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));
         const entryBearing = manifest.category === "data";
         const readable = entryBearing || coreRepresentationProvider(handler) !== null;
         if (readable && (["READ", "COPY", "EXEC", "BARE"] as const).some((operation) => allows(operation, "observe"))) return true;
@@ -217,39 +211,36 @@ export default class CapabilityResolver {
         operation: CapabilityDescriptor["operation"],
         access: CapabilityDescriptor["access"],
         scheme: string,
-        workerId: number,
+        workspaceId: number,
     ): CapabilityDescriptor {
-        return { operation, access, scheme, traits: this.#traits(scheme, workerId) };
+        return { operation, access, scheme, traits: this.#traits(scheme, workspaceId) };
     }
 
     async allowsRuntime(
         runtime: string,
         tool: string | null,
         workspaceId: number,
-        workerId: number,
-        loopId: number,
     ): Promise<boolean> {
-        const policy = await LoopPolicyReader.read(this.#db, loopId);
-        const layers = await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
+        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         return CapabilityAdmission.allowsAcross(
             layers.map((layer) => layer.policy),
-            this.#runtimeDescriptor(runtime, tool, workerId),
+            this.#runtimeDescriptor(runtime, tool, workspaceId),
         );
     }
 
     allowsRuntimeAcross(
         runtime: string,
         tool: string | null,
-        workerId: number,
+        workspaceId: number,
         policies: readonly CapabilityPolicy[],
     ): boolean {
-        return CapabilityAdmission.allowsAcross(policies, this.#runtimeDescriptor(runtime, tool, workerId));
+        return CapabilityAdmission.allowsAcross(policies, this.#runtimeDescriptor(runtime, tool, workspaceId));
     }
 
-    #runtimeDescriptor(runtime: string, tool: string | null, workerId: number): CapabilityDescriptor {
+    #runtimeDescriptor(runtime: string, tool: string | null, workspaceId: number): CapabilityDescriptor {
         const traits = [...new Set([
-            ...this.#traits("exec", workerId),
-            ...this.#traits(runtime, workerId),
+            ...this.#traits("exec", workspaceId),
+            ...this.#traits(runtime, workspaceId),
         ])].toSorted();
         return {
             operation: "EXEC",
@@ -265,9 +256,9 @@ export default class CapabilityResolver {
         return CapabilityAdmission.intersect(policies);
     }
 
-    #traits(scheme: string | null, workerId: number): string[] {
+    #traits(scheme: string | null, workspaceId: number): string[] {
         if (scheme === null) return [];
-        return [...(this.#schemes.manifestFor(scheme, workerId)?.traits ?? [])].toSorted();
+        return [...(this.#schemes.manifestFor(scheme, workspaceId)?.traits ?? [])].toSorted();
     }
 
 }

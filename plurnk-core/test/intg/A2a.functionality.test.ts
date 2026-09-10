@@ -1,7 +1,6 @@
 // {§a2a-agents-functionality} {§a2a-agents-catalog} — outbound A2A agents as the
-// Worker `agents` family through the daemon: the environment baseline, the
-// per-alias catalog document, hot enable/disable at the scheme, Worker
-// isolation, and the exact Problems for unreachable and unknown aliases.
+// workspace `agents` family through the daemon: the environment baseline,
+// per-alias catalog, shared hot enable/disable, and exact Problems.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ProblemDetails, UrlPath } from "@plurnk/plurnk-contracts";
@@ -27,7 +26,7 @@ const rejectedProblem = async (run: () => Promise<unknown>): Promise<ProblemDeta
     assert.fail("Expected the action to reject.");
 };
 
-test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functionality: baseline, catalog, hot enable/disable, isolation, exact Problems", async () => {
+test("{§a2a-agents-functionality} outbound agents are workspace Functionality: baseline, catalog, shared hot enable/disable, exact Problems", async () => {
     const agent = await startDemoAgent();
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `a2a-agents-${crypto.randomUUID()}`);
@@ -42,21 +41,21 @@ test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functiona
         PLURNK_A2A_SCRIBE: "http://127.0.0.1:9",
     }));
     await daemon.start();
-    const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>, workerId = model): Promise<T> =>
-        daemon.invokeModuleAction(`worker.agents.${verb}`, params, { scope: "worker", workspaceId, workerId }) as Promise<T>;
+    const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
+        daemon.invokeModuleAction(`workspace.agents.${verb}`, params, { scope: "workspace", workspaceId }) as Promise<T>;
     type Listed = { alias: string; origin: string; state: string; detail?: { name: string; skills: string[] }; problem?: ProblemDetails };
-    const states = async (workerId = model): Promise<string[]> =>
-        (await invoke<{ definitions: Listed[] }>("list", {}, workerId)).definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
+    const states = async (): Promise<string[]> =>
+        (await invoke<{ definitions: Listed[] }>("list", {})).definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
     const document = async (alias: string, workerId = model): Promise<string | undefined> => {
-        const rows = await db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({ scheme: "worker", authority: "", pathname: `/_plurnk/agents/${alias}.md` });
-        return rows.find(({ owner_id }) => owner_id === workerId)?.content;
+        const references = await daemon.engine.referenceEntries(workspaceId, workerId);
+        return references.find(({ pathname }) => pathname === `/_plurnk/agents/${alias}.md`)?.content;
     };
-    const send = (alias: string, functionalityWorkerId = model) =>
-        daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } });
+    const send = (alias: string, workerId = client) =>
+        daemon.dispatchAsClient({ workspaceId, workerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } });
     try {
         assert.deepEqual(
-            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("worker.agents.")),
-            ["worker.agents.add", "worker.agents.disable", "worker.agents.discover", "worker.agents.enable", "worker.agents.list", "worker.agents.remove"],
+            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.agents.")),
+            ["workspace.agents.add", "workspace.agents.disable", "workspace.agents.discover", "workspace.agents.enable", "workspace.agents.list", "workspace.agents.remove"],
         );
         // The environment baseline: researcher enabled by default, scribe available but disabled.
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"]);
@@ -66,7 +65,7 @@ test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functiona
         assert.match(catalog ?? "", /^# researcher\n\n## Summary\n\na2a:\/\/researcher — Plurnk A2A protocol witness v1\.0\.0: Independent deterministic A2A v1 test agent\n/u);
         assert.doesNotMatch(catalog ?? "", /## Skills/u);
         assert.equal(await document("scribe"), undefined, "a disabled alias publishes no catalog document");
-        // The scheme routes through the Worker's snapshot.
+        // The scheme routes through the workspace snapshot.
         const started = await send("researcher");
         assert.equal(started.status, 102, "an enabled alias answers with the Task receipt");
         // Disable withdraws the alias at the scheme and from the catalog before the next operation.
@@ -86,19 +85,18 @@ test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functiona
         const discovered = await invoke<{ candidates: Array<{ alias: string; definition: { url: string } }> }>("discover", { source: agent.baseUrl });
         assert.deepEqual(discovered.candidates.map(({ alias, definition }) => ({ alias, url: definition.url })), [{ alias: "plurnk-a2a-protocol-witness", url: agent.baseUrl }]);
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"], "discovery persisted nothing");
-        // Worker isolation: a second Worker holds the same textual alias with its own definition.
-        assert.deepEqual(await states(peer), ["researcher:service:active", "scribe:service:disabled"]);
-        const added = await invoke<{ status: number; definition: { origin: string; state: string } }>("add", { alias: "scribe", definition: { name: "scribe", url: agent.baseUrl } }, peer);
+        // A workspace definition shadows the service baseline for every worker.
+        const added = await invoke<{ status: number; definition: { origin: string; state: string } }>("add", { alias: "scribe", definition: { name: "scribe", url: agent.baseUrl } });
         assert.equal(added.status, 201);
-        assert.equal(added.definition.origin, "worker");
+        assert.equal(added.definition.origin, "workspace");
         assert.equal(added.definition.state, "active");
-        assert.equal((await send("scribe", peer)).status, 102, "the peer Worker's own scribe is live");
-        assert.equal((await send("scribe", model)).status, 404, "the first Worker's scribe stays disabled");
+        assert.equal((await send("scribe", peer)).status, 102, "the peer uses the shared agent");
+        assert.equal((await send("scribe", model)).status, 102, "the first worker uses the same agent");
         assert.match(await document("scribe", peer) ?? "", /a2a:\/\/scribe — Plurnk A2A protocol witness/u);
-        assert.equal(await document("scribe", model), undefined);
-        // Remove forgets the Worker definition and reveals the service baseline, disabled.
-        assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "scribe" }, peer)).removed, true);
-        assert.deepEqual(await states(peer), ["researcher:service:active", "scribe:service:disabled"]);
+        assert.equal(await document("scribe", model), await document("scribe", peer));
+        // Remove forgets the workspace definition and reveals the service baseline, disabled.
+        assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "scribe" })).removed, true);
+        assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"]);
         assert.equal((await send("scribe", peer)).status, 404);
     } finally {
         await daemon.stop();

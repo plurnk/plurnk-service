@@ -1,5 +1,5 @@
 // {§functionality-model-projection} — the model-facing face of one managed
-// Functionality family for one Worker. Published inside that Worker's own
+// Functionality family for one workspace. Published inside that workspace's
 // snapshot like every other family: its verbs are ordinary EXEC targets, its
 // documents render through the common tool-document machinery, and a host verb
 // proposes through the ordinary Exec proposal lifecycle. Acceptance calls the
@@ -27,7 +27,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
         details: "Read-only. Discovery never installs, persists, enables, or executes a candidate; add one explicitly.",
     },
     add: {
-        summary: "Validate one exact definition, persist it for this Worker, prepare it, and enable it atomically.",
+        summary: "Validate one exact definition, persist it for this workspace, prepare it, and enable it atomically.",
         details: "A host effect: it proposes and runs only on acceptance. The definition must conform to the family definition schema.",
     },
     enable: {
@@ -39,7 +39,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
         details: "A host effect. A disabled definition stays client-visible and model-invisible.",
     },
     remove: {
-        summary: "Disable and remove this Worker's own definition.",
+        summary: "Disable and remove the workspace definition.",
         details: "A host effect. A lower-precedence service definition may become visible again, disabled. Service definitions cannot be removed; disable them.",
     },
 });
@@ -68,14 +68,12 @@ export const functionalityRuntimeDecl = (family: string, summary: string, detail
 export default class FunctionalityManager extends BaseExecutor {
     readonly #coordinator: Functionality;
     readonly #workspaceId: number;
-    readonly #workerId: number;
     readonly #teaching: FunctionalityTeaching;
 
-    constructor(args: { family: string; workspaceId: number; workerId: number; coordinator: Functionality } & FunctionalityTeaching) {
+    constructor(args: { family: string; workspaceId: number; coordinator: Functionality } & FunctionalityTeaching) {
         super({ runtime: args.family, glyph: "🧩" });
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId;
-        this.#workerId = args.workerId;
         this.#teaching = { inputSchemas: args.inputSchemas, example: args.example, discovery: args.discovery };
     }
 
@@ -84,7 +82,7 @@ export default class FunctionalityManager extends BaseExecutor {
     }
 
     override async probe(): Promise<RuntimeAvailability> {
-        return { available: true, detail: "Worker Functionality manager" };
+        return { available: true, detail: "workspace Functionality manager" };
     }
 
     override effect(target: string | null): Effect {
@@ -146,7 +144,7 @@ export default class FunctionalityManager extends BaseExecutor {
                 });
             }
         }
-        const identity = { workspaceId: this.#workspaceId, workerId: this.#workerId };
+        const identity = { workspaceId: this.#workspaceId };
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {

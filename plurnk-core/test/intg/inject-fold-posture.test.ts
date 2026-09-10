@@ -20,17 +20,17 @@ test("{§methods-loop-run-fold-consistency}: conflicting policy cannot re-postur
             const proposals = subscribeNotifications(ws, "loop/proposal");
             await rpcCall(ws, 2, "loop.run", {
                 prompt: "start working",
-                policy: { capabilities: { deny: [{ traits: ["web"] }] }, proposals: "review" },
+                policy: { proposals: "review" },
             });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
             const conflicted = await rpcCall(ws, 3, "loop.run", {
-                prompt: "use another capability posture",
-                policy: { capabilities: { deny: [{ operation: "EXEC" }] }, proposals: "review" },
+                prompt: "use another proposal posture",
+                policy: { proposals: "accept" },
             });
             const problem = rpcProblem(conflicted);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/loop-policy-conflict");
             assert.deepEqual(problem.conflicts, [
-                "capabilities: {\"deny\":[{\"traits\":[\"web\"]}]} -> {\"deny\":[{\"operation\":\"EXEC\"}]}",
+                'proposals: "review" -> "accept"',
             ]);
             assert.match(problem.recovery ?? "", /Cancel.*or omit policy/);
         } finally { ws.close(); }
@@ -69,7 +69,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
             await db.engine_set_loop_policy.run({
                 loop_id: loopId,
-                policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }),
+                policy: JSON.stringify({ proposals: "sometimes" }),
             });
 
             await assert.rejects(
@@ -84,7 +84,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
 
             await db.engine_set_loop_policy.run({
                 loop_id: loopId,
-                policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
+                policy: JSON.stringify({ proposals: "review" }),
             });
             const pending = proposals() as Array<{ logEntryId: number }>;
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });

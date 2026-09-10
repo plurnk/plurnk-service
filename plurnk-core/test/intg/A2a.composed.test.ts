@@ -254,10 +254,9 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             workspaceId: callerWorkspace.workspaceId,
             name: "bystander",
         });
-        const listed = await caller.invokeModuleAction("worker.agents.list", {}, {
-            scope: "worker",
+        const listed = await caller.invokeModuleAction("workspace.agents.list", {}, {
+            scope: "workspace",
             workspaceId: callerWorkspace.workspaceId,
-            workerId: worker.workerId,
         }) as { definitions: Array<{ alias: string; origin: string; state: string }> };
         assert.deepEqual(
             listed.definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`),

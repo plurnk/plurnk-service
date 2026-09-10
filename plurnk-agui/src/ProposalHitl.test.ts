@@ -209,13 +209,13 @@ test("proposal disposition, not loop policy, owns live tool-call presentation", 
     hitl.start();
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 50,
-        policy: { capabilities: {}, proposals: "accept" },
+        policy: { proposals: "accept" },
         disposition: { owner: "loop", decision: "accept" },
     }));
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 51,
         op: "EXEC",
-        policy: { capabilities: {}, proposals: "reject" },
+        policy: { proposals: "reject" },
         disposition: { owner: "loop", decision: "reject", outcome: "no_review_channel" },
     }));
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");
@@ -224,7 +224,7 @@ test("proposal disposition, not loop policy, owns live tool-call presentation", 
         op: "SEND",
         body: "",
         attrs: { question: "Which environment?" },
-        policy: { capabilities: {}, proposals: "accept" },
+        policy: { proposals: "accept" },
         disposition: { owner: "client" },
     }));
     assert.equal(emitted.length, 1, "the validated client disposition remains authoritative");

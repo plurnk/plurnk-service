@@ -164,9 +164,9 @@ const workspaceEntry = (tag: string, owner: string) => {
     };
 };
 
-test("{§module-worker-capabilities} worker runtime snapshots isolate equal names and replace atomically", () => {
+test("{§module-workspace-capabilities} workspace runtime snapshots isolate equal names and replace atomically", () => {
     const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
-    const commitOne = registry.prepareWorkerRegistrations(1, "mcp", [{
+    const commitOne = registry.prepareWorkspaceRegistrations(1, "mcp", [{
         tag: "gitea",
         entry: workspaceEntry("gitea", "mcp"),
     }]);
@@ -177,15 +177,15 @@ test("{§module-worker-capabilities} worker runtime snapshots isolate equal name
     assert.equal(registry.entry("gitea", 1)?.executor.runtime, "gitea");
     assert.equal(registry.entry("gitea", 2), undefined);
 
-    registry.prepareWorkerRegistrations(2, "mcp", [{
+    registry.prepareWorkspaceRegistrations(2, "mcp", [{
         tag: "gitea",
         entry: workspaceEntry("gitea", "mcp"),
     }])();
     assert.equal(registry.entry("gitea", 2)?.executor.runtime, "gitea");
 
-    const rollbackRemoval = registry.prepareWorkerRegistrations(1, "mcp", [])();
-    assert.equal(registry.entry("gitea", 1), undefined, "empty owner snapshot removes only that worker face");
-    assert.ok(registry.entry("gitea", 2), "the equal name in another worker remains");
+    const rollbackRemoval = registry.prepareWorkspaceRegistrations(1, "mcp", [])();
+    assert.equal(registry.entry("gitea", 1), undefined, "empty owner snapshot removes only that workspace face");
+    assert.ok(registry.entry("gitea", 2), "the equal name in another workspace remains");
 
     rollbackRemoval();
     assert.ok(registry.entry("gitea", 1), "a failed composed commit can restore the prior snapshot");
@@ -193,15 +193,15 @@ test("{§module-worker-capabilities} worker runtime snapshots isolate equal name
     assert.equal(registry.entry("gitea", 1), undefined);
 });
 
-test("{§module-worker-capabilities} worker overlays cannot shadow base or peer owners", () => {
+test("{§module-workspace-capabilities} workspace overlays cannot shadow base or peer owners", () => {
     const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
     assert.throws(
-        () => registry.prepareWorkerRegistrations(1, "mcp", [{ tag: "sh", entry: workspaceEntry("sh", "mcp") }]),
+        () => registry.prepareWorkspaceRegistrations(1, "mcp", [{ tag: "sh", entry: workspaceEntry("sh", "mcp") }]),
         /already registered by daemon module runtime 'base'/,
     );
-    registry.prepareWorkerRegistrations(1, "mcp-a", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-a") }])();
+    registry.prepareWorkspaceRegistrations(1, "mcp-a", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-a") }])();
     assert.throws(
-        () => registry.prepareWorkerRegistrations(1, "mcp-b", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-b") }]),
+        () => registry.prepareWorkspaceRegistrations(1, "mcp-b", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-b") }]),
         /already registered by daemon module runtime 'mcp-a'/,
     );
 });

@@ -12,7 +12,7 @@
 import type { Db } from "./Db.ts";
 import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
 import { isGeneratedPathname } from "./plurnk-uri.ts";
-import type { CapabilityPolicy, ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { SchemeEntryInheritance } from "@plurnk/plurnk-schemes";
 
 type EntryInheritance = (storedScheme: string) => SchemeEntryInheritance;
@@ -25,7 +25,6 @@ export default class Fork {
         db: Db,
         parentWorkerId: number,
         name: string | undefined,
-        capabilityBound: CapabilityPolicy,
         entryInheritance: EntryInheritance,
     ): Promise<number> {
         const parent = await db.fork_get_worker.get<{
@@ -45,7 +44,6 @@ export default class Fork {
                 parentWorkerId,
                 origin: parent.origin,
                 forkSnapshot: true,
-                capabilityBound,
             })
             : await db.fork_insert_worker.get<{ id: number }>({
                 workspace_id: parent.workspace_id,
@@ -53,7 +51,6 @@ export default class Fork {
                 parent_worker_id: parentWorkerId,
                 origin: parent.origin,
                 fork_snapshot: 1,
-                capability_bound: JSON.stringify(capabilityBound),
             });
         if (branch === undefined) throw new Error("fork: explicit branch worker insert returned no row");
         const branchWorkerId = branch.id;

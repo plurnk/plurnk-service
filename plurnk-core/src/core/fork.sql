@@ -17,9 +17,9 @@ FROM workers WHERE id = $id;
 -- receives the ordinary creation baseline trigger instead.
 INSERT INTO workers (
     workspace_id, name, parent_worker_id, origin,
-    capability_bound, ambient_event_cursor, fork_event_boundary
+    ambient_event_cursor, fork_event_boundary
 )
-SELECT $workspace_id, $name, $parent_worker_id, $origin, $capability_bound,
+SELECT $workspace_id, $name, $parent_worker_id, $origin,
        CASE WHEN $fork_snapshot = 1 THEN parent.ambient_event_cursor ELSE NULL END,
        CASE WHEN $fork_snapshot = 1 THEN COALESCE((
            SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id

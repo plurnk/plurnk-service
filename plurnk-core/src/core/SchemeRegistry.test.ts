@@ -106,7 +106,7 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
-test("{§module-worker-capabilities} runtime scheme faces are worker-isolated and reversible", async () => {
+test("{§module-workspace-capabilities} runtime scheme faces are worker-isolated and reversible", async () => {
     const registry = new SchemeRegistry();
     const executor = {
         runtime: "gitea",
@@ -118,7 +118,7 @@ test("{§module-worker-capabilities} runtime scheme faces are worker-isolated an
         probe: async () => ({ available: true }),
         effect: () => "host" as const,
     };
-    const commit = await registry.prepareWorkerRuntimeSchemes(1, "mcp", [{
+    const commit = await registry.prepareWorkspaceRuntimeSchemes(1, "mcp", [{
         tag: "gitea",
         executor,
         owner: { kind: "module", name: "mcp" },

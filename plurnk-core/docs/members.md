@@ -73,12 +73,11 @@ the project root only). The new file is a member immediately through its
 creation record — you never need `git add` for your own creations. Deleting
 it (`KILL`) retires the record.
 
-## Definitions are per worker, resolved per workspace
+## Definitions belong to the workspace
 
 `list` shows every definition with its origin (`service` from the operator's
-environment, `worker` from an `add`) and whether it is enabled. `enable` and
-`disable` flip one alias; `remove` deletes a definition this worker added
-(service definitions can only be disabled). Every worker's enabled definitions
-union into one workspace overlay, so a definition you add is visible to every
-worker, and each enabled definition is projected as
+environment, `workspace` from an `add`) and whether it is enabled. `enable` and
+`disable` flip one shared alias; `remove` deletes a workspace-added definition
+(service definitions can only be disabled). Changes apply to every worker.
+Each enabled definition is projected as
 `worker://~/_plurnk/members/<alias>.md` showing what its glob resolved to.

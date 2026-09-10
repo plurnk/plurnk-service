@@ -46,12 +46,12 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
 
     async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<EntryAddress | null> {
         const address = entryCoordinateOf(target, "resource");
-        const trees = this.#trees(ctx.functionalityWorkerId);
+        const trees = this.#trees(ctx.workspaceId);
         return PathSyntax.hasGlob(address.authority) || trees.has(address.authority) ? address : null;
     }
 
     byteSource({ authority, pathname }: EntryCoordinate, ctx: CoreSchemeCallContext): ByteSource {
-        return this.#trees(ctx.functionalityWorkerId).get(authority)?.resource(pathname.replace(/^\//u, ""))
+        return this.#trees(ctx.workspaceId).get(authority)?.resource(pathname.replace(/^\//u, ""))
             ?? new GeneratedByteSource(async () => null);
     }
 
@@ -129,7 +129,7 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
         const inScope = (pathname: string): boolean => scope.kind === "glob" && scope.shallowPrefix !== null
             ? pathname.startsWith(scope.shallowPrefix)
             : pathScopeMatches(scope, pathname);
-        const trees = this.#trees(core.functionalityWorkerId);
+        const trees = this.#trees(core.workspaceId);
         const available = new Set<string>();
         for (const [authority, tree] of trees) {
             if (!pathScopeMatches(authorityScope, authority)) continue;

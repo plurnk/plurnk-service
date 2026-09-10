@@ -38,7 +38,7 @@ export default class ResourceMutations {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
-        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
+        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
         checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,

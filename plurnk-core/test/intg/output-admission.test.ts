@@ -80,7 +80,7 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         assert.match(String(slice.body), /2:2: evidence/u);
         assert.match(String(slice.body), /3:3: evidence/u);
         assert.equal(slice.overflow, undefined);
-        const branch = await Fork.fork(db, workerId, "output-branch", {}, () => "none");
+        const branch = await Fork.fork(db, workerId, "output-branch", () => "none");
         const branchRows = await db.engine_render_log.all<{ op: string; pathname: string; output_withheld: number; output_admission_turn_id: number | null; folded: string }>({ worker_id: branch });
         const copied = branchRows.find(({ op, pathname }) => op === "READ" && pathname === "/large.md")!;
         assert.equal(copied.output_withheld, 1, "FORK preserves omissions without replaying their output");

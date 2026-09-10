@@ -11,7 +11,8 @@ const inputSchemas: Record<FunctionalityVerb, JsonSchema> = {
     enable: emptySchema, disable: emptySchema, remove: emptySchema,
 };
 const coordinator = {
-    invoke: async (family: string, verb: string, params: unknown, _identity: unknown, caller: string) => {
+    invoke: async (family: string, verb: string, params: unknown, identity: unknown, caller: string) => {
+        assert.deepEqual(identity, { workspaceId: 1 }, "the manager closes over only workspace identity");
         invocations.push({ family, verb, params, caller });
         return { status: verb === "add" ? 201 : 200, body: { family, verb, params } };
     },
@@ -45,7 +46,7 @@ test("{§functionality-model-projection} all verbs carry their coordinator schem
         type: "object", required: ["definition"], properties: { alias: { type: "string" }, definition: definitionSchema },
     } };
     const manager = new FunctionalityManager({
-        family: "fx", workspaceId: 1, workerId: 2, coordinator,
+        family: "fx", workspaceId: 1, coordinator,
         inputSchemas: schemas,
         example: { alias: "a", definition: { kind: "ok" } },
         discovery: { details: "`source` is one fixture locator." },
@@ -61,7 +62,7 @@ test("{§functionality-model-projection} all verbs carry their coordinator schem
 });
 
 test("{§functionality-model-projection} the family manager exposes exactly the six verbs with read/host effects", () => {
-    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, workerId: 2, coordinator, inputSchemas });
+    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS]);
     assert.deepEqual(manager.toolRegistry().tools.map(({ invocation }) => invocation.body.required),
         [false, true, true, true, true, true], "documentation changes do not alter the invocation's body-presence contract");
@@ -75,7 +76,7 @@ test("{§functionality-model-projection} the family manager exposes exactly the 
 
 test("{§functionality-model-projection} a verb runs through the coordinator as an operation and streams its JSON result", async () => {
     invocations.length = 0;
-    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, workerId: 2, coordinator, inputSchemas });
+    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     const { args: runArgs, written, states } = args("add", '{"alias":"a","definition":{"kind":"ok"}}');
     const result = await manager.run(runArgs);
     assert.equal(result.status, 201);
@@ -86,7 +87,7 @@ test("{§functionality-model-projection} a verb runs through the coordinator as 
 
 test("{§functionality-model-projection} an empty body is an empty argument object; a non-JSON body and an unknown verb are exact refusals", async () => {
     invocations.length = 0;
-    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, workerId: 2, coordinator, inputSchemas });
+    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     assert.equal((await manager.run(args("list", "   ").args)).status, 200);
     assert.deepEqual(invocations.at(-1)?.params, {});
     const refused = await manager.run(args("discover", "not json").args);

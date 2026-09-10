@@ -17,10 +17,8 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
     assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", {
-        capabilities: { deny: [{ access: "execute" }] },
         proposals: "reject",
     }), {
-        capabilities: { deny: [{ access: "execute" }] },
         proposals: "reject",
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings({

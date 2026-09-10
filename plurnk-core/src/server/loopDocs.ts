@@ -1,5 +1,5 @@
-// Worker documentation reconciliation. It runs when that worker's Functionality
-// becomes resident and after its snapshot changes. Two private sets run through
+// Worker documentation projections of the shared workspace environment.
+// Reconcile on reader demand and after workspace Functionality changes. Two private sets run through
 // an ordinary `_plurnk` turn in the addressed worker ({§actor-boundary-doc-injection}):
 //   1. the project AGENTS.md at worker://~/_plurnk/agents.md — Engine.runTurn foists
 //      its READ at turn 0 ({§turn0-agents-stunt});
@@ -28,6 +28,7 @@ export default class LoopDocs {
     // boot/module-publish materializations dispatch nothing when nothing
     // changed (the entry layer's 304 no-op never even runs).
     static #signatures = new WeakMap<object, Map<number, string>>();
+    static #materializations = new WeakMap<object, Map<number, Promise<void>>>();
 
     static evict(db: Db, workerId: number): void {
         LoopDocs.#signatures.get(db)?.delete(workerId);
@@ -70,6 +71,20 @@ export default class LoopDocs {
     }
 
     static async materialize(engine: Engine, db: Db, workspaceId: number, workerId: number): Promise<void> {
+        const pending = LoopDocs.#materializations.get(db) ?? new Map<number, Promise<void>>();
+        const existing = pending.get(workerId);
+        if (existing !== undefined) return existing;
+        const work = LoopDocs.#materialize(engine, db, workspaceId, workerId);
+        pending.set(workerId, work);
+        LoopDocs.#materializations.set(db, pending);
+        try {
+            await work;
+        } finally {
+            pending.delete(workerId);
+        }
+    }
+
+    static async #materialize(engine: Engine, db: Db, workspaceId: number, workerId: number): Promise<void> {
         // {§turn0-agents-stunt} — the project's AGENTS.md becomes one
         // worker-private worker://~/_plurnk/agents.md entry, foisted at turn 0.
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({

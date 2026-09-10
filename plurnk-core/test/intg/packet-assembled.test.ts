@@ -144,7 +144,7 @@ test("packet assembly surfaces contract-invalid persisted loop policy at the sam
         const loopId = await insertLoop(db, workerId, 1, "go");
         await db.engine_set_loop_policy.run({
             loop_id: loopId,
-            policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }),
+            policy: JSON.stringify({ proposals: "sometimes" }),
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({

@@ -17,7 +17,6 @@ test("{§service-worker-composition} live workspaces expose the default worker r
         const read = (target: string) => workspace.daemon.dispatchAsClient({
             workspaceId: workspace.workspaceId,
             workerId,
-            functionalityWorkerId: workerId,
             statement: readStmt(parsePath(target), { marks: [1, -1] }),
         });
 
@@ -30,7 +29,7 @@ test("{§service-worker-composition} live workspaces expose the default worker r
         }
         for (const family of ["skills", "mcp", "agents", "members"]) {
             const result = Validator.assertFunctionalityListResult(
-                await workspace.invokeWorkerAction(`worker.${family}.list`, {}),
+                await workspace.invokeWorkspaceAction(`workspace.${family}.list`, {}),
             );
             assert.equal(result.family, family, `${family} management belongs to the same composed worker`);
         }

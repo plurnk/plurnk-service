@@ -3,7 +3,6 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import type { Db } from "../core/Db.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
@@ -17,14 +16,13 @@ import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
 import { projectModelRoute, routeForSpec, specForRoute } from "./model-route.ts";
 import { discoverDaemonModules } from "./module-discovery.ts";
-import WorkerSettingsReader from "../core/worker-settings.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
-import { CapabilityAdmission, Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
@@ -35,11 +33,12 @@ import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
-import type { WorkerCapabilityGate } from "./DaemonModule.ts";
+import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle, { taskTiming } from "../core/LoopLifecycle.ts";
+import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -47,13 +46,11 @@ import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-provider
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { LoopPolicy } from "../core/types.ts";
 import type { CapabilityPolicy } from "@plurnk/plurnk-contracts";
-import LoopPolicyReader from "../core/LoopPolicyReader.ts";
-import CapabilityPolicies from "../core/CapabilityPolicies.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
-import type { WorkerCapabilityRelease } from "./WorkerCapabilities.ts";
-import WorkerResidency from "./WorkerResidency.ts";
-import type { DaemonModule, FunctionalityAdapter, FunctionalityFamilyHandle, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkerCapabilityProvider, WorkerCapabilityReplacement } from "./DaemonModule.ts";
+import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
+import WorkspaceResidency from "./WorkspaceResidency.ts";
+import type { DaemonModule, FunctionalityAdapter, FunctionalityFamilyHandle, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkspaceCapabilityProvider, WorkspaceCapabilityReplacement } from "./DaemonModule.ts";
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
@@ -108,7 +105,7 @@ export default class Daemon implements ApplicationPort {
     #modules: Array<DaemonModule<ApplicationPort>> = [];
     #moduleClosers: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
-    #residency: WorkerResidency;
+    #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
     readonly #skills: SkillsFunctionality;
     readonly #members: MembersFunctionality;
@@ -158,9 +155,9 @@ export default class Daemon implements ApplicationPort {
                 root_worker_id: rootWorkerId });
             return row !== undefined;
         });
-        // {§module-worker-residency} — residency, activation/cooling, and
+        // {§module-workspace-residency} — residency, activation/cooling, and
         // capability replacement live in their one owner; the Daemon delegates.
-        this.#residency = new WorkerResidency({
+        this.#residency = new WorkspaceResidency({
             db,
             engine: () => this.#engine,
             workspaceGate: this.#workspaceGate,
@@ -169,10 +166,11 @@ export default class Daemon implements ApplicationPort {
         // adapter; Core hosts it, modules register adapters through the seam.
         this.#functionality = new Functionality({
             registerModuleAction: (registration) => this.registerModuleAction(registration),
-            registerWorkerCapabilityProvider: (owner, provider) => this.registerWorkerCapabilityProvider(owner, provider),
-            readWorkerModuleState: (workerId, owner) => this.readWorkerModuleState(workerId, owner),
-            replaceWorkerCapabilities: (replacement, options) => this.replaceWorkerCapabilities(replacement, options),
-            retainWorker: (workerId) => this.#residency.retain(workerId) });
+            registerWorkspaceCapabilityProvider: (owner, provider) => this.registerWorkspaceCapabilityProvider(owner, provider),
+            readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
+            replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
+            mutateWorkspace: (workspaceId, owner, caller, run) => this.#residency.exclusively(workspaceId, owner, caller === "operation" ? "wait" : "try", run),
+            retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#skills = new SkillsFunctionality({
             db,
@@ -183,13 +181,12 @@ export default class Daemon implements ApplicationPort {
             },
         });
         this.#skills.attach(this.#functionality.register(this.#skills));
-        this.#schemes.register("skill", new Skill((workerId) => this.#skills.trees(workerId)));
+        this.#schemes.register("skill", new Skill((workspaceId) => this.#skills.trees(workspaceId)));
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
-            acquireWorkerCapabilities: (workspaceId, workerId) => this.#residency.acquire(workspaceId, workerId),
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
             // are workspace-wide across concurrent models, so they remain
             // model-independent. Request-shaped token facts stay provider-owned.
@@ -258,8 +255,8 @@ export default class Daemon implements ApplicationPort {
             // {§skills-hotload} — filesystem installers operate out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
-            workspaceTurnStarting: async ({ workspaceId, workerId }) => {
-                await this.#skills.refreshIfChanged({ workspaceId, workerId });
+            workspaceTurnStarting: async ({ workspaceId }) => {
+                await this.#skills.refreshIfChanged({ workspaceId });
             },
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
@@ -310,7 +307,7 @@ export default class Daemon implements ApplicationPort {
                 // The drain callback is the final provider/model boundary. Every
                 // admission path, including boot recovery, terminates here.
                 await this.#assertModelWorker(workspaceId, workerId);
-                const releaseCapabilities = await this.#residency.acquire(workspaceId, workerId);
+                const releaseCapabilities = await this.#residency.acquire(workspaceId);
                 try {
                     // Worker settings can change while Functionality remains
                     // resident. Reconcile the worker-private discovery surface
@@ -591,44 +588,33 @@ export default class Daemon implements ApplicationPort {
 
     // {§methods-model-worker} — the workspace's model worker (created on first use), distinct from the client
     // worker so the model's packets never carry client-action rows. The module binds its threads to this.
-    // Optional worker settings ({§worker-settings}) ride the client's per-run declaration: merged in on
-    // creation AND on every subsequent ensure, so a client can change its mind between loops.
-    async ensureModelWorker(workspaceId: number, settings?: { capabilities?: CapabilityPolicy }): Promise<number> {
+    async ensureModelWorker(workspaceId: number): Promise<number> {
         const checked = ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId);
-        const created = await Envelope.ensureModelWorker(this.#db, checked);
-        if (settings !== undefined) await this.#mergeWorkerSettings(created, settings);
-        return created;
+        return await Envelope.ensureModelWorker(this.#db, checked);
     }
 
-    // {§worker-settings} — merge known keys into the worker's behavioral-rules bag.
-    // Validated at the boundary; unprovided keys keep their durable value.
-    async #mergeWorkerSettings(workerId: number, settings: { capabilities?: CapabilityPolicy }): Promise<void> {
-        const normalized = ClientInput.normalizeWorkerSettings(settings);
-        const current = await WorkerSettingsReader.read(this.#db, workerId);
-        const merged = {
-            capabilities: normalized.capabilities ?? current.capabilities };
-        await this.#db.worker_settings_update.run({ id: workerId, settings: JSON.stringify(merged) });
+    async readWorkspaceCapabilities(args: { workspaceId: number }): Promise<CapabilityProjection> {
+        const workspaceId = ClientInput.assertId("workspace.capabilities.get", "workspaceId", args.workspaceId);
+        return this.#engine.capabilityProjection(workspaceId);
     }
 
-    // {§capability-policy-projection} — clients inspect the same complete cascade
-    // that dispatch and packet projection consume; the mutable Worker layer is
-    // never presented as if it were effective authority.
-    async readWorkerCapabilities(args: { workspaceId: number; workerId: number }): Promise<CapabilityProjection> {
-        const workspaceId = ClientInput.assertId("worker.capabilities.get", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.capabilities.get", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        return this.#engine.capabilityProjection(workspaceId, workerId);
-    }
-
-    // {§worker-settings} — replace the Worker's mutable policy, then return the
-    // resolver-owned projection so a narrowing ceiling cannot be mistaken for
-    // newly effective authority.
-    async setWorkerCapabilities(args: { workspaceId: number; workerId: number; policy: CapabilityPolicy }): Promise<CapabilityProjection> {
-        const workspaceId = ClientInput.assertId("worker.capabilities.set", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.capabilities.set", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        await this.#mergeWorkerSettings(workerId, { capabilities: args.policy });
-        return this.#engine.capabilityProjection(workspaceId, workerId);
+    // {§workspace-capability-policy} Policy changes share the workspace's
+    // quiescent publication boundary; no in-flight proposal can change authority.
+    async setWorkspaceCapabilities(args: { workspaceId: number; policy: CapabilityPolicy }): Promise<CapabilityProjection> {
+        const workspaceId = ClientInput.assertId("workspace.capabilities.set", "workspaceId", args.workspaceId);
+        const settings = JSON.parse(ClientInput.parseSettings({ capabilities: args.policy })) as { capabilities?: CapabilityPolicy };
+        if (settings.capabilities === undefined) throw daemonFailure(
+            "daemon:input", "capability-policy-required", 400, "policy is required.", { field: "policy", retryable: false },
+        );
+        return this.#residency.exclusively(workspaceId, "capabilities", "try", async () => {
+            const row = await this.#db.workspace_capability_policy_update.get({
+                workspace_id: workspaceId, policy: JSON.stringify(settings.capabilities),
+            });
+            if (row === undefined) throw daemonFailure(
+                "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
+            );
+            return await this.#engine.capabilityProjection(workspaceId);
+        });
     }
 
     // {§worker-model-selection} — project a worker's durable model and spawn override
@@ -846,21 +832,20 @@ export default class Daemon implements ApplicationPort {
     // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
     // {§functionality-model-mutation} — await every queued Functionality
     // publication (a Worker's accepted mutation publishes at its turn boundary).
-    async settleFunctionality(workerId?: number): Promise<void> {
-        await this.#functionality.settle(workerId);
+    async settleFunctionality(workspaceId?: number): Promise<void> {
+        await this.#functionality.settle(workspaceId);
     }
 
-    async dispatchAsClient(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+    async dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.dispatch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch", "workerId", args.workerId);
-        const functionalityWorkerId = ClientInput.assertId("operation.dispatch", "functionalityWorkerId", args.functionalityWorkerId);
         const { statement } = args;
-        await this.#assertWorkerOwned(workspaceId, functionalityWorkerId);
-        const releaseCapabilities = await this.#residency.acquire(workspaceId, functionalityWorkerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
-                const result = await this.#dispatchClientStatement({ workspaceId, workerId, functionalityWorkerId, loopId: clientLoopId, statement });
+                const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
                 await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                 return result;
             } catch (error) {
@@ -876,22 +861,21 @@ export default class Daemon implements ApplicationPort {
     // loop, regardless of how many statements op.parse produced. Each statement is one
     // ordinary operation turn; a proposal may keep that turn and loop open across
     // interrupt/resume until settlement.
-    async dispatchClientAction(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
+    async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
-        const functionalityWorkerId = ClientInput.assertId("operation.dispatch-batch", "functionalityWorkerId", args.functionalityWorkerId);
         const { statements } = args;
         if (statements.length === 0) return [];
-        await this.#assertWorkerOwned(workspaceId, functionalityWorkerId);
-        // {§actor-boundary-attached-functionality} — the attached Worker's
-        // Functionality is what the client operation executes in.
-        const releaseCapabilities = await this.#residency.acquire(workspaceId, functionalityWorkerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        // {§actor-boundary-attached-functionality} The client retains its journal;
+        // the workspace supplies policy and the shared runtime environment.
+        const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
                 const results = [];
                 for (const statement of statements) {
-                    results.push(await this.#dispatchClientStatement({ workspaceId, workerId, functionalityWorkerId, loopId: clientLoopId, statement }));
+                    results.push(await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement }));
                 }
                 await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                 return results;
@@ -904,10 +888,11 @@ export default class Daemon implements ApplicationPort {
         }
     }
 
-    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
-        const { workspaceId, workerId, functionalityWorkerId, loopId, statement } = args;
+    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+        const { workspaceId, workerId, loopId, statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
+            await this.#residency.reconcile(workspaceId, workerId);
             const { id: turnId } = await Turn.open(this.#db, {
                 loopId,
                 producer: "client",
@@ -916,7 +901,7 @@ export default class Daemon implements ApplicationPort {
             try {
                 const entryIds: number[] = [];
                 const result = await this.#engine.dispatch({
-                    statement, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence: 1,
+                    statement, workspaceId, workerId, loopId, turnId, sequence: 1,
                     origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); } });
                 await Turn.complete(this.#db, turnId, result.status);
                 turnOpen = false;
@@ -949,19 +934,19 @@ export default class Daemon implements ApplicationPort {
     // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
     // required by plugin context and relative log:/// addresses without impersonating an active
     // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
-    async look(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+    async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
-        const functionalityWorkerId = ClientInput.assertId("operation.look", "functionalityWorkerId", args.functionalityWorkerId);
         const { statement } = args;
-        await this.#assertWorkerOwned(workspaceId, functionalityWorkerId);
-        const releaseCapabilities = await this.#residency.acquire(workspaceId, functionalityWorkerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
             const releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
             try {
+                await this.#residency.reconcile(workspaceId, workerId);
                 const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
                 try {
-                    const result = await this.#engine.look({ statement, workspaceId, workerId, functionalityWorkerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
+                    const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
                     await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                     return result;
                 } catch (error) {
@@ -1164,7 +1149,7 @@ export default class Daemon implements ApplicationPort {
 
     // {§methods-conversation-worker}: a fresh conversation is a model-origin root worker with an empty private log.
     // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
-    async createConversationWorker(args: { workspaceId: number; name?: string; settings?: { capabilities?: CapabilityPolicy } }): Promise<{ workerId: number; workerName: string }> {
+    async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
@@ -1190,9 +1175,6 @@ export default class Daemon implements ApplicationPort {
             }
         }
         const worker = await Envelope.createModelWorker(this.#db, workspaceId, name);
-        if (args.settings !== undefined) {
-            await this.#mergeWorkerSettings(worker.id, args.settings);
-        }
         return { workerId: worker.id, workerName: worker.name };
     }
 
@@ -1241,8 +1223,7 @@ export default class Daemon implements ApplicationPort {
             this.#db,
             workerId,
             name,
-            await CapabilityPolicies.delegationBound(this.#db, workspaceId, workerId),
-            (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, workerId),
+            (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, workspaceId),
         );
         const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
@@ -1335,9 +1316,9 @@ export default class Daemon implements ApplicationPort {
                 `module action '${name}' requires ${registration.scope} context, not ${context.scope}`,
             );
         }
-        let releaseCapabilities: WorkerCapabilityRelease | undefined;
+        let releaseCapabilities: WorkspaceCapabilityRelease | undefined;
         if (context.scope === "workspace") {
-            ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
+            releaseCapabilities = await this.#residency.acquire(context.workspaceId);
         } else if (context.scope === "worker") {
             const workspaceId = ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
             const workerId = ClientInput.assertId(`module action '${name}'`, "workerId", context.workerId);
@@ -1351,18 +1332,26 @@ export default class Daemon implements ApplicationPort {
                     { workspaceId, workerId, retryable: false },
                 );
             }
-            releaseCapabilities = await this.#residency.acquire(workspaceId, workerId);
+            releaseCapabilities = await this.#residency.acquire(workspaceId);
         }
         try {
+            if (context.scope === "worker") {
+                const release = await this.#workspaceGate.acquireTurn(context.workspaceId, context.workerId);
+                try {
+                    await this.#residency.reconcile(context.workspaceId, context.workerId);
+                } finally {
+                    release();
+                }
+            }
             return await registration.handler(params, context);
         } finally {
             releaseCapabilities?.();
         }
     }
 
-    registerWorkerCapabilityProvider(
+    registerWorkspaceCapabilityProvider(
         namespaceOwner: string,
-        provider: WorkerCapabilityProvider,
+        provider: WorkspaceCapabilityProvider,
     ): void {
         this.#residency.registerProvider(namespaceOwner, provider);
     }
@@ -1371,13 +1360,13 @@ export default class Daemon implements ApplicationPort {
         return this.#functionality.register(adapter);
     }
 
-    async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null> {
-        return this.#residency.readModuleState(workerId, namespaceOwner);
+    async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
+        return this.#residency.readModuleState(workspaceId, namespaceOwner);
     }
 
-    async replaceWorkerCapabilities(
-        replacement: WorkerCapabilityReplacement,
-        options: { readonly gate?: WorkerCapabilityGate } = {},
+    async replaceWorkspaceCapabilities(
+        replacement: WorkspaceCapabilityReplacement,
+        options: WorkspaceCapabilityPublication = {},
     ): Promise<void> {
         await this.#residency.replace(replacement, options);
     }
@@ -1409,9 +1398,9 @@ export default class Daemon implements ApplicationPort {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
-        this.#engine.setFunctionalityDocuments((workerId) => this.#functionality.documents(workerId));
+        this.#engine.setFunctionalityDocuments((workspaceId) => this.#functionality.documents(workspaceId));
         // {§question-tool} — the native request-user-input runtime, process-wide;
-        // per-worker admission gates its doc visibility and dispatch ({§worker-settings}).
+        // workspace admission gates its doc visibility and dispatch ({§workspace-capability-policy}).
         await this.#engine.registerRuntimes([{
             tag: "question",
             entry: {
@@ -1680,12 +1669,6 @@ export default class Daemon implements ApplicationPort {
         const conflicts = requested
             .filter(([key, value]) => {
                 if (value === undefined) return false;
-                if (key === "capabilities") {
-                    return !isDeepStrictEqual(
-                        CapabilityAdmission.intersect([effective.capabilities]),
-                        CapabilityAdmission.intersect([value as CapabilityPolicy]),
-                    );
-                }
                 return effective[key] !== value;
             })
             .map(([key, value]) => `${key}: ${JSON.stringify(effective[key])} -> ${JSON.stringify(value)}`);

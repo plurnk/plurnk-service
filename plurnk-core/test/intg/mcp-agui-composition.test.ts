@@ -140,7 +140,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "worker.mcp.discover",
+                        kind: "workspace.mcp.discover",
                         configuration: {
                             PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
                             "PLURNK_MCP_CLIENT-ONLY": process.execPath,
@@ -160,10 +160,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             ],
         );
         const listed = actionResult(await post(port, runInput(workspace, "list", {
-            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "worker.mcp.list" } } },
+            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "workspace.mcp.list" } } },
         })));
         assert.equal(listed.ok, true, JSON.stringify(listed.problem));
-        if (listed.result === undefined) throw new Error("worker.mcp.list returned no result");
+        if (listed.result === undefined) throw new Error("workspace.mcp.list returned no result");
         assert.deepEqual(
             (listed.result.definitions as Array<{ alias: string; origin: string; state: string }>).map(({ alias, origin, state }) => ({ alias, origin, state })),
             [{ alias: "fixture", origin: "service", state: "disabled" }],
@@ -179,7 +179,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "worker.mcp.add",
+                        kind: "workspace.mcp.add",
                         alias: "fixture",
                         definition: { ...fixtureCandidate.definition, tools: ["echo", "fail"], read: ["echo"] },
                     },
@@ -189,10 +189,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal(attached.ok, true, JSON.stringify(attached.problem));
         assert.equal(attached.result?.status, 201);
         assert.equal((attached.result?.definition as { state?: string; origin?: string } | undefined)?.state, "active");
-        assert.equal((attached.result?.definition as { origin?: string } | undefined)?.origin, "worker");
+        assert.equal((attached.result?.definition as { origin?: string } | undefined)?.origin, "workspace");
 
         // {§capability-admission} — exact MCP tools occupy the same selector
-        // space as every other capability. One Worker attenuation removes only
+        // space as every other capability. One workspace restriction removes only
         // the denied tool from both dispatch and the model's generated contract.
         const attenuated = actionResult(await post(port, runInput(workspace, "deny-fail-tool", {
             forwardedProps: {
@@ -200,14 +200,14 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "worker.capabilities.set",
+                        kind: "workspace.capabilities.set",
                         policy: { deny: [{ runtime: "fixture", tool: "fail" }] },
                     },
                 },
             },
         })));
         assert.equal(attenuated.ok, true, JSON.stringify(attenuated.problem));
-        assert.deepEqual(attenuated.result?.worker, {
+        assert.deepEqual(attenuated.result?.workspace, {
             deny: [{ runtime: "fixture", tool: "fail" }],
         });
         const deniedTool = actionResult(await post(port, runInput(workspace, "invoke-denied-tool", {
@@ -229,7 +229,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal(deniedResult?.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
         assert.equal(deniedResult?.problem?.runtime, "fixture");
         assert.equal(deniedResult?.problem?.tool, "fail");
-        assert.equal(deniedResult?.problem?.policyScope, "worker");
+        assert.equal(deniedResult?.problem?.policyScope, "workspace");
 
         const observed = await post(port, runInput(workspace, "read-tool", {
             messages: [{ id: "prompt-read", role: "user", content: "Use the attached echo tool, then report its result." }],
@@ -282,12 +282,12 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 plurnk: {
                     workspace,
                     projectRoot,
-                    action: { kind: "worker.capabilities.set", policy: {} },
+                    action: { kind: "workspace.capabilities.set", policy: {} },
                 },
             },
         })));
         assert.equal(restored.ok, true, JSON.stringify(restored.problem));
-        assert.deepEqual(restored.result?.worker, {});
+        assert.deepEqual(restored.result?.workspace, {});
 
         const interrupted = await post(port, runInput(workspace, "host-tool-a", {
             messages: [{ id: "prompt-fail", role: "user", content: "Call the attached fail tool and recover from its result." }],
@@ -329,7 +329,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 plurnk: {
                     workspace,
                     action: {
-                        kind: "worker.mcp.add",
+                        kind: "workspace.mcp.add",
                         alias: "legacy",
                         definition: { name: "legacy", transport: "stdio", command: process.execPath, args: [legacyFixture] },
                     },
@@ -343,7 +343,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             forwardedProps: {
                 plurnk: {
                     workspace,
-                    action: { kind: "worker.mcp.list" },
+                    action: { kind: "workspace.mcp.list" },
                 },
             },
         })));
@@ -436,7 +436,7 @@ test(
                         workspace,
                         projectRoot,
                         action: {
-                            kind: "worker.mcp.add",
+                            kind: "workspace.mcp.add",
                             alias: "kubernetes",
                             definition: {
                                 name: "kubernetes",
@@ -471,7 +471,7 @@ test(
                     plurnk: {
                         workspace,
                         action: {
-                            kind: "worker.mcp.add",
+                            kind: "workspace.mcp.add",
                             alias: "goji",
                             definition: {
                                 name: "goji",

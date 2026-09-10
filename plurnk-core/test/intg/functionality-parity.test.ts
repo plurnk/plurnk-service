@@ -3,7 +3,7 @@
 // outbound A2A agents with their representative standards peers beneath: the
 // same client verbs, the same model verbs through the real proposal boundary,
 // the same hotload/withdrawal at the next packet, the same persistence,
-// inheritance, isolation, concurrency, and rollback. No step encodes a family's
+// shared visibility, workspace isolation, concurrency, and rollback. No step encodes a family's
 // management grammar; only the definition payloads and the liveness probe differ.
 import { chatMessageText } from "@plurnk/plurnk-providers";
 import test from "node:test";
@@ -34,7 +34,7 @@ interface Context {
     readonly daemon: Daemon;
     readonly db: Db;
     readonly workspaceId: number;
-    readonly functionalityWorkerId: number;
+    readonly modelWorkerId: number;
     readonly clientWorkerId: number;
 }
 
@@ -74,12 +74,13 @@ const LIVE = new Set([102, 200]);
 const isAbsent = (status: number): boolean => status >= 400;
 
 const dispatch = (context: Context, statement: PlurnkStatement) =>
-    context.daemon.dispatchAsClient({ workspaceId: context.workspaceId, workerId: context.clientWorkerId, functionalityWorkerId: context.functionalityWorkerId, statement });
+    context.daemon.dispatchAsClient({ workspaceId: context.workspaceId, workerId: context.clientWorkerId, statement });
 
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
     if (pathname.includes("://")) return (await dispatch(context, parseOne(`\`\`\`READ (${pathname})\`\`\``))).status;
-    const rows = await context.db.test_entries_by_coordinate_owners.all<{ owner_id: number }>({ scheme: "worker", authority: "", pathname });
-    return rows.some(({ owner_id }) => owner_id === context.functionalityWorkerId) ? 200 : 404;
+    const result = await context.daemon.look({ workspaceId: context.workspaceId, workerId: context.modelWorkerId,
+        statement: parseOne(`\`\`\`READ (worker://~${pathname})\`\`\``) });
+    return result.status;
 };
 
 const a2aTarget = (alias: string): UrlPath => ({
@@ -235,13 +236,13 @@ const matrix = async (family: Family): Promise<void> => {
     let provider = mockProvider();
     let { daemon } = await family.boot(db, provider);
     await daemon.start();
-    const context = (functionalityWorkerId = model, clientWorkerId = clientA): Context => ({ daemon, db, workspaceId, functionalityWorkerId, clientWorkerId });
+    const context = (modelWorkerId = model, clientWorkerId = clientA): Context => ({ daemon, db, workspaceId, modelWorkerId, clientWorkerId });
     // A client retries the one retryable refusal: 409 workspace-busy while a
-    // just-settled stream still holds the workspace ({§module-worker-quiescence}).
-    const invoke = async <T>(verb: string, params: Readonly<Record<string, unknown>>, workerId = model): Promise<T> => {
+    // just-settled stream still holds the workspace ({§module-workspace-quiescence}).
+    const invoke = async <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> => {
         for (let attempt = 0; ; attempt++) {
             try {
-                return await daemon.invokeModuleAction(`worker.${family.family}.${verb}`, params, { scope: "worker", workspaceId, workerId }) as T;
+                return await daemon.invokeModuleAction(`workspace.${family.family}.${verb}`, params, { scope: "workspace", workspaceId }) as T;
             } catch (error) {
                 const problem = (error as { problem?: ProblemDetails }).problem ?? (error as OperationFailureError).result?.problem;
                 if (problem?.type.endsWith("/workspace-busy") === true && attempt < 100) {
@@ -253,8 +254,8 @@ const matrix = async (family: Family): Promise<void> => {
         }
     };
     type Listed = { alias: string; origin: string; state: string; problem?: ProblemDetails };
-    const listed = async (workerId = model): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {}, workerId)).definitions;
-    const stateOf = async (alias: string, workerId = model): Promise<string | undefined> => (await listed(workerId)).find((entry) => entry.alias === alias)?.state;
+    const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
+    const stateOf = async (alias: string): Promise<string | undefined> => (await listed()).find((entry) => entry.alias === alias)?.state;
     const live = async (definition: Definition, workerId = model, clientWorkerId = clientA): Promise<boolean> => {
         const status = await definition.probe(context(workerId, clientWorkerId));
         assert.ok(LIVE.has(status) || isAbsent(status), `${family.family}: probe of ${definition.alias} answered ${status}`);
@@ -283,7 +284,7 @@ const matrix = async (family: Family): Promise<void> => {
         if (decision === "accept") {
             await waitForDb(async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: family.family, prefix: "/%" })).length, (count) => count > outputsBefore, { timeoutMs: 10_000 });
             await verbResult();
-            await daemon.settleFunctionality(model);
+            await daemon.settleFunctionality(workspaceId);
         }
         return result;
     };
@@ -296,13 +297,13 @@ const matrix = async (family: Family): Promise<void> => {
         assert.ok(packet !== undefined, `${family.family}: the loop produced no packet`);
         return packet;
     };
-    const add = (definition: Definition, workerId = model) => invoke<{ status: number; definition: { state: string } }>("add", { alias: definition.alias, definition: definition.definition }, workerId);
+    const add = (definition: Definition) => invoke<{ status: number; definition: { state: string } }>("add", { alias: definition.alias, definition: definition.definition });
 
     try {
         // 1. Registration: the six common actions, nothing family-specific in the grammar.
         assert.deepEqual(
-            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`worker.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete")).toSorted(),
-            ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `worker.${family.family}.${verb}`),
+            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`workspace.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete")).toSorted(),
+            ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `workspace.${family.family}.${verb}`),
         );
         // 2. Configuration baseline is service-origin and live.
         assert.equal(await stateOf(family.service.alias), "active");
@@ -336,7 +337,7 @@ const matrix = async (family: Family): Promise<void> => {
         const discovered = await invoke<{ candidates: Array<{ alias?: string; provenance: { kind: string; source: string } }> }>("discover", family.discover);
         assert.ok(discovered.candidates.length > 0, "the representative source yields candidates");
         assert.ok(discovered.candidates.every(({ provenance }) => typeof provenance.kind === "string" && typeof provenance.source === "string"), "every candidate carries exact provenance");
-        assert.equal((await listed()).some((entry) => discovered.candidates.some((candidate) => candidate.alias === entry.alias && entry.origin === "worker")), false, "discovery added nothing");
+        assert.equal((await listed()).some((entry) => discovered.candidates.some((candidate) => candidate.alias === entry.alias && entry.origin === "workspace")), false, "discovery added nothing");
         // 4. Client add → live and documented before the next operation.
         assert.equal(await live(family.addable), false, "the alias is absent before add");
         const added = await add(family.addable);
@@ -401,32 +402,24 @@ ${JSON.stringify({ alias: family.addable.alias })}
             assert.equal(await stateOf(family.collidingAlias), undefined, "a publication the host refuses rolls back");
             assert.equal(await live(family.service), true, "the previous snapshot stays authoritative");
         }
-        // 9. Two clients attached to one Worker see and use one state.
-        assert.equal(await live(family.addable, model, clientB), true, "a second client uses the same Worker's definitions");
+        // 9. Independent workers and clients see and use the workspace state.
+        assert.equal(await live(family.addable, peer, clientB), true, "a second client and independent worker use the same workspace definition");
         await invoke("disable", { alias: family.addable.alias });
-        assert.equal(await live(family.addable, model, clientB), false, "a mutation through one client is observed by the other");
+        assert.equal(await live(family.addable, peer, clientB), false, "a mutation through one client is observed by the other");
         await invoke("enable", { alias: family.addable.alias });
-        // 10. Two independent root Workers hold the same textual alias with conflicting definitions.
-        assert.notEqual((await listed(peer)).find((entry) => entry.alias === family.conflicting.alias)?.origin, "worker", "the peer Worker never sees the first Worker's own definition as its own");
-        const conflict = await add(family.conflicting, peer);
-        assert.equal(conflict.definition.state, "active");
-        assert.equal((await listed(peer)).find((entry) => entry.alias === family.conflicting.alias)?.origin, "worker");
-        assert.equal(await live(family.conflicting, peer), true, "the peer Worker's definition is live for the peer");
-        assert.equal(await live(family.addable, model), true, "the first Worker's definition stays live for the first Worker");
-        await invoke("disable", { alias: family.conflicting.alias }, peer);
-        assert.equal(await live(family.addable, model), true, "a peer mutation does not leak");
-        assert.equal(await stateOf(family.addable.alias, model), "active");
-        await invoke("remove", { alias: family.conflicting.alias }, peer);
-        // 11. Child inheritance by value, later parent independence.
+        // 10. Reapplying identical configuration is idempotent; a conflicting alias cannot silently replace it.
+        assert.equal((await add(family.addable)).status, 200);
+        const conflict = await problemOf(() => add(family.conflicting));
+        assert.equal(conflict.type, "https://problems.plurnk.xyz/functionality/alias-exists");
+        assert.equal(await live(family.addable, peer), true, "the rejected replacement did not withdraw the shared definition");
+        // 11. A child's environment remains the same shared workspace, not a copied snapshot.
         const child = await insertWorker(db, workspaceId, model, "child", "model");
-        assert.equal(await stateOf(family.addable.alias, child), "active", "a child inherits the parent's snapshot at birth");
         assert.equal(await live(family.addable, child), true);
         await invoke("disable", { alias: family.addable.alias });
-        assert.equal(await stateOf(family.addable.alias, child), "active", "a later parent mutation does not reach the child");
-        await invoke("disable", { alias: family.addable.alias }, child);
+        assert.equal(await live(family.addable, child), false, "an existing child sees workspace withdrawal");
         await invoke("enable", { alias: family.addable.alias });
-        assert.equal(await stateOf(family.addable.alias, child), "disabled", "a child mutation does not reach the parent");
-        assert.equal(await stateOf(family.addable.alias, model), "active");
+        assert.equal(await live(family.addable, child), true, "the same child sees re-enablement without re-instantiation");
+        assert.equal(await stateOf(family.addable.alias), "active");
         // 12. Concurrent mutations serialize to one consistent outcome.
         await Promise.all([
             invoke("disable", { alias: family.addable.alias }),
@@ -437,7 +430,7 @@ ${JSON.stringify({ alias: family.addable.alias })}
         const settled = await stateOf(family.addable.alias);
         assert.equal(settled, "active", "the last serialized mutation wins");
         assert.equal(await live(family.addable), true, "liveness agrees with the listed state");
-        // 13. Restart: durable state reconstructs every Worker's Functionality.
+        // 13. Restart reconstructs one shared workspace environment.
         unsubscribe();
         await daemon.stop();
         provider = mockProvider();
@@ -445,12 +438,12 @@ ${JSON.stringify({ alias: family.addable.alias })}
         await daemon.start();
         unsubscribe = daemon.subscribeToEvents(() => {});
         assert.equal(await stateOf(family.service.alias), "active");
-        assert.equal(await stateOf(family.addable.alias), "active", "the Worker's own definition survives restart");
+        assert.equal(await stateOf(family.addable.alias), "active", "the workspace definition survives restart");
         assert.equal(await live(family.addable), true);
         assert.equal(await document(family.addable.alias), 200);
-        assert.equal(await stateOf(family.addable.alias, child), "disabled", "the child's divergent state survives restart");
-        assert.notEqual((await listed(peer)).find((entry) => entry.alias === family.conflicting.alias)?.origin, "worker", "the peer forgot its own definition across restart");
-        // 14. Remove forgets the Worker definition and withdraws everything.
+        assert.equal(await live(family.addable, child), true, "the child sees the restored workspace definition");
+        assert.equal(await live(family.addable, peer), true, "the independent worker sees the same definition");
+        // 14. Remove forgets the workspace definition and withdraws its capability.
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.addable.alias })).removed, true);
         assert.equal(await live(family.addable), false);
         assert.equal(await document(family.addable.alias), 404);

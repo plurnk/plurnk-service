@@ -22,7 +22,14 @@ export default class WorkspaceSettings {
     // bag never reaches here — workspace.create validates before persisting.
     static async read(db: Db, workspaceId: number): Promise<WorkspaceOpenContext> {
         const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspaceId });
-        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; capabilities?: unknown }) : {};
+        if (row === undefined) throw new Error(`Workspace ${workspaceId} does not exist while reading its settings.`);
+        let bag: { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; capabilities?: unknown };
+        try {
+            bag = JSON.parse(row.settings);
+            if (bag === null || typeof bag !== "object" || Array.isArray(bag)) throw new TypeError("Workspace settings must be a JSON object.");
+        } catch (cause) {
+            throw new Error(`Workspace ${workspaceId} has invalid persisted settings.`, { cause });
+        }
         const filesItems = typeof bag.filesItems === "number" ? bag.filesItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;
         const git = typeof bag.git === "boolean" ? bag.git : null;
@@ -33,7 +40,12 @@ export default class WorkspaceSettings {
             ? null
             : FileCreationPolicy.parse(bag.membersModelScope, "settings.membersModelScope");
         const client = typeof bag.client === "string" ? bag.client : null;
-        const capabilities = Validator.assertCapabilityPolicy((bag.capabilities ?? {}) as CapabilityPolicy);
+        let capabilities: CapabilityPolicy;
+        try {
+            capabilities = Validator.assertCapabilityPolicy((bag.capabilities === undefined ? {} : bag.capabilities) as CapabilityPolicy);
+        } catch (cause) {
+            throw new Error(`Workspace ${workspaceId} has invalid persisted capability policy.`, { cause });
+        }
         return { filesItems, maxCommands, git, fileCreateScope, membersModelScope, client, capabilities };
     }
 

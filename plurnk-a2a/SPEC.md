@@ -17,7 +17,7 @@ cards are protocol projections, not configuration files.
 | Family | Variables | Meaning |
 |---|---|---|
 | Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
-| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for a Worker's `agents` family ({§a2a-agents-functionality}); the Worker's durable state may override enabledness only. |
+| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `agents` family ({§a2a-agents-functionality}); workspace state may override enabledness. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |
@@ -106,10 +106,10 @@ existing match or creating it with the configured project root. A configured
 non-null root must match an existing workspace exactly. The resolution is
 shared across concurrent requests and a failed resolution remains retryable.
 
-## §a2a-agents-functionality Outbound agents as Worker Functionality
+## §a2a-agents-functionality Outbound agents as workspace Functionality
 
 The package registers, through `OutboundModule`, the `a2a` resource scheme and
-one Worker Functionality family named `agents` ({§functionality-adapter} in
+one workspace Functionality family named `agents` ({§functionality-adapter} in
 core). The family is not tagged `a2a` because every executor tag is also a
 scheme face and would collide with the `a2a://` resource scheme. Its definition
 is the `A2aAgentDefinition` contract — local alias `name`, remote `url`,
@@ -132,12 +132,12 @@ Agent Card at the definition's URL (`card-unreachable`), and connects only
 through an advertised HTTP+JSON `1.0` interface (`interface-unsupported`),
 reusing an unchanged attachment across publications. The outcome detail carries
 the card's name, version, description, skill identifiers, and streaming
-capability. The family publishes no runtimes; its snapshot is the Worker's
+capability. The family publishes no runtimes; its snapshot is the workspace's
 `alias → client` map, and the `a2a` scheme resolves an authority against the
-Functionality of the Worker the operation acts in (`ctx.functionalityWorkerId`):
+Functionality of the operation's workspace (`ctx.workspaceId`):
 an unknown or disabled alias is 404 `agent-not-configured`, an unavailable
-alias carries its one exact preparation Problem, and two Workers may hold the
-same textual alias with different definitions and credentials.
+alias carries its one exact preparation Problem. Every worker in a workspace
+resolves the same alias definition; independent workspaces may differ.
 
 §a2a-problem-detail A2A Problems state the failed boundary fact without
 guessing intent or duplicating structured aliases, URLs, and interfaces in
@@ -164,7 +164,7 @@ alias. The adapter is not a Worker producer, scheduler, Task store, or alternate
 operation runtime.
 
 §a2a-outbound-definition An enabled outbound alias resolves through its
-Worker's `agents` Functionality snapshot ({§a2a-agents-functionality}), whose
+workspace's `agents` Functionality snapshot ({§a2a-agents-functionality}), whose
 preparation discovered and validated the remote standard Agent Card and
 selected only an advertised HTTP+JSON `1.0` interface. The local alias,
 target, optional card path, symbolic authentication, and provenance are local

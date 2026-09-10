@@ -194,6 +194,8 @@ export default class SeamSocket {
                 return daemon.renameWorkspace(s.workspaceId, p.name as string);
             }
             case "workspace.list": return { workspaces: await daemon.listWorkspaces() };
+            case "workspace.capabilities.get": return daemon.readWorkspaceCapabilities({ workspaceId: this.#attached().workspaceId });
+            case "workspace.capabilities.set": return daemon.setWorkspaceCapabilities({ workspaceId: this.#attached().workspaceId, policy: p.policy as import("@plurnk/plurnk-contracts").CapabilityPolicy });
             case "workspace.workers": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { workers: await daemon.listWorkers(sid) }; }
             case "workspace.prompts": {
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
@@ -203,11 +205,11 @@ export default class SeamSocket {
             case "op.look": {
                 const s = this.#attached();
                 const statement = Dsl.parseSingleStatement(p.text as string);
-                return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement });
+                return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
             }
             case "op.dispatch": {
                 const s = this.#attached();
-                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement: p.statement as PlurnkStatement });
+                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement: p.statement as PlurnkStatement });
             }
             case "op.edit": case "op.send": case "op.read": case "op.find":
             case "op.copy": case "op.move": case "op.exec": {
@@ -219,7 +221,7 @@ export default class SeamSocket {
                     "op.exec": Dsl.buildExec,
                 };
                 const statement = build[method](p as never);
-                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement });
+                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
             }
             default:
                 throw new Error(`method not found: ${method}`);

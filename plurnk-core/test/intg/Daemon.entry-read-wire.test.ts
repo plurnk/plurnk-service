@@ -64,7 +64,6 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
             const written = await daemon.dispatchAsClient({
                 workspaceId: workspace.workspaceId,
                 workerId,
-                functionalityWorkerId: workerId,
                 statement: Dsl.buildEdit({
                     target: "private-notes:///same",
                     content,
@@ -148,7 +147,6 @@ test("entry.read applies worker authority across the workspace: a child reads it
             assert.equal((await daemon.dispatchAsClient({
                 workspaceId: workspace.workspaceId,
                 workerId,
-                functionalityWorkerId: workerId,
                 statement: Dsl.buildEdit({ target: "worker://~/same", content }),
             })).status, 201);
         }

@@ -230,7 +230,7 @@ export default class Service {
             const hooksModule = HooksModule.init();
             const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), skills: { hostPaths: Service.#hostPaths } });
-            ServiceModules.registerWorkerCapabilities(daemon);
+            ServiceModules.registerWorkspaceCapabilities(daemon);
             daemon.registerModule(hooksModule);
             const a2a = hostedAgentConfiguration();
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));

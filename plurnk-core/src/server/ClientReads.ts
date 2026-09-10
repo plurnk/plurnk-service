@@ -7,7 +7,7 @@ import type { LogEntryWire } from "./logEntry.ts";
 import ClientInput from "./client-input.ts";
 import Results from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
-import WorkerResidency from "./WorkerResidency.ts";
+import WorkspaceResidency from "./WorkspaceResidency.ts";
 import { daemonFailure } from "./daemon-results.ts";
 import type { ChannelRow } from "./Daemon.ts";
 
@@ -18,13 +18,13 @@ export default class ClientReads {
     readonly #db: Db;
     readonly #engine: Engine;
     readonly #workspaceGate: WorkspaceGate;
-    readonly #residency: WorkerResidency;
+    readonly #residency: WorkspaceResidency;
 
     constructor({ db, engine, workspaceGate, residency }: {
         db: Db;
         engine: Engine;
         workspaceGate: WorkspaceGate;
-        residency: WorkerResidency;
+        residency: WorkspaceResidency;
     }) {
         this.#db = db;
         this.#engine = engine;
@@ -81,10 +81,11 @@ export default class ClientReads {
                     retryable: false },
             );
         }
-        const releaseCapabilities = await this.#residency.acquire(workspaceId, workerId);
+        const releaseCapabilities = await this.#residency.acquire(workspaceId);
         let releaseWorkspace: (() => void) | undefined;
         try {
             releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
+            await this.#residency.reconcile(workspaceId, workerId);
             let parsed;
             try {
                 parsed = parsePath(args.target);

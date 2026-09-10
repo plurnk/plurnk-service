@@ -583,9 +583,9 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const afterFirstAttach = markerCount(mcpStartMarker);
     await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
     const afterSecondAttach = markerCount(mcpStartMarker);
-    const listed = await aguiAction(address, "worker.mcp.list", {}, attached.name);
+    const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
     const afterDemand = markerCount(mcpStartMarker);
-    await aguiAction(address, "worker.mcp.list", {}, attached.name);
+    await aguiAction(address, "workspace.mcp.list", {}, attached.name);
     const skillCatalog = (await aguiAction(address, "op.parse", {
         text: "```FIND (skill://*/SKILL.md) <1,-1>```",
     }, attached.name)).results[0];
@@ -598,11 +598,11 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
             text: `\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\``,
         }, attached.name)).results[0]);
     }
-    await aguiAction(address, "worker.skills.disable", { alias: "plurnk" }, attached.name);
+    await aguiAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
     const disabledSkillRead = (await aguiAction(address, "op.parse", {
         text: "```READ (skill://plurnk/.env.defaults) <1,-1>```",
     }, attached.name)).results[0];
-    await aguiAction(address, "worker.skills.enable", { alias: "plurnk" }, attached.name);
+    await aguiAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
     const proposed = await aguiRun(address, {
         workspace: attached.name,
         action: {

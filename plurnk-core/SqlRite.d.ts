@@ -213,8 +213,7 @@ export class SqlRiteSync {
 	envelope_get_worker_by_id: SqlRiteSyncPreparedStatements;
 	envelope_get_worker_by_name: SqlRiteSyncPreparedStatements;
 	envelope_list_workers_for_workspace: SqlRiteSyncPreparedStatements;
-	worker_settings_read: SqlRiteSyncPreparedStatements;
-	worker_settings_update: SqlRiteSyncPreparedStatements;
+	workspace_capability_policy_update: SqlRiteSyncPreparedStatements;
 	worker_generation_policy_read: SqlRiteSyncPreparedStatements;
 	worker_generation_policy_update: SqlRiteSyncPreparedStatements;
 	worker_generation_policy_selectable: SqlRiteSyncPreparedStatements;
@@ -290,10 +289,6 @@ export class SqlRiteSync {
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
 	turn_fail_open: SqlRiteSyncPreparedStatements;
-	worker_module_state_get: SqlRiteSyncPreparedStatements;
-	worker_module_state_put: SqlRiteSyncPreparedStatements;
-	worker_module_states_by_workspace: SqlRiteSyncPreparedStatements;
-	worker_module_state_delete: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
@@ -301,6 +296,10 @@ export class SqlRiteSync {
 	worker_count_active: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
+	workspace_generated_document_workers: SqlRiteSyncPreparedStatements;
+	workspace_module_state_get: SqlRiteSyncPreparedStatements;
+	workspace_module_state_put: SqlRiteSyncPreparedStatements;
+	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
 }
 
 export default class SqlRite {
@@ -470,8 +469,7 @@ export default class SqlRite {
 	envelope_get_worker_by_id: SqlRitePreparedStatements;
 	envelope_get_worker_by_name: SqlRitePreparedStatements;
 	envelope_list_workers_for_workspace: SqlRitePreparedStatements;
-	worker_settings_read: SqlRitePreparedStatements;
-	worker_settings_update: SqlRitePreparedStatements;
+	workspace_capability_policy_update: SqlRitePreparedStatements;
 	worker_generation_policy_read: SqlRitePreparedStatements;
 	worker_generation_policy_update: SqlRitePreparedStatements;
 	worker_generation_policy_selectable: SqlRitePreparedStatements;
@@ -547,10 +545,6 @@ export default class SqlRite {
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;
 	turn_fail_open: SqlRitePreparedStatements;
-	worker_module_state_get: SqlRitePreparedStatements;
-	worker_module_state_put: SqlRitePreparedStatements;
-	worker_module_states_by_workspace: SqlRitePreparedStatements;
-	worker_module_state_delete: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;
 	worker_deliverable_by_name: SqlRitePreparedStatements;
@@ -558,4 +552,8 @@ export default class SqlRite {
 	worker_count_active: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
+	workspace_generated_document_workers: SqlRitePreparedStatements;
+	workspace_module_state_get: SqlRitePreparedStatements;
+	workspace_module_state_put: SqlRitePreparedStatements;
+	workspace_module_state_delete: SqlRitePreparedStatements;
 }

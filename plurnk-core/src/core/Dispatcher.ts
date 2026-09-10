@@ -14,6 +14,7 @@ import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -36,7 +37,7 @@ import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries 
 import LogWriter from "./LogWriter.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
-import ResourceBindings, { type AcquireWorkerCapabilities } from "./ResourceBindings.ts";
+import ResourceBindings from "./ResourceBindings.ts";
 import type EditSequence from "./EditSequence.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
@@ -50,7 +51,6 @@ export type DispatchContext = {
     workerId: number;
     // {§actor-boundary-attached-functionality} — absent means the dispatching
     // Worker's own Functionality; a client operation names its attached Worker.
-    functionalityWorkerId?: number;
     loopId: number;
     turnId: number;
     sequence: number;
@@ -145,9 +145,8 @@ export default class Dispatcher {
     readonly #disposition: TurnDispositionHandler;
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
-    readonly #acquireWorkerCapabilities: AcquireWorkerCapabilities | undefined;
 
-    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, liveSubscriptions, entryAddresses, acquireWorkerCapabilities }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, liveSubscriptions, entryAddresses }: {
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -166,7 +165,6 @@ export default class Dispatcher {
         cancelDescendants?: CancelDescendantsNotify;
         liveSubscriptions: LiveSubscriptions;
         entryAddresses: EntryAddressBinding;
-        acquireWorkerCapabilities?: AcquireWorkerCapabilities;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -185,14 +183,13 @@ export default class Dispatcher {
         this.#cancelDescendants = cancelDescendants;
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
-        this.#acquireWorkerCapabilities = acquireWorkerCapabilities;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#lifecycle = lifecycle;
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,
             run: (schemeName, statement, ctx) => this.#dataRun.run(schemeName, statement, ctx),
-            checkWritable: (statement, origin, workerId) => this.#checkWritable(statement, origin, workerId),
+            checkWritable: (statement, origin, workspaceId) => this.#checkWritable(statement, origin, workspaceId),
             checkCapabilities: (statement, ctx) => this.#checkCapabilities(statement, ctx),
             editTargetIdentity: (statement, workspaceId, workerId) => this.#editTargetIdentity(statement, workspaceId, workerId),
             canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
@@ -228,7 +225,7 @@ export default class Dispatcher {
     }
 
     async #handlerContext(scheme: string, ctx: PlurnkSchemeContext, authority = ""): Promise<SchemeCtxImpl | null> {
-        const manifest = this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
+        const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
         return manifest === undefined
             ? null
             : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions, {
@@ -242,7 +239,7 @@ export default class Dispatcher {
         address: ResolvedDataEntryAddress,
         ctx: PlurnkSchemeContext,
     ): SchemeCtxImpl | null {
-        const manifest = this.#schemes.manifestFor(routedScheme, ctx.functionalityWorkerId);
+        const manifest = this.#schemes.manifestFor(routedScheme, ctx.workspaceId);
         return manifest?.category === "data"
             ? new SchemeCtxImpl(ctx, address.scheme, manifest, this.#liveSubscriptions, {
                 authority: address.authority,
@@ -251,8 +248,8 @@ export default class Dispatcher {
             : null;
     }
 
-    #coreCrud(scheme: string, workerId: number): CoreSchemeWithCrud | undefined {
-        const handler = this.#schemes.get(scheme, workerId);
+    #coreCrud(scheme: string, workspaceId: number): CoreSchemeWithCrud | undefined {
+        const handler = this.#schemes.get(scheme, workspaceId);
         return handler instanceof CoreSchemeAdapterBase
             ? handler as CoreSchemeAdapterBase & CoreSchemeWithCrud
             : undefined;
@@ -260,7 +257,7 @@ export default class Dispatcher {
 
     async #readEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
@@ -297,7 +294,7 @@ export default class Dispatcher {
 
     async #writeEntry(scheme: string, address: ResolvedDataEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
@@ -322,7 +319,7 @@ export default class Dispatcher {
 
     async #deleteEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
@@ -352,7 +349,7 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<DeleteEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
@@ -401,9 +398,9 @@ export default class Dispatcher {
     async #editTargetIdentity(
         statement: EditStatement,
         workspaceId: number,
-        workerId: number,
+        _workerId: number,
     ): Promise<string | null> {
-        const target = this.#extractTarget(statement.target, workerId);
+        const target = this.#extractTarget(statement.target, workspaceId);
         await this.#canonColumns(target, workspaceId);
         return renderTarget(target);
     }
@@ -414,7 +411,7 @@ export default class Dispatcher {
     // the log's scoped KILL is curation.
     readonly #scopedEntryEdits = new WeakMap<KillStatement, EditStatement>();
 
-    #scopedEntryEdit(statement: PlurnkStatement, functionalityWorkerId: number): EditStatement | null {
+    #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "EDIT") return statement;
         // A body pattern is a log selector; a scoped KILL carrying one is not an EDIT — the KILL
         // handler refuses it ({§kill-scope-entry}).
@@ -423,7 +420,7 @@ export default class Dispatcher {
         if (cached !== undefined) return cached;
         const schemeName = schemeNameOf(statement.target);
         if (schemeName === null || schemeName === "log") return null;
-        const handler = this.#schemes.get(schemeName, functionalityWorkerId) as { kill?: unknown } | undefined;
+        const handler = this.#schemes.get(schemeName, workspaceId) as { kill?: unknown } | undefined;
         if (handler === undefined || typeof handler.kill === "function") return null;
         const edit: EditStatement = {
             op: "EDIT",
@@ -439,7 +436,7 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), this.#acquireWorkerCapabilities,
+        let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx));
         const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
         if (edit !== undefined) {
@@ -463,10 +460,10 @@ export default class Dispatcher {
             onDispatch,
             onSettled,
         } = context;
-        const { functionalityWorkerId } = schemeCtx;
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
-        const denial = this.#checkWritable(statement, origin, functionalityWorkerId);
+        const denial = this.#checkWritable(statement, origin, workspaceId)
+            ?? await this.#checkCapabilities(statement, schemeCtx);
         if (denial !== null) {
             result = denial;
         } else {
@@ -474,12 +471,9 @@ export default class Dispatcher {
             // exceptions become the action-entry's outcome (status 500), not a
             // thrown bubble. The log_entry is the durable record; engine never
             // skips it. Logging failures (#writeLog throws) are NOT caught —
-                // those are system failures.
+            // those are system failures.
             try {
-                const capabilityDenial = await this.#checkCapabilities(statement, schemeCtx);
-                if (capabilityDenial !== null) {
-                    result = capabilityDenial;
-                } else if (statement.op === "EDIT") {
+                if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = { status: 200 };
@@ -509,7 +503,7 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#resourceMutations.handleMove(statement, schemeCtx);
-                } else if (statement.op === "KILL" && this.#scopedEntryEdit(statement, functionalityWorkerId) !== null) {
+                } else if (statement.op === "KILL" && this.#scopedEntryEdit(statement, workspaceId) !== null) {
                     result = await this.#resourceMutations.edit(this.#scopedEntryEdits.get(statement)!, schemeCtx, context.editSequence);
                 } else if (statement.op === "KILL") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
@@ -548,7 +542,6 @@ export default class Dispatcher {
         const logEntryId = await this.#logWriter.writeLog({
             statement,
             result,
-            functionalityWorkerId,
             workspaceId,
             workerId,
             loopId,
@@ -573,7 +566,7 @@ export default class Dispatcher {
             const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
             let autoAccept = false;
             if (statement.op === "EXEC" || (statement.op === "SEND"
-                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", functionalityWorkerId))) {
+                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId))) {
                 if (!EffectPolicy.isEffect(effect)) {
                     throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
                 }
@@ -584,14 +577,14 @@ export default class Dispatcher {
                     statement,
                     result,
                     { decision: "accept" },
-                    { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
+                    { workspaceId, workerId, loopId, turnId },
                 );
                 const effective = await this.#resourceMutations.settleProposal({
                     statement,
                     result,
                     settlement: initialSettlement,
                     ctx: schemeCtx,
-                    ids: { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
+                    ids: { workspaceId, workerId, loopId, turnId },
                 });
                 const post = await this.#proposals.applyResolution(logEntryId, effective);
                 await onSettled?.(logEntryId);
@@ -626,14 +619,14 @@ export default class Dispatcher {
                 statement,
                 result,
                 resolution,
-                { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
+                { workspaceId, workerId, loopId, turnId },
             );
             const effective = await this.#resourceMutations.settleProposal({
                 statement,
                 result,
                 settlement: initialSettlement,
                 ctx: schemeCtx,
-                ids: { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
+                ids: { workspaceId, workerId, loopId, turnId },
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             await onSettled?.(logEntryId);
@@ -650,14 +643,14 @@ export default class Dispatcher {
     // human's inspection is never constrained by a model loop's flags. {§op-look}
     async look(context: {
         statement: PlurnkStatement;
-        workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         const { statement, workspaceId, workerId, loopId, origin = "client" } = context;
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId: 0, origin });
-        return ResourceBindings.using(this.#schemes, schemeCtx, this.#acquireWorkerCapabilities, async (ctx) => {
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId: 0, origin });
+        return ResourceBindings.using(this.#schemes, schemeCtx, async (ctx) => {
             try {
                 const denial = await this.#checkCapabilities(statement, ctx);
                 return denial ?? await this.#dataRun.run(schemeNameOf(statement.target), statement, ctx);
@@ -673,13 +666,12 @@ export default class Dispatcher {
         const result = await this.look(context);
         return this.#logWriter.prepareLog({
             ...context, result,
-            functionalityWorkerId: context.functionalityWorkerId ?? context.workerId,
             curationPlan: null, modelCallId: null,
         });
     }
 
-    capabilityProjection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
-        return this.#capabilities.projection(workspaceId, workerId);
+    capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
+        return this.#capabilities.projection(workspaceId);
     }
 
     // Resolve the client selector through the owning scheme before persistence
@@ -689,13 +681,11 @@ export default class Dispatcher {
         target: ParsedPath;
         workspaceId: number;
         workerId: number;
-        functionalityWorkerId?: number;
     }): Promise<ResolvedClientEntryAddress | null> {
         const { target, workspaceId, workerId } = context;
         const coreCtx = this.#buildSchemeCtx({
             workspaceId,
             workerId,
-            functionalityWorkerId: context.functionalityWorkerId,
             loopId: 0,
             turnId: 0,
             origin: "client",
@@ -723,7 +713,7 @@ export default class Dispatcher {
     ): Promise<PreparedRepresentation | null> {
         const routedScheme = schemeNameOf(target);
         if (routedScheme === null) return null;
-        return ResourceBindings.using(this.#schemes, ctx, this.#acquireWorkerCapabilities, async (boundCtx) => {
+        return ResourceBindings.using(this.#schemes, ctx, async (boundCtx) => {
             try {
                 const binding = await ResourceBindings.resolve(target, boundCtx);
                 if (binding?.manifest.category !== "data") return null;
@@ -834,7 +824,7 @@ export default class Dispatcher {
     // An accepted EXEC reads a non-file source through the same registered
     // handler and addressed context as an authored READ. {§exec-target-routing}
     async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
-        return ResourceBindings.using(this.#schemes, ctx, this.#acquireWorkerCapabilities,
+        return ResourceBindings.using(this.#schemes, ctx,
             (boundCtx) => this.#readExecSource(statement, boundCtx));
     }
 
@@ -878,12 +868,11 @@ export default class Dispatcher {
     // explicit Functionality coordinate acts in its own Worker's
     // ({§actor-boundary-attached-functionality}). Consumers read the built
     // PlurnkSchemeContext and never re-derive.
-    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
         const { workspaceId, workerId, loopId, turnId, origin } = ids;
-        const functionalityWorkerId = ids.functionalityWorkerId ?? workerId;
         const context: PlurnkSchemeContext = {
             db: this.#db,
-            workspaceId, workerId, functionalityWorkerId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             writer: origin,
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
@@ -893,7 +882,7 @@ export default class Dispatcher {
             weigh: this.#weighContent,
             // {§exec-stream} — a runtime scheme's default channel is its own (stdout), never the
             // catalog fallback `body`; resolved through the same registry the writable gate reads.
-            defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
+            defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, context.workspaceId),
             settleDerivations: () => this.#settleDerivations(context),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
@@ -912,38 +901,37 @@ export default class Dispatcher {
     // - SEND broadcast (path=null) has no target scheme; not gated.
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
-    #checkWritable(statement: PlurnkStatement, origin: WriterTier, functionalityWorkerId: number): DispatchResult | null {
-        const workerId = functionalityWorkerId;
+    #checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
 
         // EXEC's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
         if (statement.op === "EXEC") {
-            return this.#denyIfDisallowed("exec", origin, workerId);
+            return this.#denyIfDisallowed("exec", origin, workspaceId);
         }
 
         // {§stream-control}, {§exec-input}: process control is not a write to
         // stored output. The execution owner enforces self-only KILL and SEND.
         if (statement.op === "KILL" || statement.op === "SEND") {
             const target = schemeNameOf(statement.target);
-            if (target !== null && this.#schemes.isRuntimeScheme(target, workerId)) return null;
+            if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) return null;
         }
 
         // Worker control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // {§machine-processes}
-        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workerId);
+        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workspaceId);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.destination.target;
             const dstScheme = schemeNameOf(dst);
-            const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workerId);
+            const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workspaceId);
             if (dstDenial !== null) return dstDenial;
             if (statement.op === "MOVE") {
                 const srcScheme = schemeNameOf(statement.source.target);
                 if (srcScheme !== dstScheme) {
-                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workerId);
+                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workspaceId);
                     if (srcDenial !== null) return srcDenial;
                 }
             }
@@ -951,7 +939,7 @@ export default class Dispatcher {
         }
 
         const target = schemeNameOf(statement.target);
-        const denial = this.#denyIfDisallowed(target, origin, workerId);
+        const denial = this.#denyIfDisallowed(target, origin, workspaceId);
         // {§send-target-recipient} — SEND addresses recipients, not otherwise
         // read-only resources. State that boundary without guessing whether the
         // model intended a reply, deletion, or directed message.
@@ -972,11 +960,11 @@ export default class Dispatcher {
         return denial;
     }
 
-    #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workerId: number): DispatchResult | null {
+    #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (schemeName === null) return null;
-        const handler = this.#schemes.get(schemeName, workerId);
+        const handler = this.#schemes.get(schemeName, workspaceId);
         if (handler === undefined) return null;
-        const manifest = this.#schemes.manifestFor(schemeName, workerId);
+        const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
         if (manifest === undefined) throw new Error(`registered scheme '${schemeName}' has no manifest`);
         if (manifest.writableBy.includes(origin)) return null;
         return Dispatcher.#failure(
@@ -1000,11 +988,10 @@ export default class Dispatcher {
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult | null> {
+        await LoopPolicyReader.read(this.#db, ctx.loopId);
         const denied = await this.#capabilities.denial(
             statement,
             ctx.workspaceId,
-            ctx.functionalityWorkerId,
-            ctx.loopId,
             ctx.writer,
             async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
         );
@@ -1030,7 +1017,7 @@ export default class Dispatcher {
     }
 
     capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
-        return ResourceBindings.using(this.#schemes, ctx, this.#acquireWorkerCapabilities,
+        return ResourceBindings.using(this.#schemes, ctx,
             (boundCtx) => this.#checkCapabilities(statement, boundCtx));
     }
 
@@ -1129,9 +1116,9 @@ export default class Dispatcher {
 
     // {§bare-inference} Reuse exact READ projection without its log/presentation layer.
     async prepareBarePrompt(
-        context: Pick<DispatchContext, "workspaceId" | "workerId" | "functionalityWorkerId" | "loopId" | "turnId" | "origin"> & { statement: BareStatement },
+        context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
-        return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), this.#acquireWorkerCapabilities, async (ctx) => {
+        return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async (ctx) => {
             try {
                 return await this.#prepareBarePrompt(context.statement, ctx);
             } catch (error) {
@@ -1177,7 +1164,6 @@ export default class Dispatcher {
         Results.assert(result);
         const logEntryId = await this.#logWriter.writeLog({
             ...context,
-            functionalityWorkerId: context.functionalityWorkerId ?? context.workerId,
             result,
             curationPlan: null,
             modelCallId,
@@ -1312,7 +1298,7 @@ export default class Dispatcher {
     // inputs collapse to scheme=null in log target metadata because both render
     // as bare paths. Addressable file entries separately persist under the
     // reserved `file` identity scheme ({§entry-identity-no-null}).
-    #extractTarget(path: ParsedPath | null, workerId: number): {
+    #extractTarget(path: ParsedPath | null, workspaceId: number): {
         scheme: string | null; username: string | null; password: string | null;
         hostname: string | null; port: number | null; pathname: string | null;
         query: string | null; fragment: string | null;
@@ -1327,7 +1313,7 @@ export default class Dispatcher {
         const routedScheme = schemeNameOf(path);
         const manifest = routedScheme === null
             ? undefined
-            : this.#schemes.manifestFor(routedScheme, workerId);
+            : this.#schemes.manifestFor(routedScheme, workspaceId);
         const foldNs = scheme !== null
             && manifest !== undefined
             && (manifest.authority ?? "namespace") === "namespace";

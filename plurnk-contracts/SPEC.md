@@ -139,9 +139,9 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | Contract                  | Shape invariant                                                                 | Runtime responsibility                                                                 |
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `CapabilityDescriptor`    | One routed operation demand with its operation, access class, resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
-| `CapabilityPolicy`        | Exact `only`/`deny` selectors; omitted `only` is unrestricted and present empty `only` denies all | Intersect service, workspace, Worker, and loop layers |
-| `CapabilityProjection`    | Exact service, workspace, immutable Worker bound, mutable Worker, and normalized effective policies | Expose the resolver's Worker-level cascade to clients without claiming one layer is effective authority |
-| `LoopPolicy`              | Complete capability attenuation plus one `review`, `accept`, or `reject` proposal disposition | Snapshot once when the loop is created |
+| `CapabilityPolicy`        | Exact `only`/`deny` selectors; omitted `only` is unrestricted and present empty `only` denies all | Intersect service and workspace layers |
+| `CapabilityProjection`    | Exact service, workspace, and normalized effective policies | Expose the resolver's workspace cascade without claiming one layer is effective authority |
+| `LoopPolicy`              | One `review`, `accept`, or `reject` proposal disposition | Snapshot once when the loop is created |
 | `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
 | `ProposalProjection`      | Identity, `{ scheme, authority, pathname }` review target, body/attrs, effective policy, stale signal, disposition | Derive one validated projection for live delivery and durable reconnect discovery |
 | `ProviderUsage`           | Conventional input/output totals with cache and reasoning details                | Preserve observed quantities without replacing absence with zero                        |
@@ -157,7 +157,7 @@ least one selector must match. An empty policy admits everything and an empty
 
 §capability-policy-cascade Capability layers are purely subtractive and
 order-independent: a descriptor is admitted only when every layer admits it.
-No Worker or loop can restore service, workspace, or parent authority. A
+Workspace policy cannot restore authority denied by the service. A
 composed operation is admitted only when every routed demand survives. These
 descriptors govern routed external authority, not every grammar statement:
 log/program control such as log KILL, the native dispositions, and
@@ -166,16 +166,15 @@ access class `interact`; scheme and runtime manifests contribute traits rather
 than hidden policy behavior.
 
 §capability-policy-projection A `CapabilityProjection` reports every durable
-Worker-level layer and their normalized intersection. The `worker` field is the
-only client-mutable layer; `effective` is the authority a new unattenuated loop
-would receive. A client never derives effective authority from the mutable
-layer alone. Per-loop attenuation remains an immutable input to that loop and
-is therefore absent from this durable Worker projection.
+workspace layer and their normalized intersection: `service`, `workspace`, and
+`effective`. Only `workspace` is client-mutable. Workers and loops have no
+capability policy or inherited bound; every actor uses the same live workspace
+policy. A client never derives effective authority from the mutable layer alone.
 
 §loop-policy `DEFAULT_CAPABILITY_POLICY` and `DEFAULT_LOOP_POLICY` are the
 contracts-owned complete defaults. A loop policy is immutable after creation;
-its `capabilities` field only narrows broader authority and its `proposals`
-field chooses one unambiguous downstream settlement posture. Capability
+its `proposals` field chooses one downstream settlement posture, independently
+of workspace capability policy. Capability
 admission precedes effect classification and proposal settlement.
 
 §reasoning-policy-wire `ReasoningPolicy` is exactly `off | adaptive | low |

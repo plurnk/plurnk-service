@@ -33,7 +33,7 @@ test("a short prompt lands as one first-class prompt row", async () => {
 });
 
 test("a jumbo prompt renders an adaptive addressable chunk and the section lists its complete entry", async () => {
-    await withDaemon(mock(), async (db, _daemon, addr) => {
+    await withDaemon(mock(), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "par-long" });
@@ -66,9 +66,11 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
                 "the prompt body is addressed in the first packet-bearing turn");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(worker, "the model worker exists");
+            const [workspace] = await daemon.listWorkspaces();
+            assert.ok(workspace, "the model workspace exists");
             const recovered = await readLog(
                 readStmt(urlPath("log", new URL(bodyTarget!).pathname), { marks: [1, -1] }),
-                makeSchemeCtx({ db, workerId: worker!.worker_id, mimetypes: DEFAULT_MIMETYPES }),
+                makeSchemeCtx({ db, workspaceId: workspace.id, workerId: worker!.worker_id, mimetypes: DEFAULT_MIMETYPES }),
             );
             assert.equal(recovered.status, 200);
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");

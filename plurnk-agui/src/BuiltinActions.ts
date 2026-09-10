@@ -233,7 +233,6 @@ export default class BuiltinActions {
                     const [result] = await this.#seam().dispatchClientAction({
                         workspaceId: world.workspaceId,
                         workerId: world.workerId,
-                        functionalityWorkerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         statements: [statement],
                     });
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
@@ -281,7 +280,6 @@ export default class BuiltinActions {
                         : await this.#seam().dispatchClientAction({
                             workspaceId: world.workspaceId,
                             workerId: world.workerId,
-                            functionalityWorkerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                             statements,
                         });
                     let index = 0;
@@ -342,7 +340,6 @@ export default class BuiltinActions {
                     return operationOutcome(await this.#seam().look({
                         workspaceId: world.workspaceId,
                         workerId: world.workerId,
-                        functionalityWorkerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         statement,
                     }));
                 }
@@ -406,16 +403,14 @@ export default class BuiltinActions {
                         policy: p.policy,
                     }) };
                 }
-                case "worker.capabilities.get": {
-                    return { ok: true, result: await this.#seam().readWorkerCapabilities({
+                case "workspace.capabilities.get": {
+                    return { ok: true, result: await this.#seam().readWorkspaceCapabilities({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     }) };
                 }
-                case "worker.capabilities.set": {
-                    return { ok: true, result: await this.#seam().setWorkerCapabilities({
+                case "workspace.capabilities.set": {
+                    return { ok: true, result: await this.#seam().setWorkspaceCapabilities({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         policy: p.policy as CapabilityPolicy,
                     }) };
                 }

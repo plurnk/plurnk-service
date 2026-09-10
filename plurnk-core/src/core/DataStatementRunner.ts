@@ -80,8 +80,8 @@ export default class DataStatementRunner {
         }
         const resourceRead = statement.op === "READ" || statement.op === "FIND";
         const binding = resourceRead ? await ResourceBindings.resolve(statement.target, ctx) : undefined;
-        const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
-        const handler = (resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.functionalityWorkerId)) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
+        const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestFor(schemeName, ctx.workspaceId);
+        const handler = (resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.workspaceId)) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
         if (handler === undefined) {
             return this.#failure(
                 "scheme-not-found",

@@ -1,8 +1,8 @@
-// {§mcp-module} — the MCP family beneath the shared Worker Functionality
+// {§mcp-module} — the MCP family beneath the shared workspace Functionality
 // coordinator ({§functionality-adapter}). This module owns MCP protocol truth:
 // definitions from the POSIX cascade, inert discovery, connection preparation
 // with OAuth continuation, tool/resource publication, catalog refresh, and
-// teardown. The coordinator owns the lifecycle, durable Worker state, atomic
+// teardown. The coordinator owns the lifecycle, durable workspace state, atomic
 // publication, and both the client and model projections.
 import { fileURLToPath } from "node:url";
 import type {
@@ -80,9 +80,8 @@ type ModuleActionContext =
     | { readonly scope: "workspace"; readonly workspaceId: number }
     | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
 
-interface WorkerIdentity {
+interface WorkspaceIdentity {
     readonly workspaceId: number;
-    readonly workerId: number;
 }
 
 type Outcome =
@@ -90,7 +89,7 @@ type Outcome =
     | { readonly state: "unavailable"; readonly problem: ProblemDetails }
     | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
 
-interface Preparation extends WorkerIdentity {
+interface Preparation extends WorkspaceIdentity {
     readonly enabled: ReadonlyMap<string, object>;
     readonly previous: unknown | null;
     readonly failure: "publish-unavailable" | "reject";
@@ -115,20 +114,20 @@ interface FunctionalityAdapter {
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
     readonly docsDir?: string;
-    available(identity: WorkerIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: WorkerIdentity): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkerIdentity): Promise<{ alias: string; definition: object }>;
+    available(identity: WorkspaceIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
+    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: WorkspaceIdentity): Promise<{ alias: string; definition: object }>;
     prepare(preparation: Preparation): Promise<Prepared>;
-    teardown(snapshot: unknown, identity: WorkerIdentity): Promise<void>;
+    teardown(snapshot: unknown, identity: WorkspaceIdentity): Promise<void>;
 }
 
 interface FunctionalityFamilyHandle {
     invoke(
         verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
         params: unknown,
-        identity: WorkerIdentity,
+        identity: WorkspaceIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkerIdentity): Promise<void>;
+    refresh(identity: WorkspaceIdentity): Promise<void>;
 }
 
 interface ModuleSetupSeam {
@@ -173,13 +172,13 @@ const attachmentConnection = (attachment: Attachment): ServerConnection | undefi
     attachment.kind === "unavailable" ? undefined : attachment.connection;
 
 // {§oauth-lifetime} — a pending authorization is process memory per
-// (worker, alias): the challenged connection, its URL, the Worker residency it
+// (workspace, alias): the challenged connection, its URL, the workspace residency it
 // holds, and, once the callback lands, the prepared active attachment.
 interface PendingAuthorization {
     readonly definition: McpServerDefinition;
     readonly connection: ServerConnection;
     readonly authorizationUrl: string;
-    readonly releaseWorker: () => void;
+    readonly releaseWorkspace: () => void;
     prepared?: ActiveAttachment;
 }
 
@@ -311,9 +310,9 @@ const requiredString = (
     return value;
 };
 
-const workerIdentityOf = (context: ModuleActionContext): WorkerIdentity => {
-    if (context.scope !== "worker") throw new Error("MCP actions require a worker-scoped context.");
-    return { workspaceId: context.workspaceId, workerId: context.workerId };
+const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceIdentity => {
+    if (context.scope !== "workspace") throw new Error("MCP actions require a workspace-scoped context.");
+    return { workspaceId: context.workspaceId };
 };
 
 const sameDefinition = (left: McpServerDefinition, right: McpServerDefinition): boolean =>
@@ -345,15 +344,15 @@ export default class Module {
     readonly #expanded: Set<string>;
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
     readonly #defaultEnabled: ReadonlySet<string>;
-    // The committed attachments per Worker: the adapter's mirror of the snapshot
+    // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
-    readonly #identities = new Map<number, WorkerIdentity>();
+    readonly #identities = new Map<number, WorkspaceIdentity>();
     readonly #pending = new Map<string, PendingAuthorization>();
     readonly #dirty = new Set<string>();
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
-    readonly #retainWorker = new Map<number, () => () => void>();
+    readonly #retainWorkspace = new Map<number, () => () => void>();
     #handle: FunctionalityFamilyHandle | undefined;
     #closed = false;
 
@@ -394,15 +393,15 @@ export default class Module {
         });
         // Protocol continuations beneath the common grammar.
         seam.registerModuleAction({
-            name: "worker.mcp.oauth.complete",
-            scope: "worker",
+            name: "workspace.mcp.oauth.complete",
+            scope: "workspace",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, callbackUrl: NONEMPTY_STRING }, ["alias", "callbackUrl"]),
             outputSchema: MUTATION_RESULT,
-            handler: (params, context) => this.#completeOAuth(workerIdentityOf(context), params),
+            handler: (params, context) => this.#completeOAuth(workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
-            name: "worker.mcp.complete",
-            scope: "worker",
+            name: "workspace.mcp.complete",
+            scope: "workspace",
             inputSchema: actionInput({
                 server: NONEMPTY_STRING,
                 ref: OPEN_OBJECT,
@@ -410,7 +409,7 @@ export default class Module {
                 context: OPEN_OBJECT,
             }, ["server", "ref", "argument"]),
             outputSchema: OPEN_OBJECT,
-            handler: (params, context) => this.#complete(workerIdentityOf(context).workerId, params),
+            handler: (params, context) => this.#complete(workspaceIdentityOf(context).workspaceId, params),
         });
     }
 
@@ -423,14 +422,14 @@ export default class Module {
         return this.#handle;
     }
 
-    #pendingKey(workerId: number, name: string): string {
-        return `${workerId}:${name}`;
+    #pendingKey(workspaceId: number, name: string): string {
+        return `${workspaceId}:${name}`;
     }
 
-    #retain(workerId: number): () => void {
-        const retain = this.#retainWorker.get(workerId);
+    #retain(workspaceId: number): () => void {
+        const retain = this.#retainWorkspace.get(workspaceId);
         if (retain === undefined) {
-            throw new Error(`MCP worker ${workerId} has no Functionality residency context.`);
+            throw new Error(`MCP workspace ${workspaceId} has no Functionality residency context.`);
         }
         return retain();
     }
@@ -548,7 +547,7 @@ export default class Module {
     }
 
     async #prepareAttachment(
-        workerId: number,
+        workspaceId: number,
         definition: McpServerDefinition,
         connection?: ServerConnection,
     ): Promise<Attachment> {
@@ -559,7 +558,7 @@ export default class Module {
                     console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);
                     return;
                 }
-                this.#scheduleCatalogRefresh(workerId, definition.name);
+                this.#scheduleCatalogRefresh(workspaceId, definition.name);
             },
             onInfrastructureError: (error) => {
                 console.error(`MCP server '${definition.name}' infrastructure failure:`, error);
@@ -569,7 +568,7 @@ export default class Module {
         const executor = new McpExecutor(
             { runtime: definition.name, glyph: "🔌" },
             candidate,
-            () => this.#retain(workerId),
+            () => this.#retain(workspaceId),
             { tools: definition.tools ?? null, read: definition.read ?? [] },
             this.#summaries.tools,
         );
@@ -615,9 +614,9 @@ export default class Module {
     // closes only what this attempt opened.
     async #prepare(preparation: Preparation): Promise<Prepared> {
         this.#assertOpen();
-        const { workspaceId, workerId, enabled, failure, force } = preparation;
-        this.#identities.set(workerId, { workspaceId, workerId });
-        this.#retainWorker.set(workerId, preparation.retain);
+        const { workspaceId, enabled, failure, force } = preparation;
+        this.#identities.set(workspaceId, { workspaceId });
+        this.#retainWorkspace.set(workspaceId, preparation.retain);
         const previous = (preparation.previous as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
         for (const [name, attachment] of previous) {
             const nextDefinition = enabled.get(name) as McpServerDefinition | undefined;
@@ -638,11 +637,11 @@ export default class Module {
             for (const [name, value] of enabled) {
                 const definition = value as McpServerDefinition;
                 const existing = previous.get(name);
-                const pending = this.#pending.get(this.#pendingKey(workerId, name));
+                const pending = this.#pending.get(this.#pendingKey(workspaceId, name));
                 if (
                     existing !== undefined
                     && force !== name
-                    && !this.#dirty.has(this.#pendingKey(workerId, name))
+                    && !this.#dirty.has(this.#pendingKey(workspaceId, name))
                     && sameDefinition(existing.definition, definition)
                     && !(pending?.prepared !== undefined)
                 ) {
@@ -665,7 +664,7 @@ export default class Module {
                     // spawned, so neither abort nor commit has anything of this alias to close
                     // (#429: the committed server was being closed beneath an aborted attempt).
                     try {
-                        attachment = await this.#prepareAttachment(workerId, definition, heldConnection);
+                        attachment = await this.#prepareAttachment(workspaceId, definition, heldConnection);
                     } catch (cause) {
                         this.#assertOpen();
                         console.error(`MCP server '${name}' catalog refresh failed; the current catalog stays in service:`, cause);
@@ -673,7 +672,7 @@ export default class Module {
                     }
                 } else {
                     try {
-                        attachment = await this.#prepareAttachment(workerId, definition);
+                        attachment = await this.#prepareAttachment(workspaceId, definition);
                     } catch (cause) {
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
@@ -685,12 +684,12 @@ export default class Module {
                     if (attachment.kind !== "unavailable") fresh.push(attachment);
                 }
                 next.set(name, attachment);
-                this.#dirty.delete(this.#pendingKey(workerId, name));
+                this.#dirty.delete(this.#pendingKey(workspaceId, name));
             }
         } catch (cause) {
             const cleanup = await Promise.allSettled(fresh.map(({ connection }) => this.#closeOwned([connection])));
             const failures = cleanup.flatMap((result) => result.status === "rejected" ? errorsOf(result.reason) : []);
-            if (failures.length > 0) throw new AggregateError([cause, ...failures], "MCP worker preparation and cleanup failed.");
+            if (failures.length > 0) throw new AggregateError([cause, ...failures], "MCP workspace preparation and cleanup failed.");
             throw cause;
         }
         for (const [name, attachment] of next) {
@@ -707,29 +706,29 @@ export default class Module {
             outcomes,
             snapshot: next,
             commit: async () => {
-                this.#attachments.set(workerId, next);
+                this.#attachments.set(workspaceId, next);
                 const retained = new Set([...next.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []));
                 const pendingConnections = new Set([...this.#pending.values()].map(({ connection }) => connection));
                 const obsolete = [...previous.values()]
                     .flatMap((attachment) => attachmentConnection(attachment) ?? [])
                     .filter((connection) => !retained.has(connection) && !pendingConnections.has(connection));
                 for (const [name, pending] of consumedPending) {
-                    this.#pending.delete(this.#pendingKey(workerId, name));
-                    pending.releaseWorker();
+                    this.#pending.delete(this.#pendingKey(workspaceId, name));
+                    pending.releaseWorkspace();
                 }
                 for (const [name, attachment] of next) {
                     if (attachment.kind !== "authorization-required") continue;
-                    const key = this.#pendingKey(workerId, name);
+                    const key = this.#pendingKey(workspaceId, name);
                     const current = this.#pending.get(key);
                     if (current?.connection === attachment.connection) continue;
                     this.#pending.set(key, {
                         definition: attachment.definition,
                         connection: attachment.connection,
                         authorizationUrl: attachment.authorizationUrl,
-                        releaseWorker: this.#retain(workerId),
+                        releaseWorkspace: this.#retain(workspaceId),
                     });
                     if (current !== undefined) {
-                        current.releaseWorker();
+                        current.releaseWorkspace();
                         if (!retained.has(current.connection)) obsolete.push(current.connection);
                     }
                 }
@@ -741,7 +740,7 @@ export default class Module {
                             "obsolete-connection-close-failed",
                             500,
                             "The MCP capability change committed, but an obsolete connection did not close cleanly.",
-                            { workerId, committed: true, retryable: false },
+                            { workspaceId, committed: true, retryable: false },
                             cause,
                         );
                     }
@@ -753,33 +752,33 @@ export default class Module {
         };
     }
 
-    async #teardown(snapshot: unknown, identity: WorkerIdentity): Promise<void> {
-        const { workerId } = identity;
-        const pending = [...this.#pending.keys()].filter((key) => key.startsWith(`${workerId}:`));
+    async #teardown(snapshot: unknown, identity: WorkspaceIdentity): Promise<void> {
+        const { workspaceId } = identity;
+        const pending = [...this.#pending.keys()].filter((key) => key.startsWith(`${workspaceId}:`));
         if (pending.length > 0) {
-            throw new Error(`MCP worker ${workerId} cannot cool with pending OAuth residency.`);
+            throw new Error(`MCP workspace ${workspaceId} cannot cool with pending OAuth residency.`);
         }
         for (const [key, timer] of this.#refreshTimers) {
-            if (!key.startsWith(`${workerId}:`)) continue;
+            if (!key.startsWith(`${workspaceId}:`)) continue;
             clearTimeout(timer);
             this.#refreshTimers.delete(key);
         }
         const attachments = (snapshot as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
         const connections = [...attachments.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []);
-        this.#attachments.delete(workerId);
-        this.#retainWorker.delete(workerId);
-        this.#identities.delete(workerId);
+        this.#attachments.delete(workspaceId);
+        this.#retainWorkspace.delete(workspaceId);
+        this.#identities.delete(workspaceId);
         await this.#closeOwned(connections);
     }
 
     // {§oauth-continuation} — the callback finishes the pending connection's
     // authorization, prepares its attachment, and re-enables the alias through
     // the coordinator, which consumes the prepared attachment on publication.
-    async #completeOAuth(identity: WorkerIdentity, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    async #completeOAuth(identity: WorkspaceIdentity, params: Readonly<Record<string, unknown>>): Promise<unknown> {
         assertActionKeys(params, ["alias", "callbackUrl"]);
         const alias = requiredString(params, "alias");
         const callbackUrl = requiredString(params, "callbackUrl");
-        const key = this.#pendingKey(identity.workerId, alias);
+        const key = this.#pendingKey(identity.workspaceId, alias);
         const pending = this.#pending.get(key);
         if (pending === undefined) {
             // {§oauth-lifetime} — restart during pending authorization surfaces
@@ -788,22 +787,22 @@ export default class Module {
                 "oauth-not-pending",
                 404,
                 `MCP server '${alias}' has no pending OAuth authorization.`,
-                { workerId: identity.workerId, alias, retryable: false },
+                { workspaceId: identity.workspaceId, alias, retryable: false },
             );
         }
-        const current = this.#attachments.get(identity.workerId)?.get(alias);
+        const current = this.#attachments.get(identity.workspaceId)?.get(alias);
         if (current === undefined || current.kind !== "authorization-required" || !sameDefinition(current.definition, pending.definition)) {
             throw actionError(
                 "oauth-target-conflict",
                 409,
                 `MCP server '${alias}' changed while its OAuth authorization was pending.`,
-                { workerId: identity.workerId, alias, recovery: "Start authorization again from the server's current definition.", retryable: false },
+                { workspaceId: identity.workspaceId, alias, recovery: "Start authorization again from the server's current definition.", retryable: false },
             );
         }
         if (pending.prepared === undefined) {
             try {
                 await pending.connection.finishAuthorization(callbackUrl);
-                const prepared = await this.#prepareAttachment(identity.workerId, pending.definition, pending.connection);
+                const prepared = await this.#prepareAttachment(identity.workspaceId, pending.definition, pending.connection);
                 if (prepared.kind !== "active") throw new Error("OAuth completion returned another authorization challenge.");
                 pending.prepared = prepared;
             } catch (cause) {
@@ -811,7 +810,7 @@ export default class Module {
                     "oauth-callback-invalid",
                     400,
                     `OAuth authorization for MCP server '${alias}' could not be completed.`,
-                    { workerId: identity.workerId, alias, retryable: false },
+                    { workspaceId: identity.workspaceId, alias, retryable: false },
                     cause,
                 );
             }
@@ -820,16 +819,16 @@ export default class Module {
         return result.body;
     }
 
-    async #complete(workerId: number, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    async #complete(workspaceId: number, params: Readonly<Record<string, unknown>>): Promise<unknown> {
         assertActionKeys(params, ["server", "ref", "argument", "context"]);
         const server = requiredString(params, "server");
-        const attachment = this.#attachments.get(workerId)?.get(server);
+        const attachment = this.#attachments.get(workspaceId)?.get(server);
         if (attachment === undefined || attachment.kind !== "active") {
             throw actionError(
                 "server-not-connected",
                 409,
-                `MCP server '${server}' is not connected for this worker.`,
-                { workerId, name: server, retryable: false },
+                `MCP server '${server}' is not connected for this workspace.`,
+                { workspaceId, name: server, retryable: false },
             );
         }
         const ref = objectOf(params.ref);
@@ -846,19 +845,19 @@ export default class Module {
 
     // A live catalog change republishes the unchanged state; the dirty alias
     // rebuilds its executor on the next preparation.
-    #scheduleCatalogRefresh(workerId: number, name: string, attempt = 0): void {
+    #scheduleCatalogRefresh(workspaceId: number, name: string, attempt = 0): void {
         if (this.#closed) return;
-        const key = this.#pendingKey(workerId, name);
+        const key = this.#pendingKey(workspaceId, name);
         if (this.#refreshTimers.has(key)) return;
         const delay = Math.min(250 * (2 ** attempt), 5000);
         const timer = setTimeout(() => {
             this.#refreshTimers.delete(key);
-            const identity = this.#identities.get(workerId);
+            const identity = this.#identities.get(workspaceId);
             if (identity === undefined || this.#closed) return;
             this.#dirty.add(key);
             void this.#handleOrThrow().refresh(identity).catch((error: unknown) => {
                 if (statusOf(error) === 409) {
-                    this.#scheduleCatalogRefresh(workerId, name, attempt + 1);
+                    this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
                     return;
                 }
                 console.error(`MCP server '${name}' capability refresh failed:`, error);
@@ -875,9 +874,9 @@ export default class Module {
         this.#refreshTimers.clear();
         const closing = this.#closeOwned([...this.#connections]);
         this.#attachments.clear();
-        for (const pending of this.#pending.values()) pending.releaseWorker();
+        for (const pending of this.#pending.values()) pending.releaseWorkspace();
         this.#pending.clear();
-        this.#retainWorker.clear();
+        this.#retainWorkspace.clear();
         this.#identities.clear();
         await closing;
     }

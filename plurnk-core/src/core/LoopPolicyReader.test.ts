@@ -20,7 +20,7 @@ test("every invalid persisted representation fails causally at its loop coordina
         { raw: "null", causeName: "TypeError" },
         { raw: "[]", causeName: "TypeError" },
         { raw: "{}", causeName: InvalidLoopPolicyError.name },
-        { raw: JSON.stringify({ capabilities: {}, proposals: "auto" }), causeName: InvalidLoopPolicyError.name },
+        { raw: JSON.stringify({ proposals: "auto" }), causeName: InvalidLoopPolicyError.name },
         { raw: JSON.stringify({ extra: false }), causeName: InvalidLoopPolicyError.name },
     ];
 

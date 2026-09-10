@@ -30,7 +30,6 @@ import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecyc
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
-import type { AcquireWorkerCapabilities } from "./ResourceBindings.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import TurnRunner from "./TurnRunner.ts";
@@ -261,7 +260,7 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh, acquireWorkerCapabilities }: {
+    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -274,7 +273,6 @@ export default class Engine {
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
-        acquireWorkerCapabilities?: AcquireWorkerCapabilities;
         workspaceTurnStarting?: WorkspaceTurnStarting;
         noticeNotify?: NoticeNotify;
         weigh?: (text: string) => number;
@@ -324,7 +322,7 @@ export default class Engine {
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
             liveSubscriptions: this.#liveSubscriptions,
-            entryAddresses, acquireWorkerCapabilities });
+            entryAddresses });
         this.#turnRunner = new TurnRunner({
             db,
             schemes,
@@ -356,7 +354,7 @@ export default class Engine {
             wakeWorkerNotify,
             injectWorker,
             pushNotice: (workspaceId, workerId, loopId, notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
-            defaultChannelFor: (scheme, workerId) => schemes.defaultChannelFor(scheme, workerId),
+            defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
@@ -374,7 +372,7 @@ export default class Engine {
 
     // {§functionality-documents} — the coordinator's per-Worker generated
     // documents join the Worker's reference entries.
-    setFunctionalityDocuments(documents: (workerId: number) => Array<{ pathname: string; content: string }>): void {
+    setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ pathname: string; content: string }>): void {
         this.#packets.setFunctionalityDocuments(documents);
     }
 
@@ -412,22 +410,22 @@ export default class Engine {
         this.registerRuntimes([{ tag, entry, scheme }]);
     }
 
-    async prepareWorkerRuntimes(
-        workerId: number,
+    async prepareWorkspaceRuntimes(
+        workspaceId: number,
         namespaceOwner: string,
         registrations: readonly ModuleRuntimeRegistration[],
     ): Promise<() => () => void> {
         if (this.#executors === undefined) {
-            throw new Error("prepareWorkerRuntimes: executor registry not wired yet");
+            throw new Error("prepareWorkspaceRuntimes: executor registry not wired yet");
         }
         const normalized = Engine.#enabledRuntimes(registrations);
-        const commitExecutors = this.#executors.prepareWorkerRegistrations(
-            workerId,
+        const commitExecutors = this.#executors.prepareWorkspaceRegistrations(
+            workspaceId,
             namespaceOwner,
             normalized,
         );
-        const commitSchemes = await this.#schemes.prepareWorkerRuntimeSchemes(
-            workerId,
+        const commitSchemes = await this.#schemes.prepareWorkspaceRuntimeSchemes(
+            workspaceId,
             namespaceOwner,
             normalized.map(({ tag, entry, scheme }) => ({
                 tag,
@@ -551,14 +549,14 @@ export default class Engine {
     // {§op-look}: resolve a READ without writing a log_entries row.
     async look(context: {
         statement: PlurnkStatement;
-        workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         return this.#dispatcher.look(context);
     }
 
-    capabilityProjection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
-        return this.#dispatcher.capabilityProjection(workspaceId, workerId);
+    capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
+        return this.#dispatcher.capabilityProjection(workspaceId);
     }
 
     async resolveEntryAddress(context: {
@@ -621,7 +619,7 @@ export default class Engine {
     // promise and cannot reach its provider until coverage is complete.
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId, workerId: 0, functionalityWorkerId: 0, loopId: 0, turnId: 0,
+            db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
             writer: "_plurnk",
             signal: undefined,
             streamEventNotify: this.#streamEventNotify,
@@ -679,7 +677,7 @@ export default class Engine {
             prefix_len: prefix.length });
         const pathname = promptPathname(loopRow.sequence, ordinalRow?.next ?? 2);
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, functionalityWorkerId: workerId, loopId,
+            db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
             writer: "_plurnk",
             signal: this.#loopSignals.get(loopId),

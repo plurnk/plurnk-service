@@ -1,30 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
-test("workspace open context: known knobs map, unknown fields read as null, and the retired mdDocs channel is inert", async () => {
-    const read = WorkspaceSettings.read as unknown as (db: {
-        workspace_get_settings: {
-            get: (query: object) => Promise<{ settings: string } | undefined>;
-        };
-    }, workspaceId: number) => Promise<Record<string, unknown>>;
-    const result = await read({
-        workspace_get_settings: {
-            get: async () => ({
-                settings: JSON.stringify({
-                    filesItems: 3,
-                    git: false,
-                    fileCreateScope: "root",
-                    mdDocs: [{ alias: "POLICY", content: "# Policy" }],
-                }),
-            }),
-        },
-    }, 1);
-    assert.equal(result.filesItems, 3);
-    assert.equal(result.git, false);
-    assert.equal(result.fileCreateScope, "root");
-    assert.equal(result.maxCommands, null);
-    assert.equal(result.client, null);
-    assert.deepEqual(result.capabilities, {});
-    assert.equal("mdDocs" in result, false, "the retired channel contributes nothing");
+test("{§workspace-capability-policy}: absent workspace capabilities are unrestricted; invalid persisted policies fail at their owner", async () => {
+    const read = (settings: string) => WorkspaceSettings.read({
+        workspace_get_settings: { get: async () => ({ settings }) },
+    } as unknown as Db, 17);
+    assert.deepEqual((await read("{}")).capabilities, {});
+    assert.deepEqual((await read('{"capabilities":{"deny":[{"runtime":"sh"}]}}')).capabilities, {
+        deny: [{ runtime: "sh" }],
+    });
+    for (const capabilities of [null, false, [], { deny: [{}] }]) {
+        await assert.rejects(read(JSON.stringify({ capabilities })), (error) => {
+            assert.ok(error instanceof Error);
+            assert.equal(error.message, "Workspace 17 has invalid persisted capability policy.");
+            assert.ok(error.cause instanceof Error);
+            return true;
+        });
+    }
+    for (const settings of ["null", "[]", "{"]) {
+        await assert.rejects(read(settings), (error) => {
+            assert.ok(error instanceof Error);
+            assert.equal(error.message, "Workspace 17 has invalid persisted settings.");
+            assert.ok(error.cause instanceof Error);
+            return true;
+        });
+    }
 });

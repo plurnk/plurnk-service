@@ -16,7 +16,7 @@ import type { DispatchResult } from "./Dispatcher.ts";
 export default class LogWriter {
     readonly #db: Db;
     readonly #weighContent: (text: string) => number;
-    readonly #extractTarget: (path: ParsedPath | null, workerId: number) => { scheme: string | null; username: string | null; password: string | null; hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null; };
+    readonly #extractTarget: (path: ParsedPath | null, workspaceId: number) => { scheme: string | null; username: string | null; password: string | null; hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null; };
     readonly #canonColumns: (target: { scheme: string | null; pathname: string | null }, workspaceId: number) => Promise<void>;
     readonly #signalToJson: (signal: unknown) => string | null;
     readonly #isProposal: (statement: PlurnkStatement, result: DispatchResult) => boolean;
@@ -24,7 +24,7 @@ export default class LogWriter {
     constructor({ db, weighContent, extractTarget, canonColumns, signalToJson, isProposal }: {
         db: Db;
         weighContent: (text: string) => number;
-        extractTarget: (path: ParsedPath | null, workerId: number) => { scheme: string | null; username: string | null; password: string | null; hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null; };
+        extractTarget: (path: ParsedPath | null, workspaceId: number) => { scheme: string | null; username: string | null; password: string | null; hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null; };
         canonColumns: (target: { scheme: string | null; pathname: string | null }, workspaceId: number) => Promise<void>;
         signalToJson: (signal: unknown) => string | null;
         isProposal: (statement: PlurnkStatement, result: DispatchResult) => boolean;
@@ -48,15 +48,15 @@ export default class LogWriter {
     // {§reasoning-initial-read} — candidate receipt and committed receipt share
     // this representation. Preparing it neither writes nor publishes a log row.
     async prepareLog({
-        statement, result, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
-        workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
     }) {
         const durableStatement = DurableStatement.project(statement);
-        const target = this.#extractTarget(primaryTargetOf(durableStatement), functionalityWorkerId);
+        const target = this.#extractTarget(primaryTargetOf(durableStatement), workspaceId);
         const lineMarker = primaryLineMarkerOf(durableStatement);
         const lineMarkerJson = lineMarker !== null
             ? JSON.stringify(lineMarker)

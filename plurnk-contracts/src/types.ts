@@ -53,7 +53,6 @@ export const REASONING_POLICIES = Object.freeze(
 export const DEFAULT_CAPABILITY_POLICY: CapabilityPolicy = Object.freeze({});
 
 export const DEFAULT_LOOP_POLICY: LoopPolicy = Object.freeze({
-    capabilities: DEFAULT_CAPABILITY_POLICY,
     proposals: "review",
 });
 

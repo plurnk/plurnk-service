@@ -1,21 +1,21 @@
-export type WorkerCapabilityRelease = () => void;
+export type WorkspaceCapabilityRelease = () => void;
 
-export interface WorkerCapabilityPolicy {
+export interface WorkspaceCapabilityPolicy {
     readonly warmMs: number;
     readonly warmMax: number;
 }
 
-export interface WorkerCapabilityCallbacks {
-    readonly activate: (workerId: number) => Promise<void>;
-    readonly deactivate: (workerId: number) => Promise<boolean>;
-    readonly report: (workerId: number, error: unknown) => void;
+export interface WorkspaceCapabilityCallbacks {
+    readonly activate: (workspaceId: number) => Promise<void>;
+    readonly deactivate: (workspaceId: number) => Promise<boolean>;
+    readonly report: (workspaceId: number, error: unknown) => void;
 }
 
-type WorkerCapabilityPhase = "activating" | "active" | "cooling";
+type WorkspaceCapabilityPhase = "activating" | "active" | "cooling";
 
-interface WorkerCapabilityState {
-    readonly workerId: number;
-    phase: WorkerCapabilityPhase;
+interface WorkspaceCapabilityState {
+    readonly workspaceId: number;
+    phase: WorkspaceCapabilityPhase;
     leases: number;
     transition: Promise<void> | null;
     idleOrder: number | null;
@@ -33,28 +33,28 @@ const readBound = (env: NodeJS.ProcessEnv, name: string): number => {
     return value;
 };
 
-export const workerCapabilityPolicy = (
+export const workspaceCapabilityPolicy = (
     env: NodeJS.ProcessEnv = process.env,
-): WorkerCapabilityPolicy => ({
-    warmMs: readBound(env, "PLURNK_SERVICE_WORKER_WARM_MS"),
-    warmMax: readBound(env, "PLURNK_SERVICE_WORKER_WARM_MAX"),
+): WorkspaceCapabilityPolicy => ({
+    warmMs: readBound(env, "PLURNK_SERVICE_WORKSPACE_WARM_MS"),
+    warmMax: readBound(env, "PLURNK_SERVICE_WORKSPACE_WARM_MAX"),
 });
 
-// {§module-worker-residency} — one process-local owner separates durable
-// worker identity from optional Functionality residency. Leases represent
+// {§module-workspace-residency} — one process-local owner separates durable
+// workspace identity from optional Functionality residency. Leases represent
 // actual work; timers and the idle LRU are availability policy, not identity.
-export default class WorkerCapabilities {
-    readonly #policy: WorkerCapabilityPolicy;
-    readonly #activate: WorkerCapabilityCallbacks["activate"];
-    readonly #deactivate: WorkerCapabilityCallbacks["deactivate"];
-    readonly #report: WorkerCapabilityCallbacks["report"];
-    readonly #states = new Map<number, WorkerCapabilityState>();
+export default class WorkspaceCapabilities {
+    readonly #policy: WorkspaceCapabilityPolicy;
+    readonly #activate: WorkspaceCapabilityCallbacks["activate"];
+    readonly #deactivate: WorkspaceCapabilityCallbacks["deactivate"];
+    readonly #report: WorkspaceCapabilityCallbacks["report"];
+    readonly #states = new Map<number, WorkspaceCapabilityState>();
     #idleSequence = 0;
     #stopping = false;
 
     constructor(
-        policy: WorkerCapabilityPolicy,
-        callbacks: WorkerCapabilityCallbacks,
+        policy: WorkspaceCapabilityPolicy,
+        callbacks: WorkspaceCapabilityCallbacks,
     ) {
         this.#policy = policy;
         this.#activate = callbacks.activate;
@@ -62,19 +62,19 @@ export default class WorkerCapabilities {
         this.#report = callbacks.report;
     }
 
-    async acquire(workerId: number): Promise<WorkerCapabilityRelease> {
-        WorkerCapabilities.#assertWorkerId(workerId);
-        if (this.#stopping) throw new Error("Worker Functionality is stopping.");
+    async acquire(workspaceId: number): Promise<WorkspaceCapabilityRelease> {
+        WorkspaceCapabilities.#assertWorkspaceId(workspaceId);
+        if (this.#stopping) throw new Error("Workspace Functionality is stopping.");
 
         for (;;) {
-            const current = this.#states.get(workerId);
+            const current = this.#states.get(workspaceId);
             if (current?.phase === "cooling") {
                 await current.transition;
-                if (this.#stopping) throw new Error("Worker Functionality is stopping.");
+                if (this.#stopping) throw new Error("Workspace Functionality is stopping.");
                 continue;
             }
 
-            const state = current ?? this.#beginActivation(workerId);
+            const state = current ?? this.#beginActivation(workspaceId);
             this.#cancelIdle(state);
             state.leases++;
             try {
@@ -85,33 +85,33 @@ export default class WorkerCapabilities {
             }
             if (this.#stopping) {
                 this.#release(state);
-                throw new Error("Worker Functionality is stopping.");
+                throw new Error("Workspace Functionality is stopping.");
             }
             return this.#releaseOnce(state);
         }
     }
 
-    retain(workerId: number): WorkerCapabilityRelease {
-        WorkerCapabilities.#assertWorkerId(workerId);
-        if (this.#stopping) throw new Error("Worker Functionality is stopping.");
-        const state = this.#states.get(workerId);
+    retain(workspaceId: number): WorkspaceCapabilityRelease {
+        WorkspaceCapabilities.#assertWorkspaceId(workspaceId);
+        if (this.#stopping) throw new Error("Workspace Functionality is stopping.");
+        const state = this.#states.get(workspaceId);
         if (state === undefined || state.phase === "cooling") {
-            throw new Error(`Worker ${workerId} Functionality is not resident.`);
+            throw new Error(`Workspace ${workspaceId} Functionality is not resident.`);
         }
         this.#cancelIdle(state);
         state.leases++;
         return this.#releaseOnce(state);
     }
 
-    activeWorkerIds(): number[] {
+    activeWorkspaceIds(): number[] {
         return [...this.#states.values()]
             .filter(({ phase }) => phase === "active")
-            .map(({ workerId }) => workerId)
+            .map(({ workspaceId }) => workspaceId)
             .toSorted((left, right) => left - right);
     }
 
-    isActive(workerId: number): boolean {
-        return this.#states.get(workerId)?.phase === "active";
+    isActive(workspaceId: number): boolean {
+        return this.#states.get(workspaceId)?.phase === "active";
     }
 
     beginStop(): void {
@@ -120,41 +120,41 @@ export default class WorkerCapabilities {
         for (const state of this.#states.values()) this.#cancelIdle(state);
     }
 
-    static #assertWorkerId(workerId: number): void {
-        if (!Number.isSafeInteger(workerId) || workerId < 1) {
-            throw new Error("Worker Functionality residency requires a positive worker id.");
+    static #assertWorkspaceId(workspaceId: number): void {
+        if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
+            throw new Error("Workspace Functionality residency requires a positive workspace id.");
         }
     }
 
-    #beginActivation(workerId: number): WorkerCapabilityState {
-        const state: WorkerCapabilityState = {
-            workerId,
+    #beginActivation(workspaceId: number): WorkspaceCapabilityState {
+        const state: WorkspaceCapabilityState = {
+            workspaceId,
             phase: "activating",
             leases: 0,
             transition: null,
             idleOrder: null,
             timer: null,
         };
-        this.#states.set(workerId, state);
+        this.#states.set(workspaceId, state);
         state.transition = Promise.resolve()
-            .then(() => this.#activate(workerId))
+            .then(() => this.#activate(workspaceId))
             .then(() => {
-                if (this.#states.get(workerId) !== state) return;
+                if (this.#states.get(workspaceId) !== state) return;
                 state.phase = "active";
                 state.transition = null;
                 if (state.leases === 0) this.#markIdle(state);
             })
             .catch((cause: unknown) => {
-                if (this.#states.get(workerId) === state) {
+                if (this.#states.get(workspaceId) === state) {
                     this.#cancelIdle(state);
-                    this.#states.delete(workerId);
+                    this.#states.delete(workspaceId);
                 }
                 throw cause;
             });
         return state;
     }
 
-    #releaseOnce(state: WorkerCapabilityState): WorkerCapabilityRelease {
+    #releaseOnce(state: WorkspaceCapabilityState): WorkspaceCapabilityRelease {
         let released = false;
         return () => {
             if (released) return;
@@ -163,20 +163,20 @@ export default class WorkerCapabilities {
         };
     }
 
-    #release(state: WorkerCapabilityState): void {
+    #release(state: WorkspaceCapabilityState): void {
         if (state.leases === 0) return;
         state.leases--;
         if (
             state.leases === 0
             && state.phase === "active"
-            && this.#states.get(state.workerId) === state
+            && this.#states.get(state.workspaceId) === state
             && !this.#stopping
         ) {
             this.#markIdle(state);
         }
     }
 
-    #markIdle(state: WorkerCapabilityState): void {
+    #markIdle(state: WorkspaceCapabilityState): void {
         if (state.phase !== "active" || state.leases !== 0 || this.#stopping) return;
         this.#cancelIdle(state);
         state.idleOrder = ++this.#idleSequence;
@@ -184,7 +184,7 @@ export default class WorkerCapabilities {
         this.#enforceWarmMaximum();
     }
 
-    #scheduleCooling(state: WorkerCapabilityState, delayMs: number): void {
+    #scheduleCooling(state: WorkspaceCapabilityState, delayMs: number): void {
         if (delayMs < 0 || state.phase !== "active" || state.leases !== 0 || this.#stopping) return;
         if (delayMs === 0) {
             queueMicrotask(() => { void this.#cool(state); });
@@ -207,21 +207,21 @@ export default class WorkerCapabilities {
         }
     }
 
-    async #cool(state: WorkerCapabilityState): Promise<void> {
+    async #cool(state: WorkspaceCapabilityState): Promise<void> {
         if (
             this.#stopping
             || state.phase !== "active"
             || state.leases !== 0
-            || this.#states.get(state.workerId) !== state
+            || this.#states.get(state.workspaceId) !== state
         ) return;
         this.#cancelIdle(state);
         state.phase = "cooling";
         const transition = Promise.resolve()
-            .then(() => this.#deactivate(state.workerId))
+            .then(() => this.#deactivate(state.workspaceId))
             .then((cooled) => {
-                if (this.#states.get(state.workerId) !== state) return;
+                if (this.#states.get(state.workspaceId) !== state) return;
                 if (cooled) {
-                    this.#states.delete(state.workerId);
+                    this.#states.delete(state.workspaceId);
                     return;
                 }
                 state.phase = "active";
@@ -230,18 +230,18 @@ export default class WorkerCapabilities {
                 this.#scheduleCooling(state, COOLING_RETRY_MS);
             })
             .catch((cause: unknown) => {
-                if (this.#states.get(state.workerId) !== state) return;
+                if (this.#states.get(state.workspaceId) !== state) return;
                 state.phase = "active";
                 state.transition = null;
                 state.idleOrder = ++this.#idleSequence;
-                this.#report(state.workerId, cause);
+                this.#report(state.workspaceId, cause);
                 this.#scheduleCooling(state, COOLING_RETRY_MS);
             });
         state.transition = transition;
         await transition;
     }
 
-    #cancelIdle(state: WorkerCapabilityState): void {
+    #cancelIdle(state: WorkspaceCapabilityState): void {
         if (state.timer !== null) clearTimeout(state.timer);
         state.timer = null;
         state.idleOrder = null;

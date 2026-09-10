@@ -132,7 +132,7 @@ export default class ResourceTransfers {
         const selected = await this.#selection.selectSource(resolvedSource, ctx, "MOVE");
         if (MutationEffects.isDispatchResult(selected)) return selected;
 
-        const handler = this.#schemes.get(resolvedSource.scheme, ctx.functionalityWorkerId);
+        const handler = this.#schemes.get(resolvedSource.scheme, ctx.workspaceId);
         if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
         if (!ResourceTransfers.#curatedSource(resolvedSource)) {
             const sourceBinding = await this.#resolveDataEntryAddress({
@@ -303,7 +303,7 @@ export default class ResourceTransfers {
             source.lineMarker === null ? "delete" : "update",
         );
         if (ResourceTransfers.#curatedSource(source)) {
-            const handler = this.#schemes.get(source.scheme, ctx.functionalityWorkerId) as
+            const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as
                 { kill?: (pathname: string, scope: LineMarker | null, ctx: SchemeCtxImpl) => Promise<DispatchResult> } | undefined;
             if (handler?.kill === undefined) {
                 throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' curates nothing.`);
@@ -316,7 +316,7 @@ export default class ResourceTransfers {
             return MutationEffects.finalizeEffects(Results.assert(curated), source, [effect]);
         }
         if (source.lineMarker === null) {
-            const handler = this.#schemes.get(source.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+            const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler | undefined;
             if (handler === undefined) {
                 throw new InvalidOperationResultError(
                     `Resolved MOVE source scheme '${source.scheme}' is no longer registered.`,
@@ -366,7 +366,7 @@ export default class ResourceTransfers {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(destination.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(destination.scheme, ctx.workspaceId) as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE destination scheme '${destination.scheme}' is no longer registered.`,
@@ -661,7 +661,7 @@ export default class ResourceTransfers {
         ctx: PlurnkSchemeContext,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId) as SchemeHandler | undefined;
         if (typeof handler?.editBatch !== "function") {
             return MutationEffects.failure(
                 "operation-not-implemented",

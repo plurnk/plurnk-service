@@ -56,8 +56,8 @@ the owning declaration specifies its meaning.
 | --- | --- |
 | Startup defaults or installed plugin configuration | The daemon's environment cascade. A remote client's shell does not change it. |
 | Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
-| MCPs, skills, agents | Worker Functionality: list, discover, add, enable, disable, remove. Children inherit their parent's effective selection. |
-| External capabilities | Service policy is a ceiling; workspace, Worker, and loop layers can narrow it. Hiding a doc does not grant or revoke authority. |
+| MCPs, skills, agents | Workspace Functionality: list, discover, add, enable, disable, remove. Workers share the workspace's current selection. |
+| External capabilities | Service policy is a ceiling; workspace policy can narrow it for every worker. Hiding a doc does not grant or revoke authority. |
 | Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
 | File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
 | User-facing behavior | Operating policy; use configuration for runtime controls. |
@@ -77,13 +77,13 @@ a model cannot widen their ceiling by changing its policy prose.
 ## Skills
 
 Project names shadow global names, which shadow service-provided skills.
-Plurnk's own skill uses the same discovery, READ, and per-Worker enablement as
+Plurnk's own skill uses the same discovery, READ, and workspace enablement as
 installed skills. It is not copied into a universal root.
 
-Clients use `worker.skills.{list,discover,add,enable,disable,remove}`; models use
+Clients use `workspace.skills.{list,discover,add,enable,disable,remove}`; models use
 the generated `skills` executor. `discover` returns candidates without
 installation. `add` installs through the standard skills CLI into the chosen
-project or global scope; `remove` uninstalls a Worker-origin installation.
+project or global scope; `remove` uninstalls a workspace-origin installation.
 Service-provided entries can be disabled, not uninstalled through that action.
 An external installer changes the available catalog at the next turn.
 

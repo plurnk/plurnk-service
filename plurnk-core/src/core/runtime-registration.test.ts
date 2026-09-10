@@ -98,7 +98,7 @@ test("{§executor-policy} module runtimes share package discovery's executor swi
                     engine.setExecutors(executors);
                     const registrations = [registration("alpha"), registration("beta")];
                     if (workerId === undefined) engine.registerRuntimes(registrations);
-                    else (await engine.prepareWorkerRuntimes(workerId, "@acme/module", registrations))();
+                    else (await engine.prepareWorkspaceRuntimes(workerId, "@acme/module", registrations))();
                     for (const tag of ["alpha", "beta"]) {
                         assert.equal(executors.entry(tag, workerId) !== undefined, expected.includes(tag), `${tag} executor`);
                         assert.equal(schemes.has(tag, workerId), expected.includes(tag), `${tag} scheme`);

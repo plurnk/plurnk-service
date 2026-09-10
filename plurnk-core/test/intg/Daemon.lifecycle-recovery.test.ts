@@ -34,7 +34,7 @@ const enqueueLoop = async (
         spawn_model_route_id: null,
         reasoning_policy: "adaptive",
         max_turns: 50,
-        policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
+        policy: JSON.stringify({ proposals: "review" }),
         open_paths: "[]",
         scheduled_at: null,
         repeat_interval_ms: null,
@@ -54,12 +54,11 @@ test("boot restores a drain for accepted queued work", async () => {
     const activations: number[] = [];
     daemon.registerModule({
         setup: (seam) => {
-            seam.registerWorkerCapabilityProvider("recovery activation fixture", {
-                activate: async ({ workspaceId, workerId }) => {
-                    activations.push(workerId);
-                    await seam.replaceWorkerCapabilities({
+            seam.registerWorkspaceCapabilityProvider("recovery activation fixture", {
+                activate: async ({ workspaceId }) => {
+                    activations.push(workspaceId);
+                    await seam.replaceWorkspaceCapabilities({
                         workspaceId,
-                        workerId,
                         namespaceOwner: "recovery activation fixture",
                         state: null,
                         runtimes: [],
@@ -84,8 +83,8 @@ test("boot restores a drain for accepted queued work", async () => {
         assert.equal(mock.remaining, 0, "the recovered queue was executed, not merely relabelled");
         assert.deepEqual(
             activations,
-            [workerId],
-            "durable queued work activates its worker without a client attachment",
+            [workspaceId],
+            "durable queued work activates workspace Functionality without a client attachment",
         );
     } finally {
         await daemon.stop();
@@ -310,7 +309,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             worker_id: workerId,
             prompt: "first orphan",
             prompt_source: "worker://sender-1",
-            policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
+            policy: JSON.stringify({ proposals: "review" }),
             model_route_id: await routeForSpec(db, providerSpec),
             spawn_model_route_id: null,
             reasoning_policy: "adaptive",

@@ -131,11 +131,11 @@ const mockSeam = () => {
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
         readWorkerReasoning: async () => ({ policy: null, source: "default", supportedPolicies: [] }),
-        readWorkerCapabilities: async () => ({
-            service: {}, workspace: {}, workerBound: {}, worker: {}, effective: {},
+        readWorkspaceCapabilities: async () => ({
+            service: {}, workspace: {}, effective: {},
         }),
-        setWorkerCapabilities: async ({ policy }) => ({
-            service: {}, workspace: {}, workerBound: {}, worker: policy, effective: policy,
+        setWorkspaceCapabilities: async ({ policy }) => ({
+            service: {}, workspace: policy, effective: policy,
         }),
         setWorkerModel: async ({ selector }) => {
             modelSets.push({ selector });
@@ -2154,8 +2154,8 @@ test("discover returns the exact public action and notification membership", asy
             "ping",
             "providers.list",
             "run.fork",
-            "worker.capabilities.get",
-            "worker.capabilities.set",
+            "workspace.capabilities.get",
+            "workspace.capabilities.set",
             "worker.child.set",
             "worker.model.get",
             "worker.model.set",
@@ -2379,7 +2379,6 @@ test("a message AG-UI Run forwards model selection and general loop policy into 
                 selector: "fireslow",
                 childSelector: "firefast",
                 policy: {
-                    capabilities: { deny: [{ operation: "EXEC" }] },
                     proposals: "review",
                 },
             } },
@@ -2389,7 +2388,6 @@ test("a message AG-UI Run forwards model selection and general loop policy into 
         assert.equal(loopRuns[0].selector, "fireslow", "the parent selector forwards off forwardedProps.plurnk");
         assert.equal(loopRuns[0].childSelector, "firefast", "the child selector rides the same per-loop wire");
         assert.deepEqual(loopRuns[0].policy, {
-            capabilities: { deny: [{ operation: "EXEC" }] },
             proposals: "review",
         }, "the adapter forwards the general loop policy without inventing a named mode");
     } finally { await mod.close(); }

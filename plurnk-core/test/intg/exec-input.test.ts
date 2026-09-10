@@ -35,7 +35,7 @@ class Dialogue extends BaseExecutor {
     }
 }
 
-const fixture = async (executor: Executor, workerScoped = false) => {
+const fixture = async (executor: Executor, workspaceScoped = false) => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes });
@@ -44,16 +44,16 @@ const fixture = async (executor: Executor, workerScoped = false) => {
         summary: "Interactive fixture", invocation: { body: { role: "program", required: true }, signature: "program" },
         details: "", available: true, detail: undefined,
     };
-    const registry = new ExecutorRegistry(new Map(workerScoped ? [] : [[executor.runtime, entry]]));
+    const registry = new ExecutorRegistry(new Map(workspaceScoped ? [] : [[executor.runtime, entry]]));
     engine.setExecutors(registry);
     schemes.registerRuntimeSchemes(registry);
     const workspaceId = await insertWorkspace(db, `input-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1);
     const turnId = await insertTurn(db, loopId, 1, 102);
-    if (workerScoped) {
-        registry.prepareWorkerRegistrations(workerId, "input fixture", [{ tag: executor.runtime, entry }])();
-        (await schemes.prepareWorkerRuntimeSchemes(workerId, "input fixture", [{ tag: executor.runtime, executor, owner: entry.namespaceOwner }]))();
+    if (workspaceScoped) {
+        registry.prepareWorkspaceRegistrations(workspaceId, "input fixture", [{ tag: executor.runtime, entry }])();
+        (await schemes.prepareWorkspaceRuntimeSchemes(workspaceId, "input fixture", [{ tag: executor.runtime, executor, owner: entry.namespaceOwner }]))();
     }
     let sequence = 0;
     const dispatch = (source: string, onDispatch?: (id: number) => void) => {
@@ -66,8 +66,8 @@ const fixture = async (executor: Executor, workerScoped = false) => {
     };
     return { db, engine, schemes, dispatch, workerId, workspaceId, loopId, turnId,
         withdraw: async () => {
-            registry.prepareWorkerRegistrations(workerId, "input fixture", [])();
-            (await schemes.prepareWorkerRuntimeSchemes(workerId, "input fixture", []))();
+            registry.prepareWorkspaceRegistrations(workspaceId, "input fixture", [])();
+            (await schemes.prepareWorkspaceRuntimeSchemes(workspaceId, "input fixture", []))();
         },
         close: async () => { await (schemes.get("exec") as Exec).idle(); await db.close(); } };
 };
@@ -82,7 +82,7 @@ test("{§exec-input}: SEND reaches an invocation-local plugin receiver without a
         assert.equal(result.status, 200);
         assert.equal(result.accepted, true);
         assert.deepEqual(executor.received, [{ body: "raw {JSON} and newline\n", metadata: ["custom=exact"] }]);
-        assert.deepEqual(f.schemes.manifestFor("dialogue", f.workerId)?.writableBy, ["plugin"]);
+        assert.deepEqual(f.schemes.manifestFor("dialogue", f.workspaceId)?.writableBy, ["plugin"]);
         assert.equal((await f.dispatch("```EDIT (dialogue:///1/1/1/dialogue)\nnot input\n```")).status, 403);
         assert.equal((await f.dispatch("```READ (dialogue:///1/1/1/dialogue) {custom=exact}```")).status, 400);
         assert.equal((await f.dispatch("```FIND (dialogue:///*) {custom=exact}```")).status, 400);
@@ -130,7 +130,7 @@ test("{§exec-input}: owner, SEND capability, and original runtime capability ar
         assert.equal(other.status, 403);
         assert.match(other.problem?.type ?? "", /input-owner-forbidden$/);
         for (const deny of [{ operation: "SEND" }, { operation: "EXEC", runtime: "dialogue" }]) {
-            await f.db.engine_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "review", capabilities: { deny: [deny] } }) });
+            await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [deny] }) });
             const result = await f.dispatch("```SEND (dialogue:///1/1/1/dialogue)\nno\n```");
             assert.equal(result.status, 403);
             assert.match(result.problem?.type ?? "", /capability-denied$/);
@@ -181,7 +181,7 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
         const inputId = Promise.withResolvers<number>();
         const pending = f.dispatch("```SEND (dialogue:///1/1/1/dialogue)\nnot delivered\n```", inputId.resolve);
         const logId = await inputId.promise;
-        await f.db.engine_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "review", capabilities: { deny: [{ operation: "EXEC", runtime: "dialogue" }] } }) });
+        await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [{ operation: "EXEC", runtime: "dialogue" }] }) });
         f.engine.resolveProposal(logId, { decision: "accept" });
         const denied = await pending;
         assert.equal(denied.status, 403);
@@ -193,7 +193,7 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
 test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the dispatcher", async () => {
     const f = await fixture(new Common({ runtime: "node", glyph: "n" }));
     try {
-        await f.db.engine_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "accept", capabilities: {} }) });
+        await f.db.engine_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "accept" }) });
         const start = await f.dispatch("````node {stdin=open}\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
         const sent = await f.dispatch("````SEND (node:///1/1/1/node) {eof=true}\nexact α\n\n````");

@@ -100,7 +100,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     workerId: binding.task.id,
                     prompt: textOf(request.userMessage),
                     source: PlurnkAgentExecutor.#source(request),
-                    policy: { capabilities: {}, proposals: "reject" },
+                    policy: { proposals: "reject" },
                 });
             }, workspaceId, () => {
                 events.publish(AgentEvent.task(snapshot));

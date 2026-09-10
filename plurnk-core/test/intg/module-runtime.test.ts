@@ -189,21 +189,21 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
     }
 });
 
-test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the named attachment, channel, and storage", async () => {
+test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the workspace attachment and channel", async () => {
     const db = await openMigrated();
     try {
         const { engine, schemes } = wire(db);
         const workspaceId = await insertWorkspace(db, "resource-owners");
         const alice = await insertWorker(db, workspaceId, null, "alice");
-        const bob = await insertWorker(db, workspaceId, null, "bob");
+        await insertWorker(db, workspaceId, null, "bob");
         await insertWorker(db, workspaceId, null, "detached");
         const otherWorkspace = await insertWorkspace(db, "unrelated-resources");
         await insertWorker(db, otherWorkspace, null, "outsider");
         const loopId = await insertLoop(db, alice, 1);
         const turnId = await insertTurn(db, loopId, 1);
         const calls: string[] = [];
-        for (const [owner, name] of [[alice, "alice"], [bob, "bob"]] as const) {
-            const channel = name === "alice" ? "results" : "body";
+        for (const [workspace, name] of [[workspaceId, "shared"], [otherWorkspace, "other"]] as const) {
+            const channel = name === "shared" ? "results" : "body";
             const facet: RuntimeSchemeFacet = {
                 claims: (pathname) => pathname.startsWith("/resources"),
                 prepareRepresentation: async (request, ctx) => {
@@ -217,7 +217,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the nam
                 },
                 find: async (statement, ctx) => ctx.entries.operations.find(statement),
             };
-            (await engine.prepareWorkerRuntimes(owner, "fixture", [{ tag: "myserver", entry: fakeEntry("myserver", "fixture", channel), scheme: facet }]))();
+            (await engine.prepareWorkspaceRuntimes(workspace, "fixture", [{ tag: "myserver", entry: fakeEntry("myserver", "fixture", channel), scheme: facet }]))();
         }
         const parse = (body: string) => {
             const parsed = PlurnkParser.parseStatements(body);
@@ -232,13 +232,13 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the nam
             workspaceId, workerId: alice, loopId,
             statement: parse(`\`\`\`READ (${uri}) <1,-1>\`\`\``),
         });
-        assert.equal((await read("myserver:///resources/item")).content, "alice's resource");
-        assert.equal((await read("myserver://bob/resources/item")).content, "bob's resource");
-        assert.equal((await read("myserver:///resources/item")).content, "alice's resource", "the cross-worker read never overwrites Alice's copy");
+        assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
+        assert.equal((await read("myserver://bob/resources/item")).content, "shared's resource");
+        assert.equal((await read("myserver:///resources/item")).content, "shared's resource", "a worker qualifier does not select a different attachment");
         assert.equal((await read("myserver://absent/resources/item")).status, 404);
         assert.equal((await read("myserver://outsider/resources/item")).status, 404, "resource resolution never crosses workspace identity");
-        assert.equal((await read("myserver://detached/resources/item")).status, 501, "no fallback to Alice's attachment");
-        assert.deepEqual(calls, ["alice", "bob", "alice"]);
+        assert.equal((await read("myserver://detached/resources/item")).content, "shared's resource", "a worker does not need its own attachment");
+        assert.deepEqual(calls, ["shared", "shared", "shared", "shared"]);
         let sequence = 1;
         const dispatch = (body: string) => engine.dispatch({
             workspaceId, workerId: alice, loopId, turnId, sequence: sequence++, origin: "model",
@@ -250,7 +250,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the nam
         const copied = await dispatch("```COPY (myserver://bob/resources/item) (worker://~/copy.txt)```");
         assert.equal(copied.status, 201, JSON.stringify(copied));
         const copy = await read("worker://~/copy.txt");
-        assert.equal(copy.content, "bob's resource");
+        assert.equal(copy.content, "shared's resource");
 
         const received: string[] = [];
         const consumer = fakeEntry("consumer");
@@ -270,7 +270,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the nam
         const executed = await dispatch(PlurnkParser.frame("consumer (myserver://bob/resources/item)", "caller input"));
         assert.equal(executed.status, 200, JSON.stringify(executed));
         await (schemes.get("exec") as Exec).idle();
-        assert.deepEqual(received, ["bob's resource"]);
+        assert.deepEqual(received, ["shared's resource"]);
 
         const child = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Isolated answer.", reasoning: null } }] });
         const result = await engine.runTurn({
@@ -281,6 +281,6 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the nam
             ].join("\n\n"), reasoning: null } }] }),
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["bob's resource\n\nAnalyze this."]]);
+        assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["shared's resource\n\nAnalyze this."]]);
     } finally { await db.close(); }
 });

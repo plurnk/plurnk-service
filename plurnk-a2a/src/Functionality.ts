@@ -1,8 +1,8 @@
-// {§a2a-agents-functionality} — outbound A2A agents as one Worker Functionality
+// {§a2a-agents-functionality} — outbound A2A agents as one workspace Functionality
 // family named `agents`. The adapter owns protocol truth: the environment's
 // definitions, inert Agent Card discovery, admission of an authored definition,
 // two-phase preparation (card discovery + HTTP+JSON client per alias), and the
-// per-Worker snapshot the `a2a` scheme resolves aliases against. The family is
+// workspace snapshot the `a2a` scheme resolves aliases against. The family is
 // not tagged `a2a` because every executor tag is also a scheme face and would
 // collide with the `a2a://` resource scheme.
 import { fileURLToPath } from "node:url";
@@ -28,9 +28,8 @@ const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/u;
 
 // Structural views of the core seam, as every module declares them.
-interface WorkerIdentity {
+interface WorkspaceIdentity {
     readonly workspaceId: number;
-    readonly workerId: number;
 }
 
 type Outcome =
@@ -38,7 +37,7 @@ type Outcome =
     | { readonly state: "unavailable"; readonly problem: ProblemDetails }
     | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
 
-interface Preparation extends WorkerIdentity {
+interface Preparation extends WorkspaceIdentity {
     readonly enabled: ReadonlyMap<string, object>;
     readonly previous: unknown | null;
     readonly failure: "publish-unavailable" | "reject";
@@ -59,9 +58,9 @@ export interface FunctionalityFamilyHandle {
     invoke(
         verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
         params: unknown,
-        identity: WorkerIdentity,
+        identity: WorkspaceIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkerIdentity): Promise<void>;
+    refresh(identity: WorkspaceIdentity): Promise<void>;
 }
 
 interface Attachment {
@@ -179,11 +178,11 @@ export default class A2aFunctionality {
         return this.#handle;
     }
 
-    // The `a2a` scheme's resolver: the alias in the Functionality of the Worker
+    // The `a2a` scheme's resolver: the alias in the Functionality of the workspace
     // the operation acts in. Unknown or disabled → null (404 at the scheme);
     // unavailable → its one exact preparation Problem.
-    resolve(authority: string, workerId: number): Client | null {
-        const snapshot = this.#snapshots.get(workerId);
+    resolve(authority: string, workspaceId: number): Client | null {
+        const snapshot = this.#snapshots.get(workspaceId);
         if (snapshot === undefined) return null;
         const attachment = snapshot.attachments.get(authority);
         if (attachment !== undefined) return attachment.client;
@@ -337,18 +336,18 @@ export default class A2aFunctionality {
             .toSorted(([left], [right]) => left.localeCompare(right))
             .map(([alias, { card }]) => ({ pathname: `agents/${encodeURIComponent(alias)}.md`, content: renderAgent(alias, card) }));
         const snapshot: Snapshot = { attachments, unavailable };
-        const { workerId } = preparation;
+        const { workspaceId } = preparation;
         return {
             runtimes: [],
             documents,
             outcomes,
             snapshot,
-            commit: async () => { this.#snapshots.set(workerId, snapshot); },
+            commit: async () => { this.#snapshots.set(workspaceId, snapshot); },
             abort: async () => {},
         };
     }
 
-    async teardown(_snapshot: unknown, identity: WorkerIdentity): Promise<void> {
-        this.#snapshots.delete(identity.workerId);
+    async teardown(_snapshot: unknown, identity: WorkspaceIdentity): Promise<void> {
+        this.#snapshots.delete(identity.workspaceId);
     }
 }

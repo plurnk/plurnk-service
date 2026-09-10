@@ -1,4 +1,4 @@
-// {§mcp-module} — the MCP family as a Worker Functionality adapter. These tests
+// {§mcp-module} — the MCP family as a workspace Functionality adapter. These tests
 // drive the adapter contract directly (service definitions, inert discovery,
 // admission, two-phase preparation, OAuth continuation, isolation, refresh,
 // teardown). The lifecycle verbs, durable state, and both projections belong to
@@ -53,23 +53,23 @@ interface Prepared {
 interface Adapter {
     readonly family: string;
     readonly namespaceOwner: string;
-    available(identity: { workspaceId: number; workerId: number }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: { workspaceId: number; workerId: number }): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: { workspaceId: number; workerId: number }): Promise<{ alias: string; definition: object }>;
+    available(identity: { workspaceId: number }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
+    discover(query: FunctionalityDiscoverQuery, identity: { workspaceId: number }): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
     prepare(preparation: {
-        workspaceId: number; workerId: number;
+        workspaceId: number;
         enabled: ReadonlyMap<string, object>; previous: unknown | null;
         failure: "publish-unavailable" | "reject"; force?: string; retain(): () => void;
     }): Promise<Prepared>;
-    teardown(snapshot: unknown, identity: { workspaceId: number; workerId: number }): Promise<void>;
+    teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
 }
 
 interface ActionRegistration {
     readonly name: string;
-    readonly handler: (params: Readonly<Record<string, unknown>>, context: { scope: "worker"; workspaceId: number; workerId: number }) => unknown | Promise<unknown>;
+    readonly handler: (params: Readonly<Record<string, unknown>>, context: { scope: "workspace"; workspaceId: number }) => unknown | Promise<unknown>;
 }
 
-// A harness that stands where the coordinator stands: it holds each Worker's
+// A harness that stands where the coordinator stands: it holds each workspace's
 // enabled set and committed snapshot and calls the adapter's two phases. It
 // decides nothing about lifecycle semantics — tests choose the enabled set.
 const harness = (env: Record<string, string> = {}) => {
@@ -79,16 +79,16 @@ const harness = (env: Record<string, string> = {}) => {
     let adapter: Adapter | undefined;
     let leases = 0;
     const retain = () => { leases++; let released = false; return () => { if (released) return; released = true; leases--; }; };
-    const identity = (workerId: number) => ({ workspaceId: 41, workerId });
-    const lane = async (workerId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string } = {}): Promise<Prepared> => {
+    const identity = (workspaceId: number) => ({ workspaceId });
+    const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string } = {}): Promise<Prepared> => {
         if (adapter === undefined) throw new Error("adapter not registered");
-        const current = snapshots.get(workerId);
+        const current = snapshots.get(workspaceId);
         const prepared = await adapter.prepare({
-            ...identity(workerId), enabled, previous: current?.prepared?.snapshot ?? null,
+            ...identity(workspaceId), enabled, previous: current?.prepared?.snapshot ?? null,
             failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), retain,
         });
         await prepared.commit();
-        snapshots.set(workerId, { enabled, prepared });
+        snapshots.set(workspaceId, { enabled, prepared });
         return prepared;
     };
     const seam = {
@@ -96,20 +96,20 @@ const harness = (env: Record<string, string> = {}) => {
         registerFunctionalityAdapter: (candidate: Adapter) => {
             adapter = candidate;
             return {
-                invoke: async (verb: string, params: unknown, id: { workspaceId: number; workerId: number }) => {
+                invoke: async (verb: string, params: unknown, id: { workspaceId: number }) => {
                     // The only re-entry the adapter uses: re-enable one alias (retry).
                     if (verb !== "enable") throw new Error(`harness does not emulate ${verb}`);
                     const alias = (params as { alias: string }).alias;
-                    const current = snapshots.get(id.workerId);
+                    const current = snapshots.get(id.workspaceId);
                     if (current === undefined) throw new Error("worker not prepared");
-                    const prepared = await lane(id.workerId, current.enabled, { force: alias });
+                    const prepared = await lane(id.workspaceId, current.enabled, { force: alias });
                     const outcome = prepared.outcomes.get(alias);
                     return { status: outcome?.state === "authorization-required" ? 202 : 200, body: { status: 200, family: "mcp", alias, definition: { alias, origin: "worker", ...outcome } } };
                 },
-                refresh: async (id: { workspaceId: number; workerId: number }) => {
-                    const current = snapshots.get(id.workerId);
+                refresh: async (id: { workspaceId: number }) => {
+                    const current = snapshots.get(id.workspaceId);
                     if (current === undefined) return;
-                    await lane(id.workerId, current.enabled);
+                    await lane(id.workspaceId, current.enabled);
                 },
             };
         },
@@ -123,17 +123,17 @@ const harness = (env: Record<string, string> = {}) => {
         adapter: () => { if (adapter === undefined) throw new Error("adapter not registered"); return adapter; },
         identity,
         lane,
-        teardown: async (workerId: number) => {
-            const current = snapshots.get(workerId);
-            await adapter!.teardown(current?.prepared?.snapshot ?? null, identity(workerId));
-            snapshots.delete(workerId);
+        teardown: async (workspaceId: number) => {
+            const current = snapshots.get(workspaceId);
+            await adapter!.teardown(current?.prepared?.snapshot ?? null, identity(workspaceId));
+            snapshots.delete(workspaceId);
         },
-        action: async (workerId: number, name: string, params: Readonly<Record<string, unknown>>) => {
+        action: async (workspaceId: number, name: string, params: Readonly<Record<string, unknown>>) => {
             const registration = actions.get(name);
             if (registration === undefined) throw new Error(`missing action ${name}`);
-            return registration.handler(params, { scope: "worker", ...identity(workerId) });
+            return registration.handler(params, { scope: "workspace", ...identity(workspaceId) });
         },
-        runtimeTags: (workerId: number) => (snapshots.get(workerId)?.prepared?.runtimes ?? []).map(({ decl }) => decl.name),
+        runtimeTags: (workspaceId: number) => (snapshots.get(workspaceId)?.prepared?.runtimes ?? []).map(({ decl }) => decl.name),
     };
 };
 
@@ -222,7 +222,7 @@ test("{§mcp-module} the adapter registers the mcp family, its continuations, an
     try {
         assert.equal(h.adapter().family, "mcp");
         assert.equal(h.adapter().namespaceOwner, "@plurnk/plurnk-mcp");
-        assert.deepEqual([...h.actions.keys()].toSorted(), ["worker.mcp.complete", "worker.mcp.oauth.complete"]);
+        assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.complete"]);
         const available = await h.adapter().available(h.identity(1));
         assert.deepEqual(available.map(({ alias, enabled }) => ({ alias, enabled })), [{ alias: "fixture", enabled: true }]);
         assert.equal((available[0]!.definition as McpServerDefinition).transport, "stdio");
@@ -348,14 +348,14 @@ test("{§oauth-lifetime} an interactive OAuth server publishes authorization-req
         await assert.rejects(() => h.teardown(1), /cannot cool with pending OAuth residency/);
         const state = new URL((outcome as { authorization: { url: string } }).authorization.url).searchParams.get("state");
         assert.ok(state);
-        const completed = await h.action(1, "worker.mcp.oauth.complete", {
+        const completed = await h.action(1, "workspace.mcp.oauth.complete", {
             alias: "oauth",
             callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(state)}&iss=${encodeURIComponent(origin)}`,
         }) as { status: number };
         assert.equal(completed.status, 200);
         assert.deepEqual(h.runtimeTags(1), ["oauth"], "the authorized server is published through the re-enable");
         assert.equal(h.leases(), 0, "the pending lease was released on publication");
-        await rejectsManagementProblem(() => h.action(1, "worker.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=x&state=y` }), "oauth-not-pending", 404);
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=x&state=y` }), "oauth-not-pending", 404);
     } finally { await h.teardown(1).catch(() => undefined); await h.module.close(); }
 });
 
@@ -373,7 +373,7 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
         assert.equal(h.leases(), 1, "the superseded attempt released its lease; the replacement holds one");
         const staleState = new URL(firstUrl).searchParams.get("state")!;
         await rejectsManagementProblem(
-            () => h.action(1, "worker.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(staleState)}&iss=${encodeURIComponent(origin)}` }),
+            () => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(staleState)}&iss=${encodeURIComponent(origin)}` }),
             "oauth-callback-invalid", 400,
         );
         // A committed attachment that no longer matches the pending definition conflicts.
@@ -382,7 +382,7 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
         assert.equal(h.leases(), 1);
         await h.lane(1, new Map([["echo", stdio("echo")], ["oauth", { ...oauthDefinition(served, origin), name: "oauth" } as McpServerDefinition]]), { force: "oauth" });
         const replacementState = new URL((h.snapshots.get(1)!.prepared!.outcomes.get("oauth") as { authorization: { url: string } }).authorization.url).searchParams.get("state")!;
-        const completed = await h.action(1, "worker.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(replacementState)}&iss=${encodeURIComponent(origin)}` }) as { status: number };
+        const completed = await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(replacementState)}&iss=${encodeURIComponent(origin)}` }) as { status: number };
         assert.equal(completed.status, 200);
         assert.deepEqual(h.runtimeTags(1), ["echo", "oauth"]);
         assert.equal(h.leases(), 0);
@@ -405,8 +405,8 @@ test("{§mcp-module} completion routes to the connected server and refuses a dis
     await h.setup();
     try {
         await h.lane(1, new Map([["echo", stdio("echo")]]));
-        await rejectsManagementProblem(() => h.action(1, "worker.mcp.complete", { server: "missing", ref: {}, argument: {} }), "server-not-connected", 409);
-        await rejectsManagementProblem(() => h.action(1, "worker.mcp.complete", { server: "echo", ref: "x", argument: {} }), "completion-parameters-invalid", 400);
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.complete", { server: "missing", ref: {}, argument: {} }), "server-not-connected", 409);
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.complete", { server: "echo", ref: "x", argument: {} }), "completion-parameters-invalid", 400);
     } finally { await h.teardown(1); await h.module.close(); }
 });
 

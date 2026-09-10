@@ -221,8 +221,8 @@ cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine
 | **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when at least one source operation has a trustworthy effective envelope and no boundary-destroying tail. A hard error inside that envelope becomes a failed operation in the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
 | **BARE inference**           | One isolated child-provider model call whose response becomes an ordinary BARE log result. It has no worker, packet, tools, output grammar, or persistent child state ({§bare-inference}). |
 | **cycle**                    | A repeated turn fingerprint across consecutive turns. Detection strikes silently under the rule above. |
-| **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service, workspace, inherited delegation bound, worker, and loop layers compose without granting authority. |
-| **loop policy**              | One immutable loop snapshot containing capability attenuation and the independent `review`, `accept`, or `reject` proposal disposition. |
+| **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service and workspace layers compose without granting authority. |
+| **loop policy**              | One immutable `review`, `accept`, or `reject` proposal disposition. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
 | **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§agui-proposal-resolve}). |
 
@@ -246,7 +246,7 @@ cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine
 §service-worker-composition The service launcher and the live/demo workspace
 helper share one registration of default worker-facing modules: MCP and outbound
 A2A. Their management families and readable reference documents are present even
-with no enabled attachments. Capability policy still controls each worker's
+with no enabled attachments. Workspace capability policy controls every actor's
 surface; registering a family does not enable a remote attachment. Client and
 inbound-A2A listeners and host hooks remain launcher-owned.
 
@@ -432,20 +432,13 @@ render-time filter.
 **attribution** — the delta's provenance ({§env-delta}) — and is never read to
 filter a row.
 
-§actor-boundary-attached-functionality **A client operates in the Worker it is
-attached to.** A client connection is attached to one conversation Worker; its
-management commands mutate that Worker's Functionality ({§module-worker-capabilities}),
-and its operations execute in that Worker's environment — executable families,
-runtime schemes, tools, and capability policy resolve through the attached
-Worker — while the operation
-journals in the client's own worker ({§connection-lifecycle}) and any entry it
-writes binds its principal through that client worker. Every dispatch therefore
-carries two coordinates: `workerId`, the journaling and entry principal, and
-`functionalityWorkerId`, the Worker whose Functionality applies. They are equal
-for model and `_plurnk` dispatches; a client dispatch names its attached
-Worker, which must belong to the same workspace, and Functionality residency is
-acquired for that Worker. Attachment is a connection fact, not topology: it is
-many-to-one, non-owning, and never expressed as parentage.
+§actor-boundary-attached-functionality **Attachment selects a conversation,
+not an environment owner.** Client management commands mutate workspace
+Functionality ({§module-workspace-capabilities}); executable families, runtime
+schemes, and tools resolve by `workspaceId`. Operations journal in the
+submitting actor's `workerId` ({§connection-lifecycle}), which must belong to
+the workspace. Runtime and policy resolution require no second worker identity.
+Attachment remains many-to-one, non-owning, and unrelated to parentage.
 
 §actor-boundary-two-doors **Cross-worker arrival is limited to two doors.**
 An explicit READ is not an arrival: the reading worker deliberately addresses a
@@ -525,7 +518,7 @@ It changes neither scheduler state nor forensic history.
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
 navigable map instead of blank. Its baseline bodyless FIND surveys follow this
-order; unregistered schemes contribute no survey, and loop capabilities may
+order; unregistered schemes contribute no survey, and workspace capabilities may
 narrow or omit the reference catalogs under {§capability-admission}.
 
 | Surface | FIND target | Scope / annotation |
@@ -595,7 +588,7 @@ terminal history.**
 | Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
 | Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Durable events, curation effects, tags, current active/body-suppression projection, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
 | §machine-processes-fork-cost **Provider evidence and accounting** | Worker | Turns and their model-facing log history are copied, but turn-attached inference calls, their specializations, admission rows, and physical provider requests are not: one issued call or request has one causal branch. Parent and fork accounting therefore includes only work issued in that branch, while workspace accounting never double-counts copied history. |
-| §machine-processes-entry-inheritance **Worker-owned entries** | Worker | The scheme's mandatory `{§manifest-entry-inheritance}` decides: `snapshot` copies only entries whose channels are all quiescent and remaps ownership; `rederive` copies no bytes and lets the child materializer rebuild them from inherited Functionality; `none` carries nothing. Within a `snapshot` scheme the Worker scheme's generated subtree is always rederived ({§worker-generated-subtree}). Parent and child then diverge. |
+| §machine-processes-entry-inheritance **Worker-owned entries** | Worker | The scheme's mandatory `{§manifest-entry-inheritance}` decides: `snapshot` copies only entries whose channels are all quiescent and remaps ownership; `rederive` copies no bytes and lets the child materializer rebuild them from workspace Functionality; `none` carries nothing. Within a `snapshot` scheme the Worker scheme's generated subtree is always rederived ({§worker-generated-subtree}). Parent and child then diverge. |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
 
 §machine-processes-worker-is-its-log **A worker's conversational memory of
@@ -662,7 +655,7 @@ continues to decompose other authorities without treating them as mintable.
 
 §worker-generated-subtree **`_plurnk/` is Plurnk's generated subtree in every worker space.** Generated documents live under `worker://~/_plurnk/`: project instructions (`agents.md`, with nested AGENTS.md files under `instructions/**` preserving their subtree scope), scheme/runtime references (`plurnk/**`), executable tool details (`tools/**`), and family catalogs. Agent Skills retain their own resource trees at `skill://<name>/` ({§skills-resources}), not rewritten copies under this subtree.
 
-The subtree is readable like the rest of the space ({§worker-read-scope}) and writable only by `_plurnk`: model, client, or plugin mutations under `/_plurnk/` are refused as 403 `worker-generated-read-only`, in the commons as well as own and named spaces. Runtime-authored mutations of this owned state do not demand the recipient worker's external capabilities ({§capability-admission}); reads and effects outside the subtree still do. Ordinary scheme write scoping remains enforced. Documents are materialized through ordinary `_plurnk` maintenance turns ({§actor-boundary-doc-injection}). Their successful rows do not render in model packets; failures remain visible, and READ over `log:///` recovers the durable operations. FORK rederives the subtree from inherited Functionality rather than copying its bytes ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No separate kernel authority exists.
+The subtree is readable like the rest of the space ({§worker-read-scope}) and writable only by `_plurnk`: model, client, or plugin mutations under `/_plurnk/` are refused as 403 `worker-generated-read-only`, in the commons as well as own and named spaces. Runtime-authored mutations of this owned state do not demand the recipient worker's external capabilities ({§capability-admission}); reads and effects outside the subtree still do. Ordinary scheme write scoping remains enforced. Documents are materialized through ordinary `_plurnk` maintenance turns ({§actor-boundary-doc-injection}). Their successful rows do not render in model packets; failures remain visible, and READ over `log:///` recovers the durable operations. FORK rederives the subtree from workspace Functionality rather than copying its bytes ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No separate kernel authority exists.
 
 §worker-control-addressing **Explicit worker control addresses are authority-only.**
 WORK and FORK may omit their address to allocate one ({§worker-auto-name}).
@@ -712,7 +705,7 @@ literal `workers.name` value.
 - §worker-spawn-no-branch **WORK and FORK take a worker path and a prompt, nothing else.** Branch
 delegation was removed outright (#396). A model manages git branches through ordinary
 EXEC git — never engine machinery.
-- §worker-delegation-inherits-policy **Delegation cannot widen authority.** WORK and FORK copy the delegating actor's complete effective capability policy into the child's immutable `capability_bound`; later widening of any parent layer cannot enlarge that child. Every fresh delegated loop carries that complete effective attenuation and the delegating loop's proposal disposition, including a loop created by SEND to an idle Worker. SEND into an active or parked loop leaves that loop's immutable policy untouched. The bound is delegation authority captured by value, not a client binding or a live parent-policy link.
+- §worker-delegation-inherits-policy **Fresh delegated loops inherit proposal disposition.** WORK, FORK, and SEND to an idle Worker carry the sender's proposal disposition. SEND into an active or parked loop leaves its immutable policy untouched. All workers share live workspace capability policy; delegation creates no capability snapshot or bound.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
 - §worker-scheme-collect **Collect** — a worker's loop reaching a terminal status
@@ -787,7 +780,7 @@ ordinary arrival semantics. Timing is whole minutes, not text coordinates.
 
 - Queued tasks carry a durable due time and the recipient's model selection,
   sender's delegated policy, and original prompt source. They do not activate
-  provider inference or Worker Functionality before eligibility. Due tasks are
+  provider inference or workspace Functionality before eligibility. Due tasks are
   claimed in queue order; an earlier future task cannot block ready work.
 - A recurrence has at most one unfinished occurrence. A successful terminal
   transition atomically queues its successor; all-failed inventory, engine failure, and
@@ -902,7 +895,7 @@ loop, otherwise a new queued loop. Compatibility is checked against the exact
 loop that receives the prompt; the writer does not reselect another recipient.
 The worker's admission lock covers selection, compatibility, prompt publication,
 and the park-boundary wake check against orphan recovery. Fresh task insertion
-includes its complete generation policy, capability policy, and initial paths
+includes its complete generation policy, proposal disposition, and initial paths
 atomically; no drain may claim partially configured work.
 
 | Message at the receiving task's end | Disposition |
@@ -1264,16 +1257,16 @@ explicitly:
 |---|---|---|---|---|
 | Project file | Filesystem name | `commons` | Workspace-shared | Shared live; no copy |
 | `worker:///...` | Empty selects commons | `resolved` commons | Workspace-shared | Shared live; no copy |
-| `worker://~/...` | `~` selects caller | `resolved` Worker | Self; parent may use the child's literal name | Quiescent snapshot; `_plurnk/**` rederived |
-| `worker://<name>/...` | Literal Worker selector | `resolved` Worker | Owner or ancestor | Scheme disposition only when the selected owner is the fork source; otherwise no copy |
+| `worker://~/...` | `~` selects caller | `resolved` Worker | Self; any workspace worker through the literal name | Quiescent snapshot; `_plurnk/**` rederived |
+| `worker://<name>/...` | Literal Worker selector | `resolved` Worker | Any workspace worker | Scheme disposition only when the selected owner is the fork source; otherwise no copy |
 | `prompt:///...` | Loop-relative coordinate | Calling Worker | Self-only | Quiescent snapshot |
 | `skill://<name>/...` | Installed skill directory | Calling Worker's projection | Effective Functionality | Re-derived from installation |
 | `http(s)://...` | Remote resource identity | Calling Worker | Self-only | Quiescent snapshot; an active stream is omitted |
 | `wss://...` | Remote resource identity | Calling Worker | Self-only | None |
-| Executor/MCP output | Optional named actor selector | `resolved` Worker | Owner or ancestor | None |
+| Executor/MCP output | Optional named actor selector | `resolved` Worker | Any workspace worker | None |
 | `a2a://...` outbound resource | Remote-agent identity | Calling Worker | Self-only | None |
 
-A resolved-owner scheme authorizes the actor selector before returning its
+A resolved-owner scheme resolves the actor selector before returning its
 principal; a numeric Worker id is never extension input. `worker` ownership has
 no cross-actor form. Thus identical HTTP, WSS, A2A, prompt, Skill, or unqualified
 executor addresses in independent root Workers are distinct resources without
@@ -2418,11 +2411,11 @@ effect-qualified hold policy. The post-acceptance materialization path never
 triggers reclassification.
 
 §exec-registry-resolves The runtime slot (`signal`) selects an executor from
-the current worker snapshot. Installed siblings form the immutable base:
+the workspace snapshot. Installed siblings form the immutable base:
 they are discovered and probed at startup, and availability is cached.
-Worker Functionality providers may atomically overlay additional names under
-{§module-worker-capabilities}; a name has one owner within a worker, while
-independent workers may use the same name. An absent or empty tag selects
+Workspace Functionality providers may atomically overlay additional names under
+{§module-workspace-capabilities}; a name has one owner within a workspace, while
+independent workspaces may use the same name. An absent or empty tag selects
 `sh`; a non-empty tag selects exactly that registered executable tool. Unknown
 tags are refused 501 with the advertised catalogue and are never reinterpreted
 as shell command words. The common mistaken `[shell]` alias is narrowly told to
@@ -2430,7 +2423,7 @@ omit that signal for the default shell; arbitrary unknown tags receive no guesse
 alternative intent. An unavailable runtime is also 501 and carries the probe
 `detail`.
 
-For a family runtime, `ExecutorRegistry.toolRegistry(tag, workerId)`
+For a family runtime, `ExecutorRegistry.toolRegistry(tag, workspaceId)`
 validates the one executor-owned snapshot used by packet presentation,
 dispatch admission, and pull-document materialization. Core performs no
 protocol discovery while building a packet and has no alternate tool
@@ -2506,7 +2499,7 @@ Non-runtime schemes retain their own authority semantics.
 | Qualified runtime handler, manifest, connection, and stored resource | Addressed Worker |
 | Operation admission and policy | Caller and its attached Functionality |
 | Journal, cancellation, and client interaction | Calling operation |
-| Connection activation and cooling | Existing Worker Functionality residency; no model inference |
+| Connection activation and cooling | Existing workspace Functionality residency; no model inference |
 
 The selected attachment remains leased throughout resource acquisition.
 Resource reads do not grant execution or stream-control authority over the
@@ -2978,8 +2971,8 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`                       | `none` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY`                          | `12` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
-| §operator-config-worker-warm `PLURNK_SERVICE_WORKER_WARM_MS` | `900000` | Milliseconds a lease-free worker Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-worker-residency}). |
-| `PLURNK_SERVICE_WORKER_WARM_MAX`                            | `2` | Maximum lease-free worker Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-worker-residency}). |
+| §operator-config-worker-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | `900000` | Milliseconds a lease-free workspace Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
+| `PLURNK_SERVICE_WORKSPACE_WARM_MAX`                            | `2` | Maximum lease-free workspace Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-workspace-residency}). |
 
 Every core knob listed is enforced at its owning read site; `.env.defaults` is the authoritative default ({§operator-config-env-defaults}). Provider, scheme, executor, mimetype, and client-interface knobs are documented by their owning packages and appear in the assembled catalog.
 
@@ -3180,160 +3173,123 @@ flowchart LR
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction({ name, scope, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
-| §module-worker-provider `registerWorkerCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, workerId, retain })` reconstructs that worker's effective snapshot; idempotent `deactivate({ workspaceId, workerId })` releases its process-local resources. Core coalesces activation and cooling, publishes complete private documentation before use, and supplies `retain()` so provider work that outlives its caller holds an idempotently releasable residency lease. Dormant workers perform no provider work at boot. |
-| §module-worker-state `readWorkerModuleState(workerId, namespaceOwner)` | Reads the provider's one nullable JSON state value for one worker. Core owns worker isolation and storage; the provider owns and validates its schema. Secret values are forbidden when a durable symbolic reference can identify their authoritative source. |
-| §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family of managed Functionality beneath the shared coordinator ({§functionality-coordinator}). The adapter owns protocol truth; the coordinator owns lifecycle, durable state, publication, and both projections. |
-| §module-worker-capabilities `replaceWorkerCapabilities({ workspaceId, workerId, namespaceOwner, state, runtimes })` | Replaces one provider's complete durable state and runtime/scheme snapshot for one worker at a quiescent workspace-operation boundary. Core validates worker membership and base/peer namespace claims before mutation, commits the snapshot, and reconciles that worker's private pull docs as one operation. Failure restores the prior state and presentation. The empty runtime set removes that provider from the worker's Functionality. |
+| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
+| §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. |
+| §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the shared coordinator ({§functionality-coordinator}). |
+| §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
 
-§module-worker-quiescence **A worker's Functionality snapshot changes only
-between workspace operations.** A replacement attempt while a turn or another
-capability mutation owns the workspace fails 409 instead of waiting behind an
-unbounded proposal. Candidate discovery may occur before the gate, but the
-provider must re-check its old connection for active user work after acquiring
-the gate. Infrastructure-owned watches may be cancelled during replacement;
-an active request, input exchange, or Task keeps the old snapshot authoritative
-and makes replacement fail 409. The workspace-wide gate is an atomicity
-boundary, not ownership: only the addressed worker's snapshot changes. A Worker's
-own accepted Functionality mutation is the one replacement that waits instead of
-failing: it queues fairly behind the turn that raised it and publishes at that
-turn's boundary ({§functionality-model-mutation}). Two publications take no
-gate of their own because their demand already holds whatever applies: a
-Worker's activation (demanded from a client action, an operation, or a child's
-turn inside its parent's held lineage) and a family's turn-admission refresh
-({§skills-hotload}), which republishes inside the turn it is admitting. The
-three modes are explicit at the host boundary — `try` (409 while held),
-`wait` (queue behind the holder), `none` (publish within the demand) — and
-nothing else may choose `none`.
+§workspace-environment-sharing **The workspace owns its shared environment.**
+Workers own their logs and scratchpads; delegation retains its existing lifecycle.
+Creating, attaching, forking, cancelling, or deleting a worker does not create,
+transfer, or remove ownership of workspace tools or shared resources.
 
-§module-worker-inheritance **Functionality inherits by value.** Creating a
-child copies every parent `worker_module_state` row into the child in the same
-database transaction. Parent and child thereafter mutate independently;
-activation reconstructs each worker's own snapshot and generated references.
-Workers that merely share a workspace never share enabled Functionality.
+| Fact | Owner |
+|---|---|
+| Enabled skills, MCP servers, outbound agents, and membership definitions | Workspace |
+| Runtime publication, connection residency, and alias configuration | Workspace and the registered provider |
+| Submitted operation, receipt, pending interaction, and cancellation signal | Originating operation in its worker's history |
+| Saved tool output and materialized resource bytes | Workspace; independent of live provider availability |
+| Log and private scratchpad | Worker |
 
-§module-worker-residency **Persistence is not residency.** Model execution,
-capability-aware client reads and operations, worker module actions, and
-provider work retained through the setup context hold that worker's Functionality
-resident. Daemon boot, workspace or worker creation, attachment, listing,
-renaming, an idle client, and durable queued or parked state do not. After the
-final lease releases, core keeps the complete snapshot warm for
-`PLURNK_SERVICE_WORKER_WARM_MS` (default `900000`) while an idle LRU keeps at
-most `PLURNK_SERVICE_WORKER_WARM_MAX` (default `2`) lease-free workers.
-`0` disables the respective grace or idle allowance; `-1` disables that bound.
-Only lease-free workers cool. New demand cancels pending cooling or waits for
-in-progress cooling before one coalesced reactivation.
+§module-workspace-quiescence **A Functionality snapshot changes between
+workspace operations.** Mutation admission, external installation/removal,
+preparation, and publication hold the same exclusive gate. Explicit client
+mutations use `try` and fail 409 before effects while the workspace is held.
+An accepted model mutation uses `wait`, proceeding after its originating turn. Activation and turn-admission refresh use `none` inside
+their already-held demand boundary. Providers reject replacement while active
+requests, input exchanges, or Tasks depend on the old snapshot; infrastructure
+watches may be replaced. These are concurrency constraints, not creator privileges.
 
-Cooling runs at a quiescent workspace-operation boundary. It deactivates every
-provider for that worker, withdraws its ephemeral executor and scheme snapshots,
-and evicts its passive process caches; durable workspace, worker, history,
-module-state, and reference-entry rows remain unchanged. Client connection
-presence and naming never participate in this lifecycle. Shutdown cancels warm
-timers and closes all still-resident provider resources through their module
-owner.
+§module-workspace-sharing **Workers share Functionality by reference.**
+There is one effective definition for each workspace, family, and alias.
+Workers neither inherit module-state copies nor publish private tool registries.
+A conflicting alias is rejected explicitly; it never produces a hidden second
+definition for the submitting client or worker.
 
-The version-1 baseline table `worker_module_state` stores one JSON value per
-`(worker_id, namespace_owner)`. It is not an alternate registry: executable and
-resource presentation always comes from the in-memory snapshot reconstructed by
-the registered provider. Deleting a worker cascades its state; child creation
-applies {§module-worker-inheritance}.
+§module-workspace-residency **Persistence is not residency.** Model execution,
+capability-aware operations, scoped module actions, and retained provider work
+lease the workspace's Functionality. Boot, workspace or worker creation,
+attachment, listing, naming, idle clients, and parked state alone do not.
+After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` (default
+`900000`) and `PLURNK_SERVICE_WORKSPACE_WARM_MAX` (default `2`) bound idle
+residency. `0` disables the respective grace or allowance; `-1` disables that
+bound. Concurrent demand coalesces; cooling never closes a leased connection.
 
-### §functionality Worker Functionality: one lifecycle above every family
+Cooling withdraws live capability and releases process resources at the
+workspace boundary. Durable configuration, history, and saved entries remain.
+New demand reconstructs the one shared snapshot. Shutdown cancels warm timers
+and closes module resources through their owning provider.
 
-§functionality-coordinator **Core owns one coordinator above every family
-adapter.** Agent Skills, MCP servers, and outbound A2A agents are families of
-managed Functionality. Each family registers one adapter
-({§functionality-adapter}); the coordinator owns the common lifecycle —
-`list | discover | add | enable | disable | remove` — its durable per-Worker
-state ({§functionality-state}), serialization per Worker and family, atomic
-publication ({§functionality-publication}), and both projections: worker-scoped
-client actions `worker.<family>.<verb>` and one generated executor family per
-Worker ({§functionality-model-projection}). An explicit client action and an
-accepted model proposal converge on the same coordinator method; no family
-invents a third management grammar, configuration path, proposal policy, or
-hotload mechanism.
+The version-1 baseline table `workspace_module_state` stores one JSON value
+per `(workspace_id, namespace_owner)`. It is configuration, not an executable
+registry. Deleting the workspace cascades its state; worker lifecycle does not.
 
-Problem retryability is never inferred from numeric status. A coordinator
-failure names `retryable` only when its owning condition establishes whether an
-identical automatic replay is valid; in particular, absent Worker residency
-requires activation and is non-retryable as submitted.
+### §functionality Workspace Functionality
+
+§functionality-coordinator **One coordinator owns the common lifecycle.**
+Agent Skills, MCP, outbound A2A agents, and membership are adapters beneath
+`list | discover | add | enable | disable | remove`. State and mutations
+serialize per workspace and family. Client actions
+`workspace.<family>.<verb>` and model manager executors invoke the same
+coordinator. Families do not invent another management grammar, proposal
+policy, or hotload path.
+
+Retryability describes the actual failed condition, not its numeric status.
 
 | Verb | Common contract |
 |---|---|
-| `list` | Project every definition with its origin, desired enabledness, and current state — `disabled`, `active`, `unavailable` with its exact Problem, or `authorization-required` — without exposing credentials. |
-| `discover` | Inspect a query or source and return inert candidates with provenance. Discovery never installs, persists, enables, executes, or widens authority. |
-| `add` | Admit one exact definition through the adapter, persist it as a worker-origin definition, prepare it, and enable it atomically. A worker definition may shadow a same-alias service definition; a second worker definition for one alias is a 409 collision. |
-| `enable` | Prepare and publish one available definition; re-enabling an unavailable one retries its preparation. |
-| `disable` | Withdraw the effective capability while keeping the definition available and client-visible. |
-| `remove` | Disable and forget the Worker's own definition; a same-alias service definition becomes visible again, disabled. Service definitions are disable-only. |
+| `list` | Project definitions, origin, enabledness, and preparation outcome: disabled, active, unavailable with its Problem, or authorization-required. No credential values. |
+| `discover` | Return inert candidates. Never install, persist, enable, or execute them. |
+| `add` | Admit and persist a workspace definition, prepare it, and enable it atomically. It may override the service baseline. Reapplying the same workspace definition enables it idempotently (200); a different definition for that alias fails 409 without replacing it. |
+| `enable` | Publish an available definition; retry preparation if unavailable. |
+| `disable` | Withdraw live capability; retain its definition and saved results. |
+| `remove` | Disable and forget the workspace definition. A same-alias service baseline reappears disabled. Service definitions are disable-only. Saved results remain. |
 
-§functionality-adapter **An adapter owns protocol truth and nothing else.** It
-declares its family (the action segment and EXEC tag), its one namespace owner,
-the exact definition schema one `add` accepts, its service-contributed
-definitions with their default enabledness, inert discovery, admission of an
-authored definition — told whether a client action or a model operation authored it, so a
-family may bound the model's authority ({§members-model-scope}) — two-phase preparation of
-the enabled set, and teardown.
-Preparation returns the family's runtimes, its generated documents, one outcome
-per enabled alias, and a snapshot with `commit`/`abort`; the coordinator
-never tears down a previous snapshot behind the adapter — it commits after a
-successful publication, aborts after a failed one, and tears down only on
-deactivation. Protocol continuations (an OAuth completion, an input-required
-answer) remain adapter-registered actions beneath the common grammar. An
-adapter may declare `forget`: before the coordinator forgets a Worker-origin
-definition on `remove` it lets the adapter release what that definition
-installed or provisioned ({§skills-remove}); a failed release rejects the
-removal and changes nothing.
+§functionality-adapter **An adapter owns protocol truth.** It declares its
+family, namespace owner, definition schema, contributed defaults, discovery,
+admission, preparation, and teardown. Admission distinguishes explicit client
+actions from model operations where the family contract requires it
+({§members-model-scope}). Preparation returns runtimes, documents, per-alias
+outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
+failure aborts; cooling tears down. Protocol continuations remain ordinary
+module actions. Optional `forget` releases an installed or provisioned
+definition before removal; failure rejects removal ({§skills-remove}).
 
-§functionality-state **One durable value per Worker and family.** The
-coordinator stores `{ version: 1, definitions: { [alias]: { origin, enabled,
-definition? } } }` in `worker_module_state` under the adapter's namespace
-owner. A `service` alias persists only its enabledness; a `worker` alias
-persists its exact definition. Enabledness is durable desired state; active,
-unavailable, and authorization-required are the current preparation outcome.
-Inheritance by value is the table's own birth snapshot
-({§module-worker-inheritance}); service, user, project, and client configuration
-contribute available definitions and defaults but are never the live effective
-authority.
+§functionality-state **One durable value per workspace and family.**
+`{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
+is stored under the provider namespace in `workspace_module_state`.
+A `service` entry persists enabledness; a `workspace` entry persists its exact
+definition. Active, unavailable, and authorization-required are preparation
+outcomes, not durable desired state. The configuration cascade contributes
+defaults; one workspace snapshot is effective authority.
 
 §functionality-publication **One replacement publishes a family.** The
-coordinator prepares the enabled set, then replaces the family's state and
-runtimes — the family's manager runtime first, the adapter's capabilities after
-it — in one {§module-worker-capabilities} call, so admission, generated
-documentation, resources, effects, Turn 0, client status, and teardown derive
-from one committed snapshot. A failed replacement aborts the preparation and
-keeps the previous snapshot authoritative. Mutations serialize per Worker and
-family; shutdown — and any caller that must observe a boundary publication
-before acting, through `settleFunctionality` — settles every queued
-publication before closing the database.
+coordinator prepares, then replaces state and runtimes through
+{§module-workspace-capabilities}, with the manager followed by adapter runtimes.
+Admission, tools, documents, Turn 0, and client status consume that publication.
+The coordinator's synchronous `publish` participates in the registry commit;
+its returned undo restores the previous view before rollback reconciles documents.
+Neither callback performs fallible I/O. Publication failure restores the preceding
+configuration/runtime snapshot; it cannot roll back effects performed by an
+external installer. Installer failures retain their cause and must not be
+reported as successful configuration changes.
+`settleFunctionality` joins queued
+publications before inspection or shutdown.
 
-§functionality-documents **A family's generated documents travel with its
-snapshot.** Preparation may return documents addressed relative to the
-Worker's generated subtree ({§worker-generated-subtree}); the coordinator
-contributes them to the Worker's reference entries so they reconcile with the
-same `_plurnk` materialization as every other generated document. The model
-surface is silent until active (operator ruling, #333): a disabled or
-enabled-but-unavailable definition publishes no document and no Turn 0 row —
-the hot path carries only working capability, never "a thing you cannot do."
-An unavailable definition's exact Problem stays reachable on demand: the
-family's `list` verb returns it and invoking the alias is rejected with it.
+§functionality-documents **Generated documents describe the shared snapshot.**
+Documents are projected through the existing worker generated subtree
+({§worker-generated-subtree}); the projection does not confer ownership.
+Enabled, active definitions are discoverable. Disabled or unavailable
+definitions add no hot-path teaching. Their exact state and Problem remain
+available through `list`.
 
-§functionality-model-projection **The model face is a generated executor
-family per Worker.** Every activated Worker publishes, for each registered
-family, one executor tagged with the family name whose registered targets are
-exactly the six verbs; its documents render through
-{§tools-resource-materialization} like every family, so the model learns the
-manager from `_plurnk/plurnk/<family>.md` and never from hand-written
-teaching. Its Summary is ```` ```family (verb|...) <!-- purpose --> ````, derived from
-the effective registered verbs in lifecycle order; denied verbs are absent.
-The Tools section lists those verbs using their actual coordinator input schemas
-and {§executor-input-schema-preview}. Each linked schema document carries the
-verb's details and any family-specific guidance; `add` includes one exact example
-and the family's original definition schema. The model can read the complete
-contract without an execution probe. `list` and `discover` are `read` effects and run ungated; `add`,
-`enable`, `disable`, and `remove` are `host` effects and propose through
-the ordinary Exec proposal lifecycle. A verb's JSON outcome streams into the
-family's output entry. `ExecArgs` carries no Worker identity, which is why
-the manager is published per Worker rather than once.
+§functionality-model-projection **Each family has one workspace manager
+executor.** The six verbs use their actual coordinator schemas and the ordinary
+tool-document machinery. `list`/`discover` are read effects; mutations are host
+effects and use normal proposals. Summary, signatures, and deep docs derive
+from the same registry ({§tools-resource-materialization},
+{§executor-input-schema-preview}). Outcomes stream into the invoking operation's
+output entry. The manager closes over workspace identity, not worker identity.
 
 §functionality-document-body **A family's teaching is an authored file beneath
 its generated header.** The adapter names its package directory (`docsDir`);
@@ -3346,16 +3302,18 @@ A family that ships no file has a header-only document. Registration also
 validates the adapter's taught `add` example against the `add` input schema it
 teaches, so a wrong example fails boot rather than the model.
 
-§functionality-model-mutation **An accepted mutation publishes at its turn
-boundary.** The verb runs inside the turn that raised it, which holds the
-workspace; the coordinator persists desired state and prepares immediately —
-so the result reports `active`, `unavailable`, or `authorization-required`
-— and a failed preparation publishes an enabled-but-unavailable outcome rather
-than rejecting. Publication queues behind that turn in the family's serialized
-lane and settles before the Worker's next operation or packet. An explicit
-client action instead publishes now, rejects a failed preparation, and fails
-409 while the workspace is held ({§module-worker-quiescence}). Rejecting a
-proposal prepares, persists, and publishes nothing.
+§functionality-model-mutation **An accepted mutation completes through its ordinary
+execution stream.** Preparation and publication share the family's serialized
+lane. Publication acquires workspace exclusivity after current turns release
+their leases; the invoking stream remains pending until publication completes.
+It then reports `active`, `unavailable`, or `authorization-required`, or the exact
+publication failure. A preparation failure may publish enabled-but-unavailable
+state; a publication failure never reports a successful mutation. Stream polling,
+waiting, and result observation use the ordinary execution lifecycle, without a
+separate deferred-commit queue. An explicit client action publishes now, rejects
+a failed preparation, and fails 409 while the workspace is held
+({§module-workspace-quiescence}). Rejecting a proposal prepares, persists, and
+publishes nothing.
 
 ### §methods ApplicationPort function set
 
@@ -3373,14 +3331,14 @@ Core's behavior behind them.
 | §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution)` | Validates and delivers one resolved payload or cancellation. Unknown, ownerless, and already-resolved identities fail before affecting an operation. |
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, policy?, openPaths?, selector?, childSelector? })` | Validates a model worker and complete loop policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
-| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, functionalityWorkerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the attached Worker's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
-| Client observation                                | `look({ workspaceId, workerId, functionalityWorkerId, statement })` | Runs an already-parsed READ through the full resolver in the attached Worker's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
+| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the workspace's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
+| Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver in the workspace's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates worker Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty private history: a fresh conversation over the same world, not a fork or the stable default. |
@@ -3440,8 +3398,7 @@ control.
 
 §capability-admission **One admission path owns external authority.** Core
 derives one or more `CapabilityDescriptor` demands from each routed statement,
-then evaluates the service, workspace, immutable worker-bound, mutable worker,
-and loop policy layers in that order. Every demand of a composed operation must
+then evaluates the service and workspace policy layers. Every demand of a composed operation must
 survive before execution or proposal creation. A denial is an exact terse 403
 identifying the denied descriptor and owning policy scope; it never guesses the
 model's intent or recommends an alternate operation. COPY demands observation
@@ -3456,29 +3413,24 @@ external demands and therefore remain outside capability selectors.
 Runtime mutations of owned generated entries ({§worker-generated-subtree})
 likewise maintain intrinsic state. Producer identity alone grants no exemption:
 source observations and other effects in the same operation retain their
-independent demands, and harness-authored initialization obeys worker policy.
+independent demands, and harness-authored initialization obeys workspace policy.
 
-§worker-settings **The worker carries its own behavioral rules.** The
-workspace is the world — how things are; each worker is an actor inside it,
-carrying the rules its loops obey. Those rules live in one JSON bag
-(`workers.settings`), declared by the client at worker creation and mutable
-between loops through `readWorkerCapabilities`/`setWorkerCapabilities`; the
-public operation is specifically capability-shaped rather than exposing the
-internal persistence bag. Input is validated at the client boundary, and
-unknown keys never persist. A fork begins with a default empty mutable bag, but
-its immutable `capability_bound` captures the delegating actor's effective
-authority under {§worker-delegation-inherits-policy}. Service and workspace
-policies remain live ceilings; worker and loop policies may narrow but never
-widen them. Malformed persisted settings or bounds fail at their owning reader
-with the worker coordinate and cause rather than silently granting defaults.
+§workspace-capability-policy **The workspace is the access boundary.**
+`workspaces.settings.capabilities` is the one mutable access policy under the
+service ceiling. Every actor, including an existing child, uses the current
+workspace policy; neither creation nor delegation snapshots authority. Workers
+own their log and scratchpad, not tools or resource grants. Intrinsic source
+mutability, workspace separation, and proposal approval remain distinct
+contracts. Input is validated before persistence; malformed stored policy fails
+at its reader with the workspace coordinate and cause.
 
-§worker-capability-inspection **Client inspection uses the admission
-resolver.** The Worker capability actions return the contracts-owned
-`CapabilityProjection` {§capability-policy-projection}: service, workspace, immutable Worker bound, mutable
-Worker policy, and their normalized effective intersection. The projection is
-computed by the same resolver used by dispatch and packet shaping. Changing
-the mutable layer returns a fresh complete projection, so a client cannot
-mistake a requested widening for effective authority.
+§workspace-capability-inspection **Client inspection uses the admission
+resolver.** Workspace capability actions return the contracts-owned
+`CapabilityProjection` {§capability-policy-projection}: service, workspace, and
+their normalized effective intersection. The same resolver governs dispatch
+and packet shaping. Replacement preserves unrelated workspace settings. Before their next operation
+or observation, existing workers reconcile generated references against it. It requires no selected
+conversation worker and returns the complete fresh projection.
 
 §question-tool **The native request-user-input tool.** Core registers one
 in-process `question` runtime at boot. Its body is the MCP2 2026-07-28
@@ -3504,9 +3456,9 @@ therefore admit or deny it. The ordinary executor policy also applies:
 
 §worker-tool-admission **Tool visibility and execution share admission.** The
 reserved tool tree's FIND/READ faces drop a runtime or tool document whenever
-the effective worker-level capability layers deny its descriptor, before
-matching and rendering, so counts, weights, and catalog text agree. Turn0
-applies its loop layer to the same catalog projection. Dispatch evaluates that
+the workspace capability policy denies its descriptor. The ordinary document
+reconciler runs before operation turns and observation requests, so FIND counts,
+weights, and catalog text agree. Turn0 surveys that same catalog. Dispatch evaluates that
 same descriptor and policy cascade at the operation boundary, never at
 registration; there is no separate per-tool availability system.
 
@@ -3669,7 +3621,7 @@ outward envelope that requires it and owns workspace fan-out.
 
 A module client is an actor ({§machine-processes}). Its dispatched side effects
 write to its own client worker with `origin="client"` and execute in the
-Functionality of the Worker the client is attached to
+workspace's Functionality
 ({§actor-boundary-attached-functionality}); one client action owns
 one administrative loop, and its statements become ordered operation turns
 inside that loop. A proposal may hold its turn and loop across an external
@@ -4506,9 +4458,9 @@ flowchart LR
     Schema --> Exec
 ```
 
-§tools-resource-materialization The runtime registry, worker executor policy,
-tool resources, and dispatch use one effective worker snapshot. A
-worker-disabled, unavailable, detached, replaced, or removed runtime has no
+§tools-resource-materialization The runtime registry, workspace capability policy,
+tool resources, and dispatch use one effective workspace snapshot. A
+disabled, unavailable, detached, replaced, or removed runtime has no
 tool resource; an exact registry's empty set publishes no executable family and
 admits no invocation. Reconciliation deletes stale documents
 before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
@@ -4542,11 +4494,11 @@ already present. Required schema fields use {§executor-input-schema-preview};
 authored examples take precedence. Family alternatives and descriptive summaries
 remain one compact orientation line, not an expansion of every tool's signature.
 
-§members-functionality **File membership is one Worker Functionality family.**
+§members-functionality **File membership is one workspace Functionality family.**
 Core registers the `members` family with the coordinator ({§functionality-coordinator}):
 the model, the client, and the operator learn one surface — `list | discover | add |
-enable | disable | remove`, `worker.members.<verb>` for the client, `### EXEC_ [members]
-(<verb>)` for the model — for what the model may see, exactly as they do for skills and
+enable | disable | remove`, `workspace.members.<verb>` for the client,
+```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and
 MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project
 root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.
 The coordinator's provenance (`service-configuration`, `client-action`, `model-proposal`)
@@ -4574,18 +4526,16 @@ the paths that remain; `root` admits patterns inside the root; `namespace` admit
 ({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
 so the family bounds the model without a second grammar.
 
-§members-projection *One overlay.* Definitions are desired state per Worker
-({§functionality-state}); the workspace overlay (`workspace_constraints`) is their union
-across every worker of the workspace (ruling (a)): inclusions union and an exclusion wins.
-A child's birth snapshot counts as its own desire: a parent's `disable` or `remove`
-withdraws nothing the child still holds, and a file goes dark only when no worker of the
-workspace holds an inclusion for it. Human-authored definitions project with source
+§members-projection *One overlay.* Definitions are desired state per workspace
+({§functionality-state}); the workspace overlay (`workspace_constraints`) combines its
+enabled definitions: inclusions union and an exclusion wins. Worker creation copies no
+membership state; accepted changes reach every worker. Human-authored definitions project with source
 `members`, model-proposed ones with source `model`; the same pattern from both keeps
 `members`. A `model` inclusion is a pattern scan like a human one but never admits a path
 the repository ignores ({§membership-model-universe}). The engine's creation records
 (`source: "create"`, {§fs-create-record}) are not definitions: the projection never
 overwrites or retires them. Projection happens at the family's publication commit and
-re-resolves membership; a Worker cooling changes nothing, because desired state is
+re-resolves membership; workspace cooling changes nothing, because desired state is
 durable. Each enabled definition is one generated document at
 `worker://~/_plurnk/members/<alias>.md` ({§functionality-documents}) — its glob, origin,
 provenance, and what it resolved to — surveyed at turn 0 like every family's enabled
@@ -4593,12 +4543,12 @@ definitions ({§actor-boundary-catalog-preview}), so the model sees why a file i
 not a member before it asks. There is no other membership path: the client's `/members`
 verbs are these verbs.
 
-§skills-functionality **Agent Skills are one Worker Functionality family.**
+§skills-functionality **Agent Skills are one workspace Functionality family.**
 Core registers the `skills` family with the coordinator ({§functionality-coordinator});
 its adapter owns protocol truth for standard Agent Skills and nothing else. A
 definition is `SkillDefinition` — the standard skill `name`, its source
 `scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
-`~/.agents/skills`, `service` = a host-provided resource tree), and for a Worker-installed skill the standard installer
+`~/.agents/skills`, `service` = a host-provided resource tree), and for a workspace-installed skill the standard installer
 `source` that provides it. Plurnk seeds no universal root and mutates none
 absent an explicit `add`/`remove`.
 
@@ -4606,7 +4556,7 @@ absent an explicit `add`/`remove`.
 every `<root>/<name>/SKILL.md` directory under the project then the global
 root is one service-origin definition, enabled by default, project shadowing
 global and then host-provided trees by name; when the standard installer's `skills-lock.json` records a
-source it rides the definition. A Worker's durable state owns enablement
+source it rides the definition. The workspace's durable state owns enablement
 ({§functionality-state}); a disabled skill stays client-visible and leaves no
 model-facing trace.
 
@@ -4619,12 +4569,12 @@ provenance. Neither installs, persists, or enables. Client `configuration`
 contributes nothing and is refused with 400.
 
 *Admission.* `add {alias, definition}` requires `alias = name`, a `source`,
-and a project root when `scope` is `project`; the Worker's own definition may
+and a project root when `scope` is `project`; the workspace definition may
 shadow a service skill of the same name.
 
 *Preparation.* For each enabled alias the adapter selects the host-provided
 tree for `service` scope or locates the directory at the filesystem scope;
-a Worker definition whose directory is absent is installed
+a workspace definition whose directory is absent is installed
 through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, default `npx --yes skills`:
 `add <source> --agent universal --skill <name> --yes [--global]`, run with
 `HOME` set to the service's user home so the installer's `~` is the global
@@ -4656,7 +4606,7 @@ directories; service-provided trees need no generated filesystem directory.
 | ```` ```runtime (skill://<name>/scripts/program.ext) ```` | Ordinary resource execution and proposal policy; preserve the native file and its siblings under {§exec-source-temporary}. Discovery and READ never execute scripts. |
 | Model mutation | Read-only; no EDIT, SEND, or KILL of installed resources. Manage installation and enablement through ```` ```skills ````. |
 | Disable / unavailable / remove | Withdraw the authority from new resource access and discovery. Existing log receipts remain historical evidence. |
-| WORK / FORK | Re-derive access from the child's own effective Functionality, not copied resource caches. |
+| WORK / FORK | Use the same workspace Functionality, not copied definitions or resource caches. |
 
 Explicit skill URIs address these resources; bare operation paths still address
 project files, with no implicit current-skill directory. Source resolution follows
@@ -4672,12 +4622,12 @@ injected merely because the skill is enabled. The defaults bytes come from the
 same {§operator-config-env-defaults} renderer as the operator command, never the
 effective environment. Native chapter files retain their owners and locations;
 runtime-generated bytes have no invented disk location. Disable/enable,
-inheritance, and project/global shadowing use the ordinary Skills lifecycle.
+shared workspace visibility, and project/global shadowing use the ordinary Skills lifecycle.
 Service-provided skills are not installer targets; service definitions are
 disable-only under {§skills-remove}.
 
-§skills-remove **`remove` uninstalls what the Worker installed.** Before the
-coordinator forgets a Worker-origin skill definition the adapter removes that
+§skills-remove **`remove` uninstalls the workspace definition's installation.** Before the
+coordinator forgets a workspace-origin skill definition the adapter removes that
 skill from the definition's scope through the standard CLI (`remove <name>
 --yes [--global]`), verified by the directory's absence; a failed removal
 rejects the mutation. A same-named skill at a lower-precedence root is then
@@ -4686,7 +4636,7 @@ Service definitions are disable-only.
 
 §skills-hotload **Out-of-band installers are admitted at the next turn.** The
 family keeps one signature of both installed roots, source locations, frontmatter
-sources, and installer provenance per resident Worker; turn
+sources, and installer provenance per resident workspace; turn
 admission recomputes it under the workspace gate before packet assembly and
 republishes the family through the coordinator when it changed, so a skill
 installed or removed by any other tool is discoverable in the first subsequent
@@ -4694,10 +4644,9 @@ model turn while an unchanged set dispatches nothing. The model manages skills
 only through the generated ```` ```skills ```` family
 ({§functionality-model-projection}); it is never taught a package manager.
 
-The catalog describes this worker's Functionality under its durable capability
-ceilings. Turn0 narrows its surveys and examples through the current loop policy,
-and a direct denied attempt receives the same exact 403 from dispatch rather
-than a second documentation policy.
+The catalog and Turn0 describe Functionality under the current workspace
+capability policy and service ceiling. A direct denied attempt receives the
+same exact 403 from dispatch rather than a second documentation policy.
 Optional non-EXEC operations remain a separate `## Enabled Optional Operations`
 section because they are language extensions rather than executable tools.
 
@@ -4711,7 +4660,7 @@ section because they are language extensions rather than executable tools.
 | Runtime output scheme | Its runtime's reference owns discovery; no duplicate scheme reference. |
 | Excluded scheme | `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference, not its functionality. |
 | Reference content | Required meta-owned content follows {§teaching-corpus}; other schemes may supply optional `manifest.documentation`. Absent optional content contributes nothing; a failed required source read surfaces its cause. |
-| Policy layers | Materialization follows durable worker-level ceilings. Turn0 narrows discovery through the current loop policy. Direct operations remain independently policy-bound. |
+| Policy layers | Materialization, Turn0, and direct operations use the same current workspace policy and service ceiling. |
 
 ### §inject system.inject — the operator injection
 
@@ -4740,7 +4689,7 @@ created by that attempt. Unknown legacy members or simultaneous
 legacy/canonical state fail without guessing. No dual read or dual write survives
 the transition.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Every published reference carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries` filters it under effective capabilities when core publishes worker Functionality ({§skills-functionality}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract. These ordinary runtime turns maintain owned state under {§worker-generated-subtree}, including for read-only workers.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Every published reference carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies effective capabilities to that shared source. One materializer reconciles each reader's private projection: vanished contributions are deleted before current documents are upserted, so excluded schemes and withdrawn runtimes leave no stale teaching. Concurrent requests for one reader share one reconciliation and its outcome; distinct readers do not serialize behind each other. These ordinary runtime turns maintain {§worker-generated-subtree}, including under read-only workspace policy.
 
 ### §packet-git-status The Git status section — compact repository state
 

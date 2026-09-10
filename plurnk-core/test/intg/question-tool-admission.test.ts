@@ -1,5 +1,5 @@
 // {§worker-tool-admission} — the question runtime is an ordinary interaction-
-// trait capability: one worker policy shapes both its documentation and its
+// trait capability: one workspace policy shapes both its documentation and its
 // dispatch admission through the same resolver.
 
 import test from "node:test";
@@ -53,8 +53,8 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     }]);
     const workspaceId = await insertWorkspace(db, `tool-admission-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
-    await db.worker_settings_update.run({
-        id: workerId,
+    await db.test_set_workspace_settings.run({
+        id: workspaceId,
         settings: JSON.stringify({ capabilities }),
     });
     await LoopDocs.materialize(engine, db, workspaceId, workerId);
@@ -105,7 +105,7 @@ test("{§worker-tool-admission}: EXEC dispatch refuses an interaction-denied que
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
         assert.equal(result.problem?.runtime, "question");
         assert.deepEqual(result.problem?.traits, ["interaction"]);
-        assert.equal(result.problem?.policyScope, "worker");
+        assert.equal(result.problem?.policyScope, "workspace");
     } finally {
         await db.close();
     }
@@ -121,7 +121,7 @@ test("{§worker-tool-admission}: the interaction access class gates known intera
         assert.equal(result.status, 403);
         assert.equal(result.problem?.access, "interact");
         assert.equal(result.problem?.runtime, "question");
-        assert.equal(result.problem?.policyScope, "worker");
+        assert.equal(result.problem?.policyScope, "workspace");
     } finally {
         await db.close();
     }

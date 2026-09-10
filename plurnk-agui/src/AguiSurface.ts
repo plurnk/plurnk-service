@@ -152,8 +152,8 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
             policy: REASONING_POLICY,
         },
     }),
-    "worker.capabilities.get": action("workspace", EMPTY, capabilityProjection),
-    "worker.capabilities.set": action("workspace", object({
+    "workspace.capabilities.get": action("workspace", EMPTY, capabilityProjection),
+    "workspace.capabilities.set": action("workspace", object({
         policy: ref("CapabilityPolicy"),
     }, ["policy"]), capabilityProjection),
 } satisfies Readonly<Record<string, AguiActionContract>>);

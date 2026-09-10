@@ -327,20 +327,19 @@ export default class ClientInput {
                 context,
                 "loop-policy-invalid",
                 "policy is not an object.",
-                { field: "policy", recovery: "Provide capability policy and proposal disposition." },
+                { field: "policy", recovery: "Provide a proposal disposition." },
             );
         }
-        const partial = policy as { capabilities?: unknown; proposals?: unknown };
-        if (Object.keys(partial).some((key) => key !== "capabilities" && key !== "proposals")) {
+        const partial = policy as { proposals?: unknown };
+        if (Object.keys(partial).some((key) => key !== "proposals")) {
             ClientInput.#invalid(
                 context,
                 "loop-policy-invalid",
                 "policy contains an unsupported field.",
-                { field: "policy", recovery: "Use only capabilities and proposals." },
+                { field: "policy", recovery: "Use only proposals." },
             );
         }
         const candidate = {
-            capabilities: partial.capabilities ?? DEFAULT_LOOP_POLICY.capabilities,
             proposals: partial.proposals ?? DEFAULT_LOOP_POLICY.proposals,
         };
         try {
@@ -352,7 +351,7 @@ export default class ClientInput {
                 "policy is not a valid loop policy.",
                 {
                     field: "policy",
-                    recovery: "Use canonical capability only/deny selectors and proposals review, accept, or reject.",
+                    recovery: "Use proposals review, accept, or reject.",
                 },
             );
         }
@@ -503,61 +502,4 @@ export default class ClientInput {
         return JSON.stringify(out);
     }
 
-    // {§worker-settings} — validate and serialize a worker's behavioral-rules bag.
-    // Closed known-key set, validated here; unknown keys never persist. The worker
-    // is an actor inside the workspace's world; these are its own rules.
-    static normalizeWorkerSettings(raw: unknown): { capabilities?: CapabilityPolicy } {
-        if (raw === undefined || raw === null) return {};
-        let parsed: unknown = raw;
-        if (typeof raw === "string") {
-            try {
-                parsed = JSON.parse(raw) as unknown;
-            } catch {
-                ClientInput.#invalid(
-                    "worker.settings",
-                    "settings-invalid",
-                    "worker settings is not valid JSON.",
-                    { field: "settings", recovery: "Provide a JSON object." },
-                );
-            }
-        }
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-            ClientInput.#invalid(
-                "worker.settings",
-                "settings-invalid",
-                "worker settings is not an object.",
-                { field: "settings", recovery: "Provide a settings object." },
-            );
-        }
-        const r = parsed as { capabilities?: unknown };
-        const supported = new Set(["capabilities"]);
-        for (const key of Object.keys(r)) {
-            if (!supported.has(key)) {
-                ClientInput.#invalid(
-                    "worker.settings",
-                    "setting-not-supported",
-                    `settings.${key} is not supported.`,
-                    {
-                        field: `settings.${key}`,
-                        supportedSettings: [...supported],
-                        recovery: "Remove the unsupported setting.",
-                    },
-                );
-            }
-        }
-        const out: { capabilities?: CapabilityPolicy } = {};
-        if (r.capabilities !== undefined) {
-            try {
-                out.capabilities = Validator.assertCapabilityPolicy(r.capabilities as CapabilityPolicy);
-            } catch {
-                ClientInput.#invalid(
-                    "worker.settings",
-                    "capability-policy-invalid",
-                    "settings.capabilities is not a valid capability policy.",
-                    { field: "settings.capabilities", recovery: "Provide canonical only/deny capability selectors." },
-                );
-            }
-        }
-        return out;
-    }
 }

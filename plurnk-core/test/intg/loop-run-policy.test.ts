@@ -1,5 +1,4 @@
-// {§loop-policy} — loop.run persists one complete immutable policy. Capability
-// admission and proposal disposition remain independent parts of that value;
+// {§loop-policy} — loop.run persists one complete immutable proposal policy;
 // proposal review, acceptance, and rejection all use one lifecycle.
 
 import test from "node:test";
@@ -92,14 +91,12 @@ test("loop.run persists a complete canonical policy and omission uses the comple
             const selected = await runLoopToTerminal(ws, 2, {
                 prompt: "selected",
                 policy: {
-                    capabilities: { deny: [{ runtime: "sh" }] },
                     proposals: "accept",
                 },
             });
             const selectedId = selected.loopId;
             const selectedRow = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: selectedId });
             assert.deepEqual(JSON.parse(selectedRow!.policy) as LoopPolicy, {
-                capabilities: { deny: [{ runtime: "sh" }] },
                 proposals: "accept",
             });
 
@@ -107,7 +104,6 @@ test("loop.run persists a complete canonical policy and omission uses the comple
             const ordinaryId = ordinary.loopId;
             const ordinaryRow = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: ordinaryId });
             assert.deepEqual(JSON.parse(ordinaryRow!.policy) as LoopPolicy, {
-                capabilities: {},
                 proposals: "review",
             });
         } finally { ws.close(); }
@@ -166,7 +162,7 @@ test("proposals=reject settles the same admitted proposal without becoming a cap
                 decision: "reject",
                 outcome: "no_review_channel",
             });
-            assert.deepEqual(proposal.policy, { capabilities: {}, proposals: "reject" });
+            assert.deepEqual(proposal.policy, { proposals: "reject" });
         } finally { ws.close(); }
     });
 });
@@ -183,7 +179,7 @@ test("proposal notification projects the same durable policy and its derived dis
             await rpcCall(ws, 1, "workspace.create", { name: "proposal-review" });
             const run = rpcCall(ws, 2, "loop.run", {
                 prompt: "trigger",
-                policy: { capabilities: { deny: [{ runtime: "python3" }] }, proposals: "review" },
+                policy: { proposals: "review" },
             });
             const [proposal] = await waitFor(
                 () => proposals() as Array<{ logEntryId: number; workerId?: number; policy?: unknown; disposition?: unknown }>,
@@ -191,7 +187,6 @@ test("proposal notification projects the same durable policy and its derived dis
             );
             assert.equal(typeof proposal.workerId, "number");
             assert.deepEqual(proposal.policy, {
-                capabilities: { deny: [{ runtime: "python3" }] },
                 proposals: "review",
             });
             assert.deepEqual(proposal.disposition, { owner: "client" });

@@ -22,7 +22,6 @@ test("SchemeCtxImpl exposes only the public plugin context", () => {
         db: {} as Db,
         workspaceId: 1,
         workerId: 2,
-        functionalityWorkerId: 2,
         loopId: 3,
         turnId: 4,
         writer: "model",
@@ -36,7 +35,6 @@ test("SchemeCtxImpl exposes only the public plugin context", () => {
     assert.deepEqual(Object.keys(ctx).toSorted(), [
         "channels",
         "entries",
-        "functionalityWorkerId",
         "interactions",
         "loopId",
         "notify",

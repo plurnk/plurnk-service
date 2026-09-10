@@ -21,7 +21,7 @@ test("{§plurnk-skill} defaults are the operator catalog through ordinary READ a
         const workerId = await daemon.ensureModelWorker(workspaceId);
         const client = await insertWorker(db, workspaceId, null, "client", "client");
         const dispatch = (statement: Parameters<typeof daemon.dispatchAsClient>[0]["statement"]) =>
-            daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId: workerId, statement });
+            daemon.dispatchAsClient({ workspaceId, workerId: client, statement });
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
         const catalog = await dispatch({ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } });
         assert.equal(catalog.status, 200);
@@ -44,23 +44,23 @@ test("{§plurnk-skill} defaults are the operator catalog through ordinary READ a
         const config = await read("skill://plurnk/references/configuration.md");
         assert.equal(config.status, 200);
         assert.equal(config.content, (await readFile("INSTALL.md", "utf8")).trimEnd(), "configuration has one package owner");
-        const context = { scope: "worker" as const, workspaceId, workerId };
+        const context = { scope: "workspace" as const, workspaceId };
         const child = await daemon.forkWorker({ workspaceId, workerId });
-        const childRead = () => daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId: child.workerId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
-        assert.equal((await childRead()).status, 200, "children rederive the ordinary inherited skill");
-        await daemon.invokeModuleAction("worker.skills.disable", { alias: "plurnk" }, context);
+        const childRead = () => daemon.dispatchAsClient({ workspaceId, workerId: child.workerId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
+        assert.equal((await childRead()).status, 200, "children use the same workspace skill");
+        await daemon.invokeModuleAction("workspace.skills.disable", { alias: "plurnk" }, context);
         assert.equal((await read("skill://plurnk/.env.defaults")).status, 404);
-        assert.equal((await childRead()).status, 200, "later parent disablement does not change the child's selection");
-        await daemon.invokeModuleAction("worker.skills.disable", { alias: "plurnk" }, { ...context, workerId: child.workerId });
+        assert.equal((await childRead()).status, 404, "disablement affects existing children too");
+        await daemon.invokeModuleAction("workspace.skills.disable", { alias: "plurnk" }, context);
         assert.equal((await childRead()).status, 404);
-        await daemon.invokeModuleAction("worker.skills.enable", { alias: "plurnk" }, context);
+        await daemon.invokeModuleAction("workspace.skills.enable", { alias: "plurnk" }, context);
         assert.equal((await read("skill://plurnk/.env.defaults")).status, 200);
-        assert.equal((await childRead()).status, 404, "the child retains its independent disablement");
+        assert.equal((await childRead()).status, 200, "enablement restores the shared skill to the child");
 
         const custom = join(root, ".agents", "skills", "plurnk");
         await mkdir(custom, { recursive: true });
         await writeFile(join(custom, "SKILL.md"), "---\nname: plurnk\ndescription: Project-owned Plurnk guidance\n---\nProject guidance.\n");
-        await daemon.invokeModuleAction("worker.skills.enable", { alias: "plurnk" }, context);
+        await daemon.invokeModuleAction("workspace.skills.enable", { alias: "plurnk" }, context);
         assert.match(String((await read("skill://plurnk/SKILL.md")).content), /Project guidance/);
         assert.equal((await read("skill://plurnk/.env.defaults")).status, 404, "shadowing replaces the tree, not an overlay leaking service resources");
     });

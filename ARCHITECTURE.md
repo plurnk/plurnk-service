@@ -92,8 +92,8 @@ flowchart LR
 module packages run inside it; a package boundary is not a security boundary.
 AG-UI owns client transport, while clients own presentation and explicit user
 decisions. MCP is an optional in-process host/client under core's
-`{§module-lifecycle}` and `{§module-worker-capabilities}` seams. MCP server
-attachments are worker Functionality; their tools and resources join
+`{§module-lifecycle}` and `{§module-workspace-capabilities}` seams. MCP server
+attachments are workspace Functionality; their tools and resources join
 the ordinary executor, scheme, proposal, entry, and client-action paths.
 
 ## Model-loop request flow
@@ -148,10 +148,10 @@ same-turn receipt ({§exec-readpure-ungated}). `read`/`pure` runtimes auto-run;
 ({§proposal-accept-applies}) — the verb's own status rides its output entry.
 
 Executors are Worker-agnostic by contract: `ExecArgs` carries no Worker
-identity. A runtime that needs one — an attached MCP server, a Functionality
-manager — is published *per Worker* through capability replacement instead
-({§functionality-model-projection}); the runtime's identity is closed over at
-publication, never passed at invocation.
+identity. MCP servers and Functionality managers are published per workspace
+through capability replacement ({§functionality-model-projection}). Invocation
+callbacks retain the submitting operation's causal identity without making
+the submitter the owner of the shared runtime.
 
 ## State authority
 
@@ -161,5 +161,5 @@ publication, never passed at invocation.
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active worker drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§worker-loop-lifecycle}`. |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
-| Worker Functionality residency            | `WorkerResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-worker-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
+| Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |

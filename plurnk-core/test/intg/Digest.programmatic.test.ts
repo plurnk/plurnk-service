@@ -336,7 +336,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(worker.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(
             worker.markdown,
-            /^Policy: capabilities=\{\} proposals=review$/mu,
+            /^Policy: proposals=review$/mu,
             "the digest projects the canonical loop policy without legacy flag terminology",
         );
         assert.doesNotMatch(worker.markdown, /Flags:|\[object Object\]/u);

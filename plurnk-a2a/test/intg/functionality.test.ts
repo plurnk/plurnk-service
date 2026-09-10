@@ -1,6 +1,6 @@
 // {§a2a-agents-functionality} — the adapter's protocol truth against an
 // independent agent: environment definitions, inert discovery, admission,
-// preparation outcomes, the per-Worker resolver, and the catalog document.
+// preparation outcomes, the per-workspace resolver, and the catalog document.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import A2aFunctionality, { aliasOfCard, renderAgent, A2aFunctionalityError } from "../../src/Functionality.ts";
@@ -9,9 +9,8 @@ import { startDemoAgent } from "../fixtures/DemoAgent.ts";
 
 const diagnosticEnv = { [ERROR_DETAIL_LIMIT]: "512" };
 
-const preparation = (workerId: number, enabled: Record<string, object>, options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {}) => ({
-    workspaceId: 1,
-    workerId,
+const preparation = (workspaceId: number, enabled: Record<string, object>, options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {}) => ({
+    workspaceId,
     enabled: new Map(Object.entries(enabled)),
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",
@@ -87,7 +86,7 @@ test("admission validates the exact definition and the alias/name identity", asy
     assert.equal(aliasOfCard({ name: "42" } as never), "agent-42");
 });
 
-test("preparation attaches through the discovered card, reuses unchanged attachments, isolates failures, and resolves per Worker", async () => {
+test("preparation attaches through the discovered card, reuses unchanged attachments, isolates failures, and resolves per workspace", async () => {
     const agent = await startDemoAgent();
     try {
         const family = new A2aFunctionality({ ...diagnosticEnv, TOKEN: "s3cret" });
@@ -130,7 +129,7 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
         assert.deepEqual(third.documents, []);
         await third.commit();
         assert.equal(family.resolve("researcher", 7), null);
-        await family.teardown(third.snapshot, { workspaceId: 1, workerId: 7 });
+        await family.teardown(third.snapshot, { workspaceId: 7 });
     } finally {
         await agent.close();
     }

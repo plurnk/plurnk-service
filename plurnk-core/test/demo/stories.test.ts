@@ -37,6 +37,7 @@ interface StoryOpts {
     prompt: string;
     maxTurns?: number;
     policy?: Partial<LoopPolicy>;
+    capabilities?: import("@plurnk/plurnk-contracts").CapabilityPolicy;
     setup?: (workspace: LiveWorkspace) => Promise<void>;
 }
 
@@ -58,6 +59,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const cleanup = () => lifetime.disposeAsync();
     try {
         const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+        if (opts.capabilities !== undefined) await s.daemon.setWorkspaceCapabilities({ workspaceId: s.workspaceId, policy: opts.capabilities });
         lifetime.defer(s.cleanup);
         await opts.setup?.(s);
         const loop = await liveLoop(
@@ -91,8 +93,8 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 };
 
 const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<void> => {
-    const attached = await workspace.invokeWorkerAction(
-        "worker.mcp.enable",
+    const attached = await workspace.invokeWorkspaceAction(
+        "workspace.mcp.enable",
         { alias },
     ) as { status?: number };
     assert.equal(attached.status, 200, `the declared ${alias} fixture is attached before the model loop`);
@@ -425,7 +427,7 @@ test("story: compute a value too big for arithmetic shortcuts", async (t) => {
     } finally { await story.cleanup(); }
 });
 
-test("an EXEC-attenuated loop answers a shell-tempting question without a denial cycle", async (t) => {
+test("an EXEC-restricted workspace answers a shell-tempting question without a denial cycle", async (t) => {
     // Deterministic coverage pins policy projection and dispatch; this story
     // probes whether a model naturally uses the remaining admitted surface.
     const story = await runStory({
@@ -433,7 +435,7 @@ test("an EXEC-attenuated loop answers a shell-tempting question without a denial
         label: "capability-steer",
         prompt: "How many files are in this project, roughly? A ballpark from what you can see is fine.",
         maxTurns: 6,
-        policy: { capabilities: { deny: [{ operation: "EXEC" }] } },
+        capabilities: { deny: [{ operation: "EXEC" }] },
     });
     try {
         if (story.finalStatus !== 200) await story.dump();

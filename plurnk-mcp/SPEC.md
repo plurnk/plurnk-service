@@ -85,7 +85,7 @@ nothing task-shaped is written to SQLite and no MCP sidecar lifecycle exists.
 |---|---|
 | Client disconnect | The daemon-owned operation and its task keep running; the client reattaches to the operation, not the task. |
 | Daemon restart | The connection and every in-flight task handle die with it; the tool call fails like any interrupted operation, the loop re-runs, and the tool call creates a fresh task. |
-| Worker reactivation | The attachment reconstructs from its durable definition; in-flight tasks on the replaced connection are abandoned, not resumed. |
+| Workspace reactivation | The attachment reconstructs from its durable definition; in-flight tasks on the replaced connection are abandoned, not resumed. |
 | Expiry | The owning operation deadline bounds polling; a non-converging task fails at the standard round bound and is cancelled. |
 | Cancellation | Owner abort cancels the task before settling; the handle is then terminal. |
 | Already terminal | Terminal results and errors are consumed by the drive loop; a completed or failed task is never re-polled or re-resumed. |
@@ -164,17 +164,17 @@ originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
 
-Service configuration and worker state produce one available set and one
-enabled subset per worker. Every `PLURNK_MCP_<server>` declares an available
+Service configuration and workspace state produce one available set and one
+enabled subset per workspace. Every `PLURNK_MCP_<server>` declares an available
 service-owned definition. `PLURNK_MCP_ENABLED` names the exact subset enabled
-when a worker has no override. Worker state may positively override a
+when a workspace has no override. Workspace state may positively override a
 service definition's enabledness or own an added definition and its enabledness.
 Disabled definitions remain client-visible but contribute no connection,
 Registry, documentation, or resource authority.
 
 §mcp-activation-isolation **Cold endpoint failure is capability-local.** Invalid
 service configuration or durable state fails admission, but an enabled server
-that cannot connect or complete discovery during worker activation remains
+that cannot connect or complete discovery during workspace activation remains
 enabled and client-visible as `unavailable`. It publishes no runtime, tools,
 resources, or documentation and cannot prevent other capabilities or the daemon
 from starting or serving dormant workers. Enabling that already-enabled alias is an explicit reconnect
@@ -253,21 +253,21 @@ stdio executable) and its options (`args`, `cwd`, `env`, `headers`,
 transport-inapplicable options before any connection work.
 
 §mcp-configuration-cascade MCP server configuration has one field-wise
-precedence order: service environment, then the Worker's durable definition.
+precedence order: service environment, then the workspace's durable definition.
 Arrays and maps replace their lower value instead of appending or merging.
 Client configuration is not a live layer: the contracts-owned
 `{§mcp-configuration-overlay}` enters only as the `configuration` of a
 `discover` query, is parsed by the same owner and path as service environment
 declarations, and yields inert candidates with client-configuration provenance
 ({§mcp-discovery}); adding one persists a complete, normalized, unexpanded
-Worker definition. Thus later enablement needs neither the originating client
+workspace definition. Thus later enablement needs neither the originating client
 nor its configuration file, and symbolic credentials remain resolvable only by
 the service at connection preparation.
 
 ### §mcp-module The MCP family beneath the coordinator
 
-§mcp-management-actions MCP is one family of Worker Functionality
-({§functionality-coordinator}): the coordinator publishes `worker.mcp.list |
+§mcp-management-actions MCP is one family of workspace Functionality
+({§functionality-coordinator}): the coordinator publishes `workspace.mcp.list |
 discover | add | enable | disable | remove` and the model's `mcp` executable fence
 family with the common semantics, durable state, and publication; this module
 registers the family adapter and owns protocol truth beneath it. `available`
@@ -281,13 +281,13 @@ exact Problem, or `authorization-required` with its URL), and a two-phase
 snapshot: `commit` closes connections the new set no longer uses and records
 pending authorizations; `abort` closes only what the attempt opened.
 
-Two protocol continuations remain MCP-registered worker actions beneath the
+Two protocol continuations remain MCP-registered workspace actions beneath the
 common grammar:
 
 | Action | Parameters | Result / effect |
 |---|---|---|
-| `worker.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, and re-enables the alias through the coordinator ({§oauth-continuation}); the result is the common mutation result. |
-| `worker.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
+| `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, and re-enables the alias through the coordinator ({§oauth-continuation}); the result is the common mutation result. |
+| `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
 §mcp-discovery Discovery is inert. `configuration` (a client's own
 `PLURNK_MCP_*` overlay) becomes candidates without connecting; `source` — an
@@ -314,8 +314,8 @@ in daemon diagnostics. No MCP resource Problem admits an unbounded SDK message.
 
 §oauth-continuation Interactive preparation publishes the alias as enabled and
 `authorization-required` with its URL; it publishes no runtime. The adapter
-retains one pending candidate per `(worker, alias)` holding the challenged
-connection and one Worker residency lease; a new challenge for the alias
+retains one pending candidate per `(workspace, alias)` holding the challenged
+connection and one workspace residency lease; a new challenge for the alias
 supersedes and releases the previous one ({§oauth-lifetime}).
 `oauth.complete` accepts the complete callback URL so state, `code`, and
 `iss` remain one parsing unit; it finishes the pending connection's
@@ -332,25 +332,25 @@ error text.
 Interactive OAuth state is deliberately ephemeral and process-memory: client
 registration data, access and refresh tokens, the PKCE verifier, and pending
 state live only in the owning connection or pending candidate. Nothing
-OAuth-secret is written to SQLite; the durable worker state holds only the
+OAuth-secret is written to SQLite; the durable workspace state holds only the
 unexpanded definition ({§mcp-configuration}). There is no callback HTTP
 listener, authority-root resource, or daemon-side browser side channel: the
-client returns the complete callback URL through `worker.mcp.oauth.complete`
+client returns the complete callback URL through `workspace.mcp.oauth.complete`
 so `state`, `code`, and `iss` remain one parsing unit. Reauthorization after a
 daemon restart is the intended journey, documented here rather than presented
 as an accidental failure.
 
 | Journey point | Behaviour |
 |---|---|
-| Pending authorization | One pending candidate per `(worker, alias)`; a new add or customized enable cancels and replaces it. A callback from a superseded attempt fails state validation instead of cross-completing. |
+| Pending authorization | One pending candidate per `(workspace, alias)`; a new add or customized enable cancels and replaces it. A callback from a superseded attempt fails state validation instead of cross-completing. |
 | Client disconnect | Does not touch the pending candidate; it can still be completed, or replaced by a fresh request. |
 | Daemon restart during pending | The candidate is lost: nothing was durable, no attachment publishes, and `oauth.complete` answers `404 oauth-not-pending`. Start authorization again. |
 | Daemon restart after authorization | The durable definition rehydrates but tokens are gone; the attachment publishes `authorization-required` and enable returns a fresh `{ status: 202, authorization: { url } }`. The operator reauthorizes. |
 | Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued, otherwise re-enters interactive authorization. |
 | Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the in-memory token. |
-| Worker disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
+| Workspace disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
 | Server replacement | Completion compares the pending candidate's expected definition with the current one; drift of the same server fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
-| Cross-authorization protection | Candidates are keyed by `(worker, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other worker, alias, or attempt can complete this authorization. |
+| Cross-authorization protection | Candidates are keyed by `(workspace, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other workspace, alias, or attempt can complete this authorization. |
 
 ## §oauth-client-credentials Client-credentials grant adoption
 
@@ -402,30 +402,30 @@ decision on durable identity material is ratified.
 
 ## §mcp-setup Atomic lifecycle
 
-When a cold worker is demanded, activation resolves service defaults and durable positive
-worker state, opens and discovers only enabled connections,
+When a cold workspace is demanded, activation resolves service defaults and durable positive
+workspace state, opens and discovers only enabled connections,
 lists the negotiated catalogs, applies enabled/effect policy, builds each exact
 tool Registry and resource facet, and submits one complete owner snapshot to
-{§module-worker-capabilities}. A configured tool absent from the server, a
+{§module-workspace-capabilities}. A configured tool absent from the server, a
 duplicate remote name, an enabled name not representable as a Plurnk target,
-or a `read` name outside the enabled set fails that worker activation. No
+or a `read` name outside the enabled set fails that workspace activation. No
 partial namespace is published and every acquired candidate closes.
 
 - §mcp-catalog-refresh-in-place **A catalog change refreshes in place.** When a server announces a changed catalog, the alias is dirty and its executor is rebuilt on the next preparation — on the connection the alias already holds, never by spawning a second server: with an unchanged definition and a live connection, preparation re-lists the catalog over that connection, so neither an aborted attempt nor a commit has anything of the alias to close, and a failed re-listing leaves the current catalog in service. (#429's root: the SDK's negotiated connect probes a stdio server on a disposable sibling process before the real connect, so every stdio connect starts the server twice and the sibling exits on its own schedule — a test that reads "any exit" as "the committed server was closed" flakes under load. The committed server is the last one started; the refresh-in-place rule keeps it so.) Covered: `Module.test.ts` — one process ever, no close marker across the refresh.
 
-MCP participates in core Functionality residency ({§module-worker-residency}).
-Every tool call and Task retains the worker from executor entry through its
+MCP participates in core Functionality residency ({§module-workspace-residency}).
+Every tool call and Task retains the workspace from executor entry through its
 terminal result; an interactive OAuth candidate retains it until completion,
 replacement, cancellation, or module shutdown. Catalog refresh timers are
 infrastructure, not residency owners: cooling serializes behind a refresh
 already running and cancels any timer not yet begun. At a lease-free quiescent
-boundary, deactivation removes the worker snapshot and closes all of its
+boundary, deactivation removes the workspace snapshot and closes all of its
 connections. Core separately withdraws the executor/scheme publication while
 preserving durable MCP state and generated reference entries for transparent
 reactivation.
 
 Add and enable prepare the candidate while the old snapshot remains
-authoritative, then commit only at {§module-worker-quiescence}. Disable and
+authoritative, then commit only at {§module-workspace-quiescence}. Disable and
 remove commit the complete reduced snapshot at the same boundary. The
 old connection rejects replacement with `409 server-busy` while it owns an active protocol request,
 MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
@@ -446,7 +446,7 @@ cancellation.
 
 One `ServerConnection` owns negotiation, SDK caches, authorization partition,
 subscriptions, active request controllers, MRTR rounds, and Tasks for one
-worker attachment. The host does not reproduce SDK protocol machinery.
+workspace attachment. The host does not reproduce SDK protocol machinery.
 
 | Protocol event | Plurnk composition |
 |---|---|
@@ -540,8 +540,9 @@ even then the capability would be per-client-advertised, never daemon-wide.
 | Prompts | `<server>:///prompts` and encoded prompt-name descendants |
 
 Qualified `<server>://<worker>/…` resources, prompts, and catalogs follow
-{§runtime-resource-binding}: the named Worker's attachment supplies the
-resource, while the requesting operation owns policy and client interactions.
+{§runtime-resource-binding}: the qualifier selects the stored projection, not
+a private attachment. Acquisition uses the workspace attachment; the requesting
+operation retains its policy and client interactions.
 Returned Plurnk resource links retain that qualifier; MCP protocol URIs remain
 unchanged on the wire.
 
@@ -551,7 +552,7 @@ exact target in {§executor-tool-registry}. Its standard
 {§executor-tool-document} carries a compact summary, requiredness derived from
 the input schema, and the original schema itself. The common renderer owns
 {§executor-input-schema-preview}, not an MCP-specific schema interpreter.
-The compact family document contains annotated, copyable EXEC headings with
+The compact family document contains annotated, copyable tool invocations with
 shallow required-field previews and alias-scoped schema links. Each linked child
 preserves the complete remote description and raw input schema, without
 reconstructing property tables or expanding nested constraints into the preview.

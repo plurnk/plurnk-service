@@ -266,13 +266,13 @@ test("bin: persisted and attached workspaces stay cold until capability demand",
             [],
             "attachment must not launch the configured MCP endpoint",
         );
-        await action(booted, "worker.mcp.list", {}, "cold-one", "cold-one");
+        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
         const firstActivationStarts = (await markerLines(startMarker)).length;
         assert.ok(
             firstActivationStarts > 0,
             "first demand opens the configured MCP endpoint",
         );
-        await action(booted, "worker.mcp.list", {}, "cold-one", "cold-one");
+        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
         assert.equal(
             (await markerLines(startMarker)).length,
             firstActivationStarts,
@@ -311,7 +311,7 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
         assert.deepEqual(await markerLines(startMarker), [], "attachment remains passive");
         const demand = action(
             booted,
-            "worker.mcp.list",
+            "workspace.mcp.list",
             {},
             "activation-stop",
             "activation-stop",
