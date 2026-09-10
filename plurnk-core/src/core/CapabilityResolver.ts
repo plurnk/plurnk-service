@@ -83,14 +83,16 @@ export default class CapabilityResolver {
             case "KILL": {
                 const scheme = schemeNameOf(statement.target);
                 if (scheme === "log") return [];
-                return demands(describe("KILL", scheme === "worker" ? "control" : "mutate", statement.target));
+                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workerId) !== undefined);
+                return demands(describe("KILL", control ? "control" : "mutate", statement.target));
             }
             case "TASK":
                 return [];
             case "SEND": {
                 if (statement.target === null) return [];
                 const scheme = schemeNameOf(statement.target);
-                return demands(describe("SEND", scheme === "worker" ? "control" : "mutate", statement.target));
+                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workerId) !== undefined);
+                return demands(describe("SEND", control ? "control" : "mutate", statement.target));
             }
             case "EXEC": {
                 const executors = this.#executors();

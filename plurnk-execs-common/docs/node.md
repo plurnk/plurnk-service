@@ -7,6 +7,32 @@ const os = require("node:os");
 console.log(JSON.stringify({ platform: os.platform(), cpus: os.cpus().length }));
 ````
 
+## Live input
+
+`{stdin=open}` keeps stdin open for later SENDs to the receipt's execution
+address. Without it, initial input ends with EOF as usual.
+
+````node {stdin=open}
+process.stdin.on("data", chunk => process.stdout.write(chunk));
+````
+
+Using the address returned by that invocation (here `node:///1/2/3/node`):
+
+````SEND (node:///1/2/3/node)
+hello
+
+````
+
+The blank line before the closing fence supplies a newline after `hello`.
+SEND adds no newline of its own. Its receipt acknowledges pipe delivery, not
+program completion. READ that same address to inspect stdout while it runs.
+
+````SEND (node:///1/2/3/node) {eof=true}
+````
+
+EOF closes stdin, not the process. KILL terminates the execution. Input cannot
+be sent to another Worker's execution; message that Worker instead.
+
 ## Environment
 
 The same scoped environment as `sh`: the daemon's own secrets (`PLURNK_*`, provider keys) are stripped, so `process.env` inside the snippet sees the project's environment, not plurnk's.

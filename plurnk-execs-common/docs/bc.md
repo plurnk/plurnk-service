@@ -1,5 +1,9 @@
 # bc
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is a `bc` program fed on stdin (a trailing newline is added, so the last
 line evaluates). Arbitrary precision: set `scale` before dividing, or every
 quotient is truncated to an integer.

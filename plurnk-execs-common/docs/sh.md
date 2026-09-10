@@ -1,5 +1,9 @@
 # sh
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The `sh` fence runs the body via `sh -c`, character-perfect including whitespace.
 
 ````sh <!-- the body is the script itself -->

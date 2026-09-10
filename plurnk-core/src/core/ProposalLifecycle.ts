@@ -444,7 +444,14 @@ export default class ProposalLifecycle {
                     : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
         const handler = this.#schemes.get(schemeName, functionalityWorkerId) as SchemeHandler | undefined;
-        if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
+        if (handler === undefined) {
+            return {
+                resolution: { ...resolution, outcome: "apply_failed" },
+                applied: Results.failure("proposal:application", "handler-unavailable", 410,
+                    `The proposed '${schemeName}' handler is no longer available.`, {}, { retryable: false }),
+            };
+        }
+        if (typeof handler.applyResolution !== "function") return { resolution };
         try {
             // Build a ctx for the scheme's applyResolution. The proposal
             // was raised inside a specific (workspace, worker, loop, turn);

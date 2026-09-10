@@ -1,5 +1,9 @@
 # lua
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is Lua code, run with `lua -e`. A script target runs that file and
 receives the body as stdin; `{args=[...]}` passes literal script arguments,
 readable through the `arg` table.

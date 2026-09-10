@@ -7,6 +7,7 @@ import type {
     ClientInteractionResolution,
     Notice,
     ParsedPath,
+    PlurnkStatement,
     ReadStatement,
 } from "@plurnk/plurnk-contracts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -35,6 +36,7 @@ export interface CoreSchemeServices {
         ctx: PlurnkSchemeContext,
     ) => Promise<EntryAddressResolution | null>;
     readonly readExecSource: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<ExecSource>;
+    readonly capabilityDenial: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<SchemeResult | null>;
     readonly requestInteraction: (
         request: ClientInteractionRequest,
         ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
@@ -127,6 +129,12 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
         const services = this.#services;
         if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
         return services.liveSubscriptions;
+    }
+
+    protected capabilityDenial(statement: PlurnkStatement, ctx: CoreSchemeCallContext): Promise<SchemeResult | null> {
+        const services = this.#services;
+        if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
+        return services.capabilityDenial(statement, this.coreContext(ctx));
     }
 
     protected readExecSource(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ExecSource> {

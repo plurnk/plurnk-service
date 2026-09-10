@@ -59,6 +59,8 @@ export interface ExecArgs {
     env?: NodeJS.ProcessEnv;
     // Cancellation. Executors must abort in-flight work when this fires.
     signal: AbortSignal;
+    // {§executor-live-input}: one invocation-local receiver, retired by the consumer.
+    registerInput?: (receiver: ExecInputReceiver) => void;
     // Write a chunk to one of the executor's declared channels. The optional
     // `mimetype` stamps the channel with the REAL per-call output type
     // (`application/json`, `text/markdown`, …); the consumer retypes the channel
@@ -84,6 +86,14 @@ export interface ExecArgs {
 }
 
 export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "metadata" | "cwd" | "target">;
+
+export interface ExecInputMessage {
+    readonly body: string;
+    readonly metadata: readonly string[] | null;
+    readonly signal: AbortSignal;
+}
+
+export type ExecInputReceiver = (message: ExecInputMessage) => Promise<SchemeResult>;
 
 // Preparation owns option validation; the consumer retains only the effective cwd.
 export interface ExecPreparation extends SchemeResult {

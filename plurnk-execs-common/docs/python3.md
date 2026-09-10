@@ -1,5 +1,9 @@
 # python3
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is Python code, run with `python3 -c`. A script target instead runs
 that file and receives the body as stdin. Script arguments and working directory
 are optional header metadata:

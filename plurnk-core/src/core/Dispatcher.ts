@@ -566,9 +566,10 @@ export default class Dispatcher {
             // that exact fact here; no human gate or loop/proposal notification.
             const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
             let autoAccept = false;
-            if (statement.op === "EXEC") {
+            if (statement.op === "EXEC" || (statement.op === "SEND"
+                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", functionalityWorkerId))) {
                 if (!EffectPolicy.isEffect(effect)) {
-                    throw new InvalidOperationResultError("EXEC proposal omitted its canonical effect fact.");
+                    throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
                 }
                 autoAccept = EffectPolicy.decide(effect) === "auto";
             }
@@ -897,10 +898,9 @@ export default class Dispatcher {
             return this.#denyIfDisallowed("exec", origin, workerId);
         }
 
-        // {§stream-control} — a KILL of a runtime stream terminates the caller's own process; it
-        // writes nothing into that read-only output scheme (writableBy plugin), so the writer rule
-        // does not speak. Exec.kill scopes the stream to the caller ({§stream-owner-scoped}).
-        if (statement.op === "KILL") {
+        // {§stream-control}, {§exec-input}: process control is not a write to
+        // stored output. The execution owner enforces self-only KILL and SEND.
+        if (statement.op === "KILL" || statement.op === "SEND") {
             const target = schemeNameOf(statement.target);
             if (target !== null && this.#schemes.isRuntimeScheme(target, workerId)) return null;
         }
@@ -1001,6 +1001,10 @@ export default class Dispatcher {
                 retryable: false,
             },
         );
+    }
+
+    capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
+        return this.#checkCapabilities(statement, ctx);
     }
 
     // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body

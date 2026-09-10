@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, InvocationMetadata, Results, SubprocessInput } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // jq executor — shells the system `jq` binary (no third-party JSON-filter lib).
 // Invocation model:
@@ -47,7 +47,17 @@ export default class Jq extends BaseExecutor {
         });
     }
 
-    async run({ body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    override prepare(input: ExecInput) { return InvocationMetadata.prepare(input, { stdin: true }); }
+
+    async run({ runtime, body, metadata, cwd, target, env, signal, write, setState, registerInput }: ExecArgs): Promise<ExecResult> {
+        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, { stdin: true });
+        if ("failure" in parsed) { setState("results", "errored"); return parsed.failure; }
+        const interactive = parsed.options.stdin === "open";
+        if (interactive && registerInput === undefined) {
+            setState("results", "errored");
+            return Results.failure("executor:input", "input-unsupported", 501,
+                "This executor consumer does not provide live input.", {}, { retryable: false });
+        }
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
             setState("results", "errored");
@@ -59,7 +69,9 @@ export default class Jq extends BaseExecutor {
         // ({§executor-sinks}).
         // -c keeps each value compact on its own line so multi-value output is
         // honest JSONL.
-        const args = target !== null ? ["-c", program, target] : ["-c", "-n", program];
+        const args = interactive
+            ? ["-c", "--unbuffered", program, ...(target === null ? [] : [target, "-"])]
+            : target !== null ? ["-c", program, target] : ["-c", "-n", program];
 
         return new Promise<ExecResult>((resolve) => {
             let settled = false;
@@ -72,7 +84,12 @@ export default class Jq extends BaseExecutor {
             let err = "";
             // jq can read the environment (`env`, `$ENV`), so honor the
             // consumer's scoped env when provided ({§exec-env-scoped}).
-            const child = spawn("jq", args, { signal, cwd: cwd ?? undefined, env: env ?? process.env });
+            const child = spawn("jq", args, { signal, cwd: cwd ?? undefined, env: env ?? process.env,
+                stdio: [interactive ? "pipe" : "ignore", "pipe", "pipe"] });
+            if (interactive && child.stdin) {
+                const input = new SubprocessInput(child.stdin, signal);
+                registerInput!((message) => input.receive(message));
+            }
             child.stdout?.on("data", (c: Buffer) => write("results", c.toString("utf8")));
             child.stderr?.on("data", (c: Buffer) => { err += c.toString("utf8"); });
             child.on("error", (e) => {

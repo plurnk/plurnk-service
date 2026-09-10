@@ -23,11 +23,28 @@ address.
 
 ## Deliberate departures from the `jq` CLI
 
-- **No stdin.** The op grammar has no pipe; `jq`'s read-stdin default maps to `-n` (null input) when no target is given, so an inline program constructs its own input. A file target matches `jq program file` exactly.
+- **Batch by default.** Without a target, `-n` supplies null input; a file target filters that file. `{stdin=open}` instead waits for JSON values sent to the running invocation. A target plus open stdin reads the file first, then stdin, as `jq program file -` does.
 - **Compact output is forced (`-c`).** `jq`'s pretty-print default would break the channel's JSONL contract; presentation belongs to the consumer's mimetype pipeline, not the filter.
 - **No flag surface.** The body is a jq program, not CLI arguments; options such as `--arg`, `-r`, and `-s` are not accepted here.
 
 `jq` reads the ambient environment (`env`, `$ENV`) per its own contract — the consumer's scoped env is honored when provided.
+
+## Live input
+
+````jq {stdin=open}
+.value * 2
+````
+
+Use the returned stream address, here `jq:///1/2/3/jq`. A SEND body is input
+JSON, not another jq program; this example closes stdin after sending its value:
+
+````SEND (jq:///1/2/3/jq) {eof=true}
+{"value":21}
+````
+
+Without `{eof=true}`, include an actual trailing newline to delimit each JSON
+value. Open-input output is unbuffered. READ the same address for results;
+SEND acknowledges only input delivery. KILL remains execution cancellation.
 
 ## Errors
 

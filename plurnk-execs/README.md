@@ -99,6 +99,19 @@ EXEC metadata. `BaseExecutor` supplies `{cwd=...}`; `SubprocessExecutor` adds
 literal script arguments with `{args=["arg",...]}`. Override preparation for
 tool-specific options. See {§executor-metadata}.
 
+### Receive live input
+
+In-process executors may call `args.registerInput?.(async ({ body, metadata,
+signal }) => result)` once during `run()`. Keep the receiver local to that
+invocation, honor cancellation, and return a standard `SchemeResult` for each
+delivery. The consumer routes SEND to the existing execution address and owns
+ordering, deadlines, permissions, and proposals. This does not expose Worker
+identity or grant access to stored output.
+
+`SubprocessExecutor` supplies this receiver when launched with `{stdin=open}`.
+SEND writes exact UTF-8 input; `{eof=true}` ends stdin. No option means ordinary
+batch EOF. See [the live-input contract](SPEC.md#executor-live-input-invocation-local-input).
+
 ### Address output
 
 The runtime tag is also the output scheme. A subprocess result is therefore

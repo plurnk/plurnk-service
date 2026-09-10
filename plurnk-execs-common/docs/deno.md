@@ -1,5 +1,9 @@
 # deno
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is TypeScript or JavaScript, run with `deno eval` (permissions are
 Deno's defaults for `eval`; import what you need from the project or a URL).
 A script target runs that file and receives the body as stdin;

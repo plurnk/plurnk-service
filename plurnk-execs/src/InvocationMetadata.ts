@@ -3,12 +3,13 @@ import { resolve } from "node:path";
 import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ExecInput, ExecPreparation } from "./types.ts";
 
-type Options = { cwd?: string; args: string[] };
+type Options = { cwd?: string; args: string[]; stdin?: "open" };
+type Accepted = { args?: boolean; stdin?: boolean };
 type Parsed = { options: Options } | { failure: SchemeResult };
 
 // {§executor-metadata} The executor framework owns these options, not Core.
 export default class InvocationMetadata {
-    static parse(input: ExecInput, allowArgs = false): Parsed {
+    static parse(input: ExecInput, accepted: Accepted = {}): Parsed {
         const options: Options = { args: [] };
         const fields = new Set<string>();
         const fail = (code: string, detail: string): Parsed => ({
@@ -21,11 +22,16 @@ export default class InvocationMetadata {
             if (match === null) return fail("invalid-metadata", "Execution options use `{name=value}`.");
             const field = match[1]!;
             const value = match[2]!;
-            if (field !== "cwd" && !(allowArgs && field === "args")) {
+            if (field !== "cwd" && !(accepted.args && field === "args") && !(accepted.stdin && field === "stdin")) {
                 return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`);
             }
             if (fields.has(field)) return fail("duplicate-metadata", `Execution option '${field}' occurs more than once.`);
             fields.add(field);
+            if (field === "stdin") {
+                if (value !== "open") return fail("invalid-stdin", "Execution stdin accepts only 'open'.");
+                options.stdin = "open";
+                continue;
+            }
             if (field === "cwd") {
                 if (value.length === 0 || value.includes("\0")) return fail("invalid-cwd", "Execution cwd must be a nonempty directory path without NUL.");
                 options.cwd = value;
@@ -46,8 +52,8 @@ export default class InvocationMetadata {
         return { options };
     }
 
-    static async prepare(input: ExecInput, allowArgs = false): Promise<ExecPreparation> {
-        const parsed = this.parse(input, allowArgs);
+    static async prepare(input: ExecInput, accepted: Accepted = {}): Promise<ExecPreparation> {
+        const parsed = this.parse(input, accepted);
         if ("failure" in parsed) return parsed.failure;
         const directory = parsed.options.cwd;
         if (directory === undefined) return { status: 200, cwd: input.cwd };

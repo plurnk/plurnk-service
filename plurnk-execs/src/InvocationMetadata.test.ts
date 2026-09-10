@@ -19,7 +19,7 @@ test("{§executor-metadata} script arguments preserve exact strings without inte
     const preparation = await executor.prepare(request);
     assert.equal(preparation.status, 200);
     assert.equal(preparation.cwd, request.cwd);
-    assert.deepEqual(InvocationMetadata.parse(request, true), { options: { args } });
+    assert.deepEqual(InvocationMetadata.parse(request, { args: true }), { options: { args } });
     assert.equal(request.body, "unchanged stdin");
 });
 
@@ -35,6 +35,8 @@ for (const [blocks, code] of [
     [["cwd="], "invalid-cwd"],
     [["cwd=bad\0path"], "invalid-cwd"],
     [["flag=yes"], "metadata-unsupported"],
+    [["stdin=closed"], "invalid-stdin"],
+    [["stdin=open", "stdin=open"], "duplicate-metadata"],
     [["--help"], "invalid-metadata"],
 ] as const) {
     test(`{§executor-metadata} rejects ${JSON.stringify(blocks)} as ${code}`, async () => {
@@ -57,6 +59,8 @@ test("{§executor-metadata} argument support is subprocess-owned, for scripts an
     assert.equal(unsupported.status, 400);
     assert.match(unsupported.problem?.type ?? "", /metadata-unsupported$/);
     assert.equal((await pure.prepare(input(null))).status, 200);
+    assert.equal((await pure.prepare(input(["stdin=open"]))).status, 400);
+    assert.equal((await executor.prepare(input(["stdin=open"]))).status, 200);
 });
 
 test("{§executor-metadata} cwd is prepared once from the supplied environment", async (t) => {

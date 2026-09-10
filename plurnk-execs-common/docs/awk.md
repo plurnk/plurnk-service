@@ -1,5 +1,9 @@
 # awk
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is the AWK program, passed as the one positional argument with an
 empty stdin: with no input file it only runs `BEGIN` blocks. To process data,
 name the file(s) in `{args=[...]}`, or run a script target and feed it the body

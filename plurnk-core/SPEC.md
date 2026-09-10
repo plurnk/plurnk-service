@@ -1646,7 +1646,7 @@ operator knobs in `.env.defaults`. Search indexing performs no inference.
 
 No stored `preview` channel — channel content is pulled on READ, never previewed.
 
-Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently.
+Schemes MAY declare multiple channels (`node`: stdout/stderr; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently. Execution input is control under {§exec-input}, not a stored channel.
 
 For a multi-channel streaming READ, persistence and publication are distinct: the scheme may acquire and persist auxiliary channels, but a fragmentless target publishes only the manifest's `defaultChannel`. An explicit fragment publishes that channel. Thus an ordinary HTTP READ presents the sanitized `body`; response metadata and archival DOM remain addressable implementation/diagnostic surfaces rather than ambient model context.
 
@@ -2294,6 +2294,26 @@ violations follow the current admission and strike contracts
   directly to the next packet because the wake edge has already fired. A genuinely
   empty wait also continues under {§wait-obligation-matrix}, never concluding implicitly.
 
+### §exec-input SEND to a running execution
+
+An execution's existing runtime address is also its optional input recipient
+({§executor-live-input}). SEND never edits stored output or creates another
+session. Like stream KILL, input control is self-only; another Worker's output
+may be read, but its execution is controlled through that Worker's lifecycle.
+
+| Boundary | Behavior |
+| --- | --- |
+| Admission | Require SEND control and the original invocation's runtime/tool capabilities. Preserve its classified effect: host input proposes; pure/read input uses the same effect policy as launch. |
+| Acceptance | Recheck both capabilities, owner, and the exact live subscription. Stale approval cannot reach a replacement invocation. |
+| Queued or starting without a receiver | `409 input-unavailable`, immediately; never wait for an execution slot while blocking another input-dependent execution. |
+| Unknown address | `404 stream-not-found`. A terminal execution or retired input returns `410 input-closed`. |
+| Delivery | Serialize accepted inputs per invocation. Preserve authored body and receiver-owned metadata. Receiver success means delivery only, not completion. |
+| Backpressure | `PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS` bounds each accepted delivery, including its queue residence. Expiry returns `504 input-timeout`; cancellation returns `499 input-cancelled`. Once delivery has begun, retire and abort input on either; delivery may be partial and is never replayed. The execution itself is not implicitly killed. |
+| Settlement or teardown | Retire and abort input immediately when the execution settles or is cancelled. Existing stream completion and worker wake mechanics remain the only completion path. |
+
+Stored runtime entries retain plugin-only writers. Input and termination are
+control capabilities, not exceptions granting write access to stdout/resources.
+
 ### §exec EXEC
 
 AST: `{ op: "EXEC", target (optional runtime-specific target), body: string | null (runtime-specific input), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
@@ -2587,7 +2607,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 | decision                        | state | `status_rx` | default outcome | effect |
 |---------------------------------|---|---|---|---|
-| §proposal-accept-applies accept | `resolved` | 200 | — | runs the scheme's **`applyResolution`** — the real side effect (disk write, exec spawn). A failing apply (≥400) downgrades to reject, carrying the apply's own outcome — e.g. a member EDIT's `edit_collision` from its write-back compare-and-swap ({§membership-edit-write-cas}) — or `apply_failed` when it names none. |
+| §proposal-accept-applies accept | `resolved` | 200 | — | runs the scheme's **`applyResolution`** — the real side effect (disk write, exec spawn). An unavailable handler returns `410 handler-unavailable`, never success. A failing apply (≥400) downgrades to reject, carrying the apply's own outcome — e.g. a member EDIT's `edit_collision` from its write-back compare-and-swap ({§membership-edit-write-cas}) — or `apply_failed` when it names none. |
 | §proposal-reject-fails reject   | `failed` | 400 | `rejected` | none — the action did not occur. |
 | §proposal-cancel-aborts cancel  | `cancelled` | 499 | `loop_aborted` | none — the loop is abandoning. |
 

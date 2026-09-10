@@ -1,5 +1,9 @@
 # bun
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is TypeScript or JavaScript, run with `bun -e`. A script target runs
 that file and receives the body as stdin; `{args=[...]}` passes literal
 arguments, readable as `Bun.argv` or `process.argv`.

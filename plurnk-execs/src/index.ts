@@ -3,6 +3,8 @@ import Discover from "./discover.ts";
 // Framework surface
 export { default as BaseExecutor } from "./BaseExecutor.ts";
 export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
+export { default as SubprocessInput } from "./SubprocessInput.ts";
+export { default as InvocationMetadata } from "./InvocationMetadata.ts";
 export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 export { default as RuntimeTag } from "./RuntimeTag.ts";
@@ -39,6 +41,8 @@ export type {
     ExecutorMetadata,
     ExecArgs,
     ExecInput,
+    ExecInputMessage,
+    ExecInputReceiver,
     ExecPreparation,
     ExecResult,
     Effect,

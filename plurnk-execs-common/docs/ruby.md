@@ -1,5 +1,9 @@
 # ruby
 
+For continuing input, launch with `{stdin=open}`, then SEND exact text to the
+returned execution address; `{eof=true}` closes stdin. See the
+[live-input example](node.md#live-input), including newline framing.
+
 The body is Ruby code, run with `ruby -e`. A script target runs that file and
 receives the body as stdin; `{args=[...]}` passes literal `ARGV` entries.
 

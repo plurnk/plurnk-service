@@ -4,6 +4,7 @@ import BaseExecutor from "./BaseExecutor.ts";
 import ErrorDetail, { ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
+import SubprocessInput from "./SubprocessInput.ts";
 import { CommandSyntaxError } from "./tokenizeArgv.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
@@ -89,11 +90,11 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     override prepare(input: ExecInput): Promise<ExecPreparation> {
-        return InvocationMetadata.prepare(input, true);
+        return InvocationMetadata.prepare(input, { args: true, stdin: true });
     }
 
-    run({ runtime, body, metadata, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
-        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, true);
+    run({ runtime, body, metadata, cwd, target, env, signal, write, setState, registerInput }: ExecArgs): Promise<ExecResult> {
+        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, { args: true, stdin: true });
         if ("failure" in parsed) {
             setState("stdout", "errored");
             setState("stderr", "errored");
@@ -127,6 +128,13 @@ export default class SubprocessExecutor extends BaseExecutor {
             ));
         }
         const { cmd, useShell, stdin } = spawnArgs;
+        const interactive = parsed.options.stdin === "open";
+        if (interactive && registerInput === undefined) {
+            setState("stdout", "errored");
+            setState("stderr", "errored");
+            return Promise.resolve(Results.failure("executor:input", "input-unsupported", 501,
+                "This executor consumer does not provide live input.", {}, { retryable: false }));
+        }
         if (useShell && parsed.options.args.length > 0) {
             throw new Error("A subprocess recipe cannot shell-interpret an explicit argument vector.");
         }
@@ -171,7 +179,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // cancel. /dev/null delivers immediate EOF, so it fails fast instead.
             // (The probe path already uses this discipline; matches it.)
             const child = spawn(cmd, args, {
-                stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+                stdio: [interactive || stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
                 shell: useShell, cwd: cwd ?? undefined, env: env ?? process.env, detached: true,
             });
 
@@ -183,7 +191,11 @@ export default class SubprocessExecutor extends BaseExecutor {
             // consumer even though the exec succeeded. The child's exit code is
             // the truth; a
             // stdin write racing child exit is expected noise, not a failure.
-            if (stdin !== undefined && child.stdin) {
+            if (interactive && child.stdin) {
+                const input = new SubprocessInput(child.stdin, signal);
+                input.initial(stdin ?? "");
+                registerInput!((message) => input.receive(message));
+            } else if (stdin !== undefined && child.stdin) {
                 child.stdin.on("error", () => { /* EPIPE-class race with exit — outcome is the exit code */ });
                 child.stdin.end(stdin);
             }

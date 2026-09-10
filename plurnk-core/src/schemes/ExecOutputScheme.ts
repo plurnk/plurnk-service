@@ -1,4 +1,4 @@
-import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import type Exec from "./Exec.ts";
@@ -15,6 +15,7 @@ import type {
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
+    ProposalApplyRequest,
 } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
@@ -30,9 +31,8 @@ const streamAddressSpace = (scheme: string): string =>
 // read PRIOR output, scoped to the tag's stored entries via the executor's OWN
 // manifest (name = the tag) — fixing the latent mis-scope where the shared `exec`
 // handler read under scheme="exec" while output persists under scheme=<tag>. The
-// face never executes (the worker stays on EXEC); process-KILL by coordinate and the
-// COPY/MOVE source-read are the only cross-cutting bits — KILL delegates to the one
-// Exec handler that owns the spawn-abort state, the source-read is tag-scoped here.
+// face never launches work; SEND and KILL delegate to the one execution owner,
+// while COPY/MOVE source reads remain tag-scoped here.
 // Every tag reads through this one uniform path; an executor is a pure producer
 // whose run() writes channels, never a read/find face.
 export default class ExecOutputScheme extends CoreSchemeAdapterBase {
@@ -48,7 +48,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     }
 
     get manifest(): SchemeManifest {
-        return this.#executor.manifest;
+        return { ...this.#executor.manifest, metadataModifier: true };
     }
 
     #claimedPath(statement: FindStatement): boolean {
@@ -98,7 +98,11 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         request: RepresentationPreparationRequest,
         ctx: CoreSchemeCallContext,
     ): Promise<RepresentationPreparationResult> {
-        if (this.#facet?.claims(request.pathname) !== true) return { status: 200 };
+        if (this.#facet?.claims(request.pathname) !== true) {
+            if (request.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
+                "Stored execution output does not accept READ metadata.", {}, { retryable: false });
+            return { status: 200 };
+        }
         return this.#facet.prepareRepresentation?.(request, this.#facetContext(ctx)) ?? { status: 200 };
     }
 
@@ -107,6 +111,11 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         if (find !== undefined && this.#claimedPath(statement)) {
             return await find.call(this.#facet, statement, this.#facetContext(ctx)) as FindResult;
         }
+        if (statement.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
+            "Stored execution output does not accept FIND metadata.", {
+                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
+                matchingPathCount: 0, matchLocationCount: 0,
+            }, { retryable: false }) as FindResult;
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
         if (owner === null) {
@@ -118,6 +127,14 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         return EntryFind.findWorkspaceEntries(owner.statement, core, this.#executor.manifest, {
             ownerId: owner.ownerId,
         });
+    }
+
+    send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        return this.#exec.sendInput(statement, ctx, this.#executor.manifest.name);
+    }
+
+    applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        return this.#exec.applyInput(request, ctx, this.#executor.manifest.name);
     }
 
     // COPY/MOVE source — read the output entry by pathname, tag-scoped (not via the

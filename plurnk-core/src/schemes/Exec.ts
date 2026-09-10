@@ -1,5 +1,5 @@
 import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
-import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, ParsedPath, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import {
@@ -44,6 +44,7 @@ import LogBody from "../core/LogBody.ts";
 import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler from "./ExecScheduler.ts";
+import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 
@@ -139,9 +140,11 @@ export default class Exec extends CoreSchemeAdapterBase {
     // Default = schemes-http's checked WebFetcher; injectable for tests.
     readonly #fetchWeb: WebFetch;
     readonly #scheduler: ExecScheduler;
+    readonly #inputTimeoutMs: number;
     constructor(fetchWeb?: WebFetch) {
         super();
         this.#scheduler = new ExecScheduler();
+        this.#inputTimeoutMs = ExecutionInput.configuredTimeout();
         if (fetchWeb === undefined) {
             const webFetcher = new WebFetcher();
             this.#fetchWeb = (url, opts) => webFetcher.fetch(url, opts);
@@ -150,7 +153,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
     }
 
-    #activeAborts = new Map<number, { workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean }>();
+    #activeAborts = new Map<number, { workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -222,7 +225,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
-            if (entry.workerId === core.workerId && entry.pathname === pathname) {
+            if (entry.workerId === core.workerId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {
                 entry.controller.abort(ExecAbort.killReason(null));
                 return { status: 200 };
             }
@@ -533,6 +536,71 @@ export default class Exec extends CoreSchemeAdapterBase {
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
     }
 
+    async #inputRecipient(statement: SendStatement, ctx: CoreSchemeCallContext, runtime: string) {
+        const core = this.coreContext(ctx);
+        const target = statement.target;
+        const failure = (code: string, status: number, detail: string) => ({
+            failure: Results.failure("scheme:exec", code, status, detail, {}, { retryable: false }),
+        });
+        if (target?.kind !== "url" || target.scheme !== runtime || target.fragment !== null
+            || target.query !== null || statement.lineMarker !== null) {
+            return failure("invalid-input-target", 400, "SEND input addresses an execution, without a channel or scope.");
+        }
+        const owner = await Owner.resolveStreamOwner(target.hostname, core);
+        if (owner === null) return failure("stream-not-found", 404, "No visible stream exists at the requested address.");
+        if (owner !== core.workerId) return failure("input-owner-forbidden", 403, "Execution input is controlled by its owning Worker.");
+        const found = [...this.#activeAborts.entries()].find(([, entry]) =>
+            entry.workerId === owner && entry.runtime === runtime && entry.pathname === target.pathname);
+        if (found !== undefined) {
+            if (core.executors?.entry(runtime, core.functionalityWorkerId)?.executor !== found[1].executor) {
+                return failure("input-unavailable", 409, "This execution's input receiver is no longer enabled.");
+            }
+            return { found };
+        }
+        const terminal = await ChannelWrite.execTerminalStatus(core.db, {
+            workspaceId: core.workspaceId, workerId: owner, scheme: runtime, authority: "", pathname: target.pathname,
+        });
+        return terminal === null
+            ? failure("stream-not-found", 404, "No execution exists at the requested address.")
+            : failure("input-closed", 410, "Execution input is closed.");
+    }
+
+    async sendInput(statement: SendStatement, ctx: CoreSchemeCallContext, runtime: string): Promise<SchemeResult> {
+        const recipient = await this.#inputRecipient(statement, ctx, runtime);
+        if ("failure" in recipient) return recipient.failure;
+        const [subscriptionId, entry] = recipient.found;
+        const unavailable = entry.input.unavailable();
+        if (unavailable !== null) return unavailable;
+        const denied = await this.capabilityDenial(entry.invocation, ctx);
+        if (denied !== null) return denied;
+        return {
+            status: 202,
+            attrs: { inputSubscription: subscriptionId, inputBody: statement.body?.raw ?? "", inputTarget: statement.target!.raw, effect: entry.effect },
+        };
+    }
+
+    async applyInput(args: ProposalApplyRequest, ctx: CoreSchemeCallContext, runtime: string): Promise<SchemeResult> {
+        const attrs = args.attrs as { inputSubscription?: unknown; inputBody?: unknown; inputTarget?: unknown };
+        if (typeof attrs.inputSubscription !== "number" || typeof attrs.inputBody !== "string" || typeof attrs.inputTarget !== "string") {
+            throw new InvalidOperationResultError("Execution input proposal is missing its invocation or body.");
+        }
+        const body = args.body ?? attrs.inputBody;
+        const statement: SendStatement = {
+            op: "SEND", annotation: null, metadata: args.metadata === null ? null : [...args.metadata],
+            target: parsePath(attrs.inputTarget), lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
+        };
+        const recipient = await this.#inputRecipient(statement, ctx, runtime);
+        if ("failure" in recipient) return recipient.failure;
+        const [subscriptionId, entry] = recipient.found;
+        if (subscriptionId !== attrs.inputSubscription) {
+            return Results.failure("scheme:exec", "input-closed", 410,
+                "The proposed execution input is no longer live.", {}, { retryable: false });
+        }
+        const denied = await this.capabilityDenial(statement, ctx) ?? await this.capabilityDenial(entry.invocation, ctx);
+        if (denied !== null) return denied;
+        return entry.input.deliver(body, args.metadata, ctx.signal);
+    }
+
     async applyResolution(
         args: ProposalApplyRequest,
         ctx: CoreSchemeCallContext,
@@ -555,6 +623,11 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (!EffectPolicy.isEffect(effect)) {
             throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
         }
+        const invocation: ExecStatement = {
+            op: "EXEC", executor: runtime, annotation: null, metadata: null,
+            target: attrs.resourceSource ? parsePath(attrs.resourceSource) : target === null ? null : parsePath(target),
+            lineMarker: null, body, position: { line: 1, column: 1 },
+        };
 
         // {§exec-source-temporary} Admission precedes source realization. Native
         // files retain their environment; only standalone sources need a copy.
@@ -672,7 +745,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true });
+        const input = new ExecutionInput(controller.signal, this.#inputTimeoutMs);
+        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
         this.liveSubscriptions().register(subscriptionId, {
             cancel: () => controller.abort(ExecAbort.teardownReason()),
         });
@@ -683,7 +757,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 return await this.#runExecutor({
                     executor: resolved.executor,
                     runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname,
-                    entryId, subscriptionId, signal: controller.signal, controller, tempPath,
+                    entryId, subscriptionId, signal: controller.signal, controller, tempPath, input,
                     timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
                 });
             } finally {
@@ -756,8 +830,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
+        input: ExecutionInput;
     }): Promise<SchemeResult> {
-        const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
+        const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath, input } = opts;
         const db = ctx.db;
         const coordinate = LogEntryProjection.streamCoordinate(pathname, runtime);
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
@@ -989,6 +1064,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 result = cancelled();
             } else try {
                 const reported: ExecutorResult = await executor.run({
+                    registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,
                     entry: entrySink,
                     interact: (request) => {
@@ -1006,6 +1082,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     })),
                     emit: (event) => ctx.pushNotice?.(event),
                 });
+                input.close();
                 // Drain the queue so the subscription doesn't close before
                 // final chunk events / state transitions have committed.
                 await queue;
@@ -1027,6 +1104,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     );
                 }
             } catch (cause) {
+                input.close();
                 // {§executor-results} — an abort rejection is not an executor crash.
                 if (signal.aborted && (cause === signal.reason || (cause instanceof Error && cause.name === "AbortError"))) {
                     result = cancelled();

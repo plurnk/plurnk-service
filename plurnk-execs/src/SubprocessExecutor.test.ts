@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
-import type { ExecArgs, ExecResult } from "./types.ts";
+import type { ExecArgs, ExecInputReceiver, ExecResult } from "./types.ts";
 import type { Notice } from "./Notice.ts";
 
 // Drive a real subprocess and collect the sink activity. Resolves once run()
@@ -73,6 +73,27 @@ test("a stdin-reading program with no stdin body gets /dev/null (EOF) and never 
     const { result, out } = await exec("sh", "cat");
     assert.equal(result.status, 200, "the stdin-reader exited cleanly on EOF, not blocked");
     assert.equal(out.stdout, "", "/dev/null yields no bytes");
+});
+
+test("{§executor-stdin}: a script's initial body precedes later input without implicit EOF", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "executor-live-script-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const target = join(directory, "echo.mjs");
+    await writeFile(target, 'process.stdin.on("data", c => process.stdout.write(c));\n');
+    const controller = new AbortController();
+    let receiver: ExecInputReceiver | undefined;
+    let stdout = "";
+    const result = new SubprocessExecutor({ runtime: "node", glyph: "n" }).run({
+        runtime: "node", body: "initial\n", target, cwd: directory, metadata: ["stdin=open"],
+        signal: controller.signal, registerInput: (input) => { receiver = input; },
+        write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; },
+        setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
+    });
+    t.after(async () => { controller.abort({ signal: "SIGKILL" }); await result; });
+    assert.ok(receiver);
+    assert.equal((await receiver({ body: "later", metadata: ["eof=true"], signal: controller.signal })).status, 200);
+    assert.equal((await result).status, 200);
+    assert.equal(stdout, "initial\nlater");
 });
 
 test("env: a scoped env is handed to the child verbatim", async () => {
