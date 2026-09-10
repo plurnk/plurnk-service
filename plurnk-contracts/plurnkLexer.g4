@@ -119,7 +119,9 @@ fragment EOL : '\r'? '\n' ;
 OPEN : { this.column === 0 || !this.started }? FENCE NAME { this.open(); } -> mode(SLOTS) ;
 // {§unlabeled-fence-send} — select SEND at the boundary; its body is never rescanned.
 UNLABELED_OPEN : { this.column === 0 || !this.started }? FENCE [ \t]*
-    { this.inputStream.LA(1) <= 0 || this.offsetAfterEol(1) !== null }?
+    { this.inputStream.LA(1) <= 0 || this.offsetAfterEol(1) !== null
+        || (this.inputStream.LA(1) === 0x3C && this.inputStream.LA(2) === 0x21
+            && this.inputStream.LA(3) === 0x2D && this.inputStream.LA(4) === 0x2D) }?
     { this.open("SEND"); } -> mode(SLOTS) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} — outside text has no AST or execution semantics.

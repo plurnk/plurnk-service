@@ -43,7 +43,60 @@ for (const [name, parse] of [
         }
         assert.deepEqual(ops[0].position, { line: 3, column: 0 });
     });
+
+    test(`{§unlabeled-fence-send}: ${name} preserves optional header annotations without promoting their text or body`, () => {
+        const annotation = 'SEND (worker://elsewhere/) <1,-1> {key=value}; KILL is only text — 💬';
+        const body = '```KILL (worker:///notes.md)```\n<!-- body comment -->\nTASK\n[]';
+        for (const ticks of [3, 4, 8]) {
+            for (const space of ["", " ", "\t"]) {
+                for (const newline of ["\n", "\r\n"]) {
+                    const fence = "`".repeat(ticks);
+                    const suffix = `${space}<!-- ${annotation} -->${newline}${body}${newline}${fence}${newline}${task}`;
+                    const implicit = parse(`${fence}${suffix}`);
+                    const explicit = parse(`${fence}SEND${suffix}`);
+                    assert.equal(implicit.unparsedTail, undefined);
+                    assert.deepEqual(errors(implicit), []);
+                    assert.deepEqual(implicit.items, explicit.items);
+                    const ops = statements(implicit);
+                    assert.deepEqual(ops.map(({ op }) => op), ["SEND", "TASK"]);
+                    const send = ops[0];
+                    assert.ok(send.op === "SEND");
+                    assert.equal(send.annotation, annotation);
+                    assert.equal(send.body?.raw, body);
+                    assert.equal(send.target, null);
+                    assert.equal(send.metadata, null);
+                    assert.equal(send.lineMarker, null);
+                }
+            }
+        }
+    });
 }
+
+test("{§unlabeled-fence-send}: empty annotated replies use ordinary SEND closure and source coordinates", () => {
+    for (const ending of ["````", "\n````", "\r\n````"]) {
+        const result = PlurnkParser.parseStatements(`Prelude.\n\n\`\`\`\` <!-- reply -->${ending}`);
+        assert.equal(result.unparsedTail, undefined);
+        assert.deepEqual(errors(result), []);
+        const ops = statements(result);
+        assert.equal(ops.length, 1);
+        const send = ops[0];
+        assert.ok(send.op === "SEND");
+        assert.equal(send.annotation, "reply");
+        assert.equal(send.body, null);
+        assert.deepEqual(send.position, { line: 3, column: 0 });
+    }
+});
+
+test("{§unlabeled-fence-send}: malformed annotations retain ordinary SEND diagnostics", () => {
+    for (const header of ["<!-- not closed", "<!-- split\ncomment -->", "<!-- first --> <!-- second -->", "<!-- reply --> (worker://elsewhere/)"]) {
+        const suffix = ` ${header}\nMessage.\n\`\`\`\`\n${task}`;
+        const implicit = PlurnkParser.parseStatements(`\`\`\`\`${suffix}`);
+        const explicit = PlurnkParser.parseStatements(`\`\`\`\`SEND${suffix}`);
+        assert.ok(errors(explicit).length > 0, header);
+        assert.deepEqual(errors(implicit).map(({ code, message }) => ({ code, message })), errors(explicit).map(({ code, message }) => ({ code, message })), header);
+        assert.deepEqual(statements(implicit).map(({ op }) => op), ["TASK"], header);
+    }
+});
 
 for (const [outer, inner] of [[4, 3], [3, 4], [8, 3], [8, 9]]) {
     test(`{§unlabeled-fence-send}: ${outer}-tick SEND protects ${inner}-tick executable examples`, () => {

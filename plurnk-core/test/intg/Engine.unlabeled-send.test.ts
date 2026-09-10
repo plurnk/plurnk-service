@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
-test("{§unlabeled-fence-send}: model examples are delivered as SENDs without effects or warnings and /ops stays exact", async () => {
+const verifyLiteralSends = async (annotation: string | null): Promise<void> => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unlabeled-${crypto.randomUUID()}`);
@@ -26,7 +26,7 @@ test("{§unlabeled-fence-send}: model examples are delivered as SENDs without ef
         ];
         const source = [
             "Do not execute these examples:",
-            ...bodies.map((body) => `\`\`\`\`\n${body}\n\`\`\`\``),
+            ...bodies.map((body) => `\`\`\`\`${annotation === null ? "" : ` <!-- ${annotation} -->`}\n${body}\n\`\`\`\``),
             PlurnkParser.frame("TASK", '[{"content":"Show the examples.","status":"completed"}]'),
         ].join("\n\n");
         const result = await engine.runLoop({
@@ -44,6 +44,7 @@ test("{§unlabeled-fence-send}: model examples are delivered as SENDs without ef
         const modelRows = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "SEND", "SEND", "TASK", null]);
         const sends = modelRows.filter(({ op }) => op === "SEND");
+        assert.deepEqual(sends.map(({ tx }) => JSON.parse(tx).annotation), bodies.map(() => annotation));
         assert.deepEqual(sends.map(({ tx, status_rx }) => ({ body: JSON.parse(tx).body.raw, target: JSON.parse(tx).target, status: status_rx })),
             bodies.map((body) => ({ body, target: null, status: 200 })));
         const ops = modelRows.find(({ op }) => op === null);
@@ -54,4 +55,8 @@ test("{§unlabeled-fence-send}: model examples are delivered as SENDs without ef
         const injected = await db.test_get_channel_by_pathname_scheme.get({ pathname: "/injected.md", scheme: "worker", name: "body" });
         assert.equal(injected, undefined, "the nested EDIT never executes");
     } finally { await db.close(); }
-});
+};
+
+for (const annotation of [null, "literal examples"]) {
+    test(`{§unlabeled-fence-send}: model examples (${annotation ?? "unannotated"}) are delivered as SENDs without effects or warnings and /ops stays exact`, () => verifyLiteralSends(annotation));
+}

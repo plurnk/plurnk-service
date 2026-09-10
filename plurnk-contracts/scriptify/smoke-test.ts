@@ -122,10 +122,11 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
 
 const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
 const unlabeledFence = String.fromCharCode(96).repeat(5);
-const unlabeled = unlabeledFence + "\\n" + literalExample + "\\n" + unlabeledFence + "\\n" + program;
+const unlabeled = unlabeledFence + " <!-- literal example -->\\n" + literalExample + "\\n" + unlabeledFence + "\\n" + program;
 const implicitSend = PlurnkParser.parse(unlabeled);
 assertClean("unlabeled SEND", implicitSend);
 if (implicitSend.items.length !== 2 || implicitSend.items[0]?.statement?.op !== "SEND"
+    || implicitSend.items[0]?.statement?.annotation !== "literal example"
     || implicitSend.items[0]?.statement?.body?.raw !== literalExample
     || implicitSend.items[1]?.statement?.op !== "TASK") throw new Error("unlabeled fence executed its literal example");
 
