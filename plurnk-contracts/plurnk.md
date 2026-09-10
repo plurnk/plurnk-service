@@ -13,7 +13,7 @@ body?
 > YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services).
 
 > [!IMPORTANT]
-> YOU MUST enclose each OP in a separate fenced code block with a matching number of backticks.
+> YOU MUST enclose each OP in matching backtick fences longer than any fences inside.
 
 ## Helper Operations
 
