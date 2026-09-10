@@ -7,7 +7,6 @@ import { parsePath, PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-co
 import { Results, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Owner from "../../src/core/Owner.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
@@ -67,7 +66,7 @@ for (const mode of ["writable", "read-only", "unresolved", "unavailable"] as con
         const scheme: SchemeHandler = {
             manifest: {
                 name: "authority", authority: "namespace", category: "data",
-                channels: { body: "text/plain" }, defaultChannel: "body", entryOwner: "commons", inherit: "none",
+                channels: { body: "text/plain" }, defaultChannel: "body",
                 writableBy: ["model", "_plurnk"], textEditScopes: true, volatile: false, modelVisible: true,
             },
             resolveEntryAddress: async (_target, ctx, access) => {
@@ -98,16 +97,16 @@ for (const mode of ["writable", "read-only", "unresolved", "unavailable"] as con
 }
 
 for (const { target, editable, problem } of [
-    { target: "worker://~/note.md", editable: true, problem: null },
+
     { target: "worker:///note.md", editable: true, problem: null },
-    { target: "worker://peer/note.md", editable: false, problem: "worker-space-read-only" },
-    { target: "worker://~/_plurnk/tools/example.md", editable: false, problem: "worker-generated-read-only" },
-    { target: "worker:///_plurnk/tools/example.md", editable: false, problem: "worker-generated-read-only" },
+    { target: "worker://peer/note.md", editable: true, problem: null },
+    { target: "worker:///_plurnk/tools/example.md", editable: true, problem: null },
+    { target: "worker:///_plurnk/tools/example.md", editable: true, problem: null },
 ]) {
     test(`{§line-anchors}: ${target} publishes only its resource's model edit authority`, async (t) => {
         const { db, ids, run, read, seed } = await runtime(t);
         const peer = await insertWorker(db, ids.workspaceId, null, "peer");
-        await seed(target.includes("//peer/") ? peer : ids.workerId, target.replace("//peer/", "//~/"));
+        await seed(target.includes("//peer/") ? peer : ids.workerId, target);
         for (const origin of ["model", "_plurnk"] as const) assertProjection(await read(target, origin), editable);
         if (editable) {
             const anchor = (await read(target)).lineAnchors![1];
@@ -124,19 +123,19 @@ for (const { target, editable, problem } of [
     });
 }
 
-test("{§line-anchors}: harness edits retain internal coordinate validation without publishing generated-document edit anchors", async (t) => {
+test("{§line-anchors}: harness edits retain internal coordinate validation and publish generated-document edit anchors", async (t) => {
     const { ids, seed, read, run } = await runtime(t);
-    const target = "worker://~/_plurnk/tools/example.md";
+    const target = "worker:///_plurnk/tools/example.md";
     await seed(ids.workerId, target);
     const original = await read(target);
-    assertProjection(original, false);
+    assertProjection(original, true);
     assert.equal(typeof original.lineAnchorIdentity, "string");
     const anchor = LineAnchors.tokens(original.lineAnchorIdentity!, source)[1];
     const changed = await run(`\`\`\`EDIT (${target}) <${anchor}>\nupdated\n\`\`\``, "_plurnk");
     assert.equal(changed.status, 200);
     const current = await read(target);
     assert.equal(current.content, "first\nupdated\nthird");
-    assert.equal(Object.hasOwn(current, "lineAnchors"), false);
+    assert.equal(Object.hasOwn(current, "lineAnchors"), true);
 });
 
 test("{§line-anchors}: file READ and EDIT share root and mounted-member write authority", async (t) => {
@@ -146,7 +145,7 @@ test("{§line-anchors}: file READ and EDIT share root and mounted-member write a
     await mkdir(root);
     const { db, ids, read, run } = await runtime(t);
     await rootWorkspace(db, ids.workspaceId, root);
-    const commons = await Owner.commonsId(db, ids.workspaceId);
+
     const ctx = makeSchemeCtx({ ...ids, db });
     for (const { path, origin, editable } of [
         { path: "local.md", origin: "git", editable: true },
@@ -154,11 +153,10 @@ test("{§line-anchors}: file READ and EDIT share root and mounted-member write a
         { path: "../picked.md", origin: "constraint", editable: true },
     ]) {
         await writeFile(join(root, path), source);
-        await db.crud_register_workspace_member.get({ workspace_id: ids.workspaceId, owner_id: commons,
-            scheme: "file", authority: "", pathname: path, membership_origin: origin });
+        await db.crud_register_workspace_member.get({ workspace_id: ids.workspaceId, scheme: "file", authority: "", pathname: path, membership_origin: origin });
         await EntryCrud.writeEntry({ authority: "", pathname: path }, { channels: {
             body: { content: source, mimetype: "text/markdown" },
-        } }, ctx, "file", commons);
+        } }, ctx, "file");
         assertProjection(await read(path), editable);
         if (!editable) {
             const denied = await run(`\`\`\`EDIT (${path}) <@abcde>\nchanged\n\`\`\``);

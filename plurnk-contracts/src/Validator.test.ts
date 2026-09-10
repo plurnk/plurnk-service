@@ -695,7 +695,8 @@ test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", 
     for (const invalid of [
         { ...policy, proposals: "auto" },
         { ...policy, capabilities: { deny: [{}] } },
-        { proposals: "review" },
+        { ...policy, capabilities: {} },
+        {},
         { ...policy, extra: false },
         null,
         [],
@@ -739,7 +740,7 @@ test("EntryReadResult validates one exact client entry projection", () => {
         status: 200 as const,
         entry: {
             entryId: 17,
-            target: "worker://~/notes.md",
+            target: "worker://alice/notes.md",
             channels: {
                 body: {
                     content: "hello",

@@ -8,7 +8,6 @@ import DrainSupervisor from "./DrainSupervisor.ts";
 const payload: WakeWorkerPayload = {
     workspaceId: 1,
     workerId: 2,
-    entryOwnerId: 2,
     entryId: 3,
     target: "sh:///1/1/1/sh",
     subscriptionId: 4,

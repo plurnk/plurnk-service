@@ -9,8 +9,6 @@
 export type {
     EntryCoordinate,
     SchemeAuthority,
-    SchemeEntryInheritance,
-    SchemeEntryOwner,
     SchemeManifest,
     WriterTier,
 } from "./types.ts";
@@ -84,7 +82,6 @@ export type {
     EntryEditResult,
     EntryFindResult,
     EntryOperationCaps,
-    EntryOwner,
     EntryAddress,
     EntryReadResult,
     EntryStorageReadResult,

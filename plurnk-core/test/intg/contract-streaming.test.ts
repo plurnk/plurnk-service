@@ -29,7 +29,7 @@ import {
 } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, killStmt, execStmt } from "./_dsl.ts";
-import Owner from "../../src/core/Owner.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -59,8 +59,6 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
                 category: "data" as const,
-                entryOwner: "worker" as const,
-                inherit: "none" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async prepareRepresentation(
@@ -113,7 +111,7 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
         });
         if (entry === undefined) throw new Error("stream entry missing");
         const entryId = entry.id;
-        const activeBefore = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
+        const activeBefore = await ChannelWrite.findActiveSubscription(db, { entryId });
         if (activeBefore === null) throw new Error("subscription missing");
         const subId = activeBefore.id;
 
@@ -140,7 +138,7 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/fakestream/cancelled");
         assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL.");
-        assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
+        assert.equal(await ChannelWrite.findActiveSubscription(db, { entryId }), null, "no active subscription remains");
 
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });
         assert.equal(channel?.state, "errored", "channel transitioned active → errored on cancellation");
@@ -161,8 +159,6 @@ test("a public streaming READ returns its 102 row before detached subscription w
             static manifest = {
                 name: "detached", channels: { data: "text/plain" }, defaultChannel: "data",
                 category: "data" as const,
-                entryOwner: "worker" as const,
-                inherit: "none" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async prepareRepresentation(
@@ -213,7 +209,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
             channel === undefined ? undefined : { content: channel.content, state: channel.state },
             { content: "after-return", state: "closed" },
         );
-        assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id }), null);
+        assert.equal(await ChannelWrite.findActiveSubscription(db, { entryId: entry.id }), null);
     } finally {
         await db.close();
     }
@@ -277,7 +273,7 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: "/cap",
+            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/cap",
         });
         const entryId = entry!.id;
 
@@ -299,8 +295,8 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
         await db.test_seed_channel.run({
             entry_id: entryId, name: "under", content: "", mimetype: "text/plain", state: "active",
         });
-        await ChannelWrite.appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
-        await ChannelWrite.appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
+        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "under", chunk: oneMiB });
+        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "under", chunk: oneMiB });
         const stored = await db.test_get_channel.get<{ content: string }>({ entry_id: entryId, name: "under" });
         assert.equal(stored?.content.length, 2 * 1024 * 1024, "2 MiB stored verbatim — no engine cap below 100 MiB");
     } finally { await db.close(); }
@@ -322,9 +318,9 @@ test("daemon fires stream/event per chunk with growing contentLength", async () 
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             // Three separate chunks → three separate events, fired AS content grows.
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "aa", notify });
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "bbb", notify });
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "c", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "aa", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "bbb", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "c", notify });
             await flush();
 
             const events = captured() as Array<{ entryId: number; channel: string; state: string; contentLength: number }>;
@@ -364,8 +360,8 @@ test("engine has no connection/transaction surface; channel growth is scheme-dir
         // the loop, there is no transaction to open/commit.
         const { workspaceId } = await seedEnvelope(db, `no-tx-${crypto.randomUUID()}`);
         const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", state: "active" });
-        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-1" });
-        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-2" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "chunk-1" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "chunk-2" });
         const row = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "chunk-1chunk-2", "content accumulated by scheme-direct appends, no engine transaction");
         assert.equal(row?.state, "active", "engine treats the growing channel as plain static storage");
@@ -388,7 +384,8 @@ test("state transition fires metadata-only stream/event with new state", async (
 
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
-            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify });
+            const producerWorkerId = await RuntimeWorker.ensure(db, workspaceId);
+            await ChannelWrite.setChannelState(db, { entryId, producerWorkerId, channel: "body", state: "closed", notify });
             await flush();
 
             const events = captured() as Array<Record<string, unknown>>;
@@ -399,8 +396,9 @@ test("state transition fires metadata-only stream/event with new state", async (
             assert.equal(evt.state, "closed", "carries the NEW state (active → closed)");
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
             assert.equal(evt.target, "worker:///x", "carries the entry's canonical target URI");
+            assert.equal(evt.workerId, producerWorkerId, "carries the causal actor without an entry-owner axis");
             // Metadata only — never the content body.
-            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workerId", "workspaceId"], "payload is metadata-only (identity/owner/state/length/mimetype + workspace scope); no content field");
+            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workerId", "workspaceId"], "payload is metadata-only; no content field");
         } finally { ws.close(); }
     });
 });

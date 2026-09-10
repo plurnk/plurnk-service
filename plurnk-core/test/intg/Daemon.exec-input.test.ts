@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Mock } from "@plurnk/plurnk-providers";
+import StreamMock from "./_stream-mock.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
-import { packetSection } from "./_helpers.ts";
+import { executionAddress, packetSection } from "./_helpers.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("{§exec-input}: the production loop sends stdin, waits for EOF completion, and observes the real result", async () => {
-    const mock = new Mock({ contextWindow: 100_000, responses: [
+    const mock = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse('````node {stdin=open}\nprocess.stdin.on("data", d => process.stdout.write("received:" + d));\n````\n\n````TASK\n[{"content":"Deliver input to the process.","status":"in_progress"}]\n````', 10),
-        makeMockResponse('````SEND (node:///1/2/2/node) {eof=true}\ninput-witness\n````\n\n````TASK\n[{"content":"Observe the output.","status":"waiting"}]\n````', 10),
+        makeMockResponse('````SEND ($STREAM) {eof=true}\ninput-witness\n````\n\n````TASK\n[{"content":"Observe the output.","status":"waiting"}]\n````', 10),
         makeMockResponse('````SEND\nVerified the process response.\n````\n\n````TASK\n[{"content":"Observed input-witness.","status":"completed"}]\n````', 10),
     ] });
     await withDaemon(mock, async (db, _daemon, address) => {
@@ -33,7 +33,7 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
 
 for (const action of ["cancel", "stop"] as const) {
     test(`{§exec-input}: daemon ${action} reaps a real input-open process without a spurious model wake`, async () => {
-        const mock = new Mock({ contextWindow: 100_000, responses: [
+        const mock = new StreamMock({ contextWindow: 100_000, responses: [
             makeMockResponse('````node {stdin=open}\nconsole.log(process.pid); process.stdin.resume();\n````\n\n````TASK\n[{"content":"Await process input.","status":"waiting"}]\n````'),
         ] });
         await withDaemon(mock, async (db, daemon) => {
@@ -41,8 +41,11 @@ for (const action of ["cancel", "stop"] as const) {
             const workerId = await daemon.ensureModelWorker(workspaceId);
             const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Await input.", policy: { proposals: "accept" } });
             await waitForDb(() => new LoopLifecycle(db).status(loopId), (status) => status === 202, { timeoutMs: 8_000 });
+            const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
+            assert.ok(turn);
+            const stream = await executionAddress(db, turn.id, 2);
             const channel = await waitForDb(() => db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({
-                pathname: "/1/2/2/node", scheme: "node", name: "stdout",
+                pathname: new URL(stream).pathname, scheme: "node", name: "stdout",
             }), (value) => /^\d+\s*$/.test(value?.content ?? ""));
             const pid = Number(channel!.content.trim());
             assert.ok(Number.isSafeInteger(pid) && pid > 0);

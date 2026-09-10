@@ -76,7 +76,6 @@ export interface FindProjectionResource {
 }
 
 interface FindAddress {
-    readonly ownerId: number;
     readonly authority?: string;
     readonly pathname?: string;
     // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
@@ -266,12 +265,12 @@ export default class EntryFind {
             };
         }
         const fragment = statement.target.kind === "url" ? statement.target.fragment : null;
-        const channel = fragment ?? manifest.defaultChannel;
+        const channel = fragment;
         const availableChannels = [...new Set([
             manifest.defaultChannel,
             ...Object.keys(manifest.channels),
         ])].filter((candidate) => candidate.length > 0);
-        if (channel.length === 0) {
+        if (manifest.defaultChannel.length === 0 && Object.keys(manifest.channels).length > 0 && channel === null) {
             return {
                 status: 400,
                 matches: [],
@@ -286,6 +285,7 @@ export default class EntryFind {
         }
         if (
             fragment !== null
+            && Object.keys(manifest.channels).length > 0
             && fragment !== manifest.defaultChannel
             && !Object.hasOwn(manifest.channels, fragment)
         ) {
@@ -324,7 +324,6 @@ export default class EntryFind {
         if (!multipleAuthorities && scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
-                owner_id: address.ownerId,
                 scheme, authority, pathname: scope.pathname,
             });
             if (exact === undefined) {
@@ -343,14 +342,11 @@ export default class EntryFind {
         // cannot cross `/`, while `**` can. A declared folder scope remains a
         // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}
         const { db, workspaceId } = ctx;
-        // Candidates are workspace-bounded — a FIND never reaches across workspaces ({§find-scoped-isolation})
-        // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
-        // other scheme draws from the commons.
-        type Candidate = { entry_id: number; authority: string; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };
+        // {§find-scoped-isolation} Candidates retain the selected workspace and literal authority.
+        type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
         const fulltext = statement.body?.dialect === "fts";
         let candidates = await db[fulltext ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
-            owner_id: address.ownerId,
             scheme,
             authority: multipleAuthorities ? null : authority,
             channel,
@@ -411,6 +407,12 @@ export default class EntryFind {
                 ...candidate, pathname: EntryManifest.toPath(scheme, candidate.authority, candidate.pathname),
             }));
         }
+        const channels = new Map(candidates.map((candidate) => [candidate.pathname, candidate.channel]));
+        const channelOf = (key: string): string => {
+            const selected = channels.get(key);
+            if (selected === undefined) throw new Error(`FIND candidate lost its selected channel: ${key}`);
+            return selected;
+        };
         const effectiveBytes = address.bytes === undefined ? undefined : (key: string): ByteSource => {
             const coordinate = coordinateByKey.get(key);
             if (coordinate === undefined) throw new Error(`FIND byte source lost coordinate ${key}`);
@@ -515,9 +517,8 @@ export default class EntryFind {
                 })),
                 ctx,
                 manifest,
-                channel,
+                channelOf,
                 coordinateByKey,
-                address.ownerId,
             );
         } else {
             const { mimetypes } = ctx;
@@ -552,7 +553,7 @@ export default class EntryFind {
             };
             const bytesMatched = byteCandidates.length === 0
                 ? { status: 200, matches: [] as Match[] }
-                : await EntryFind.#matchBytes(statement.body, byteCandidates, byteSupplier, mimetypes, channel);
+                : await EntryFind.#matchBytes(statement.body, byteCandidates, byteSupplier, mimetypes, channelOf);
             if (bytesMatched.status !== 200) return {
                 status: bytesMatched.status,
                 matches: [],
@@ -561,7 +562,7 @@ export default class EntryFind {
             matches = [
                 ...r.matches.map((match) => ({
                     pathname: match.key,
-                    matches: match.matches.map((evidence) => ({ channel, ...evidence })),
+                    matches: match.matches.map((evidence) => ({ channel: channelOf(match.key), ...evidence })),
                 })),
                 ...bytesMatched.matches,
             ];
@@ -570,7 +571,7 @@ export default class EntryFind {
         const projectedScope = multipleAuthorities && scopePathname !== null
             ? pathScope(EntryManifest.toPath(scheme, authority, scopePathname), manifest.folderScopes === true)
             : scope;
-        return { status: 200, matches, channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders };
+        return { status: 200, matches, channel: fragment ?? candidates[0]?.channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders };
     }
 
     // {§find-bytes} — the matcher runs over the bytes as one character each, so a text pattern
@@ -582,7 +583,7 @@ export default class EntryFind {
         pathnames: readonly string[],
         bytesOf: (pathname: string) => ByteSource,
         mimetypes: NonNullable<PlurnkSchemeContext["mimetypes"]>,
-        channel: string,
+        channelOf: (key: string) => string,
     ): Promise<{ status: number; matches: Match[]; problem?: ProblemDetails }> {
         const ceiling = binaryInputMaximum();
         const matches: Match[] = [];
@@ -609,7 +610,7 @@ export default class EntryFind {
             const match = await Matcher.matchAgainstContent(body, latin1, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE, mimetypes);
             if (match.status >= 400) return { status: match.status, matches: [], problem: match.problem };
             if (match.status !== 200 || match.matches === undefined) continue;
-            matches.push({ pathname, matches: ByteView.byteEvidence(latin1, bytes, match.matches).map((evidence) => ({ channel, ...evidence })) });
+            matches.push({ pathname, matches: ByteView.byteEvidence(latin1, bytes, match.matches).map((evidence) => ({ channel: channelOf(pathname), ...evidence })) });
         }
         return { status: 200, matches };
     }
@@ -618,9 +619,8 @@ export default class EntryFind {
         matches: readonly SourceCandidateMatch[],
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-        channel: string,
+        channelOf: (key: string) => string,
         coordinates: ReadonlyMap<string, { authority: string; pathname: string }>,
-        ownerId: number,
     ): Promise<Match[]> {
         if (matches.every(({ span }) => span === null)) {
             return [...new Set(matches.map(({ key }) => key))].map((pathname) => ({ pathname, matches: [] }));
@@ -628,11 +628,11 @@ export default class EntryFind {
         const scheme = EntryCrud.identityScheme(manifest);
         const candidates: Array<{ key: string; content: string; mimetype: string }> = [];
         for (const pathname of new Set(matches.filter(({ span }) => span !== null).map(({ key }) => key))) {
+            const channel = channelOf(pathname);
             const coordinate = coordinates.get(pathname);
             if (coordinate === undefined) throw new Error(`FIND graph result lost coordinate ${pathname}`);
             const row = await ctx.db.ops_read_channel.get<{ content: string; mimetype: string }>({
                 workspace_id: ctx.workspaceId,
-                owner_id: ownerId,
                 scheme,
                 ...coordinate,
                 channel,
@@ -644,7 +644,7 @@ export default class EntryFind {
         // {§find-result-projection} — every addressable finding names the channel
         // it was located in, so line coordinates cannot be mis-attributed across
         // channels of the same resource.
-        return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges.map((range) => ({ channel, ...range })) }));
+        return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges.map((range) => ({ channel: channelOf(key), ...range })) }));
     }
 
     // FIND result = the scheme's default-first channel groups, filtered to the matched
@@ -694,12 +694,10 @@ export default class EntryFind {
         // The catalog group's default channel carries its bare addressable path;
         // align each selected resource through the same EntryManifest.toPath the catalog
         // uses. Resource order is preserved (rank for ~full-text).
-        // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
-        // match never pairs with a coordinate-twin sibling's catalog metadata.
+        // {§entry-owner} A match and its catalog row must have the same full resource identity.
         const byPath = new Map((await EntryManifest.catalogRowsFor(
             { ...ctx, defaultChannelFor: (name) => name === scheme ? manifest.defaultChannel : ctx.defaultChannelFor?.(name) ?? "body" },
             scheme,
-            address.ownerId,
             multipleAuthorities ? undefined : authority,
         )).map((r) => [r[0].path, r] as const));
         const resources: FindProjectionResource[] = [];
@@ -729,13 +727,7 @@ export default class EntryFind {
             }
         }
         if (match.scope === undefined) throw new Error("FIND selection succeeded without a path scope");
-        const owner = manifest.authority === "owner" && statement.target?.kind === "url" ? statement.target.hostname : null;
-        const qualify = (path: string): string => owner && path.startsWith(`${scheme}:///`)
-            ? `${scheme}://${owner}/${path.slice(`${scheme}:///`.length)}` : path;
-        const projected = projectFindResult(statement, match.scope,
-            resources.map(({ item, match }) => ({ item: item.map((row) => ({ ...row, path: qualify(row.path) })) as CatalogMatch, match })),
-            scopes.map((row) => ({ ...row, path: qualify(row.path) })),
-        );
+        const projected = projectFindResult(statement, match.scope, resources, scopes);
         if (address.pathname === undefined) return projected;
 
         // Exact FIND consumes the same selected canonical producer as exact
@@ -745,7 +737,6 @@ export default class EntryFind {
             { authority, pathname: address.pathname },
             ctx,
             scheme,
-            address.ownerId,
         );
         if (stored.status !== 200 || stored.entry === null) {
             throw new Error(

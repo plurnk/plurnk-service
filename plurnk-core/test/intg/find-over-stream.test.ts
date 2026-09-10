@@ -2,13 +2,13 @@
 // (stdout), never the entry-manifest fallback `body`; it answers with the match, not a 500.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
+import StreamMock from "./_stream-mock.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
 test("FIND over an exec stream channel answers the match instead of throwing on the default channel", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [
+    const mock = new StreamMock({ contextWindow: 16384, responses: [
         makeMockResponse("```EXEC\nprintf 'alpha\\nbeta\\n'\n```\n\n```TASK <5>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-        makeMockResponse("```FIND (sh:///1/2/2/sh#stdout)\n/beta/\n```\n\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```FIND ($STREAM#stdout)\n/beta/\n```\n\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

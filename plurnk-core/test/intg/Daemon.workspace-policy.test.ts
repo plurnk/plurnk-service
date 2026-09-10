@@ -102,7 +102,7 @@ test("{§workspace-capability-inspection}: existing workers reconcile their tool
         const model = await daemon.ensureModelWorker(workspace.workspaceId);
         const sibling = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
         const look = (workerId: number, runtime: string) => daemon.look({ workspaceId: workspace.workspaceId, workerId,
-            statement: readStmt({ ...urlPath("worker", `/_plurnk/plurnk/${runtime}.md`), hostname: "~" }) });
+            statement: readStmt({ ...urlPath("worker", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });
         for (const workerId of [model, sibling.workerId]) assert.equal((await look(workerId, "node")).status, 200);
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "node" }] } });
         for (const workerId of [model, sibling.workerId]) {

@@ -313,7 +313,6 @@ export default class EditMutations {
             this.#liveSubscriptions,
             {
                 authority: binding?.address?.authority ?? (statement.target.kind === "url" ? statement.target.hostname ?? "" : ""),
-                ownerId: binding?.address?.ownerId ?? null,
                 publishedChannel,
                 editPrecondition: resolved.precondition,
             },

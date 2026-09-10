@@ -19,7 +19,7 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-resources");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId };
@@ -27,7 +27,7 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         const resources = await db.test_reasoning_resources.all<Resource>({ worker_id: workerId });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         assert.deepEqual(resources, [{ pathname: `/1/${turn!.sequence}/1`, content: original }]);
-        const target = `reasoning://${resources[0]!.pathname}`;
+        const target = `reasoning://alice${resources[0]!.pathname}`;
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         assert.equal(reads.length, 1);
@@ -41,12 +41,12 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         const receipt = `log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ`;
         let sequence = 50;
         const dispatch = (source: string) => engine.dispatch({ ...context, statement: statement(source), turnId: next.turnId, sequence: sequence++, origin: "model" });
-        const copy = "worker://~/reasoning-notes.txt";
+        const copy = "worker://alice/reasoning-notes.txt";
         assert.equal((await dispatch(`\`\`\`COPY (${target}) (${copy})\`\`\``)).status, 201);
         const copied = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-notes.txt", name: "body" });
         assert.equal(copied?.content, original);
         assert.equal(copied?.mimetype, "text/markdown", "COPY uses the destination type without rewriting reasoning text");
-        assert.equal((await dispatch(`\`\`\`COPY (${target}) <2,3> (worker://~/reasoning-slice.md)\`\`\``)).status, 201);
+        assert.equal((await dispatch(`\`\`\`COPY (${target}) <2,3> (worker://alice/reasoning-slice.md)\`\`\``)).status, 201);
         const slice = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-slice.md", name: "body" });
         assert.equal(slice?.content, "Finding 2: evidence 2.\nFinding 3: evidence 3.\n", "COPY includes the selected lines' original terminators");
         assert.equal(slice?.mimetype, "text/markdown");
@@ -54,11 +54,11 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
             `\`\`\`EDIT (${target}) <1>
 Revised determination.
 \`\`\``,
-            "```EDIT (reasoning:///9/9/9)\nInvented history.\n```",
+            "```EDIT (reasoning://alice/9/9/9)\nInvented history.\n```",
             `\`\`\`KILL (${target})\`\`\``,
             `\`\`\`KILL (${target}) <2>\`\`\``,
             `\`\`\`COPY (${copy}) (${target}) <1,-1>\`\`\``,
-            `\`\`\`MOVE (${target}) (worker://~/moved-reasoning.txt)\`\`\``,
+            `\`\`\`MOVE (${target}) (worker://alice/moved-reasoning.txt)\`\`\``,
             `\`\`\`MOVE (${copy}) (${target}) <1,-1>\`\`\``,
         ]) {
             const denied = await dispatch(program);
@@ -106,7 +106,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-limit-${limit}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId };
@@ -118,7 +118,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
         if (limit === 0) {
             const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
             const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
-                statement: statement(`\`\`\`READ (reasoning://${resource.pathname}) <17,30>\`\`\``),
+                statement: statement(`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\``),
             });
             assert.equal(explicit.status, 200);
             assert.ok("content" in explicit);
@@ -129,7 +129,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
             assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
-            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
+            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/alice\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
             const record = parseLogRecords(log).find(({ path }) => typeof path === "string" && path.endsWith(`/${reads[0]!.sequence}/READ`));
             assert.ok(record);
             assert.equal(record.annotation, "prior turn reasoning");
@@ -153,7 +153,7 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
     let db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-lifecycle");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
         const unrelatedId = await insertWorker(db, workspaceId, null, "unrelated");
         const loopId = await insertLoop(db, workerId, 1);
         const schemes = new SchemeRegistry();
@@ -161,7 +161,7 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
         const context = { workspaceId, workerId, loopId };
         const producing = await engine.runTurn({ ...context, provider: provider(original), messages: [] });
         const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
-        const target = `reasoning://${resource.pathname}`;
+        const target = `reasoning://alice${resource.pathname}`;
         let sequence = 20;
         const dispatch = (source: string) => engine.dispatch({ ...context,
             statement: statement(source), turnId: producing.turnId, sequence: sequence++, origin: "model",
@@ -172,7 +172,7 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
             await Turn.complete(db, turn.id, result.status);
             return result;
         };
-        assert.equal((await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`READ (${target})\`\`\``) })).status, 404);
+        assert.equal((await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`READ (${target})\`\`\``) })).status, 200);
         assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
 Retained determination.
 \`\`\``)).status, 200);
@@ -182,14 +182,14 @@ Retained determination.
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
         assert.equal(found.matchLocationCount, 1);
-        const forkId = await Fork.fork(db, workerId, "reasoning-branch", (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
+        const forkId = await Fork.fork(db, workerId, "reasoning-branch");
         const forkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: forkId });
         assert.ok(forkLoop);
         const forkContext = { workspaceId, workerId: forkId, loopId: forkLoop.id };
         await engine.runTurn({ ...forkContext, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkId })).length, 1,
             "a pending source is observed by the fork without cloning provider accounting");
-        assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
+        assert.equal((await clientDispatch(`\`\`\`EDIT (reasoning://reasoning-branch${resource.pathname}) <1>
 Branch-only decision.
 \`\`\``, forkContext)).status, 200);
         assert.match((await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, /^Retained determination\./);
@@ -213,7 +213,7 @@ Revised conclusion.
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
             statement: statement(`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\``),
         })).status, 200);
-        const forkAfterRead = await Fork.fork(db, workerId, "already-observed", (scheme) => schemes.entryInheritanceForStoredScheme(scheme, workerId));
+        const forkAfterRead = await Fork.fork(db, workerId, "already-observed");
         await db.close();
         db = await openMigrated(dbPath);
         engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -245,7 +245,7 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource, wi
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-admission");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId, messages: [] };

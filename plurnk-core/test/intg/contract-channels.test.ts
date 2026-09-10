@@ -9,7 +9,6 @@ import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import Owner from "../../src/core/Owner.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
@@ -32,13 +31,13 @@ const setup = async () => {
 const seedExecEntry = async (
     db: Db,
     workspaceId: number,
-    workerId: number,
+    _workerId: number,
     pathname: string,
     stdout: string,
     stderr: string,
 ): Promise<number> => {
     const entryId = await seedEntryWithChannel(db, {
-        workspaceId, ownerId: workerId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
+        workspaceId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
     });
     // Second channel on the SAME entry — the (entry_id, name) keying means a
     // distinct name is a distinct row under the same entry.
@@ -119,7 +118,6 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
         await seedExecEntry(db, workspaceId, workerId, "/run/complete", "out", "err");
         await seedEntryWithChannel(db, {
             workspaceId,
-            ownerId: workerId,
             scheme: "exec",
             pathname: "/run/stdout-only",
             channel: "stdout",
@@ -219,7 +217,7 @@ test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's 
             ),
             ctx,
             manifest,
-            { ownerId: await Owner.commonsId(db, workspaceId) },
+            {  },
         );
 
         assert.equal(result.status, 200);
@@ -283,7 +281,7 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
             ),
             ctx,
             manifest,
-            { ownerId: await Owner.commonsId(db, workspaceId) },
+            {  },
         );
 
         assert.equal(result.status, 200);
@@ -312,7 +310,7 @@ test("{§persistent-search-index}: changing one channel invalidates and re-deriv
         }>({ entry_id: entryId });
         assert.ok(before.every(({ deep_hash }) => deep_hash !== null));
 
-        const replaced = await new DbChannelCaps(ctx, "exec", "", workerId).replace(
+        const replaced = await new DbChannelCaps(ctx, "exec", "").replace(
             "/run/abc",
             "stderr",
             "changed stderr",
@@ -425,8 +423,7 @@ test("{§persistent-search-index}: a concurrent channel change cannot attach sta
         const maintenance = SearchIndex.maintain(ctx);
         await derivationStarted;
 
-        const ownerId = await Owner.commonsId(db, workspaceId);
-        const replaced = await new DbChannelCaps(ctx, "multi", "", ownerId).replace(
+        const replaced = await new DbChannelCaps(ctx, "multi", "").replace(
             "/racing.md",
             "body",
             "representation after the race",

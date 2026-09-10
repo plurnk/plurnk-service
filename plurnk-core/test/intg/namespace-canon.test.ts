@@ -10,7 +10,6 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
@@ -39,7 +38,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
     try {
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, "src/main.js"), "the one file\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "src/main.js" }, { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
+        await EntryCrud.writeEntry({ authority: "", pathname: "src/main.js" }, { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } } }, ctx, "file");
 
         const rootBase = root; // e.g. /tmp/plurnk-canon-XXXX
         const spellings = ["src/main.js", "/src/main.js", "./src/main.js", "src/./main.js", "a/../src/main.js", `../${rootBase.split("/").at(-1)}/src/main.js`];
@@ -63,7 +62,7 @@ test("{§fs-answer-in-canon}: EDIT through an alias answers canonically without 
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "note.md"), "original\n");
-        const seeded = await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "note.md" });
+        const seeded = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: "note.md" });
         assert.ok(seeded);
         const before = await db.test_entries_count_all.get<{ n: number }>({});
 
@@ -82,7 +81,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "a.md"), "a\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
+        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
         const rows = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.ok(rows.length > 0);
         for (const { pathname } of rows) {
@@ -95,7 +94,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "readme.md"), "hello\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "readme.md" }, { channels: { body: { content: "hello\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
+        await EntryCrud.writeEntry({ authority: "", pathname: "readme.md" }, { channels: { body: { content: "hello\n", mimetype: "text/markdown" } } }, ctx, "file");
 
         const Engine = (await import("../../src/core/Engine.ts")).default;
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
@@ -120,7 +119,6 @@ test("{§fs-write-surface}: canonical root and outside-member writes obey the ad
     const outside = await mkdtemp(join(tmpdir(), "plurnk-mount-"));
     try {
         const file = new File();
-        const commons = await Owner.commonsId(db, workspaceId);
 
         // (1) root + empty path, no Git and no pick → the root grants exclusive
         // creation. Accepting the proposal establishes the resulting membership.
@@ -153,8 +151,8 @@ test("{§fs-write-surface}: canonical root and outside-member writes obey the ad
         const mountKeyClient = `../${outside.split("/").at(-1)}/client.md`;
         const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: mountKeyClient, source: "members" });
-        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", authority: "", pathname: mountKeyClient, membership_origin: "constraint" });
-        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", authority: "", pathname: mountKeyGit, membership_origin: "git" });
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyClient, membership_origin: "constraint" });
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyGit, membership_origin: "git" });
         const rw = await file.edit(editStmt(mountKeyClient, "revised\n", fullReplace), ctx);
         assert.equal(rw.status, 202, "a picked mount member is read-write — the per-file rw bind mount");
         const ro = await file.edit(editStmt(mountKeyGit, "revised\n"), ctx);
@@ -167,10 +165,10 @@ test("{§fs-write-surface}: canonical root and outside-member writes obey the ad
 });
 
 test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty survey", async () => {
-    const { root, db, ctx, workspaceId } = await setup();
+    const { root, db, ctx } = await setup();
     try {
         await writeFile(join(root, "real.md"), "content\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "real.md" }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
+        await EntryCrud.writeEntry({ authority: "", pathname: "real.md" }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, ctx, "file");
         const file = new File();
 
         // ENOENT on a READ miss carries the resolved name in wire canon.

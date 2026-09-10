@@ -9,8 +9,6 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    entryOwner: "commons",
-    inherit: "none",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,
@@ -30,7 +28,7 @@ test("Manifest.of rejects missing and mismatched identities", () => {
 test("Manifest.of validates dispatch-critical fields", () => {
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("authority"), authority: "guess" } }, "authority"),
-        /authority.*namespace.*resource.*owner/,
+        /manifest\.authority must be namespace or resource/,
     );
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("unsafe"), writableBy: ["system"] } }, "unsafe"),
@@ -67,33 +65,10 @@ test("Manifest.of validates dispatch-critical fields", () => {
     assert.doesNotThrow(
         () => Manifest.of({ manifest: { ...manifest("traits"), traits: ["web", "interaction"] } }, "traits"),
     );
-    const { entryOwner: _entryOwner, ...ownerless } = manifest("ownerless");
-    assert.throws(
-        () => Manifest.of({ manifest: ownerless }, "ownerless"),
-        /entryOwner.*commons.*worker.*resolved/,
-    );
-    const { inherit: _inherit, ...inheritless } = manifest("inheritless");
-    assert.throws(
-        () => Manifest.of({ manifest: inheritless }, "inheritless"),
-        /inherit.*none.*snapshot.*rederive/,
-    );
-    assert.throws(
-        () => Manifest.of({ manifest: { ...manifest("resolved"), entryOwner: "resolved" } }, "resolved"),
-        /resolved entry ownership.*resolveEntryAddress/,
-    );
-    assert.doesNotThrow(() => Manifest.of({
-        manifest: { ...manifest("resolved"), entryOwner: "resolved" },
-        resolveEntryAddress() {},
-    }, "resolved"));
-    assert.throws(
-        () => Manifest.of({ manifest: {
-            ...manifest("logging-owner"),
-            category: "logging",
-            entryOwner: "worker",
-            inherit: "snapshot",
-        } }, "logging-owner"),
-        /non-data.*must not declare.*entryOwner.*inherit/,
-    );
+    for (const field of ["entryOwner", "inherit"]) {
+        assert.throws(() => Manifest.of({ manifest: { ...manifest("resource"), [field]: "worker" } }), /unknown field/);
+    }
+    assert.doesNotThrow(() => Manifest.of({ manifest: manifest("resource") }));
 });
 
 test("Manifest.of admits only declared top-level fields", () => {

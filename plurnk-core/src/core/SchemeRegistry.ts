@@ -10,7 +10,6 @@ import {
     SchemeDiscovery,
     type PacketSectionDraft,
     type PacketSectionTransformer,
-    type SchemeEntryInheritance,
     type SchemeHandler,
 } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest } from "./scheme-types.ts";
@@ -26,7 +25,6 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
-import { routedSchemeName } from "./plurnk-uri.ts";
 
 interface NamespaceClaim {
     readonly key: string;
@@ -81,6 +79,14 @@ export default class SchemeRegistry {
         this.#registerBuiltIn("reasoning", new Reasoning());
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("worker", new Worker());
+    }
+
+    outputResource(manifest: SchemeManifest): ExecOutputScheme {
+        const exec = this.#handlers.get("exec") as Exec;
+        const handler = new ExecOutputScheme(manifest, exec);
+        if (this.#coreServices === undefined) throw new Error("Stored output requires bound core services.");
+        handler.bindCore(this.#coreServices);
+        return handler;
     }
 
     register(name: string, handler: object): void {
@@ -208,7 +214,7 @@ export default class SchemeRegistry {
             tags.add(tag);
             const claim = SchemeRegistry.#runtimeClaim(owner);
             if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") continue;
-            const handler = new ExecOutputScheme(executor, exec, facet);
+            const handler = new ExecOutputScheme(executor.manifest, exec, facet);
             Manifest.of(handler, tag);
             const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
             if (this.#coreServices !== undefined && typeof bindCore === "function") {
@@ -258,7 +264,7 @@ export default class SchemeRegistry {
                 const peer = snapshot.claims.get(tag);
                 if (peer !== undefined) this.#throwClaimCollision(tag, peer, incoming);
             }
-            const handler = new ExecOutputScheme(executor, exec, facet);
+            const handler = new ExecOutputScheme(executor.manifest, exec, facet);
             Manifest.of(handler, tag);
             const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
             if (this.#coreServices !== undefined && typeof bindCore === "function") {
@@ -313,11 +319,6 @@ export default class SchemeRegistry {
     manifestFor(name: string, workspaceId?: number): SchemeManifest | undefined {
         const handler = this.get(name, workspaceId);
         return handler === undefined ? undefined : Manifest.of(handler, name);
-    }
-
-    entryInheritanceForStoredScheme(scheme: string, workspaceId: number): SchemeEntryInheritance {
-        const manifest = this.manifestFor(routedSchemeName(scheme), workspaceId);
-        return manifest?.category === "data" ? manifest.inherit : "none";
     }
 
     list(workspaceId?: number): string[] {

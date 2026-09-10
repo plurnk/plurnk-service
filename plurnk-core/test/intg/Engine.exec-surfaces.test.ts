@@ -39,7 +39,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             const invocation = logEntries(packets[0]).find((entry) => entry.path === path);
             assert.ok(invocation, "the failure is recorded under its invoked executor, including digits and hyphens");
             assert.equal(invocation.status, 400);
-            assert.equal(invocation.stream, `${runtime}:///1/2/2/${runtime}`);
+            assert.equal(invocation.stream, undefined, "an unknown executor did not allocate an output resource");
             assert.match(packetSection(packets[0], "errors"), /log:\/\/\/1\/2\/2\/search-api2/);
             const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
             assert.equal(JSON.parse(dispatched.find((row) => row.op === "EXEC")!.rx).problem.instance, path,

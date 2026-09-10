@@ -29,7 +29,6 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #authority: string;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #publishedChannel: string | null;
-    readonly #ownerId: number;
     #current: StreamSubscription | null = null;
 
     constructor(
@@ -38,20 +37,18 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         authority: string,
         liveSubscriptions: LiveSubscriptions,
         publishedChannel: string | null,
-        ownerId: number,
     ) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         this.#authority = authority;
         this.#liveSubscriptions = liveSubscriptions;
         this.#publishedChannel = publishedChannel;
-        this.#ownerId = ownerId;
     }
 
     async open(pathname: string, handle: SubscriptionHandle): Promise<StreamSubscription> {
-        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, this.#authority, pathname, this.#ownerId);
+        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entry === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
-        const { entryId, workerId: entryOwnerId } = entry;
+        const { entryId } = entry;
         const {
             db,
             workerId,
@@ -70,7 +67,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         let unlink = (): void => {};
         const notifyChunk = async (channel: string, chunk: string, mimetype?: string): Promise<void> => {
             await ChannelWrite.appendToChannel(db, {
-                entryId, channel, chunk,
+                entryId, producerWorkerId: workerId, channel, chunk,
                 ...(publishedChannel === null || publishedChannel === channel ? { notify: streamEventNotify } : {}),
                 mimetype,
             });
@@ -90,7 +87,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
             liveSubscriptions.unregister(subscriptionId);
             unlink();
             wakeWorkerNotify?.({
-                workspaceId, workerId, entryOwnerId, entryId,
+                workspaceId, workerId, entryId,
                 target: renderAddress({ scheme, authority: this.#authority, pathname }),
                 subscriptionId, result, scheme, summary: summary ?? "",
             });

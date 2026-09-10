@@ -69,12 +69,16 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
         return { name, ...served };
     }));
     const db = await openMigrated();
-    const schemes = new SchemeRegistry();
+    let schemes = new SchemeRegistry();
     const provider = new Mock({ contextWindow: 1_000_000, responses: responses.map(makeMockResponse) });
-    const daemon = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules") });
-    daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
-    } }));
+    const createDaemon = () => {
+        const instance = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules") });
+        instance.registerModule(McpModule.init({ env: {
+            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+        } }));
+        return instance;
+    };
+    let daemon = createDaemon();
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-resource-owners" });
@@ -111,13 +115,19 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
             return false;
         }
     }, Boolean);
-    return { db, daemon, provider, schemes, workspaceId, alice, bob, carol, client, client2, read, reads, paused, action, cool, setPolicy };
+    const restart = async () => {
+        await daemon.stop();
+        schemes = new SchemeRegistry();
+        daemon = createDaemon();
+        await daemon.start();
+    };
+    return { db, get daemon() { return daemon; }, provider, get schemes() { return schemes; }, servers, restart, workspaceId, alice, bob, carol, client, client2, read, reads, paused, action, cool, setPolicy };
 };
 
 test("{§runtime-resource-binding}: shared cold MCP resources, catalog links, caller policy, and concurrent connection leases", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t);
     assert.equal(f.provider.received.length, 0, "attaching and cooling never invokes a model");
-    const foreign = await f.read(`shared://bob${path}`);
+    const foreign = await f.read(`shared://${path}`);
     assert.equal(foreign.content, "alice's resource", JSON.stringify(foreign));
     assert.equal((await f.read(`shared://${path}`)).content, "alice's resource");
     const ownCatalog = await f.read("shared:///resources");
@@ -125,23 +135,23 @@ test("{§runtime-resource-binding}: shared cold MCP resources, catalog links, ca
     const ownResource = (JSON.parse(String(ownCatalog.content)) as { resources: Array<{ uri: string; address: string }> }).resources.find((resource) => resource.uri === uri)!;
     const followed = await f.read(ownResource.address);
     assert.equal(followed.content, "alice's resource", JSON.stringify({ address: ownResource.address, ...followed }));
-    assert.equal((await f.read(`shared://bob${path}`, f.carol)).content, "alice's resource", "a reader need not attach the addressed runtime itself");
+    assert.equal((await f.read(`shared://${path}`, f.carol)).content, "alice's resource", "a reader need not attach the addressed runtime itself");
     assert.equal((await f.read(`shared://missing${path}`)).status, 404);
-    assert.equal((await f.read(`shared://carol${path}`)).content, "alice's resource");
-    const catalog = await f.read("shared://bob/resources", f.carol);
+    assert.equal((await f.read(`shared://${path}`)).content, "alice's resource");
+    const catalog = await f.read("shared:///resources", f.carol);
     assert.equal(catalog.status, 200, JSON.stringify(catalog));
     const listed = JSON.parse(String(catalog.content)) as { resources: Array<{ uri: string; address: string }> };
     const linked = listed.resources.find((resource) => resource.uri === uri);
-    assert.equal(linked?.address, `shared://bob${path}`);
+    assert.equal(linked?.address, `shared://${path}`);
     assert.equal((await f.read(linked!.address, f.carol)).content, "alice's resource");
-    const multi = await f.read(`shared://bob${resourcePath(multipartUri)}`, f.carol);
-    const parts = [...String(multi.content).matchAll(/<(shared:\/\/bob\/[^>]+)>/gu)].map((match) => match[1]!);
+    const multi = await f.read(`shared://${resourcePath(multipartUri)}`, f.carol);
+    const parts = [...String(multi.content).matchAll(/<(shared:\/\/\/[^>]+)>/gu)].map((match) => match[1]!);
     assert.equal(parts.length, 2, JSON.stringify(multi));
     assert.equal((await f.read(parts[0]!, f.carol)).content, "alice:first");
 
     await f.setPolicy({ deny: [{ access: "observe", scheme: "shared" }] });
     const before = f.reads.length;
-    const denied = await f.read(`shared://bob${path}`, f.carol);
+    const denied = await f.read(`shared://${path}`, f.carol);
     assert.equal(denied.status, 403, JSON.stringify(denied));
     assert.match(JSON.stringify(denied.problem), /capability-denied/);
     assert.equal(f.reads.length, before, "denied observation never calls resources/read");
@@ -154,8 +164,8 @@ test("{§runtime-resource-binding}: shared cold MCP resources, catalog links, ca
     f.paused.set("alice", { entered: aliceEntered.resolve, released: release.promise });
     f.paused.set("bob", { entered: bobEntered.resolve, released: release.promise });
     const pending = Promise.all([
-        f.read(`shared://alice${path}`, f.client),
-        f.read(`other://bob${path}`, f.client2),
+        f.read(`shared://${path}`, f.client),
+        f.read(`other://${path}`, f.client2),
     ]);
     try {
         await Promise.all([aliceEntered.promise, bobEntered.promise]);
@@ -177,7 +187,7 @@ test("{§runtime-resource-binding}: shared cold MCP resources, catalog links, ca
     assert.equal(f.provider.received.length, 0, "cold and concurrent resource access never runs any model");
 });
 
-for (const transition of ["enabled", "disabled", "removed"] as const) {
+for (const transition of ["enabled", "disabled", "removed", "producer-removed", "replaced", "restarted"] as const) {
     test(`{§mcp-result-content}: a client can follow its saved result link with the attachment ${transition}`, { timeout: 20_000 }, async (t) => {
         const f = await fixture(t);
         const invoked = await f.daemon.dispatchAsClient({
@@ -188,27 +198,47 @@ for (const transition of ["enabled", "disabled", "removed"] as const) {
             const entries = await f.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({
                 workspace_id: f.workspaceId, scheme: "shared", prefix: "%",
             });
-            const output = entries.find(({ pathname }) => pathname.endsWith("/shared"));
+            const output = entries.find(({ pathname }) => /^\/[a-f0-9]{8}$/u.test(pathname));
             return output === undefined ? undefined : f.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
                 pathname: output.pathname, scheme: "shared", name: "body",
             });
         }, (channel) => channel?.content.includes("/resources/snapshot.txt") === true);
         const address = /<(shared:\/\/[^>]+)>/u.exec(published!.content)?.[1];
         assert.ok(address, published!.content);
-        if (transition !== "enabled") {
+        if (transition === "disabled" || transition === "removed") {
             const changed = await f.action(transition === "disabled" ? "disable" : "remove", { alias: "shared" }) as { status: number };
             assert.equal(changed.status, 200, JSON.stringify(changed));
         }
-        const result = await f.read(address);
+        if (transition === "replaced") {
+            assert.equal((await f.action("remove", { alias: "shared" }) as { status: number }).status, 200);
+            assert.equal((await f.action("add", {
+                alias: "shared", definition: { name: "shared", transport: "http", url: f.servers[1]!.url, read: ["snapshot"] },
+            }) as { status: number }).status, 201);
+            assert.equal((await f.read(`shared://${path}`, f.client2)).content, "bob's resource");
+        }
+        if (transition === "restarted") {
+            assert.equal((await f.action("disable", { alias: "shared" }) as { status: number }).status, 200);
+            await f.restart();
+        }
+        assert.match(address, /^shared:\/\/\/[a-f0-9]{8}\/resources\//u);
+        if (transition === "producer-removed") await f.db.test_delete_worker.run({ id: f.client });
+        const result = await f.read(address, f.client2);
         assert.equal(result.status, 200, JSON.stringify({ address, transition, result }));
         assert.equal(result.content, "alice's saved result");
+        const directory = address.slice(0, address.lastIndexOf("/") + 1);
+        const catalog = await f.daemon.dispatchAsClient({
+            workspaceId: f.workspaceId, workerId: f.client2,
+            statement: statement(PlurnkParser.frame(`FIND (${directory})`, null)),
+        });
+        assert.equal(catalog.status, 200, JSON.stringify(catalog));
+        assert.match(JSON.stringify(catalog), /snapshot\.txt/);
         assert.equal(f.provider.received.length, 0, "reading an artifact requires no model inference");
     });
 }
 
 test("{§runtime-resource-binding}: MCP resource elicitation and its receipt belong to the requesting model operation", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `${PlurnkParser.frame(`READ (other://bob${resourcePath(guardedUri)})`, null)}\n\n${task("in_progress")}`,
+        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${task("in_progress")}`,
         `${PlurnkParser.frame("SEND", "The resource was read.")}\n\n${task("completed")}`,
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
@@ -231,7 +261,7 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
 
 test("{§runtime-resource-binding}: cancelling the requester settles its MCP interaction and releases the shared connection", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `${PlurnkParser.frame(`READ (other://bob${resourcePath(guardedUri)})`, null)}\n\n${task("in_progress")}`,
+        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${task("in_progress")}`,
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
     const pending = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
@@ -242,7 +272,7 @@ test("{§runtime-resource-binding}: cancelling the requester settles its MCP int
     assert.deepEqual(await f.daemon.pendingClientInteractions(f.workspaceId), []);
     await f.cool();
     assert.equal(f.provider.received.length, 1, "neither the cancelled reader nor the resource owner's model continues");
-    assert.equal((await f.read(`other://bob${path}`, f.carol)).content, "bob's resource", "cancellation leaves the workspace attachment usable");
+    assert.equal((await f.read(`other://${path}`, f.carol)).content, "bob's resource", "cancellation leaves the workspace attachment usable");
     await f.cool();
     assert.equal(f.provider.received.length, 1);
 });

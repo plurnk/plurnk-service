@@ -62,7 +62,7 @@ published by the coordinator and the two continuations by this module:
 
 The model manages the same family through ```` ```mcp (list|discover|add|enable|disable|remove) ````.
 
-Tool discovery uses ordinary `FIND (worker://~/_plurnk/tools/*.md)` and READ.
+Tool discovery uses ordinary `FIND (worker:///_plurnk/tools/*.md)` and READ.
 Each server's document lists enabled EXEC calls with required-field previews
 and links to full input schemas under `tools/<server>/<encoded-tool>.md`.
 The manager uses the same layout under `plurnk/mcp.md` and `plurnk/mcp/`;
@@ -165,8 +165,8 @@ Portable timeouts and complete examples live in [`.env.defaults`](./.env.default
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server tools | `worker://~/_plurnk/tools/<server>.md` family summary |
-| Enabled tool | Exact `worker://~/_plurnk/tools/<server>/<encoded-tool>.md` document and ```` ```server (tool) ```` |
+| Server tools | `worker:///_plurnk/tools/<server>.md` family summary |
+| Enabled tool | Exact `worker:///_plurnk/tools/<server>/<encoded-tool>.md` document and ```` ```server (tool) ```` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

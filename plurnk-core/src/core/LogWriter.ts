@@ -1,6 +1,7 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Durable operation recording: one log row per dispatched statement, split out of Dispatcher.
 import type { ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import ExecutionOutputs from "./ExecutionOutputs.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
@@ -38,6 +39,11 @@ export default class LogWriter {
     }
 
     async writeLog(context: Parameters<LogWriter["prepareLog"]>[0]): Promise<number> {
+        if (context.statement.op === "EXEC" && context.result.status === 202 && context.result.attrs !== undefined) {
+            const attrs = context.result.attrs as Record<string, unknown>;
+            if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
+            attrs.pathname = await ExecutionOutputs.claim(this.#db, context.workspaceId, execRouteOf(context.statement).runtime);
+        }
         const draft = await this.prepareLog(context);
         await this.#canonColumns(draft, context.workspaceId);
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(draft);
@@ -99,22 +105,11 @@ export default class LogWriter {
         } else {
             Results.assert(result);
         }
-        // {§log-coordinate-hierarchy}: the stream and its invocation share one
-        // item path. The stream link never replaces the authored input target.
-        if (statement.op === "EXEC") {
-            if (coordinate === null) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
-            const { runtime } = execRouteOf(statement);
-            const coordPathname = `/${coordinate}`;
-            attrsObj.pathname = coordPathname;
-            attrsObj.stream = `${runtime}://${coordPathname}`;
-            // Mutate the in-memory result.attrs too: the dispatch path
-            // hands originalResult.attrs to handler.applyResolution after
-            // proposal accept (see ProposalLifecycle.workerApply). Both views —
-            // the stored row AND the in-memory proposal — need the same
-            // pathname so applyResolution writes the entry at the same URI.
-            if (result.attrs !== undefined && result.attrs !== null) {
-                (result.attrs as Record<string, unknown>).pathname = coordPathname;
-            }
+        if (statement.op === "EXEC" && typeof attrsObj.pathname === "string" && attrsObj.pathname !== "") {
+            attrsObj.stream = `${execRouteOf(statement).runtime}://${attrsObj.pathname}`;
+            if (seqs === undefined) throw new Error("Execution provenance has no loop/turn coordinate.");
+            attrsObj.coordinate = { loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence };
+            (result.attrs as Record<string, unknown>).coordinate = attrsObj.coordinate;
         }
         const attrs = JSON.stringify(attrsObj);
         const txJson = JSON.stringify(durableStatement);

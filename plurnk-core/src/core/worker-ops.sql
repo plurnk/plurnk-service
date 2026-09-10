@@ -1,20 +1,13 @@
--- worker:// op family — the worker-table primitive spawn/irc need beyond fork.sql.
--- Resolve a sister worker by name, WITHIN a workspace only (the actor boundary — a
--- model never reaches another workspace's workers, SPEC {§machine-processes}). Newest
--- wins if a name was reused. spawn reuses fork.sql's worker insert (fork_insert_worker,
--- the identical INSERT); fork reuses Fork.fork; only by-name resolution is new.
+-- {§worker-authority-carving}: stable literal names within one workspace.
 
 -- PREP: worker_resolve_by_name
-SELECT id FROM workers WHERE workspace_id = $workspace_id AND name = $name
-ORDER BY id DESC LIMIT 1;
+SELECT id FROM workers WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: worker_name_by_id
--- A worker's name from its id ({§worker-scheme}) — the worker:/// self-fold resolves the
--- acting worker (ctx.workerId) to the owner named by the URI authority.
 SELECT name FROM workers WHERE id = $worker_id;
 
 -- PREP: worker_deliverable_by_name
--- The newest worker holding this name, with its live loop or latest-settled terminal result — the
+-- The named worker, with its live loop or latest-settled terminal result — the
 -- deliverable a sister COLLECTS by READing worker://<name> ({§worker-scheme-collect}, the pull side of
 -- the same deliverable the push delta carries). Non-terminal means the worker has not delivered yet
 -- (READ steers to 202).
@@ -24,21 +17,11 @@ SELECT r.id AS worker_id, l.id, l.status, l.terminal_result, l.terminated_by,
 FROM workers r
 JOIN loops l ON l.worker_id = r.id
 WHERE r.workspace_id = $workspace_id AND r.name = $name
-ORDER BY r.id DESC,
-         CASE WHEN l.status IN (100, 102, 202) THEN 0 ELSE 1 END,
+ORDER BY CASE WHEN l.status IN (100, 102, 202) THEN 0 ELSE 1 END,
          CASE WHEN l.status IN (100, 102, 202) THEN l.sequence END DESC,
          CASE WHEN l.status NOT IN (100, 102, 202) THEN l.terminated_at END DESC,
          l.id DESC
 LIMIT 1;
-
--- PREP: worker_live_by_name
--- The newest worker holding this name that is still LIVE (an unresolved loop, 100/102/202) —
--- the spawn gate's collision check. A hit means the name is in use by a running sister
--- (refuse: 409); no hit means the name is free or held only by a terminated worker (reclaim).
-SELECT r.id FROM workers r
-JOIN loops l ON l.worker_id = r.id
-WHERE r.workspace_id = $workspace_id AND r.name = $name AND l.status IN (100, 102, 202)
-ORDER BY r.id DESC LIMIT 1;
 
 -- PREP: worker_count_active
 -- Workers in a workspace with an unresolved loop (100 pending / 102 in-progress / 202 parked)

@@ -5,7 +5,6 @@
 // the source intact (no data loss behind a pending review).
 
 import test from "node:test";
-import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile, mkdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -53,7 +52,7 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
     const abs = join(root, rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
-    const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${rel}` });
+    const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${rel}` });
     await seedStaticChannel(ctx.db, seeded?.id, {
         name: "body",
         content,
@@ -64,7 +63,7 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
 };
 
 const fileMember = async (ctx: Ctx, rel: string) =>
-    ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${rel}` });
+    ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${rel}` });
 
 const generatedPicks = (ctx: Ctx) =>
     ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });

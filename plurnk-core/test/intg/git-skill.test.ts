@@ -42,7 +42,7 @@ const runLoop = async (root: string) => {
                 (r) => r?.status === 200,
                 { timeoutMs: 30000 },
             );
-            return db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/skills/git.md" });
+            return db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/skills/git.md" });
         } finally { ws.close(); }
     });
     const survey = mock.received[1]?.find((message) => message.role === "user");

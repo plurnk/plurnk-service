@@ -17,10 +17,8 @@ import { renderAddress } from "./plurnk-uri.ts";
 // Render metadata, never a read gate — {§channel-state-state-is-metadata}.
 export type { ChannelState } from "@plurnk/plurnk-schemes";
 
-// The loop/turn/sequence coordinate of the entry, mirrored onto stream payloads
-// so clients read it as fields instead of re-parsing the target URI. The owning
-// scheme supplies it because it owns its pathname shape; absent on streams that
-// carry no coordinate. {§notifications-stream-event-on-channel-change},
+// Causal log coordinates are explicit fields, independent of resource identity.
+// Executors provide them when the stream originated in an admitted turn. {§notifications-stream-event-on-channel-change},
 // {§notifications-stream-concluded}
 export interface StreamCoordinate {
     loop_seq: number;
@@ -30,12 +28,12 @@ export interface StreamCoordinate {
 
 export interface StreamEventPayload {
     entryId: number;
-    workerId: number;                // entry owner and read perspective — {§notifications-stream-event-on-channel-change}
+    workerId: number;                // initiating actor; not resource ownership
     target: string;                // canonical entry URI — {§notifications-stream-event-on-channel-change}
     channel: string;
     state: ChannelState;
     contentLength: number;
-    loop_seq?: number;             // entry coordinate, when the scheme has one
+    loop_seq?: number;             // causal log coordinate, when supplied
     turn_seq?: number;
     sequence?: number;
     mimetype?: string;             // current stored type — {§channel-mimetype}
@@ -49,14 +47,13 @@ export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload)
 export interface WakeWorkerPayload {
     workspaceId: number;
     workerId: number;                // lifecycle worker to wake
-    entryOwnerId: number;            // public stream/concluded read perspective
     entryId: number;
     target: string;                // canonical entry URI — {§notifications-stream-concluded}
     subscriptionId: number;
     result: SchemeResult;           // exact universal terminal result
     scheme: string;                // the scheme that owned the subscription
-    summary: string;               // model-facing line, e.g. "sh:///1/2/3/sh completed (exit 0); stdout=N bytes, stderr=M bytes"
-    loop_seq?: number;             // entry coordinate, when the scheme has one
+    summary: string;               // model-facing line, e.g. "sh:///ab3d5678 completed (exit 0); stdout=N bytes, stderr=M bytes"
+    loop_seq?: number;             // causal log coordinate, when supplied
     turn_seq?: number;
     sequence?: number;
 }
@@ -105,7 +102,6 @@ export type NoticeNotify = (workspaceId: number, payload: NoticePayload) => void
 
 interface ChannelMetaRow {
     workspace_id: number;
-    workerId: number;
     scheme: string;
     authority: string;
     pathname: string;
@@ -116,6 +112,7 @@ interface ChannelMetaRow {
 
 interface SubscriptionChannelMetaRow extends ChannelMetaRow {
     entryId: number;
+    workerId: number;
     channel: string;
 }
 
@@ -140,7 +137,7 @@ export default class ChannelWrite {
     // stream's lifecycle, never per-chunk rows ({§no-chunk-rows-log-captures-lifecycle-only}).
     static async appendToChannel(
         db: Db,
-        { entryId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
+        { entryId, producerWorkerId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; producerWorkerId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
     ): Promise<void> {
         const result = await ChannelWrite.#appendStmt(db).run({ chunk, entry_id: entryId, channel });
         if (result.changes === 0) return;
@@ -150,21 +147,21 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, workerId: producerWorkerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // Schemes drive channel state transitions as their connection lifecycle progresses.
     // {§channel-state-schemes-own-state-transitions}
     static async setChannelState(
         db: Db,
-        { entryId, channel, state, notify, coordinate }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
+        { entryId, producerWorkerId, channel, state, notify, coordinate }: { entryId: number; producerWorkerId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
     ): Promise<void> {
         const result = await ChannelWrite.#stateStmt(db).run({ state, entry_id: entryId, channel });
         if (result.changes === 0) return;
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, workerId: producerWorkerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // The durable half of subscription ownership. Its row identifies what is
@@ -173,15 +170,15 @@ export default class ChannelWrite {
     // {§subscriptions-subscription-registry-routes-cancellation}
     static async openSubscription(
         db: Db,
-        { workerId, entryId, scheme, handle, pollSeconds, turnScoped, publishedChannel }: {
+        { workerId, entryId, scheme, handle, pollSeconds, turnScoped, publishedChannel, source }: {
             workerId: number; entryId: number; scheme: string; handle: string;
-            pollSeconds?: number | null; turnScoped?: boolean; publishedChannel?: string | null;
+            pollSeconds?: number | null; turnScoped?: boolean; publishedChannel?: string | null; source?: string;
         },
     ): Promise<number> {
         const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({
             worker_id: workerId, entry_id: entryId, scheme, handle,
             poll_seconds: pollSeconds ?? null, turn_scoped: turnScoped ? 1 : 0,
-            published_channel: publishedChannel ?? null });
+            published_channel: publishedChannel ?? null, source: source ?? null });
         if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
         return row.id;
     }
@@ -236,11 +233,10 @@ export default class ChannelWrite {
     // subscription for that coordinate (unknown exec).
     static async execTerminalStatus(
         db: Db,
-        { workspaceId, workerId, scheme, authority, pathname }: { workspaceId: number; workerId: number; scheme: string; authority: string; pathname: string },
+        { workspaceId, scheme, authority, pathname }: { workspaceId: number; scheme: string; authority: string; pathname: string },
     ): Promise<number | null> {
         const row = await ChannelWrite.#execTerminalStmt(db).get<{ close_status: number }>({
             workspace_id: workspaceId,
-            worker_id: workerId,
             scheme,
             authority,
             pathname });
@@ -249,9 +245,9 @@ export default class ChannelWrite {
 
     static async findActiveSubscription(
         db: Db,
-        { workerId, entryId }: { workerId: number; entryId: number },
+        { entryId }: { entryId: number },
     ): Promise<{ id: number; scheme: string; handle: string } | null> {
-        const row = await ChannelWrite.#findActiveStmt(db).get<{ id: number; scheme: string; handle: string }>({ worker_id: workerId, entry_id: entryId });
+        const row = await ChannelWrite.#findActiveStmt(db).get<{ id: number; scheme: string; handle: string }>({ entry_id: entryId });
         return row ?? null;
     }
 

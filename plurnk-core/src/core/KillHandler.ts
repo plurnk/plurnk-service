@@ -12,6 +12,7 @@ import { InvalidOperationResultError, type SchemeCtx, type SchemeResult } from "
 import { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeWithEntryAddress } from "./Dispatcher.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
+import ResourceBindings from "./ResourceBindings.ts";
 import ChannelWrite from "./ChannelWrite.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
@@ -67,7 +68,8 @@ export default class KillHandler {
                 { retryable: false },
             );
         }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
+        const binding = await ResourceBindings.resolve(path, ctx);
+        const manifest = binding?.manifest;
         // {§kill-scope-entry} — a body pattern selects log items; any other KILL that carries one is
         // refused, never silently widened to its whole scope.
         if (statement.body !== null) {
@@ -85,7 +87,7 @@ export default class KillHandler {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = this.#schemes.get(schemeName, ctx.workspaceId) as { kill?: (pathname: string, scope: TextLineMarker | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
+        const killable = binding?.handler as { kill?: (pathname: string, scope: TextLineMarker | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
@@ -107,7 +109,9 @@ export default class KillHandler {
                         `No entry exists at ${renderAddress({ scheme: schemeName, ...coordinate })}.`,
                     );
                 }
-                handlerCtx = this.#boundEntryContext(schemeName, resolved.address, ctx);
+                handlerCtx = new SchemeCtxImpl(ctx, resolved.address.scheme, manifest, this.#liveSubscriptions, {
+                    authority: resolved.address.authority,
+                });
             } else {
                 handlerCtx = await this.#handlerContext(schemeName, ctx, coordinate.authority);
             }
@@ -117,9 +121,7 @@ export default class KillHandler {
             return await killable.kill(coordinate.pathname, statement.lineMarker, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
-            // Entry-path present → KILL a private owner-held entry (delete it), self-only —
-            // NOT worker cancellation. The authority (hostname) names the owner, the pathname the
-            // entry; only the path-ABSENT form (worker://<name>) terminates the worker-as-actor. {§worker-scheme}
+            // {§worker-scheme}: an entry path deletes scratch; a pathless target cancels an actor.
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
                 const workerHandler = this.#schemes.get("worker") as SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
@@ -151,8 +153,6 @@ export default class KillHandler {
             // `~` is the sole current-worker sigil; every other authority is a literal name.
             // An idle worker is a no-op 200; a missing named worker is 404. {§worker-control-addressing}
             const name = address.authority;
-            let workerId = ctx.workerId;
-            if (name !== "~") {
                 const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
                 if (row === undefined) {
                     return this.#failure(
@@ -163,15 +163,14 @@ export default class KillHandler {
                         { worker: name, retryable: false },
                     );
                 }
-                workerId = row.id;
-            }
+            const workerId = row.id;
             if (this.#cancelWorker === undefined) throw new Error("worker kill: cancelWorker capability absent");
             // {§op-synchronous} — KILL is decisive. Await the one lifecycle owner so the
             // same-turn pending-work gate observes the complete subtree as terminal.
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
-        if (!this.#schemes.has(schemeName, ctx.workspaceId)) {
+        if (binding === undefined) {
             return this.#failure(
                 "scheme-not-found",
                 501,
@@ -180,7 +179,7 @@ export default class KillHandler {
                 { scheme: schemeName, retryable: false },
             );
         }
-        const handler = this.#schemes.get(schemeName, ctx.workspaceId) as SchemeWithEntryAddress | undefined;
+        const handler = binding?.handler as SchemeWithEntryAddress | undefined;
         if (handler === undefined || manifest?.category !== "data") {
             return this.#failure(
                 "entry-operation-unsupported",
@@ -214,13 +213,12 @@ export default class KillHandler {
     async #cancelLiveSubscription(schemeName: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
         const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: ctx.workspaceId,
-            owner_id: address.ownerId,
             scheme: address.scheme,
             authority: address.authority,
             pathname: address.pathname,
         });
         if (entry === undefined) return null;
-        const subscription = await ChannelWrite.findActiveSubscription(this.#db, { workerId: ctx.workerId, entryId: entry.id });
+        const subscription = await ChannelWrite.findActiveSubscription(this.#db, { entryId: entry.id });
         if (subscription === null || subscription.scheme !== schemeName) return null;
         const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
         if (!cancelled) {

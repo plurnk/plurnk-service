@@ -16,7 +16,6 @@ import Turn, { type TurnKind, type TurnProducer } from "../../src/core/Turn.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Log from "../../src/schemes/Log.ts";
-import Owner from "../../src/core/Owner.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
@@ -109,17 +108,17 @@ test("a parent receives all direct-child entry activity while an independent run
             workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 1, origin: "model",
         })).status, 201, "the sibling creates a commons entry");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("~", "/secret.md"), "private tilde scratch"),
+            statement: editStmt(workerPath("sibling", "/secret.md"), "named scratch"),
             workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 2, origin: "model",
         })).status, 201, "the sibling creates current-worker scratch");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("sibling", "/named-secret.md"), "private named scratch"),
+            statement: editStmt(workerPath("sibling", "/named-secret.md"), "named scratch"),
             workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 3, origin: "model",
-        })).status, 403, "a literal worker name remains read-only even when it names the caller; ~ is the sole self-write form");
+        })).status, 201, "named scratch is writable");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("~", "/bulletin.md"), "runtime bulletin"),
+            statement: editStmt(workerPath("plurnk", "/bulletin.md"), "runtime bulletin"),
             workspaceId, workerId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "_plurnk",
-        })).status, 201, "the runtime actor writes its own private entry through the sole self-write authority");
+        })).status, 201, "the runtime actor writes ordinary named scratch");
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{
@@ -135,7 +134,7 @@ test("a parent receives all direct-child entry activity while an independent run
                 .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
                 { hostname: "sibling", pathname: "/named-secret.md", source: "worker://sibling" },
-                { hostname: "~", pathname: "/secret.md", source: "worker://sibling" },
+                { hostname: "sibling", pathname: "/secret.md", source: "worker://sibling" },
                 { hostname: null, pathname: "/shared.md", source: "worker://sibling" },
             ],
             "lineage supervision carries every child operation, including private-entry activity",
@@ -160,7 +159,7 @@ test("{§log-kill-meta-operation} child log-curation successes stay out of the p
             statement, workspaceId, workerId: child, loopId: childLoop,
             turnId: childTurn, sequence, origin: "model",
         });
-        assert.equal((await dispatch(editStmt(workerPath("~", "/note"), "child note"), 1)).status, 201);
+        assert.equal((await dispatch(editStmt(workerPath("child", "/note"), "child note"), 1)).status, 201);
         assert.equal((await dispatch(killStmt(urlPath("log", "/1/1/1/EDIT")), 2)).status, 200);
         assert.equal((await dispatch(killStmt(urlPath("log", "/9/9/9")), 3)).status, 404);
         const turn = await engine.runTurn({
@@ -479,7 +478,7 @@ test("a fork inherits observed progress and independently receives pending event
             workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
         });
 
-        const branch = await Fork.fork(db, parent, "branch", () => "none");
+        const branch = await Fork.fork(db, parent, "branch");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
         await eng.runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
@@ -641,7 +640,7 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
         await rm(join(root, "removed.md"));
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
 
-        const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "removed.md", channel: "body" });
+        const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "removed.md", channel: "body" });
         assert.equal(channel, undefined, "a deleted file cannot remain READable from a stale body channel");
         const rows = await db.engine_render_log.all<{ source: string | null; pathname: string }>({ worker_id: workerId });
         assert.ok(!rows.some((row) => row.source === "file"), "the deletion does not broadcast into the model worker");
@@ -805,7 +804,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
             "child terminal results never broadcast to an independent root",
         );
         // A fork copies the observed conclusions as inherited history: same attribution, still untargeted.
-        const branch = await Fork.fork(db, workerA, "branch", () => "none");
+        const branch = await Fork.fork(db, workerA, "branch");
         const branchRows = await db.engine_render_log.all<{ origin: string; op: string; scheme: string | null; pathname: string | null; source: string | null; status_rx: number | null }>({ worker_id: branch });
         assert.deepEqual(
             branchRows.filter((r) => r.origin === "_plurnk" && r.op === "SEND" && r.source?.startsWith("worker://") === true)

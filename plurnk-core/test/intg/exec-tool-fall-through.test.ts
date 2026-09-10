@@ -47,7 +47,7 @@ test("a bare EXEC of a tool's name fails with a receipt that names the tool's re
             assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`.");
             assert.equal(
                 receipt.problem?.recovery,
-                "Use the `fixture` fence with target `(fail)` and JSON input in the body; contract: worker://~/_plurnk/tools/fixture/fail.md.",
+                "Use the `fixture` fence with target `(fail)` and JSON input in the body; contract: worker:///_plurnk/tools/fixture/fail.md.",
             );
             assert.deepEqual(receipt.problem?.toolRuntimes, ["fixture"]);
             assert.equal(receipt.problem?.tool, "fail");

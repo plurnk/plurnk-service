@@ -4,7 +4,6 @@
 // assert outcomes (file contents, command output) not op shapes.
 
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import Owner from "../../src/core/Owner.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
@@ -98,7 +97,7 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         // membership marker the read gate checks and FIND globs by path.
         addToCatalog: async (db, workspaceId) => {
             for (const rel of FILES) {
-                await db.crud_insert_workspace_entry.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: rel });
+                await db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: rel });
             }
         },
     };

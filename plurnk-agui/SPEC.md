@@ -57,7 +57,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | Directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
-| `log/entry` READ of `reasoning:///…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
+| `log/entry` READ of `reasoning://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
@@ -450,6 +450,11 @@ projection. `plurnk-agui` owns the built-in action and notification registry;
 discovery never reconstructs it from handlers. It does not report plugin
 catalogs, package versions, or update availability. Object key order is not a
 contract.
+
+§agui-stream-producer Stream updates route to `workerId`, the initiating
+Worker. Resource reads use the canonical workspace address, not a separate
+read perspective. Shared resources neither broadcast to unrelated conversations
+nor hide updates from the producer ({§notifications-stream-event-on-channel-change}).
 
 `loop.inject`'s steered effect streams on the original worker's open SSE.
 `loop.cancel` is its counterpart: the addressable spelling of the SSE-hangup

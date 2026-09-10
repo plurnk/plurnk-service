@@ -24,7 +24,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1]! });
-        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === "worker://~/_plurnk/plurnk/*.md");
+        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === "worker:///_plurnk/plurnk/*.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
         const groups = JSON.parse(body) as Array<Array<{ path: string; summary?: string }>>;
@@ -73,15 +73,15 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             const row = await db.test_get_packet.get<{ packet: string }>({ id: first });
             const packet = JSON.parse(row!.packet);
             const entries = logEntries(packet);
-            const survey = entries.find((e) => e.target === "worker://~/_plurnk/tools/fixture.md");
+            const survey = entries.find((e) => e.target === "worker:///_plurnk/tools/fixture.md");
             assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.path, e.target]))}`);
             assert.match(String(survey.path), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.annotation, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}\\n````"/, "one row per tool: opening fence, annotation, preview, schema link, closing fence");
+            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}\\n````"/, "one row per tool: opening fence, annotation, preview, schema link, closing fence");
             assert.match(log, /"matched":"````fixture \(fail\) /, "every tool is a row");
             assert.doesNotMatch(log, /"annotation":"enabled tools: /, "no redundant survey annotation is materialized");
-            assert.doesNotMatch(log, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "schema documents are not individual Turn0 discovery rows");
+            assert.doesNotMatch(log, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md"/, "schema documents are not individual Turn0 discovery rows");
         } finally {
             ws.close();
         }
@@ -94,7 +94,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
 });
 
 test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
-    const target = "worker://~/_plurnk/plurnk/mcp/add.md";
+    const target = "worker:///_plurnk/plurnk/mcp/add.md";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
 \`\`\`TASK

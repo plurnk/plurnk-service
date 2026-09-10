@@ -3,6 +3,7 @@ import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
+import WorkerName from "./WorkerName.ts";
 import { generatedPathname, renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
@@ -226,7 +227,7 @@ export default class PacketBuilder {
         // curation state ({§invalid-emission-attempts}).
         transientOpenLogEntryId?: number | null;
         // Capacity recovery may withhold automatic prompt bodies while keeping
-        // their complete prompt:/// entries addressable.
+        // their complete prompt://<worker>/ entries addressable.
         promptProjection?: "automatic" | "withheld";
         pendingLog?: readonly PacketLogDraft[];
         turnId?: number | null;
@@ -239,13 +240,14 @@ export default class PacketBuilder {
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
-        // The prompt section sources the loop's prompt:///<loop>/<N> entries.
+        // The prompt section sources the loop's prompt://<worker>/<loop>/<N> entries.
         // Inject and turn-1 initialization write them. Bare callers that
         // bypass prompt persistence fall back to messages.user.
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
+        const workerName = await WorkerName.forId(this.#db, workerId);
         const promptPrefix = promptLoopPrefix(loopSeqRow?.sequence ?? loopId);
         const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({
-            owner_id: workerId,
+            worker_id: workerId,
             pattern: `${promptPrefix}%`,
             prefix_len: promptPrefix.length,
         }))
@@ -256,7 +258,7 @@ export default class PacketBuilder {
         // unfair curation imposition. Fallback: callers that bypass persistence (bare messages)
         // still get their user text rendered directly.
         const prompt = promptRows.length > 0
-            ? `[${promptRows.map((r) => JSON.stringify(`prompt://${r.pathname}`)).join(",\n")}]`
+            ? `[${promptRows.map((r) => JSON.stringify(`prompt://${workerName}${r.pathname}`)).join(",\n")}]`
             : byRole("user");
         // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
         const recapContent = recap.length > 0
@@ -294,7 +296,7 @@ export default class PacketBuilder {
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
-        // READ (LoopDocs → worker://~/_plurnk/agents.md), not the system prompt.
+        // READ (LoopDocs → worker:///_plurnk/agents.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
         // unconcluded child workers — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
@@ -344,6 +346,7 @@ export default class PacketBuilder {
             { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}` }) },
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {
                 name: "log",
@@ -422,7 +425,7 @@ export default class PacketBuilder {
 
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
     // one reserved reference set, materialized by LoopDocs.
-    async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
+    async referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const policies = layers.map((layer) => layer.policy);
         const out = (await this.#schemes.docs(workspaceId))

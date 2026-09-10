@@ -4,7 +4,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import Owner from "../../src/core/Owner.ts";
 import { parsePath, type FindStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx } from "./_helpers.ts";
 
@@ -20,7 +19,6 @@ test("{§worker-tool-admission} shallow FIND folder summaries include only admit
     try {
         const workspaceId = await insertWorkspace(db, `find-visibility-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const ownerId = await Owner.commonsId(db, workspaceId);
         for (const pathname of ["/visible/note.md", "/hidden/secret.md"]) {
             await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname, channel: "body", content: "content", mimetype: "text/markdown" });
         }
@@ -28,7 +26,7 @@ test("{§worker-tool-admission} shallow FIND folder summaries include only admit
             { ...findAll([1, -1]), target: parsePath("worker:///*") },
             makeSchemeCtx({ db, workspaceId, workerId }),
             Worker.manifest,
-            { ownerId, visible: (pathname) => pathname.startsWith("/visible/") },
+            { visible: (pathname) => pathname.startsWith("/visible/") },
         );
         assert.equal(result.status, 200);
         assert.deepEqual(result.results.flatMap((item) => Array.isArray(item) ? item.map(({ path }) => path) : []), ["worker:///visible/**"]);
@@ -44,8 +42,7 @@ test("{§find-result-projection}: markerless FIND returns the first 16 resources
         const workerId = await insertWorker(db, workspaceId);
         for (let i = 0; i < 20; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/e${i.toString().padStart(2, "0")}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const ownerId = await Owner.commonsId(db, workspaceId);
-        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest, { ownerId });
+        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest, {  });
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 16);
         assert.equal(r.matchingPathCount, 20);
@@ -69,13 +66,12 @@ test("{§find-result-projection}: explicit later and all-results pages use the s
         const workerId = await insertWorker(db, workspaceId);
         for (let i = 0; i < 20; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/e${i.toString().padStart(2, "0")}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const ownerId = await Owner.commonsId(db, workspaceId);
-        const continued = await EntryFind.findWorkspaceEntries(findAll([17, -1]), ctx, Worker.manifest, { ownerId });
+        const continued = await EntryFind.findWorkspaceEntries(findAll([17, -1]), ctx, Worker.manifest, {  });
         assert.equal(continued.results.length, 4);
         assert.equal(continued.range?.unit, "resource");
         assert.equal(continued.matchingPathCount, 20);
 
-        const all = await EntryFind.findWorkspaceEntries(findAll([1, -1]), ctx, Worker.manifest, { ownerId });
+        const all = await EntryFind.findWorkspaceEntries(findAll([1, -1]), ctx, Worker.manifest, {  });
         assert.equal(all.results.length, 20);
         assert.deepEqual(all.range?.returned, [1, 20]);
         assert.equal(all.matchingPathCount, 20);

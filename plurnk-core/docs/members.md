@@ -80,4 +80,4 @@ environment, `workspace` from an `add`) and whether it is enabled. `enable` and
 `disable` flip one shared alias; `remove` deletes a workspace-added definition
 (service definitions can only be disabled). Changes apply to every worker.
 Each enabled definition is projected as
-`worker://~/_plurnk/members/<alias>.md` showing what its glob resolved to.
+`worker:///_plurnk/members/<alias>.md` showing what its glob resolved to.

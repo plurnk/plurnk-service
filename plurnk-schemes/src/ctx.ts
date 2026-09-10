@@ -47,16 +47,10 @@ export interface StoredEntryData {
     readonly attributes?: Readonly<Record<string, unknown>>;
 }
 
-export type EntryOwner = "commons" | "worker";
-
-// A client-facing address resolves to the pathname stored by this scheme and a
-// semantic owner. The consumer alone lowers that owner to its persistence key.
+// Every entry is a resource in the calling workspace, independently of its actor.
 export interface EntryAddress {
     readonly authority: string;
     readonly pathname: string;
-    // Present only when manifest.entryOwner is `resolved`. Fixed-owner schemes
-    // canonicalize coordinates here but cannot restate or override ownership.
-    readonly owner?: EntryOwner;
 }
 
 export interface EntryEditResult extends EditBatchResult {

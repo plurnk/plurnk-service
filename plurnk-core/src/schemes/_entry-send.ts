@@ -8,7 +8,7 @@ import Results, { type SchemeResult } from "../core/results.ts";
 export interface SendResult extends SchemeResult {}
 
 export default class EntrySend {
-    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, ownerId: number): Promise<SendResult> {
+    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<SendResult> {
         const scheme = manifest.storedScheme ?? manifest.name;
         const failure = (
             code: string,

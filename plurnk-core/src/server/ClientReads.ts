@@ -33,7 +33,7 @@ export default class ClientReads {
     }
 
     // Contracts {§entry-read-result}: resolve through the scheme's address law,
-    // then project one owner-scoped entry without exposing persistence columns.
+    // then project one workspace entry without exposing persistence columns.
     async readEntry(args: {
         workspaceId: number;
         workerId: number;
@@ -85,7 +85,7 @@ export default class ClientReads {
         let releaseWorkspace: (() => void) | undefined;
         try {
             releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
-            await this.#residency.reconcile(workspaceId, workerId);
+            await this.#residency.reconcile(workspaceId);
             let parsed;
             try {
                 parsed = parsePath(args.target);
@@ -163,7 +163,6 @@ export default class ClientReads {
             }
             const row = await this.#db.entry_read_lookup.get<{ id: number }>({
                 workspace_id: workspaceId,
-                owner_id: location.ownerId,
                 scheme: location.scheme,
                 authority: location.authority,
                 pathname: location.pathname });

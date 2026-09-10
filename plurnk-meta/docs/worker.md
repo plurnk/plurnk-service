@@ -10,18 +10,17 @@ an entry rather than controlling that worker.
 | Address | Meaning | Model access |
 | --- | --- | --- |
 | `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
-| `worker://~` | Current worker | SEND or KILL. |
-| `worker://~/notes.md` | Your own entry | Read and write. |
-| `worker://reviewer/notes.md` | Named worker's entry | Any worker in the workspace can READ; named spaces are read-only. |
+| `worker://reviewer/notes.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///notes.md` | Shared commons entry | Read and write. |
 
-Workers share project files and the commons. Own-space entries have separate
-ownership, not secrecy from other workers in the workspace; conversation logs
-remain owner-scoped. `_plurnk/` entries are generated and read-only even in your
-own space. EDIT creates or changes an entry, never a worker. An unscoped EDIT
-creates the entry from its body, which is the content itself.
+The packet names your worker under `## Worker`. Addresses are literal and keep
+the same meaning when passed to another worker. All scratch belongs to the
+workspace; its namespace does not require a namesake worker. Generated
+references live under `worker:///_plurnk/`; reference
+refreshes may replace those generated documents. EDIT creates or changes an
+entry, never a worker. An unscoped EDIT creates the entry from its body.
 
-````EDIT (worker://~/scratch/greet.mjs) <!-- create the entry from the body -->
+````EDIT (worker://reviewer/scratch/greet.mjs) <!-- create the entry from the body -->
 export const greet = (name) => `hello ${name}`;
 
 console.log(greet("world"));
@@ -33,9 +32,10 @@ userinfo, port, query, fragment, or `{metadata}` modifier.
 ## Delegation
 
 **WORK to delegate, FORK to branch.** WORK starts a fresh log with your task
-prompt; FORK copies your history and own-space entries, then diverges. Both
-share the project filesystem. Omit the address to allocate a short worker name,
-reported in the receipt; explicit names must be distinct for simultaneous jobs.
+prompt; FORK copies your history and named scratch into its new name, then
+diverges. Embedded addresses are preserved verbatim. Both share the workspace.
+Omit the address to allocate a short worker name, reported in the receipt;
+explicit names cannot replace an existing worker, even after it finishes.
 Use SEND to give an existing worker a follow-up task.
 
 Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
@@ -58,7 +58,7 @@ BARE makes one isolated call to the child model, not a persistent worker.
 It receives no parent history or tools. Give it a prompt resource, an inline
 prompt, or both; resource text precedes an inline body with a blank line between.
 
-````BARE (worker://~/question.md)````
+````BARE (worker://reviewer/question.md)````
 ````BARE
 What is the capital of Germany?
 ````

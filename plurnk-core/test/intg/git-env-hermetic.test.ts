@@ -1,7 +1,6 @@
 // {§membership-git-hermetic} — fixture and production Git spawns ignore a hostile
 // launch environment, bind repository identity to cwd, and never consume global hooks.
 import test from "node:test";
-import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -65,9 +64,9 @@ test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — 
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await GitMembership.indexGitMembership(ctx);
-        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "tracked.md" });
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "tracked.md" });
         assert.ok(member, "membership read the sandbox's ls-files, not the victim's");
-        const leak = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "victim-file.md" });
+        const leak = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "victim-file.md" });
         assert.equal(leak, undefined, "no victim file leaked into membership");
 
         // The victim is pristine: same HEAD, clean tree, no seed stacked on the lane branch.
@@ -172,7 +171,7 @@ test("automatic inspection never runs a repository-supplied core.fsmonitor helpe
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await GitMembership.indexGitMembership(ctx);
-        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "tracked.md" });
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "tracked.md" });
         assert.ok(member, "membership still indexes the tracked file");
         assert.ok(!existsSync(marker), "neither status nor membership ran the repository-supplied helper");
     } finally {
@@ -238,7 +237,7 @@ test("automatic inspection refuses a supplied repository declaring a filter prog
         };
         await GitMembership.indexGitMembership(ctx);
         await GitMembership.indexGitMembership(ctx);
-        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "tracked.md" });
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "tracked.md" });
         assert.equal(member, undefined, "no automatic membership from the refused repository");
         assert.ok(!existsSync(marker), "neither status nor membership ran the repository-supplied driver");
         assert.deepEqual(notices, [{
@@ -268,7 +267,7 @@ test("automatic inspection refuses a supplied repository declaring a filter prog
             ...ctx, workspaceId: plainWorkspace, workerId: plainWorker, loopId: plainLoop, turnId: plainTurn,
             pushNotice: (notice) => { plainNotices.push(notice); },
         });
-        const plainMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: plainWorkspace, owner_id: await Owner.commonsId(db, plainWorkspace), scheme: "file", authority: "", pathname: "ok.md" });
+        const plainMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: plainWorkspace, scheme: "file", authority: "", pathname: "ok.md" });
         assert.ok(plainMember, "an ordinary repository still indexes its tracked file");
         assert.deepEqual(plainNotices, [], "no refusal notice for an ordinary repository");
     } finally {

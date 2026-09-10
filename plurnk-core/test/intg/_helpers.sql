@@ -78,9 +78,9 @@ SELECT execution_budget_ms, execution_elapsed_ms FROM loops WHERE id = $id;
 SELECT policy, model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
--- PREP: test_prompt_paths_by_owner
-SELECT pathname FROM entries
-WHERE owner_id = $owner_id AND scheme = 'prompt'
+-- PREP: test_prompt_paths_by_worker
+SELECT pathname FROM entries e JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE w.id = $worker_id AND scheme = 'prompt'
 ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGER),
          CAST(substr(pathname, instr(substr(pathname, 2), '/') + 2) AS INTEGER);
 
@@ -166,18 +166,15 @@ SELECT COUNT(*) AS n FROM provider_requests;
 
 -- PREP: test_count_entries_by_workspace
 SELECT COUNT(*) AS n
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id;
+FROM entries e WHERE e.workspace_id = $workspace_id;
 
 -- PREP: test_count_entries_by_workspace_scheme
 SELECT COUNT(*) AS n
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme;
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme;
 
 -- PREP: test_get_entry_by_path
 SELECT e.id, e.attributes
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname = $pathname;
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname = $pathname;
 
 -- PREP: test_get_channel
 SELECT content, mimetype, weight, state FROM entry_channels
@@ -190,6 +187,9 @@ WHERE entry_id = $entry_id AND name = $name;
 -- PREP: test_get_subscription
 SELECT id, worker_id, entry_id, scheme, handle, poll_seconds, closed_at, close_status, close_result, channel_results
 FROM subscriptions WHERE id = $id;
+
+-- PREP: test_subscription_reassign_source
+UPDATE subscriptions SET source = $source WHERE id = $id;
 
 -- PREP: test_get_subscription_by_entry
 SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
@@ -204,8 +204,7 @@ SELECT COUNT(*) AS n FROM subscriptions WHERE closed_at IS NULL;
 -- instead of racing a fixed sleep against the spawn.
 SELECT COUNT(*) AS n FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS NULL;
+WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS NULL;
 
 -- PREP: test_exec_close_status_by_workspace
 -- The close_status the registry recorded for a workspace's most-recently-closed
@@ -213,16 +212,13 @@ WHERE owner.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at 
 -- closed the subscription at 499, not just that a notification fired.
 SELECT s.close_status FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS NOT NULL
+WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC LIMIT 1;
 
 -- PREP: test_seed_entry_workspace
 -- Tests bypass scheme handlers when seeding state for visibility / render tests.
-INSERT INTO entries (owner_id, scheme, authority, pathname)
-SELECT id, $scheme, $authority, $pathname
-FROM workers
-WHERE id = $owner_id AND workspace_id = $workspace_id
+INSERT INTO entries (workspace_id, scheme, authority, pathname, attributes, default_channel, output)
+VALUES ($workspace_id, $scheme, $authority, $pathname, COALESCE($attributes, '{}'), COALESCE($default_channel, 'body'), COALESCE($output, 0))
 RETURNING id;
 
 -- PREP: test_seed_channel
@@ -313,9 +309,8 @@ SELECT updated_at FROM entries WHERE id = $entry_id;
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id;
 
 -- PREP: test_get_entry_by_id
-SELECT owner.workspace_id, e.owner_id, e.scheme, e.authority, e.pathname
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE e.id = $id;
+SELECT e.workspace_id, e.scheme, e.authority, e.pathname
+FROM entries e WHERE e.id = $id;
 
 -- PREP: test_first_log_entry_for_turn
 SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence LIMIT 1;
@@ -429,8 +424,7 @@ SELECT id FROM entries WHERE scheme = $scheme AND pathname = $pathname;
 
 -- PREP: test_list_entries_by_workspace_workspace_pathname
 SELECT e.scheme, e.pathname
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id
+FROM entries e WHERE e.workspace_id = $workspace_id
 ORDER BY e.scheme, e.pathname;
 
 -- PREP: test_count_log_entries_worker_origin
@@ -441,8 +435,7 @@ SELECT e.pathname FROM derivation_fts f
 JOIN derivations d ON d.id = f.rowid
 JOIN entry_channels ec ON ec.deep_hash = d.deep_hash AND ec.name = 'body'
 JOIN entries e ON e.id = ec.entry_id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE f.content MATCH $query AND owner.workspace_id = $workspace_id
+WHERE f.content MATCH $query AND e.workspace_id = $workspace_id
 ORDER BY e.pathname;
 
 
@@ -471,8 +464,7 @@ SELECT packet FROM turns WHERE packet IS NOT NULL;
 -- A workspace body's stamped deep hash (any body: the warm-completion proof).
 SELECT ec.deep_hash FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NOT NULL
+WHERE e.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NOT NULL
 LIMIT 1;
 
 -- PREP: test_ops_by_loop
@@ -488,16 +480,14 @@ UPDATE workspaces SET settings = $settings WHERE id = $id;
 SELECT s.id FROM subscriptions s WHERE s.closed_at IS NULL AND $worker_id IS NOT NULL LIMIT 1;
 
 -- PREP: test_entries_by_scheme_prefix
-SELECT e.pathname
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname LIKE $prefix
+SELECT e.id, e.pathname
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname LIKE $prefix
 ORDER BY e.pathname;
 
 -- PREP: test_entries_with_hash_by_scheme_prefix
 SELECT e.pathname, ec.deep_hash FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname LIKE $prefix
+WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname LIKE $prefix
 ORDER BY e.pathname;
 
 -- PREP: test_artifact_counts
@@ -525,8 +515,7 @@ SELECT ec.deep_hash,
        (SELECT count(*) FROM derivations WHERE state = 'complete') AS complete
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.pathname = '/interrupted.md';
+WHERE e.workspace_id = $workspace_id AND e.pathname = '/interrupted.md';
 
 -- PREP: test_derivation_state_counts
 SELECT count(*) FILTER (WHERE state = 'building') AS building,
@@ -628,18 +617,19 @@ SELECT id, worker_id, status, terminated_at, terminal_result, terminated_by FROM
 
 -- PREP: test_get_entry_attributes
 SELECT e.attributes
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname = $pathname;
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname = $pathname;
 
 -- PREP: test_seed_channel_hashed
-INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state)
-VALUES ($entry_id, $name, $content, $mimetype, 0, $content_hash, $state);
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
+VALUES ($entry_id, $name, $content, $mimetype, COALESCE($weight, 0), $content_hash, $state, $producer_result);
+
+-- PREP: test_set_entry_attributes
+UPDATE entries SET attributes = $attributes WHERE id = $entry_id;
 
 -- PREP: test_count_stamped_deep_hash
 SELECT COUNT(*) AS n FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NOT NULL;
+WHERE e.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NOT NULL;
 
 -- PREP: test_get_turn_meta
 SELECT meta FROM turns WHERE id = $id;
@@ -652,13 +642,11 @@ SELECT name, type FROM pragma_table_info($table) ORDER BY cid;
 
 -- PREP: test_count_entry_rows
 SELECT COUNT(*) AS n
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.pathname = $pathname;
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.pathname = $pathname;
 
 -- PREP: test_file_pathnames
 SELECT e.pathname
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = 'file';
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = 'file';
 
 -- PREP: test_first_worker_for_ws
 SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
@@ -670,8 +658,7 @@ SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC L
 SELECT ec.deep_hash
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme
   AND e.pathname = $pathname
 LIMIT 1;
@@ -688,8 +675,7 @@ UPDATE entries
 SET membership_origin = $membership_origin
 WHERE id IN (
     SELECT e.id FROM entries e
-    JOIN workers owner ON owner.id = e.owner_id
-    WHERE owner.workspace_id = $workspace_id AND e.pathname = $pathname
+    WHERE e.workspace_id = $workspace_id AND e.pathname = $pathname
 );
 
 -- PREP: test_count_rows_for_pathname
@@ -697,19 +683,18 @@ SELECT COUNT(*) AS n FROM entries WHERE scheme = 'file' AND pathname = $pathname
 
 -- PREP: test_get_origin
 SELECT e.membership_origin
-FROM entries e JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.pathname = $pathname;
+FROM entries e WHERE e.workspace_id = $workspace_id AND e.pathname = $pathname;
 
--- PREP: test_entries_by_coordinate_owners
+-- PREP: test_entries_by_coordinate_workspaces
 -- Every owner holding one textual coordinate, with its body — the
 -- {§scheme-entry-matrix} isolation probe for independent Workers.
-SELECT e.id, e.owner_id, ec.content
+SELECT e.id, e.workspace_id, ec.content
 FROM entries e
 LEFT JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
 WHERE e.scheme = $scheme
   AND e.authority = $authority
   AND e.pathname = $pathname
-ORDER BY e.owner_id;
+ORDER BY e.workspace_id;
 
 -- PREP: test_first_packet_turn_by_worker_name
 -- The first packet-bearing turn of the named worker's loops (the child's first model turn).

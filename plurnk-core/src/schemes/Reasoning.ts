@@ -4,11 +4,10 @@ import type { EntryEditResult, EntryFindResult, FindStatement, ResolvedEditState
 export default class Reasoning implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "reasoning",
+        authority: "resource",
         channels: { body: "text/plain" },
         defaultChannel: "body",
         category: "data",
-        entryOwner: "worker",
-        inherit: "snapshot",
         writableBy: ["client", "_plurnk"],
         volatile: false,
         modelVisible: true,

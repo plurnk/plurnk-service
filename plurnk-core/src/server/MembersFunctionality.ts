@@ -169,7 +169,7 @@ const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution 
 };
 
 // {§members-projection} — each enabled definition is one generated document under
-// `worker://~/_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
+// `worker:///_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
 // what the glob is, whose it is, and what it resolved to.
 const membersDocument = (alias: string, definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
     const noun = resolution.effect === "exclude" ? "member" : "file";

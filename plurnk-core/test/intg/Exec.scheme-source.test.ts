@@ -1,3 +1,4 @@
+import WorkerName from "../../src/core/WorkerName.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
@@ -342,7 +343,7 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     }
 });
 
-test("EXEC source READ preserves worker commons, current, and named boundaries (#163, #394)", async () => {
+test("EXEC source READ preserves literal shared and named scratch identities", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.workerId, "child");
@@ -355,14 +356,14 @@ test("EXEC source READ preserves worker commons, current, and named boundaries (
         });
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            ownerId: ctx.root.workerId,
+            authority: await WorkerName.forId(ctx.db, ctx.root.workerId),
             scheme: "worker",
             pathname: "/script",
             content: "root command",
         });
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            ownerId: child.workerId,
+            authority: await WorkerName.forId(ctx.db, child.workerId),
             scheme: "worker",
             pathname: "/script",
             content: "child command",
@@ -370,7 +371,7 @@ test("EXEC source READ preserves worker commons, current, and named boundaries (
 
         const commonsRead = await ctx.dispatch(ctx.root, "worker:///script#body");
         assert.equal(commonsRead.status, 200, JSON.stringify(commonsRead));
-        assert.equal((await ctx.dispatch(ctx.root, "worker://~/script#body")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, `worker://${await WorkerName.forId(ctx.db, ctx.root.workerId)}/script#body`)).status, 200);
         assert.equal((await ctx.dispatch(ctx.root, "worker://child/script#body")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", "", ""]);
         assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
@@ -385,38 +386,36 @@ test("EXEC source READ preserves worker commons, current, and named boundaries (
         assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's EXEC materialized the named worker's script");
         const unknown = await ctx.dispatch(ctx.root, "worker://unknown/script#body");
         assert.equal(unknown.status, 404);
-        assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-not-found");
+        assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
         assert.equal(ctx.runs.length, 4, "failed source resolution never invokes the executor");
     } finally {
         await ctx.close();
     }
 });
 
-test("EXEC source READ preserves current and named runtime-stream ownership (#163)", async () => {
+test("{§execution-output-identity}: EXEC source READ uses the same workspace output from either worker", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.workerId, "child");
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            ownerId: ctx.root.workerId,
             scheme: "tool",
-            pathname: "/9/8/7/tool",
+            pathname: "/aa123456",
             channel: "results",
             content: "root stream command",
             state: "closed",
         });
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            ownerId: child.workerId,
             scheme: "tool",
-            pathname: "/9/8/7/tool",
+            pathname: "/bb234567",
             channel: "results",
             content: "child stream command",
             state: "closed",
         });
 
-        assert.equal((await ctx.dispatch(ctx.root, "tool:///9/8/7/tool#results")).status, 200);
-        assert.equal((await ctx.dispatch(ctx.root, "tool://child/9/8/7/tool#results")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "tool:///aa123456#results")).status, 200);
+        assert.equal((await ctx.dispatch(child, "tool:///bb234567#results")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", ""]);
         assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "root stream command",
@@ -431,7 +430,7 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
     const ctx = await wire();
     let loggingPreparationCalled = false;
     try {
-        const { entryOwner: _entryOwner, inherit: _inherit, ...auditManifest } = schemeManifest("audit");
+        const auditManifest = schemeManifest("audit");
         ctx.schemes.register("audit", {
             manifest: { ...auditManifest, category: "logging" },
             async prepareRepresentation() {

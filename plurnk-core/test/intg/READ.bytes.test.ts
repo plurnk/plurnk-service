@@ -9,7 +9,6 @@ import type { LineMarker, ReadStatement, UrlPath } from "@plurnk/plurnk-contract
 import File from "../../src/schemes/File.ts";
 import ByteView from "../../src/content/byte-view.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
 
 process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES ??= "104857600";
@@ -38,13 +37,13 @@ const setup = async () => {
     await rootWorkspace(db, workspaceId, root);
     const workerId = await insertWorker(db, workspaceId);
     const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-    const owner = await Owner.commonsId(db, workspaceId);
+
     // The materializer's shape for a binary member with no readable projection: an empty body
     // under the source mimetype; the bytes live on disk only.
     await writeFile(join(root, "blob.bin"), BLOB);
-    await EntryCrud.writeEntry({ authority: "", pathname: "blob.bin" }, { channels: { body: { content: "", mimetype: "application/octet-stream" } } }, ctx, "file", owner);
+    await EntryCrud.writeEntry({ authority: "", pathname: "blob.bin" }, { channels: { body: { content: "", mimetype: "application/octet-stream" } } }, ctx, "file");
     await writeFile(join(root, "notes.md"), "hello\nworld\n");
-    await EntryCrud.writeEntry({ authority: "", pathname: "notes.md" }, { channels: { body: { content: "hello\nworld\n", mimetype: "text/markdown" } } }, ctx, "file", owner);
+    await EntryCrud.writeEntry({ authority: "", pathname: "notes.md" }, { channels: { body: { content: "hello\nworld\n", mimetype: "text/markdown" } } }, ctx, "file");
     return { root, db, ctx };
 };
 

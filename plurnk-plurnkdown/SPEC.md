@@ -28,22 +28,21 @@ Markdown strings; a trusted plugin may transform the section list before renderi
 flowchart LR
     subgraph system[system slot]
         direction LR
-        definition["definition<br/>bare content"] --> policy["Policy"]
-        policy --> project["Project Policy"]
-        project --> optional["Enabled Optional Operations"]
-        optional --> schemes["Resources"]
-        schemes --> notes["Operator Notes"]
+        definition["definition<br/>bare content"] --> policy["Authored policy"]
+        policy --> notes["Operator Notes"]
     end
 
     subgraph user[user slot]
         direction LR
-        log["Log"] --> streams["Child Streams"]
+        worker["Worker"] --> log["Log"]
+        log --> streams["Child Streams"]
         streams --> workers["Active Child Workers"]
-        workers --> errors["Errors"]
+        workers --> parent["Parent Worker"]
+        parent --> errors["Errors"]
         errors --> notices["Notices"]
         notices --> git["Git Status"]
-        git --> budget["Budget"]
-        budget --> prompts["User Prompts"]
+        git --> budget["Context Curation"]
+        budget --> prompts["Active Prompts"]
         prompts --> recap["Recap"]
     end
 ```
@@ -52,17 +51,17 @@ flowchart LR
 | --------------------- | ------ | --------------------------------------------- | ------------------------------- |
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
 | `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
-| `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
-| `schemes`             | system | `example` fence                               | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
+| `worker`              | user   | JSON `path` with the literal Worker address    | {§packet-cache-monotone}        |
 | `log`                 | user   | Markdown H3 records with JSON metadata        | {§log-wire-format}              |
-| `child-streams`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
-| `child-workers`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
-| `errors`              | user   | `* <status> log:///<coordinate>` pointers     | {§operation-results}            |
+| `child-streams`       | user   | JSON status/path pointers                     | {§child-orientation}            |
+| `child-workers`       | user   | JSON status/path pointers                     | {§child-orientation}            |
+| `parent-worker`       | user   | JSON status/path pointer                      | {§child-orientation}            |
+| `errors`              | user   | JSON status/log-path pointers                 | {§operation-results}            |
 | `notices`             | user   | Terse observation bullets                     | {§notice-drain-on-read}         |
-| `git`                 | user   | One working-tree state line                   | {§packet-cache-monotone}        |
-| `budget`              | user   | One ceiling, usage, percentage, and free line | {§tokenomics-neutral-telemetry} |
-| `prompt`              | user   | `* prompt:///<loop>/<N>` pointers             | {§prompt-entry}                 |
+| `git`                 | user   | Working-tree state in a NOTE blockquote       | {§packet-cache-monotone}        |
+| `budget`              | user   | JSON curation usage and ceiling; pressure guidance when needed | {§tokenomics-neutral-telemetry} |
+| `prompt`              | user   | JSON `prompt://<worker>/<loop>/<N>` pointers   | {§prompt-entry}                 |
 | `recap`               | user   | Optional authored operational recap           | {§recap}                        |
 
 The authored `plurnk.md` keeps its human-aligned tables. Core removes table-cell padding only
@@ -76,7 +75,7 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 | Invariant      | Required projection                                                                                                                           |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Addressability | Paths, URI fragments, log coordinates, scopes, and coordinate-prefixed body lines remain usable without translation.                          |
-| Weighability   | The Budget line and log-row `tokens` / `itemsTokenTotal` values remain attached to the artifacts they measure.                                |
+| Weighability   | Curation and log-row measurements remain attached to the artifacts they measure under {§tokenomics-agnostic-ruler}.                           |
 | Honesty        | Statuses, Problems, body visibility, chunk extents, and bodyless rows render as produced; presentation never upgrades or suppresses truth.   |
 | Structure      | Operation examples remain typed fences; Log identities, metadata, and coordinate lines retain their record boundaries.                        |
 

@@ -23,12 +23,10 @@ export default class OutputScheme {
     static manifestFromRuntime(decl: RuntimeDecl): SchemeManifest {
         return {
             name: decl.name,
-            authority: "owner",
+            authority: "namespace",
             channels: decl.channels,
             defaultChannel: decl.defaultChannel,
             category: "data",
-            entryOwner: "resolved",
-            inherit: "none",
             writableBy: ["plugin"],
             volatile: true,
             modelVisible: true,

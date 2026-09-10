@@ -121,7 +121,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
     });
 });
 
-test("{§stream-owner-scoped} binding a stream owner leaves exact misses to READ and does not disclose foreign owners", async () => {
+test("{§execution-output-identity} missing output resources report their exact address without inferring worker ownership", async () => {
     // The runtime schemes must be registered for a READ on `sh:///…` to reach the stream face.
     const executors = await testExecutors();
     const db = await openMigrated();
@@ -146,8 +146,8 @@ test("{§stream-owner-scoped} binding a stream owner leaves exact misses to READ
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/sh"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
-        assert.match(foreignText, /stream-not-found/);
-        assert.match(foreignText, /another worker's as `sh:\/\/<worker>\/…`/, "an unresolvable authority gets the same address-space sentence");
+        assert.match(foreignText, /entry-not-found/);
+        assert.match(foreignText, /sh:\/\/\/nobody\/1\/1\/1\/sh/, "the miss names the normalized resource");
         assert.doesNotMatch(foreignText, /nobody does not exist|no such worker/, "no existence leak for a foreign authority");
     } finally { await db.close(); }
 });
@@ -268,10 +268,7 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}"
         assert.equal(attrs.runtime, "sh");
         assert.equal(attrs.cwd, process.cwd(), "a headless workspace runs in the shell's own cwd, and says so");
         assert.equal(attrs.body, "echo hello");
-        // Coordinate-only pathname: the runtime lives in the entry's SCHEME (tag authority),
-        // so the stream entry at <runtime>:///<loop_seq>/<turn_seq>/<sequence> carries just the
-        // coordinate it shares with the log row.
-        assert.match(attrs.pathname, /^\/\d+\/\d+\/\d+\/sh$/, "pathname is the log item coordinate, op segment included");
+        assert.match(attrs.pathname, /^\/[a-f0-9]{8}$/, "a workspace-stable address does not encode its log coordinate");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;

@@ -13,11 +13,10 @@
 -- $scope_prefix: the literal pathname prefix before any glob syntax, or NULL
 -- for no prefix. TypeScript applies the authoritative shell-glob match; this
 -- query supplies only a safe candidate superset.
-SELECT e.id AS entry_id, e.authority, e.pathname, ec.deep_hash, ec.content, ec.mimetype
+SELECT e.id AS entry_id, e.authority, e.pathname, ec.name AS channel, ec.deep_hash, ec.content, ec.mimetype
 FROM entries e
-JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = COALESCE($channel, e.default_channel)
+WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme
   AND ($authority IS NULL OR e.authority = $authority)
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
@@ -27,11 +26,10 @@ ORDER BY e.authority, e.pathname;
 -- Relation matchers need the same target candidate set without loading every
 -- candidate body across the SQL boundary. The ranker joins these identities to
 -- derivations and performs exhaustive ranking within the selected set.
-SELECT e.id AS entry_id, e.authority, e.pathname, ec.deep_hash
+SELECT e.id AS entry_id, e.authority, e.pathname, ec.name AS channel, ec.deep_hash
 FROM entries e
-JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = COALESCE($channel, e.default_channel)
+WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme
   AND ($authority IS NULL OR e.authority = $authority)
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
@@ -45,6 +43,5 @@ ORDER BY e.authority, e.pathname;
 SELECT (e.scheme || ':' || e.id || '#' || ec.name) AS key, ec.deep_hash
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
 ORDER BY e.id, ec.name;

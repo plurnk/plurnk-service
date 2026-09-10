@@ -6,7 +6,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { matchLocations } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -395,6 +395,7 @@ test("Log.read: #channel on an EXEC log item names the command's stream address 
             await new Promise((r) => setTimeout(r, 50));
         }
 
+        const address = await executionAddress(db, turnId);
         const miss = await readLog(
             readStmt({ ...urlPath("log", "/1/1/1/sh"), raw: "log:///1/1/1/sh#stdout", fragment: "stdout" }),
             makeSchemeCtx({ db, workspaceId, workerId }),
@@ -402,13 +403,13 @@ test("Log.read: #channel on an EXEC log item names the command's stream address 
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
         assert.equal(miss.problem?.requestedChannel, "stdout");
-        assert.equal(miss.problem?.stream, "sh:///1/1/1/sh", "the receipt carries the stream link the row already records");
-        assert.equal(miss.problem?.recovery, "READ sh:///1/1/1/sh#stdout for the command's stdout stream.");
-        assert.match(String(miss.problem?.detail), /the command's streams live at sh:\/\/\/1\/1\/1\/sh#stdout\./);
+        assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
+        assert.equal(miss.problem?.recovery, `READ ${address}#stdout for the command's stdout stream.`);
+        assert.ok(String(miss.problem?.detail).includes(`${address}#stdout`));
 
         // The named address is real: the same READ against it returns the output.
         const stream = await engine.look({
-            statement: readStmt({ ...urlPath("sh", "/1/1/1/sh"), raw: "sh:///1/1/1/sh#stdout", fragment: "stdout" }),
+            statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
             workspaceId, workerId, loopId, origin: "model",
         });
         assert.equal(stream.status, 200);

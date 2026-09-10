@@ -17,7 +17,6 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
-import Owner from "../../src/core/Owner.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -57,8 +56,7 @@ test("{§mimetype-parser-coordinates}: startup warming accepts CRLF Python comme
     assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete");
     assert.deepEqual(await fts(db, workspaceId, "helper"), ["/example.py"]);
     const body = await db.ops_read_channel.get<{ content: string }>({
-        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId),
-        scheme: "worker", authority: "", pathname: "/example.py", channel: "body",
+        workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/example.py", channel: "body",
     });
     assert.equal(body?.content, content, "derivation preserves the original line endings");
 });
@@ -132,14 +130,12 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
         });
         assert.ok(workspace);
         workspaceId = workspace.id;
-        await Owner.commonsId(db, workspaceId);
 
         await engine.warmWorkspaceDerivations(workspaceId);
         await rescan;
 
         const body = await db.ops_read_channel.get<{ content: string }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId),
-            scheme: "file", authority: "", pathname: "orientation.md", channel: "body",
+            workspace_id: workspaceId, scheme: "file", authority: "", pathname: "orientation.md", channel: "body",
         });
         assert.equal(body?.content, "repository orientation evidence\n", "warm reads repository members from disk before deriving");
         const phases = notices.filter((t) => t.notice.kind === "search_progress").map((t) => t.notice.phase);

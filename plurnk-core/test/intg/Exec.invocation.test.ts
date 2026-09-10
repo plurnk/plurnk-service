@@ -205,7 +205,7 @@ test("{§exec-target-routing} literal targets survive directory collisions witho
 test("{§executor-tool-registry} exact tools own admission and their invocation contract", async () => {
     const ctx = await wire();
     try {
-        const reference = await ctx.engine.referenceEntries(ctx.workspaceId, ctx.workerId);
+        const reference = await ctx.engine.referenceEntries(ctx.workspaceId);
         const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/familytool.md");
         assert.match(familyDoc?.content ?? "", /```familytool \(enabled_tool\)/, "the family document carries every registered target");
         assert.equal(
@@ -221,7 +221,7 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
         assert.equal(disabled.status, 404);
         assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
         assert.equal(disabled.problem?.availableTargetCount, 1);
-        assert.equal(disabled.problem?.recovery, "Select a target documented under worker://~/_plurnk/tools/familytool/.");
+        assert.equal(disabled.problem?.recovery, "Select a target documented under worker:///_plurnk/tools/familytool/.");
         assert.equal("availableTargets" in (disabled.problem ?? {}), false);
 
         const missingBody = await ctx.dispatch(statement("familytool", "enabled_tool", ""));

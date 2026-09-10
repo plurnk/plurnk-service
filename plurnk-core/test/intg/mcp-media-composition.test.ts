@@ -118,7 +118,7 @@ for (const modalities of [["image"], []] as InputModality[][]) {
             assert.equal(resourceReads, form === "inline" || form === "embedded" ? 0 : 1, "embedded content needs no refetch; resource reads use the standard MCP cache");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; status_rx: number }>({ loop_id: run.loopId });
             assert.ok(rows.some((row) => row.op === "READ" && row.pathname.includes("/resources/") && row.status_rx === 200), "resource READ succeeded through the dispatcher");
-            const output = rows.find((row) => row.op === "READ" && row.pathname.endsWith("/fixture"));
+            const output = rows.find((row) => row.op === "READ" && /^\/[a-f0-9]{8}$/.test(row.pathname));
             assert.ok(output, "the default channel has a terminal stream observation");
             const evidence = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: output.pathname, scheme: "fixture", name: "json" });
             assert.ok(evidence, "the original protocol result has an independently addressable #json channel");

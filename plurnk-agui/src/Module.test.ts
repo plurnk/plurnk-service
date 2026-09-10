@@ -246,7 +246,7 @@ test("{§agui-listener-admission}: a lost bind race rejects with the socket erro
     }
 });
 
-test("workspace notifications route to their owning worker's AG-UI Run", async () => {
+test("workspace stream notifications route to their producing worker's AG-UI Run", async () => {
     const { seam, emit } = mockSeam();
     const firstRun = Promise.withResolvers<void>();
     const bothRuns = Promise.withResolvers<void>();
@@ -275,8 +275,8 @@ test("workspace notifications route to their owning worker's AG-UI Run", async (
         await waitForFixture(firstRun.promise, () => `first AG-UI Run did not bind through runLoop; observed ${runCalls}/2`);
         releaseSecondWorker.resolve();
         await waitForFixture(bothRuns.promise, () => `both AG-UI Runs did not bind through runLoop; observed ${runCalls}/2`);
-        emit(3, "stream/event", streamEvent({ entryId: 5, workerId: 77, target: "exec:///1/1/5/exec", scheme: "exec", contentLength: 5 }));
-        emit(3, "stream/concluded", streamConclusion({ entryId: 5, workerId: 77, target: "exec:///1/1/5/exec", scheme: "exec" }));
+        emit(3, "stream/event", streamEvent({ entryId: 5, workerId: 77, target: "sh:///ab3d5678", scheme: "sh", contentLength: 5 }));
+        emit(3, "stream/concluded", streamConclusion({ entryId: 5, workerId: 77, target: "sh:///ab3d5678", scheme: "sh" }));
         emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         emit(3, "loop/terminated", termination({ workerId: 78, loopId: 10, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         const [ea, eb] = await Promise.all([a, b]);
@@ -512,12 +512,12 @@ test("{§agui-worker-reasoning-actions}: worker reasoning get/set reach the seam
     } finally { await mod.close(); }
 });
 
-test("entry.read defaults to the thread worker, honors an explicit owner, and preserves the contracts-owned wire", async () => {
+test("entry.read defaults to the thread actor, honors an explicit actor, and preserves the contracts-owned wire", async () => {
     const { seam } = mockSeam();
     const calls: Array<Parameters<ApplicationPort["readEntry"]>[0]> = [];
     const entry = {
         entryId: 42,
-        target: "worker://~/notes.md",
+        target: "worker://alice/notes.md",
         channels: {
             body: {
                 content: "hello",
@@ -542,7 +542,7 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
                     workspace: "agui-t",
                     action: {
                         kind: "entry.read",
-                        target: "worker://~/notes.md",
+                        target: "worker://alice/notes.md",
                         channel: "body",
                         offset: 0,
                     },
@@ -552,7 +552,7 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
         assert.deepEqual(calls, [{
             workspaceId: 3,
             workerId: 77,
-            target: "worker://~/notes.md",
+            target: "worker://alice/notes.md",
             channel: "body",
             offset: 0,
         }]);
@@ -571,7 +571,7 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
                     action: {
                         kind: "entry.read",
                         workerId: 91,
-                        target: "worker://~/notes.md",
+                        target: "worker://alice/notes.md",
                     },
                 },
             },
@@ -579,7 +579,7 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
         assert.deepEqual(calls[1], {
             workspaceId: 3,
             workerId: 91,
-            target: "worker://~/notes.md",
+            target: "worker://alice/notes.md",
         });
     } finally {
         await mod.close();
@@ -2154,14 +2154,14 @@ test("discover returns the exact public action and notification membership", asy
             "ping",
             "providers.list",
             "run.fork",
-            "workspace.capabilities.get",
-            "workspace.capabilities.set",
             "worker.child.set",
             "worker.model.get",
             "worker.model.set",
             "worker.reasoning.get",
             "worker.reasoning.set",
             "workspace.attach",
+            "workspace.capabilities.get",
+            "workspace.capabilities.set",
             "workspace.create",
             "workspace.list",
             "workspace.prompts",

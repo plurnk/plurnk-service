@@ -61,10 +61,10 @@ UPDATE loops SET status = 102 WHERE id = $loop_id AND status = 100;
 -- each owning use site with its declared composition semantics.
 SELECT settings FROM workspaces WHERE id = $workspace_id;
 
--- PREP: engine_list_owner_entries
--- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
+-- PREP: engine_list_catalog_entries
+-- {§entry-owner}: canonical entries in one workspace.
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
-SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, e.default_channel, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
     json_extract(e.attributes, '$.sourceProjection.mimetype') AS source_mimetype,
     d.parse_issues, d.summary,
     s.id AS subscription_id,
@@ -75,7 +75,6 @@ SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, 
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-JOIN workers owner ON owner.id = e.owner_id
 LEFT JOIN derivations d ON d.deep_hash = ec.deep_hash
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
@@ -84,7 +83,7 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
-WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
+WHERE e.workspace_id = $workspace_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: engine_next_turn_sequence
@@ -270,7 +269,6 @@ SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, 
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-JOIN workers owner ON owner.id = e.owner_id
 LEFT JOIN derivations d ON d.deep_hash = ec.deep_hash
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
@@ -279,7 +277,7 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
-WHERE owner.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
@@ -297,8 +295,7 @@ SELECT e.scheme AS scheme,
     END) AS shallow_items
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
 GROUP BY e.scheme
 ORDER BY e.scheme;
 
@@ -396,7 +393,7 @@ SELECT s.id AS subscription_id, sp.id AS publication_id,
     e.scheme AS runtime, e.authority, e.pathname AS coord,
     ec.name AS channel, ec.content AS content, ec.mimetype AS mimetype,
     ec.state AS state, ec.producer_result AS producer_result,
-    s.published_channel AS published_channel
+    s.published_channel, s.source, e.default_channel
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN subscription_publications sp ON sp.subscription_id = s.id

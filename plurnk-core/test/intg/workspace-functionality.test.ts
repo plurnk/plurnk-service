@@ -54,7 +54,7 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     assert.equal(read?.kind, "statement");
     if (read?.kind !== "statement") throw new Error("Expected one READ");
     for (const workerId of [alice, bob]) {
-        const docs = await daemon.engine.referenceEntries(workspaceId, workerId);
+        const docs = await daemon.engine.referenceEntries(workspaceId);
         assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every worker discovers the same enabled tool");
         const catalog = await daemon.look({ workspaceId, workerId, statement: read.statement });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
@@ -70,9 +70,7 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     });
     await action(workspaceId, "disable", { alias: "shared" });
     assert.equal((await action(workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "disabled");
-    for (const workerId of [alice, bob]) {
-        const docs = await daemon.engine.referenceEntries(workspaceId, workerId);
-        assert.equal(docs.some(({ content }) => content.includes("shared (echo)")), false, "disable changes the one shared discovery surface");
-    }
+    const docs = await daemon.engine.referenceEntries(workspaceId);
+    assert.equal(docs.some(({ content }) => content.includes("shared (echo)")), false, "disable changes the one shared discovery surface");
     assert.equal(provider.received.length, 0, "environment management never invokes a model");
 });

@@ -12,7 +12,6 @@ import type {
     EntryStreamLifecycle,
 } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
-import Owner from "../core/Owner.ts";
 
 type ManifestRow = {
     entry_id: number;
@@ -20,6 +19,7 @@ type ManifestRow = {
     authority: string;
     pathname: string;
     channel: string;
+    default_channel: string;
     content: string;
     mimetype: string;
     source_mimetype: string | null;
@@ -64,16 +64,13 @@ export default class EntryManifest {
     static async catalogRowsFor(
         ctx: PlurnkSchemeContext,
         schemeFilter?: string,
-        ownerId?: number,
         authorityFilter?: string,
     ): Promise<CatalogEntry[]> {
         const { db, workspaceId, mimetypes, weigh } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (weigh === undefined) throw new Error("catalogRowsFor: ctx.weigh is required — model-independent curation weight, re-counted at render");
-        const resolvedOwnerId = ownerId ?? await Owner.commonsId(db, workspaceId);
-        const all = await db.engine_list_owner_entries.all<ManifestRow>({
+        const all = await db.engine_list_catalog_entries.all<ManifestRow>({
             workspace_id: workspaceId,
-            owner_id: resolvedOwnerId,
         });
         const rows = all.filter((row) =>
             (schemeFilter === undefined || row.scheme === schemeFilter)
@@ -85,7 +82,7 @@ export default class EntryManifest {
             if (entry === undefined) {
                 entry = {
                     path,
-                    defaultChannel: ctx.defaultChannelFor?.(row.scheme) ?? "body",
+                    defaultChannel: row.default_channel,
                     channels: [],
                 };
                 byEntry.set(path, entry);

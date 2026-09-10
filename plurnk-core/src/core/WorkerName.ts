@@ -20,6 +20,16 @@ interface AutoWorkerOptions {
     forkSnapshot?: boolean;
 }
 
+export class WorkerNameConflictError extends Error {
+    readonly workerName: string;
+
+    constructor(workerName: string) {
+        super(`Worker '${workerName}' already exists in this workspace.`);
+        this.name = "WorkerNameConflictError";
+        this.workerName = workerName;
+    }
+}
+
 export class WorkerNameError extends Error {
     readonly workerName: string;
     readonly rejection: WorkerNameRejection;
@@ -44,7 +54,13 @@ export class WorkerNameError extends Error {
 // {§worker-name-minting} Model/client minting only; internal reserved actors and
 // generic URI ingestion have their own contracts.
 export default class WorkerName {
-    static readonly #RESERVED = new Set<string>([...RESERVED_AUTHORITIES, "~"]);
+    static readonly #RESERVED = new Set<string>(RESERVED_AUTHORITIES);
+
+    static async forId(db: Db, workerId: number): Promise<string> {
+        const row = await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId });
+        if (row === undefined) throw new Error(`Worker ${workerId} does not exist.`);
+        return row.name;
+    }
 
     static rejection(workerName: string): WorkerNameRejection | null {
         if (WorkerName.#RESERVED.has(workerName.toLowerCase())) return "reserved";
@@ -103,6 +119,19 @@ export default class WorkerName {
     // Competing allocators retry only after losing the claim. {§worker-auto-name}
     static async claimAuto(db: Db, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
         return await WorkerName.#claimAuto(db, options, false);
+    }
+
+    static async claimNamed(db: Db, name: string, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
+        const claimed = await db.worker_name_claim.get<WorkerNameClaim>({
+            workspace_id: options.workspaceId,
+            name: WorkerName.assert(name),
+            parent_worker_id: options.parentWorkerId ?? null,
+            origin: options.origin,
+            default_conversation: 0,
+            fork_snapshot: options.forkSnapshot ? 1 : 0,
+        });
+        if (claimed === undefined) throw new WorkerNameConflictError(name);
+        return claimed;
     }
 
     // The stable default conversation is both an auto-name allocation and the

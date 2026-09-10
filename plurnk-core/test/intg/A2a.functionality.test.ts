@@ -47,7 +47,7 @@ test("{§a2a-agents-functionality} outbound agents are workspace Functionality: 
     const states = async (): Promise<string[]> =>
         (await invoke<{ definitions: Listed[] }>("list", {})).definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
     const document = async (alias: string, workerId = model): Promise<string | undefined> => {
-        const references = await daemon.engine.referenceEntries(workspaceId, workerId);
+        const references = await daemon.engine.referenceEntries(workspaceId);
         return references.find(({ pathname }) => pathname === `/_plurnk/agents/${alias}.md`)?.content;
     };
     const send = (alias: string, workerId = client) =>

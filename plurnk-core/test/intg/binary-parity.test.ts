@@ -15,7 +15,6 @@ import { resourcePaths } from "./_find.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import Owner from "../../src/core/Owner.ts";
 
 // The task tree is a plain directory: admit its files as members, as the harness does.
 process.env.PLURNK_MEMBERS_TASK = "**";
@@ -200,17 +199,16 @@ test("{§scheme-source-bytes} bytes declared as text retain exact UTF-8 rather t
         const workspaceId = await insertWorkspace(db, "text-bytes");
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-        const ownerId = await Owner.commonsId(db, workspaceId);
         const coordinate = { authority: "", pathname: "/note.txt" };
         const text = "\ufeffcafé\r\nexact text\n";
         const entry = { channels: { body: { content: "", bytes: Buffer.from(text), mimetype: "text/plain" } } };
-        assert.equal((await EntryCrud.writeEntry(coordinate, entry, ctx, "worker", ownerId)).status, 201);
-        const stored = await EntryCrud.readEntry(coordinate, ctx, "worker", ownerId);
+        assert.equal((await EntryCrud.writeEntry(coordinate, entry, ctx, "worker")).status, 201);
+        const stored = await EntryCrud.readEntry(coordinate, ctx, "worker");
         assert.equal(stored.entry!.channels.body!.content, text);
         await assert.rejects(EntryCrud.writeEntry(coordinate, {
             channels: { body: { ...entry.channels.body, bytes: new Uint8Array([0xff]) } },
-        }, ctx, "worker", ownerId), /encoded data was not valid/u);
-        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker", ownerId)).entry!.channels.body!.content, text, "invalid text bytes do not destroy the existing resource");
+        }, ctx, "worker"), /encoded data was not valid/u);
+        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker")).entry!.channels.body!.content, text, "invalid text bytes do not destroy the existing resource");
     } finally { await db.close(); }
 });
 
@@ -220,9 +218,8 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
         const workspaceId = await insertWorkspace(db, `binentry-read-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
-        const ownerId = await Owner.commonsId(db, workspaceId);
 
-        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker", ownerId);
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.equal(rows[0].mimetype, "image/png", "the binary mimetype is preserved");
@@ -251,18 +248,17 @@ test("{§binary-parity} FIND searches a binary entry as its bytes, never its bas
         const workspaceId = await insertWorkspace(db, `binfind-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-        const ownerId = await Owner.commonsId(db, workspaceId);
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/stash.png", channel: "body", content: PNG.toString("base64"), mimetype: "image/png" });
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/notes.md", channel: "body", content: "the needle is here", mimetype: "text/markdown" });
 
         // "IHDR" is a literal byte run in every PNG header — findable in the decoded bytes, not in the note.
-        const png = await EntryFind.findWorkspaceEntries(findBody("/IHDR/", "IHDR"), ctx, Worker.manifest, { ownerId });
+        const png = await EntryFind.findWorkspaceEntries(findBody("/IHDR/", "IHDR"), ctx, Worker.manifest, {  });
         assert.equal(png.status, 200);
         assert.equal(resourcePaths(png).filter((p) => p.includes("stash.png")).length, 1, "the byte run is found inside the binary entry");
         assert.equal(resourcePaths(png).some((p) => p.includes("notes.md")), false, "the text note has no such bytes");
 
         // A text needle matches the note only — a binary channel is never text-searched over its base64.
-        const needle = await EntryFind.findWorkspaceEntries(findBody("/needle/", "needle"), ctx, Worker.manifest, { ownerId });
+        const needle = await EntryFind.findWorkspaceEntries(findBody("/needle/", "needle"), ctx, Worker.manifest, {  });
         assert.equal(needle.status, 200);
         assert.equal(resourcePaths(needle).filter((p) => p.includes("notes.md")).length, 1, "the text note matches");
         assert.equal(resourcePaths(needle).some((p) => p.includes("stash.png")), false, "the binary entry is never poisoned into a text match");

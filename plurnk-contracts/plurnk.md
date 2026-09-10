@@ -49,7 +49,7 @@ body?
 
 ## Workspace Navigation
 
-````KILL (sh:///1/2/3/sh) <!-- stops a running command -->````
+````KILL (sh:///ab3d5678) <!-- stops a running command -->````
 
 > [!TIP]
 > Use `FIND` to list or locate content, then scoped `READ` to read it; prefer glob-filtered paths over broad scans.
@@ -61,7 +61,7 @@ body?
 
 ## Messaging
 
-````SEND (node:///3/6/9/node) <!-- SEND with a (path) sends the message to the path -->
+````SEND (node:///c4e56789) <!-- SEND with a (path) sends the message to the path -->
 With a running node script, SEND passes this message to stdin.
 ````
 

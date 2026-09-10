@@ -17,7 +17,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Owner from "../../src/core/Owner.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import {
     DEFAULT_MIMETYPES,
@@ -143,7 +142,6 @@ test("{§file-create-no-orphans}: a naked non-Git workspace create becomes an ex
             { authority: "", pathname: "fresh.md" },
             ctx,
             "file",
-            await Owner.commonsId(db, workspaceId),
         );
         assert.equal(read.status, 200, "the creating workspace can immediately address what it wrote");
     });
@@ -248,7 +246,6 @@ test("{§file-create-scope}: service and workspace scopes compose monotonically"
             await writeFile(join(root, "existing.md"), "before\n");
             const member = await db.crud_register_workspace_member.get<{ id: number }>({
                 workspace_id: workspaceId,
-                owner_id: await Owner.commonsId(db, workspaceId),
                 scheme: "file",
                 authority: "",
                 pathname: "existing.md",

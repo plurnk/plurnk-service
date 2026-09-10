@@ -54,8 +54,6 @@ const fakeRegistration = (tag: string) => ({
                 channels: { results: "application/json" },
                 defaultChannel: "results",
                 category: "data",
-                entryOwner: "resolved",
-                inherit: "none",
                 writableBy: ["plugin"],
                 volatile: true,
                 modelVisible: true,
@@ -137,8 +135,6 @@ test("Daemon composes deterministic scheme and MIME display capabilities for cli
             channels: { body: "application/json" },
             defaultChannel: "body",
             category: "data",
-            entryOwner: "commons",
-            inherit: "none",
             writableBy: ["model"],
             volatile: true,
             modelVisible: true,
@@ -681,7 +677,6 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
         );
         const generated = await db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            owner_id: workerId,
             scheme: "worker",
             authority: "",
             pathname: docs[0]!.pathname,
@@ -1098,7 +1093,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             const docEdits = (await db.test_log_entries_by_worker_op_full.all<{
                 tx: string;
                 origin: string;
-            }>({ worker_id: modelWorkerId, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
+            }>({ worker_id: kernelWorker.id, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
             assert.ok(docEdits.length > 0, "documentation publication dispatches structural EDIT statements");
             for (const { tx } of docEdits) {
                 const statement = JSON.parse(tx) as unknown;
@@ -1112,7 +1107,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 pathname: string | null;
                 status_rx: number;
                 origin: string;
-            }>({ worker_id: modelWorkerId })).filter(({ origin, pathname }) =>
+            }>({ worker_id: kernelWorker.id })).filter(({ origin, pathname }) =>
                 origin === "_plurnk"
                 && (pathname === "/_plurnk/agents.md" || pathname?.startsWith("/_plurnk/skills/") === true));
             const publishedCount = (await publicationRows()).length;
@@ -1325,15 +1320,14 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             assert.equal(offset.problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
             assert.equal(offset.problem.recovery, "Select the channel to read from the offset.");
 
-            const networkEntry = await db.crud_insert_workspace_entry.get<{ id: number }>({
+            const networkEntry = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0,
                 workspace_id: created.id,
-                owner_id: clientWorker.id,
                 scheme: "https",
                 authority: "example.org:8443",
                 pathname: "/x?b=2&a=1&a=3",
             });
             assert.ok(networkEntry !== undefined);
-            await db.crud_write_channel.run({
+            await db.test_seed_channel_hashed.run({
                 entry_id: networkEntry.id,
                 name: "body",
                 content: "network body",
@@ -1453,7 +1447,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
                 },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
-                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
                     get defaultChannel() { return "stdout"; },
                     get channels() { return { stdout: { mimetype: "text/plain" } }; },
                     effect: () => "read",
@@ -1530,8 +1524,6 @@ test("module lifecycle readies setup capabilities before exterior start and clos
                     channels: { body: "text/plain" },
                     defaultChannel: "body",
                     category: "data",
-                    entryOwner: "commons",
-                    inherit: "none",
                     writableBy: [],
                     volatile: false,
                     modelVisible: false,
@@ -1649,8 +1641,6 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
             channels: { body: "text/plain" },
             defaultChannel: "body",
             category: "data",
-            entryOwner: "commons",
-            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,

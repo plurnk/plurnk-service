@@ -18,7 +18,7 @@ in prose.
 
 `discover` takes `{"source": "<agent base URL>"}`, fetches the Agent Card, and
 returns one inert candidate carrying the exact definition. `add` persists and
-enables it for this worker (a host effect, run on acceptance):
+enables it for this workspace (a host effect, run on acceptance):
 
 ````agents (add)
 {"alias": "planner", "definition": {"name": "planner", "url": "https://agents.example.com/planner"}}

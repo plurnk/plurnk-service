@@ -46,7 +46,7 @@ preserved exactly.
 | ```` ```FIND (pattern-url) ````                   | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
 | ```` ```SEND (url) ```` with body                 | POST                                  | Stream and persist the response under the addressed URL                                 |
 | ```` ```EDIT (url) ```` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
-| ```` ```KILL (url) ````                           | None                                  | {§http-kill}: cancel the worker's live acquisition of the URL, else delete the local stored entry |
+| ```` ```KILL (url) ````                           | None                                  | {§http-kill}: cancel the workspace's live acquisitions of the URL, else delete the local stored entry |
 | ```` ```KILL (url) {remote} ````                  | DELETE                                | Delete the remote resource and stream its response; other metadata blocks are its headers |
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
@@ -429,7 +429,7 @@ later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
 stored GET remain visible to universal FIND as durable evidence; exact HTTP
 preparation applies the policy above. A metadata-less `KILL` deletes the stored entry ({§http-kill}).
 
-§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** ```` ```KILL (url) ```` cancels the acting worker's live acquisition of that URL when one is in flight — GET, SSE, or a mutation — by aborting the controller the scheme tracks per worker and URL, and the owner settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only ```` ```KILL (url) {remote} ```` sends the HTTP DELETE, and its remaining metadata blocks are that request's headers. A KILL never reaches the remote by accident.
+§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** ```` ```KILL (url) ```` cancels all live acquisitions of that exact URL within the workspace — GET, SSE, or mutations — by aborting their registered controllers; each initiating operation settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only ```` ```KILL (url) {remote} ```` sends the HTTP DELETE, and its remaining metadata blocks are that request's headers. A KILL never reaches the remote by accident.
 
 ### §sse Server-sent events
 
@@ -491,7 +491,7 @@ stateDiagram-v2
 | Operation or event                | Contract                                                                                                         |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | ```` ```READ (ws(s)://…) ````            | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
-| Concurrent duplicate READ         | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
+| Concurrent duplicate READ         | Join the pending acquisition; once acquired, observe the shared connection with `200` and its connection state. Never create a second subscription or socket. |
 | ```` ```EDIT (ws(s)://…) ````             | Send one whole text frame only for an open owner; line ranges and multi-statement batches are rejected           |
 | ```` ```SEND (ws(s)://…) ```` with body  | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
 | ```` ```KILL (ws(s)://…) ````            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
@@ -507,9 +507,10 @@ outbound text-frame path and have the same connection and transport outcomes.
 Authored dispatch order ({§op-execution-order}) lets either write follow the
 opening READ in the same turn, after acquisition establishes the live owner.
 
-The in-instance registry is keyed by the owning Worker, addressed protocol,
-and canonical network pathname, matching the Worker-owned durable entry so
-independent Workers never share a live handle. The claim remains registered through terminal
+The in-instance registry is keyed by workspace and complete canonical network
+URL, matching the commons entry. Workers share the connection and may SEND or
+KILL it; acquisition attribution and settlement remain with its initiating
+operation ({§runtime-resource-binding}). The claim remains registered through terminal
 cleanup, so a new READ cannot overlap an owner's subscription settlement. Every
 terminal path drains retained owner work, closes the transport when necessary,
 closes the durable subscription, then releases the claim. A persistence failure

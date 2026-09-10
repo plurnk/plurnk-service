@@ -1,21 +1,9 @@
 // Fork a worker — branch the log, share the workspace (SPEC {§machine-processes}).
-//
-// A fork is a new worker in the same workspace (`parent_worker_id` records the lineage),
-// holding a deep copy of the parent's log: loops → turns → entries, with their
-// durable log evidence and current projection with attribution (`origin`/`source`) intact. It copies
-// nothing of the shared WORLD — commons-owned entries and the overlay are shared, never
-// copied, because the worker never owned them. Worker-owned entries follow the
-// registered scheme's explicit inheritance disposition; only quiescent snapshots
-// are owner-remapped parent → branch. Its ambient observation cursor is copied
-// with inherited history, then diverges independently.
+// Named scratch and evidence snapshot under {§machine-processes-entry-inheritance}.
 
 import type { Db } from "./Db.ts";
 import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
-import { isGeneratedPathname } from "./plurnk-uri.ts";
 import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
-import type { SchemeEntryInheritance } from "@plurnk/plurnk-schemes";
-
-type EntryInheritance = (storedScheme: string) => SchemeEntryInheritance;
 
 export default class Fork {
     // Terminal loop statuses ({§lifecycle-terms}) — inherited loops outside this set are clamped to 200.
@@ -25,7 +13,6 @@ export default class Fork {
         db: Db,
         parentWorkerId: number,
         name: string | undefined,
-        entryInheritance: EntryInheritance,
     ): Promise<number> {
         const parent = await db.fork_get_worker.get<{
             workspace_id: number;
@@ -45,15 +32,14 @@ export default class Fork {
                 origin: parent.origin,
                 forkSnapshot: true,
             })
-            : await db.fork_insert_worker.get<{ id: number }>({
-                workspace_id: parent.workspace_id,
-                name: WorkerName.assert(name),
-                parent_worker_id: parentWorkerId,
+            : await WorkerName.claimNamed(db, name, {
+                workspaceId: parent.workspace_id,
+                parentWorkerId,
                 origin: parent.origin,
-                fork_snapshot: 1,
+                forkSnapshot: true,
             });
-        if (branch === undefined) throw new Error("fork: explicit branch worker insert returned no row");
         const branchWorkerId = branch.id;
+        const branchName = await WorkerName.forId(db, branchWorkerId);
         await db.fork_set_generation_policy.run({
             worker_id: branchWorkerId,
             model_route_id: parent.model_route_id,
@@ -177,10 +163,8 @@ export default class Fork {
             });
         }
 
-        // {§machine-processes-entry-inheritance} — only a scheme-declared,
-        // quiescent snapshot crosses the fork. Live resources retain no phantom
-        // callback, and rederived/omitted entries carry no accidental bytes.
-        const ownedEntries = await db.fork_get_private_entries.all<{
+        // {§machine-processes-entry-inheritance}: live producers cannot be copied.
+        const namedEntries = await db.fork_get_scratch_entries.all<{
             id: number;
             scheme: string;
             authority: string;
@@ -188,24 +172,20 @@ export default class Fork {
             attributes: string;
             active: 0 | 1;
         }>(
-            { owner_id: parentWorkerId },
+            { worker_id: parentWorkerId },
         );
-        for (const s of ownedEntries) {
-            if (s.active === 1 || entryInheritance(s.scheme) !== "snapshot") continue;
-            // {§worker-generated-subtree} — the child rederives Plurnk-generated
-            // documents from its inherited Functionality instead of inheriting bytes.
-            if (s.scheme === "worker" && isGeneratedPathname(s.pathname)) continue;
-            const ne = await db.fork_insert_private_entry.get<{ id: number }>(
+        for (const s of namedEntries) {
+            if (s.active === 1) continue;
+            const ne = await db.fork_insert_scratch_entry.get<{ id: number }>(
                 {
                     workspace_id: parent.workspace_id,
-                    owner_id: branchWorkerId,
                     scheme: s.scheme,
-                    authority: s.authority,
+                    authority: branchName,
                     pathname: s.pathname,
                     attributes: s.attributes,
                 },
             );
-            if (ne === undefined) throw new Error("fork: private entry copy returned no row");
+            if (ne === undefined) throw new Error("fork: named entry copy returned no row");
             await db.fork_copy_entry_channels.run({ old_entry_id: s.id, new_entry_id: ne.id });
         }
 

@@ -33,11 +33,3 @@ test("{§log-coordinate-hierarchy}: an executor identity requires its durable su
         assert.throws(() => LogEntryProjection.leaf({ op: "EXEC", tx }), TypeError);
     }
 });
-
-test("{§executor-output-address}: client coordinates require the owning runtime's exact stream identity", () => {
-    assert.deepEqual(LogEntryProjection.streamCoordinate("/1/2/3/python3", "python3"), { loop_seq: 1, turn_seq: 2, sequence: 3 });
-    assert.deepEqual(LogEntryProjection.streamCoordinate("/1/2/3/search-api", "search-api"), { loop_seq: 1, turn_seq: 2, sequence: 3 });
-    for (const pathname of ["/1/2/3/EXEC", "/1/2/3/sh", "/0/2/3/python3", "/prefix/1/2/3/python3", "/1/2/3/python3/tail"]) {
-        assert.equal(LogEntryProjection.streamCoordinate(pathname, "python3"), undefined, pathname);
-    }
-});

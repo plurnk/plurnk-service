@@ -50,8 +50,6 @@ export default class A2a implements SchemeHandler {
         channels: { body: "text/markdown", json: "application/json" },
         defaultChannel: "body",
         category: "data",
-        entryOwner: "worker",
-        inherit: "none",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
@@ -89,6 +87,7 @@ export default class A2a implements SchemeHandler {
         if (existing.entry !== null && Object.values(existing.entry.channels).some(({ state }) => state === "active")) {
             return { status: 200 };
         }
+        if (existing.entry !== null && A2aProjection.artifactIdentity(pathname) !== null) return { status: 200 };
         if (pathname.startsWith("/messages/")) {
             return existing.entry === null
                 ? A2a.#problem("message-not-found", 404, `No retained A2A Message exists at a2a://${authority}${pathname}.`, {

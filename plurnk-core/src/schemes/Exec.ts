@@ -1,5 +1,5 @@
 import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
-import type { ExecStatement, FindStatement, ParsedPath, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import {
@@ -13,14 +13,13 @@ import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
-import Owner from "../core/Owner.ts";
 import EntryFind from "./_entry-find.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
-import ChannelWrite from "../core/ChannelWrite.ts";
+import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
-import { generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, resolve } from "node:path";
@@ -32,7 +31,6 @@ import {
     InvalidOperationResultError,
     NetworkAddress,
     ResourceNames,
-    type EntryAddress,
     type ProposalApplyRequest,
 } from "@plurnk/plurnk-schemes";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
@@ -55,7 +53,8 @@ interface ExecAttrs {
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     body: string;           // body of the EXEC op
-    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>/<runtime>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
+    pathname: string;       // workspace output claim ({§execution-output-identity})
+    coordinate?: StreamCoordinate;
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: T MINUTES, held in seconds: kill the spawn after T minutes (504). Absent/-1 = unbounded.
@@ -88,25 +87,6 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
     return target.raw;
 };
 
-// {§stream-owner-scoped} — resolve a stream statement's authority to the owning worker and hand
-// back the statement authority-stripped (the storage path is the bare loop coordinate; the owner
-// rides the owner_id column, never the pathname). Empty authority = the CALLING worker — your own
-// streams need no qualifier, so a fan-out sibling's identical coordinate can never be yours
-// ({§stream-owner-scoped}).
-// A named authority = that worker's streams, any worker of the workspace (#394); an unknown
-// name resolves null → the face 404s.
-export const resolveStreamStatement = async <S extends { target: ReadStatement["target"] }>(
-    statement: S,
-    ctx: PlurnkSchemeContext,
-): Promise<{ statement: S; ownerId: number } | null> => {
-    const t = statement.target;
-    const hostname = t !== null && t.kind === "url" ? t.hostname : null;
-    const ownerId = await Owner.resolveStreamOwner(hostname, ctx);
-    if (ownerId === null) return null;
-    if (hostname === null || t === null || t.kind !== "url") return { statement, ownerId };
-    return { statement: { ...statement, target: { ...t, hostname: null } }, ownerId };
-};
-
 // {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null:
 // schemes-http's WebFetcher (checked byte acquisition, dead-as-null; caller
 // cancellation rejects per {§prefetch}).
@@ -123,17 +103,15 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     static manifest: SchemeManifest = {
         name: "exec",
-        authority: "owner",
+        authority: "namespace",
         channels: { stdout: "text/stream", stderr: "text/stream" },
         defaultChannel: "stdout",
         category: "data",
-        entryOwner: "worker",
-        inherit: "none",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
         metadataModifier: true,
-        documentation: "The opening fence names a registered executor or MCP service; its target, body, metadata, and timing follow that tool's invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
+        documentation: "The opening fence names a registered executor or MCP service; its target, body, metadata, and timing follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -153,7 +131,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
     }
 
-    #activeAborts = new Map<number, { workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
+    #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -225,18 +203,13 @@ export default class Exec extends CoreSchemeAdapterBase {
     async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
-            if (entry.workerId === core.workerId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {
+            if (entry.workspaceId === core.workspaceId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {
                 entry.controller.abort(ExecAbort.killReason(null));
                 return { status: 200 };
             }
         }
-        // Not running — settle the outcome from the closed subscription's status, scoped to the
-        // caller's own subscription (coordinates duplicate across workers, {§stream-owner-scoped}).
-        // The error answers in the model's OWN runtime-tag address (sh:///…), never the retired
-        // internal `exec` machinery ({§fs-answer-in-canon}) — the model KILLs what it addressed.
         const terminal = await ChannelWrite.execTerminalStatus(core.db, {
             workspaceId: core.workspaceId,
-            workerId: core.workerId,
             scheme,
             authority: "",
             pathname,
@@ -343,7 +316,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     runtime,
                     availableTargetCount: availableTargets.length,
                     ...(availableTargets.length === 0 ? {} : {
-                        recovery: `Select a target documented under worker://~/_plurnk/tools/${runtime}/.`,
+                        recovery: `Select a target documented under worker:///_plurnk/tools/${runtime}/.`,
                     }),
                     retryable: false,
                 },
@@ -510,10 +483,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const effect = resolved.executor.effect(effectTarget);
         // cwd is the workspace project_root unless target routing selected a
         // directory override. {§exec-target-routing}, {§executor-sinks}
-        // Pathname is assigned by Dispatcher.#writeLog as <runtime>/<loop_seq>/
-        // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
-        // `pathname` is stamped into attrs at log-write time; applyResolution
-        // reads it back here.
+        // The log writer claims the workspace output address before proposal application.
         // EXEC repurposes the `<L>` slot as `<timeout, poll>` (MINUTES, held in seconds): mark[0] caps the spawn's
         // lifetime, mark[1] sets the hibernation poll-wake cadence ({§exec-poll}). N>0 → deadline (504);
         // -1 / absent → unbounded (loop-life bounded); 0 → turn-scoped (reaped at the next pre-turn,
@@ -546,11 +516,9 @@ export default class Exec extends CoreSchemeAdapterBase {
             || target.query !== null || statement.lineMarker !== null) {
             return failure("invalid-input-target", 400, "SEND input addresses an execution, without a channel or scope.");
         }
-        const owner = await Owner.resolveStreamOwner(target.hostname, core);
-        if (owner === null) return failure("stream-not-found", 404, "No visible stream exists at the requested address.");
-        if (owner !== core.workerId) return failure("input-owner-forbidden", 403, "Execution input is controlled by its owning Worker.");
+        const coordinate = entryCoordinateOf(target, "namespace");
         const found = [...this.#activeAborts.entries()].find(([, entry]) =>
-            entry.workerId === owner && entry.runtime === runtime && entry.pathname === target.pathname);
+            entry.workspaceId === core.workspaceId && entry.runtime === runtime && entry.pathname === coordinate.pathname);
         if (found !== undefined) {
             if (core.executors?.entry(runtime, core.workspaceId)?.executor !== found[1].executor) {
                 return failure("input-unavailable", 409, "This execution's input receiver is no longer enabled.");
@@ -558,7 +526,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             return { found };
         }
         const terminal = await ChannelWrite.execTerminalStatus(core.db, {
-            workspaceId: core.workspaceId, workerId: owner, scheme: runtime, authority: "", pathname: target.pathname,
+            workspaceId: core.workspaceId, scheme: runtime, ...coordinate,
         });
         return terminal === null
             ? failure("stream-not-found", 404, "No execution exists at the requested address.")
@@ -707,7 +675,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         const seed: EntryData = { channels: seedChannels };
         // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
-        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, core.workerId);
+        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, {
+            defaultChannel: resolved.executor.defaultChannel, output: true,
+        });
         if (entryId === null) {
             return Results.failure("scheme:exec", "stream-entry-write-failed", 500, `The ${runtime} stream entry could not be created.`, {
                 outcome: "entry_write_failed",
@@ -724,6 +694,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // {§exec-poll} — hibernation wake cadence
             turnScoped: attrs.turnScoped === true, // {§exec-poll} — `<0>` reaped at the next pre-turn
             publishedChannel: resolved.executor.publishedChannel,
+            source: attrs.coordinate === undefined ? undefined
+                : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
         });
 
         const controller = new AbortController();
@@ -746,7 +718,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
         const input = new ExecutionInput(controller.signal, this.#inputTimeoutMs);
-        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
         this.liveSubscriptions().register(subscriptionId, {
             cancel: () => controller.abort(ExecAbort.teardownReason()),
         });
@@ -756,7 +728,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             try {
                 return await this.#runExecutor({
                     executor: resolved.executor,
-                    runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname,
+                    runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
                     entryId, subscriptionId, signal: controller.signal, controller, tempPath, input,
                     timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
                 });
@@ -811,7 +783,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const owner = owners[0]!;
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
         const root = executors.entry(owner, core.workspaceId)?.resourcesPath ?? "/plurnk";
-        const contract = `worker://~${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.md`)}`;
+        const contract = `worker://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.md`)}`;
         return {
             ...result,
             problem: {
@@ -828,13 +800,13 @@ export default class Exec extends CoreSchemeAdapterBase {
         executor: Executor;
         runtime: string; body: string; cwd: string | null; target: string | null; metadata: readonly string[] | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
+        coordinate?: StreamCoordinate;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
         input: ExecutionInput;
     }): Promise<SchemeResult> {
-        const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath, input } = opts;
+        const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
         const db = ctx.db;
-        const coordinate = LogEntryProjection.streamCoordinate(pathname, runtime);
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.
         let timedOut = false;
@@ -877,12 +849,10 @@ export default class Exec extends CoreSchemeAdapterBase {
         let narrationResult: SchemeResult = { status: 200 };
         let entryChainFailed = false;
         let callerSource: string | undefined;
-        let callerName: string | undefined;
         const resolveCallerSource = async (): Promise<string> => {
             if (callerSource !== undefined) return callerSource;
             const caller = await db.worker_name_by_id.get<{ name: string }>({ worker_id: ctx.workerId });
             if (caller === undefined) throw new Error(`entry(): calling worker ${ctx.workerId} does not exist`);
-            callerName = caller.name;
             callerSource = WorkerControlAddress.render(caller.name);
             return callerSource;
         };
@@ -902,7 +872,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 ? address
                 : null;
             const binding = requestedPath === null
-                ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname, ownerId: ctx.workerId }, result: null })
+                ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname }, result: null })
                 : this.bindEntryAddress(parsed, ctx);
             // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
             // acquisition before the write chain so fetches run in parallel;
@@ -928,7 +898,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 if (resolved.address === null) {
                     throw new Error(`entry(): '${path.slice(0, 80)}' did not resolve to an entry address`);
                 }
-                const { authority, pathname, scheme, ownerId } = resolved.address;
+                const { authority, pathname, scheme } = resolved.address;
                 const coordinate = { authority, pathname };
                 let channels: EntryData["channels"];
                 let decisive: string;
@@ -965,7 +935,10 @@ export default class Exec extends CoreSchemeAdapterBase {
                 }
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(
-                    await EntryCrud.writeEntry(coordinate, { channels }, ctx, scheme, ownerId),
+                    await EntryCrud.writeEntry(coordinate, { channels }, ctx, scheme, {
+                        defaultChannel: requestedPath === null ? executor.defaultChannel : ctx.defaultChannelFor?.(scheme),
+                        output: requestedPath === null,
+                    }),
                 );
                 if (narration === null) {
                     const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
@@ -1041,7 +1014,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
-                return renderAddress({ scheme, authority: requestedPath === null ? callerName! : authority, pathname });
+                return renderAddress({ scheme, authority, pathname });
             };
             const run = entryChain.then(op, op);
             entryChain = run.then(
@@ -1075,9 +1048,11 @@ export default class Exec extends CoreSchemeAdapterBase {
                     },
                     env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
+                        producerWorkerId: ctx.workerId,
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,
                     })),
                     setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
+                        producerWorkerId: ctx.workerId,
                         entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                     })),
                     emit: (event) => ctx.pushNotice?.(event),
@@ -1229,7 +1204,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (ctx.wakeWorkerNotify !== undefined) {
                 ctx.wakeWorkerNotify({
                     workspaceId: ctx.workspaceId, workerId: ctx.workerId,
-                    entryOwnerId: ctx.workerId, entryId, target: `${runtime}://${pathname}`, subscriptionId, result,
+                    entryId, target: `${runtime}://${pathname}`, subscriptionId, result,
                     scheme: runtime,
                     summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                     ...coordinate,
@@ -1243,59 +1218,29 @@ export default class Exec extends CoreSchemeAdapterBase {
         return result;
     }
 
-    async resolveEntryAddress(
-        target: ParsedPath,
-        ctx: CoreSchemeCallContext,
-    ): Promise<EntryAddress | SchemeResultBase | null> {
-        if (target.kind !== "url") return null;
-        const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
-        return ownerId === null
-            ? Results.failure(
-                "scheme:exec",
-                "stream-not-found",
-                404,
-                "No visible stream exists at the requested address.",
-            )
-            : ownerId === ctx.workerId
-                ? { authority: "", pathname: target.pathname }
-                : Results.failure(
-                    "scheme:exec",
-                    "stream-not-found",
-                    404,
-                    "The internal exec surface does not address another Worker's stream; use its runtime scheme.",
-                );
-    }
-
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) {
-            return Results.failure("scheme:exec", "stream-not-found", 404, "No visible stream exists at the requested address.", {
-                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
-                matchingPathCount: 0, matchLocationCount: 0,
-            }) as FindResult;
-        }
-        return EntryFind.findWorkspaceEntries(owner.statement, core, Exec.manifest, { ownerId: owner.ownerId });
+        return EntryFind.findWorkspaceEntries(statement, core, Exec.manifest, { });
     }
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
         return "entries" in ctx
             ? ctx.entries.read(pathname)
-            : EntryCrud.readEntry({ authority: "", pathname }, core, Exec.manifest.name, core.workerId);
+            : EntryCrud.readEntry({ authority: "", pathname }, core, Exec.manifest.name);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
         const core = this.coreContext(ctx);
         return "entries" in ctx
             ? ctx.entries.write(pathname, entry)
-            : EntryCrud.writeEntry({ authority: "", pathname }, entry, core, Exec.manifest.name, core.workerId);
+            : EntryCrud.writeEntry({ authority: "", pathname }, entry, core, Exec.manifest.name);
     }
 
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
         const core = this.coreContext(ctx);
         return "entries" in ctx
             ? ctx.entries.delete(pathname)
-            : EntryCrud.deleteEntry({ authority: "", pathname }, core, Exec.manifest.name, core.workerId);
+            : EntryCrud.deleteEntry({ authority: "", pathname }, core, Exec.manifest.name);
     }
 }

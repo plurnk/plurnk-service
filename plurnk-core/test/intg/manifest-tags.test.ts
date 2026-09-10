@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 test("manifest catalog: a file member stores scheme=file and renders slash-free (note 1)", async () => {
@@ -13,7 +12,7 @@ test("manifest catalog: a file member stores scheme=file and renders slash-free 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         // {§entry-identity-no-null} — storage uses the reserved file identity, while
         // the catalog projects the relative bare path the model reads and writes.
-        await EntryCrud.writeEntry({ authority: "", pathname: "notes.md" }, { channels: { body: { content: "hi", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
+        await EntryCrud.writeEntry({ authority: "", pathname: "notes.md" }, { channels: { body: { content: "hi", mimetype: "text/markdown" } } }, ctx, "file");
         const stored = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "notes.md", scheme: "file" });
         assert.equal(stored?.scheme, "file", "the durable entry identity is non-null and explicit");
         const catalog = await EntryManifest.catalogRowsFor(ctx);

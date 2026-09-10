@@ -49,8 +49,6 @@ class CredentialProbe implements SchemeHandler {
         channels: { body: "text/plain" },
         defaultChannel: "body",
         category: "data",
-        entryOwner: "worker",
-        inherit: "none",
         writableBy: ["model"],
         volatile: false,
         modelVisible: true,

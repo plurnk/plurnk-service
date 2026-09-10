@@ -1,10 +1,9 @@
-// One live abort controller per (worker, URL), so a KILL of the address cancels the
-// acquisition that worker is holding instead of reaching the remote ({§http-kill}).
+// {§http-kill} Addressed cancellation reaches every local acquisition of the resource.
 export default class LiveAcquisitions {
-    readonly #controllers = new Map<string, AbortController>();
+    readonly #controllers = new Map<string, Set<AbortController>>();
 
-    static key(workerId: number, url: string): string {
-        return `${workerId}:${url}`;
+    static key(workspaceId: number, url: string): string {
+        return `${workspaceId}:${url}`;
     }
 
     static composed(outer: AbortSignal | undefined, local: AbortSignal): AbortSignal {
@@ -12,17 +11,20 @@ export default class LiveAcquisitions {
     }
 
     track(key: string, controller: AbortController): () => void {
-        this.#controllers.set(key, controller);
+        const controllers = this.#controllers.get(key) ?? new Set<AbortController>();
+        controllers.add(controller);
+        this.#controllers.set(key, controllers);
         return () => {
-            if (this.#controllers.get(key) === controller) this.#controllers.delete(key);
+            controllers.delete(controller);
+            if (controllers.size === 0 && this.#controllers.get(key) === controllers) this.#controllers.delete(key);
         };
     }
 
     cancel(key: string): boolean {
-        const controller = this.#controllers.get(key);
-        if (controller === undefined) return false;
+        const controllers = this.#controllers.get(key);
+        if (controllers === undefined) return false;
         this.#controllers.delete(key);
-        controller.abort();
+        for (const controller of controllers) controller.abort();
         return true;
     }
 }

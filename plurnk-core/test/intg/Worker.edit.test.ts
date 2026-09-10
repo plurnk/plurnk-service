@@ -49,11 +49,10 @@ test("Worker.edit: new entry — inserts entries row and body channel", async ()
         assert.ok(result.entryId !== null);
         const entry = await db.test_get_entry_by_id.get<{
             workspace_id: number;
-            owner_id: number;
             scheme: string;
             pathname: string;
         }>({ id: result.entryId });
-        assert.ok((entry?.owner_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
+        assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
         assert.equal(entry?.workspace_id, workspaceId);
         assert.equal(entry?.scheme, "worker");
         assert.equal(entry?.pathname, "/countries/france/capital");

@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, insertTurn } from "./_helpers.ts";
@@ -151,11 +152,9 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
             try {
                 const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "selfhost", projectRoot: dir })).result as { id: number }).id;
                 const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
-                const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
 
                 const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    owner_id: modelWorkerId,
                     scheme: "worker",
                     authority: "",
                     pathname: "/_plurnk/agents.md",
@@ -164,7 +163,6 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
 
                 const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    owner_id: modelWorkerId,
                     scheme: "worker",
                     authority: "",
                     pathname: "/_plurnk/instructions/packages/web/AGENTS.md",
@@ -172,7 +170,6 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 assert.ok(nested !== undefined, "a nested AGENTS.md materializes with its subtree path preserved (#346)");
                 const noise = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    owner_id: modelWorkerId,
                     scheme: "worker",
                     authority: "",
                     pathname: "/_plurnk/instructions/node_modules/dep/AGENTS.md",
@@ -182,7 +179,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 const workerLog = await db.test_log_entries_by_worker.all<{
                     op: string | null; scheme: string | null; pathname: string; origin: string;
                     turn_id: number; status_rx: number;
-                }>({ worker_id: modelWorkerId });
+                }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
                 const matEdit = workerLog.find((row) => row.op === "EDIT" && row.scheme === "worker" && row.pathname === "/_plurnk/agents.md");
                 assert.ok(matEdit !== undefined, "the materialization is durable operation evidence, not a privileged write");
                 assert.equal(matEdit.origin, "_plurnk", "the runtime producer remains explicit");
@@ -212,7 +209,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                     op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;
                 }>({ loop_id: loopId });
                 const docRead = modelLoopLog.find((row) => row.op === "READ" && row.scheme === "worker"
-                    && row.hostname === "~" && row.pathname === "/_plurnk/agents.md");
+                    && row.hostname === null && row.pathname === "/_plurnk/agents.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "Turn 0 reads the addressed Worker's generated policy entry");
             } finally { ws.close(); }
         });

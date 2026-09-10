@@ -43,8 +43,8 @@ test("parser roundtrip: EDIT writes the resource", async () => {
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
-        const entry = await db.test_parser_entries_first.get<{ owner_id: number; scheme: string; pathname: string }>();
-        assert.ok((entry?.owner_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
+        const entry = await db.test_parser_entries_first.get<{ workspace_id: number; scheme: string; pathname: string }>();
+        assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
         assert.equal(entry?.scheme, "worker");
         assert.equal(entry?.pathname, "/countries/france/capital");
         const body = await db.test_parser_body_first.get<{ content: string }>();

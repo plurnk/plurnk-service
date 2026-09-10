@@ -9,6 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
+import WorkerName from "../../src/core/WorkerName.ts";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -36,7 +37,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs 
                 assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf!.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
-                assert.equal(items.length, 3, "the project-file cap does not govern the model's own memory map");
+                assert.equal(items.length, 4, "the project-file cap does not govern the model's own memory map");
             } finally { ws.close(); }
         });
 
@@ -181,8 +182,9 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "worker" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
-                assert.deepEqual(map.map(([item]) => item.path), ["worker:///a.md", "worker:///nested/**"]);
-                assert.equal(map[1]?.[0]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
+                assert.deepEqual(map.map(([item]) => item.path), ["worker:///_plurnk/**", "worker:///a.md", "worker:///nested/**"]);
+                assert.equal(map.find(([item]) => item.path === "worker:///nested/**")?.[0]?.items, 1,
+                    "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
@@ -228,32 +230,33 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
-                const { loopId } = resp as { loopId: number };
+                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
+                const workerName = await WorkerName.forId(db, modelWorkerId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
-                    { scheme: "worker", hostname: "~", pathname: "/_plurnk/plurnk/*.md" },
-                    { scheme: "worker", hostname: "~", pathname: "/_plurnk/tools/*.md" },
-                    { scheme: "worker", hostname: "~", pathname: "/_plurnk/agents/*.md" },
-                    { scheme: "worker", hostname: "~", pathname: "/_plurnk/members/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/agents/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/members/*.md" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
-                    { scheme: "worker", hostname: "~", pathname: "/*" },
+                    { scheme: "worker", hostname: workerName, pathname: "/*" },
                 ], "the eight surveys execute in their taught order");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { annotation: string | null }).annotation),
-                    [null, null, null, null, null, "project filesystem", "workspace entries", "private worker entries"],
+                    [null, null, null, null, null, "project filesystem", "workspace entries", "worker scratch"],
                     "annotations explain only otherwise-cryptic namespace targets",
                 );
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
-                    ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true, 200],
-                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), false, 200],
+                    ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), false, 200],
+                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === workerName && r.pathname === "/*"), false, 200],
                     ["skills", finds.find((r) => r.scheme === "skill" && r.hostname === "*" && r.pathname === "/SKILL.md"), false, 200],
-                    ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/tools/*.md"), true, 200],
-                    ["plurnk references", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/plurnk/*.md"), false, 200],
-                    ["enabled members", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/members/*.md"), true, 200],
+                    ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/tools/*.md"), true, 200],
+                    ["plurnk references", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/plurnk/*.md"), false, 200],
+                    ["enabled members", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/members/*.md"), true, 200],
                 ] as const;
                 for (const [name, row, expectEmpty, expectStatus] of orientations) {
                     assert.ok(row !== undefined, `${name} FIND executes even when empty`);
@@ -276,24 +279,24 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
-                const shell = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/sh.md");
+                const shell = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.summary,
                     "````sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n````",
                     "Turn 0 teaches a compact executable witness with its authored summary, as plain text rather than a code span",
                 );
-                const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python3.md");
+                const python = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.summary,
                     "````python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n````",
                     "the interpreter summary teaches an executable inline program without requiring a document READ",
                 );
                 for (const removed of ["git", "isogit"]) {
-                    const residue = toolItems.flat().find(({ path }) => path === `worker://~/_plurnk/plurnk/${removed}.md`);
+                    const residue = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${removed}.md`);
                     assert.equal(residue, undefined, `${removed} is not exposed as a bespoke executor`);
                 }
                 for (const [index, name] of ["https", "worker", "wss"].entries()) {
-                    const resource = toolItems.flat().find(({ path }) => path === `worker://~/_plurnk/plurnk/${name}.md`);
+                    const resource = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${name}.md`);
                     assert.ok(resource !== undefined && resource.summary !== undefined && resource.summary.trim() !== "",
                         `${name} reference depth is visible with an orienting summary`);
                     const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
@@ -302,7 +305,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.summary.replace(/\s+/g, " ")),
                         `${name} orientation comes from the readable reference, without pinning its prose`);
                 }
-                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "~" && row.pathname === "/_plurnk/plurnk/sh.md");
+                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === null && row.pathname === "/_plurnk/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
                 const initializationTurnId = finds[0]!.turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);

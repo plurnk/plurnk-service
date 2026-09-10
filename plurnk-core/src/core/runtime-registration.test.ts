@@ -20,8 +20,6 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    entryOwner: "commons",
-    inherit: "none",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,

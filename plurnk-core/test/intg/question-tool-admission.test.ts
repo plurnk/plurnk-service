@@ -18,8 +18,8 @@ const findStatement = (): FindStatement => ({
     metadata: null,
     op: "FIND", annotation: null,
     target: {
-        kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker",
-        username: null, password: null, hostname: "~", port: null,
+        kind: "url", raw: "worker:///_plurnk/plurnk/*.md", scheme: "worker",
+        username: null, password: null, hostname: null, port: null,
         pathname: "/_plurnk/plurnk/*.md", query: null, fragment: null,
     },
     body: null,
@@ -57,7 +57,7 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
         id: workspaceId,
         settings: JSON.stringify({ capabilities }),
     });
-    await LoopDocs.materialize(engine, db, workspaceId, workerId);
+    await LoopDocs.materialize(engine, db, workspaceId);
     const loopId = await insertLoop(db, workerId, 2, "admission");
     const turnId = await insertTurn(db, loopId, 1, 102);
     return { db, schemes, engine, workspaceId, workerId, loopId, turnId };

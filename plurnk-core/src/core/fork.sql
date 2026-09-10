@@ -11,24 +11,6 @@ SELECT workspace_id, name, origin,
        model_route_id, spawn_model_route_id, reasoning_policy
 FROM workers WHERE id = $id;
 
--- PREP: fork_insert_worker
--- A new child in the parent's workspace. A FORK captures the parent's cursor
--- and the occurrence high-water in this one INSERT; a fresh WORK passes 0 and
--- receives the ordinary creation baseline trigger instead.
-INSERT INTO workers (
-    workspace_id, name, parent_worker_id, origin,
-    ambient_event_cursor, fork_event_boundary
-)
-SELECT $workspace_id, $name, $parent_worker_id, $origin,
-       CASE WHEN $fork_snapshot = 1 THEN parent.ambient_event_cursor ELSE NULL END,
-       CASE WHEN $fork_snapshot = 1 THEN COALESCE((
-           SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
-       ), 0) ELSE NULL END
-FROM workers parent
-WHERE parent.id = $parent_worker_id
-  AND parent.workspace_id = $workspace_id
-RETURNING id;
-
 -- PREP: fork_set_generation_policy
 -- A branch copies durable worker policy by value, then diverges independently.
 UPDATE workers
@@ -155,29 +137,22 @@ VALUES (
     $folded_after
 );
 
--- {§machine-processes-entry-inheritance} — core enumerates the parent's
--- Worker-owned entries; the registered scheme decides whether each is copied,
--- rederived, or omitted. A copied snapshot gets a new id and remapped owner.
-
--- PREP: fork_get_private_entries
--- The parent's Worker-owned entries. The caller applies each registered
--- scheme's {§manifest-entry-inheritance}; active entries are never eligible for
--- a snapshot because their process-local producer cannot be cloned.
+-- PREP: fork_get_scratch_entries
+-- {§machine-processes-entry-inheritance}: active producers cannot be cloned.
 SELECT e.id, e.scheme, e.authority, e.pathname, e.attributes,
        EXISTS (
            SELECT 1 FROM entry_channels c
            WHERE c.entry_id = e.id AND c.state = 'active'
        ) AS active
 FROM entries e
-WHERE e.owner_id = $owner_id
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE w.id = $worker_id AND e.scheme IN ('worker', 'prompt', 'reasoning')
 ORDER BY e.id;
 
--- PREP: fork_insert_private_entry
--- A private entry copy with the branch as owner. synced_sig/membership_origin are NULL
--- (scratch is never disk-synced nor a file member); version defaults 0.
-INSERT INTO entries (owner_id, scheme, authority, pathname, attributes)
-SELECT $owner_id, $scheme, $authority, $pathname, $attributes
-FROM workers WHERE id = $owner_id AND workspace_id = $workspace_id
+-- PREP: fork_insert_scratch_entry
+-- Named scratch is neither disk-synced nor a file member; version defaults to 0.
+INSERT INTO entries (workspace_id, scheme, authority, pathname, attributes)
+VALUES ($workspace_id, $scheme, $authority, $pathname, $attributes)
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels

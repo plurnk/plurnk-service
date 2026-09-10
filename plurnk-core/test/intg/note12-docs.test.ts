@@ -1,5 +1,5 @@
 // {§schemes-directory}: reference docs
-// are materialized under worker://~/_plurnk/plurnk/ and discovered by the turn-zero FIND.
+// are materialized under worker:///_plurnk/plurnk/ and discovered by the turn-zero FIND.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 class DocStub {
     static manifest = {
         name: "docstub", channels: { body: "text/plain" }, defaultChannel: "body",
-        category: "data", entryOwner: "commons", inherit: "none", writableBy: ["model"], volatile: false, modelVisible: true,
+        category: "data", writableBy: ["model"], volatile: false, modelVisible: true,
         documentation: "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.",
     };
 }

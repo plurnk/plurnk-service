@@ -48,8 +48,6 @@ const wire = async (run: Executor["run"]) => {
                     channels: { results: "text/stream" },
                     defaultChannel: "results",
                     category: "data",
-                    entryOwner: "resolved",
-                    inherit: "none",
                     writableBy: ["plugin"],
                     volatile: true,
                     modelVisible: true,

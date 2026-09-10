@@ -77,7 +77,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         { source: "```SEND\nupdate\n```", expected: [] },
         { source: "```EXEC\ngit status --short\n```", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: "```BARE\nWhat is 2 + 2?\n```", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
-        { source: "```BARE (worker://~/prompt.md)```", expected: [
+        { source: "```BARE (worker://alice/prompt.md)```", expected: [
             { operation: "BARE", access: "execute", traits: [] },
             { operation: "BARE", scheme: "worker", access: "observe", traits: [] },
         ] },
@@ -154,8 +154,8 @@ test("{§capability-admission} leaves every partially unresolved composed route 
 });
 
 test("{§worker-generated-subtree} intrinsic mutations preserve each external transfer demand", () => {
-    const own = "worker://~/_plurnk/reference.md";
-    const external = "worker://~/notes.md";
+    const own = "worker:///_plurnk/reference.md";
+    const external = "worker://alice/notes.md";
     assert.deepEqual(resolver.descriptors(statement(`\`\`\`EDIT (${own})
 reference
 \`\`\``), 1, "_plurnk"), []);
@@ -170,7 +170,7 @@ reference
         { operation: "MOVE", scheme: "worker", access: "observe", traits: [] },
         { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
     ]);
-    for (const path of [external, "worker://~/_plurnk-other/file", "file:///_plurnk/file"]) {
+    for (const path of [external, "worker:///_plurnk-other/file", "file:///_plurnk/file"]) {
         assert.equal(resolver.descriptors(statement(`\`\`\`EDIT (${path})
 content
 \`\`\``), 1, "_plurnk").length, 1, path);

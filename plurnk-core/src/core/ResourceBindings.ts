@@ -1,5 +1,7 @@
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { Manifest, type SchemeManifest } from "@plurnk/plurnk-schemes";
+import ExecutionOutputs from "./ExecutionOutputs.ts";
+import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
@@ -12,12 +14,12 @@ export interface ResourceScheme {
 // {§workspace-environment-sharing} The caller's identity never selects a private tool instance.
 export default class ResourceBindings {
     readonly #schemes: SchemeRegistry;
-    readonly #workspaceId: number;
-    readonly #bindings = new Map<string, ResourceScheme | undefined>();
+    readonly #ctx: PlurnkSchemeContext;
+    readonly #bindings = new Map<string, Promise<ResourceScheme | undefined>>();
 
     constructor(schemes: SchemeRegistry, ctx: PlurnkSchemeContext) {
         this.#schemes = schemes;
-        this.#workspaceId = ctx.workspaceId;
+        this.#ctx = ctx;
     }
 
     static using<T>(
@@ -31,16 +33,24 @@ export default class ResourceBindings {
 
     static resolve(target: ParsedPath | null, ctx: PlurnkSchemeContext): Promise<ResourceScheme | undefined> {
         if (ctx.resourceBindings === undefined) throw new Error("Resource access requires an operation binding scope.");
-        return Promise.resolve(ctx.resourceBindings.resolve(target));
+        return ctx.resourceBindings.resolve(target);
     }
 
-    resolve(target: ParsedPath | null): ResourceScheme | undefined {
+    resolve(target: ParsedPath | null): Promise<ResourceScheme | undefined> {
+        if (target === null) return Promise.resolve(undefined);
+        const key = target.raw;
+        if (!this.#bindings.has(key)) this.#bindings.set(key, this.#resolve(target));
+        return this.#bindings.get(key)!;
+    }
+
+    async #resolve(target: ParsedPath): Promise<ResourceScheme | undefined> {
         const scheme = schemeNameOf(target);
         if (scheme === null) return undefined;
-        if (!this.#bindings.has(scheme)) {
-            const handler = this.#schemes.get(scheme, this.#workspaceId);
-            this.#bindings.set(scheme, handler === undefined ? undefined : { handler, manifest: Manifest.of(handler, scheme) });
+        const handler = this.#schemes.get(scheme, this.#ctx.workspaceId);
+        if (!(handler instanceof ExecOutputScheme && handler.claimsLiveResource(target))) {
+            const manifest = await ExecutionOutputs.manifest(this.#ctx.db, this.#ctx.workspaceId, target);
+            if (manifest !== null) return { handler: this.#schemes.outputResource(manifest), manifest };
         }
-        return this.#bindings.get(scheme);
+        return handler === undefined ? undefined : { handler, manifest: Manifest.of(handler, scheme) };
     }
 }

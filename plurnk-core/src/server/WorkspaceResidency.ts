@@ -3,7 +3,6 @@ import type WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { Db } from "../core/Db.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
-import { generatedPathname } from "../core/plurnk-uri.ts";
 import ClientInput from "./client-input.ts";
 import LoopDocs from "./loopDocs.ts";
 import WorkspaceCapabilities, {
@@ -121,13 +120,6 @@ export default class WorkspaceResidency {
         }
     }
 
-    async #documentWorkers(workspaceId: number): Promise<Array<{ worker_id: number }>> {
-        return this.#db.workspace_generated_document_workers.all({
-            workspace_id: workspaceId,
-            prefix: `${generatedPathname("")}%`,
-        });
-    }
-
     async #dispose(identity: WorkspaceCapabilityIdentity): Promise<void> {
         const prepared = [];
         for (const namespaceOwner of this.#providers.keys()) {
@@ -140,7 +132,7 @@ export default class WorkspaceResidency {
         const errors = deactivations.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
         if (errors.length > 0) throw new AggregateError(errors, `Workspace ${identity.workspaceId} Functionality provider deactivation failed`);
         for (const commit of prepared) commit();
-        for (const { worker_id } of await this.#documentWorkers(identity.workspaceId)) LoopDocs.evict(this.#db, worker_id);
+        LoopDocs.evict(this.#db, identity.workspaceId);
     }
 
     async readModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
@@ -152,15 +144,13 @@ export default class WorkspaceResidency {
         return row === undefined ? null : JSON.parse(row.state) as unknown;
     }
 
-    async reconcile(workspaceId: number, workerId: number): Promise<void> {
-        await LoopDocs.materialize(this.#engine(), this.#db, workspaceId, workerId);
+    async reconcile(workspaceId: number): Promise<void> {
+        await LoopDocs.materialize(this.#engine(), this.#db, workspaceId);
     }
 
     async #rematerialize(workspaceId: number): Promise<void> {
         if (!this.#published) return;
-        for (const { worker_id } of await this.#documentWorkers(workspaceId)) {
-            await this.reconcile(workspaceId, worker_id);
-        }
+        await LoopDocs.materialize(this.#engine(), this.#db, workspaceId);
     }
 
     async rematerializeActive(): Promise<void> {

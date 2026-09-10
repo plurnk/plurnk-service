@@ -1,7 +1,7 @@
 // Engine.inject — direct surface tests. Deterministic state setup; no
 // daemon, no Mock provider timing races. Verifies the inject mechanics:
 // writes distinct prompt:///<loop>/<N> frames owner-keyed
-// ({§prompt-self-only}) and returns null when no loop is active.
+// ({§prompt-address}) and returns null when no loop is active.
 
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -1,6 +1,5 @@
 import LogBody from "./LogBody.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
-import type { StreamCoordinate } from "./ChannelWrite.ts";
 
 interface LogEntryProjectionRow {
     readonly origin?: unknown;
@@ -61,11 +60,4 @@ export default class LogEntryProjection {
             === LogEntryProjection.leaf(row).toLocaleLowerCase("en-US");
     }
 
-    static streamCoordinate(pathname: string, runtime: string): StreamCoordinate | undefined {
-        const match = /^\/([1-9]\d*)\/([1-9]\d*)\/([1-9]\d*)\/([^/]+)$/.exec(pathname);
-        if (match === null || match[4] !== runtime) return undefined;
-        const [loop_seq, turn_seq, sequence] = match.slice(1, 4).map(Number);
-        if (![loop_seq, turn_seq, sequence].every(Number.isSafeInteger)) return undefined;
-        return { loop_seq: loop_seq!, turn_seq: turn_seq!, sequence: sequence! };
-    }
 }

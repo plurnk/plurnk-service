@@ -94,7 +94,7 @@ test("PlurnkStatement: BARE carries inline or resource prompt input, but no scop
     assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt" }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", target: { kind: "local", raw: "prompt.md" } }).valid, true);
-    const resource = validateRoundTrip("```BARE (worker://~/prompt.md)```");
+    const resource = validateRoundTrip("```BARE (worker://alice/prompt.md)```");
     assert.equal(resource!.valid, true, JSON.stringify(resource!.errors));
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
 });

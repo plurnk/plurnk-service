@@ -14,13 +14,11 @@ export default class DbChannelCaps implements ChannelCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #authority: string;
-    readonly #ownerId: number;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string, authority: string, ownerId: number) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, authority: string) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         this.#authority = authority;
-        this.#ownerId = ownerId;
     }
 
     #failure(code: string, detail: string, pathname: string, channel?: string): SchemeResult {
@@ -39,7 +37,7 @@ export default class DbChannelCaps implements ChannelCaps {
     }
 
     async append(pathname: string, channel: string, content: string): Promise<SchemeResult> {
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname, this.#ownerId);
+        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })}.`, pathname);
         const r = await this.#ctx.db.append_to_channel.run({ chunk: content, entry_id: entryId, channel });
         return r.changes > 0
@@ -50,7 +48,7 @@ export default class DbChannelCaps implements ChannelCaps {
     async replace(pathname: string, channel: string, content: string): Promise<SchemeResult> {
         const { weigh } = this.#ctx;
         if (weigh === undefined) throw new Error("DbChannelCaps.replace: ctx.weigh is required for token accounting");
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname, this.#ownerId);
+        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })}.`, pathname);
         const r = await this.#ctx.db.replace_channel_content.run({
             content, weight: weigh(content), entry_id: entryId, channel,
@@ -61,7 +59,7 @@ export default class DbChannelCaps implements ChannelCaps {
     }
 
     async setState(pathname: string, channel: string, state: ChannelState): Promise<SchemeResult> {
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname, this.#ownerId);
+        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })}.`, pathname);
         const r = await this.#ctx.db.set_channel_state.run({ state, entry_id: entryId, channel });
         return r.changes > 0

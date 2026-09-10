@@ -15,22 +15,20 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { openMigrated } from "./_helpers.ts";
 import Dsl from "./dsl.ts";
 
-class PrivateNotes implements SchemeHandler {
+class Notes implements SchemeHandler {
     static manifest: SchemeManifest = {
-        name: "private-notes",
+        name: "notes", authority: "resource",
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        entryOwner: "resolved",
-        inherit: "none",
         writableBy: ["client"],
         volatile: false,
         modelVisible: true,
     };
 
-    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "worker" } | null> {
+    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string } | null> {
         return target.kind === "url"
-            ? { authority: "", pathname: target.pathname, owner: "worker" }
+            ? { authority: target.hostname ?? "", pathname: target.pathname }
             : null;
     }
 
@@ -49,7 +47,7 @@ const body = (result: EntryReadWire): ClientEntry => {
 test("entry.read resolves one owner-aware client entry and returns the exact shared wire", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
-    schemes.register("private-notes", new PrivateNotes());
+    schemes.register("notes", new Notes());
     const daemon = new Daemon({ db, schemes, provider: null });
     await daemon.start();
     try {
@@ -57,15 +55,15 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
         const parent = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "entry-parent" });
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "entry-child" });
 
-        for (const [workerId, content] of [
-            [parent.workerId, "A😀éZ"],
-            [child.workerId, "child"],
+        for (const [workerId, name, content] of [
+            [parent.workerId, "entry-parent", "A😀éZ"],
+            [child.workerId, "entry-child", "child"],
         ] as const) {
             const written = await daemon.dispatchAsClient({
                 workspaceId: workspace.workspaceId,
                 workerId,
                 statement: Dsl.buildEdit({
-                    target: "private-notes:///same",
+                    target: `notes://${name}/same`,
                     content,
                 }),
             });
@@ -75,11 +73,11 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
         const parentRead = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: parent.workerId,
-            target: "private-notes:///same",
+            target: "notes://entry-parent/same",
         }));
         assert.deepEqual(parentRead, {
             entryId: parentRead.entryId,
-            target: "private-notes:///same",
+            target: "notes://entry-parent/same",
             channels: {
                 body: {
                     content: "A😀éZ",
@@ -95,7 +93,7 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
         const childRead = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: child.workerId,
-            target: "private-notes:///same",
+            target: "notes://entry-child/same",
         }));
         assert.equal(childRead.channels.body?.content, "child");
         assert.notEqual(childRead.entryId, parentRead.entryId);
@@ -103,7 +101,7 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
         const slice = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: parent.workerId,
-            target: "private-notes:///same",
+            target: "notes://entry-parent/same",
             channel: "body",
             offset: 2,
         }));
@@ -119,13 +117,13 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
         const caughtUp = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: parent.workerId,
-            target: "private-notes:///same#ignored",
+            target: "notes://entry-parent/same#ignored",
             channel: "body",
             offset: 100,
         }));
         assert.equal(caughtUp.channels.body?.content, "");
         assert.equal(caughtUp.channels.body?.contentOffset, 4);
-        assert.equal(caughtUp.target, "private-notes:///same");
+        assert.equal(caughtUp.target, "notes://entry-parent/same");
     } finally {
         await daemon.stop();
         await db.close();
@@ -140,26 +138,26 @@ test("entry.read applies worker authority across the workspace: a child reads it
         const workspace = await daemon.createWorkspace({ name: `entry-owner-${crypto.randomUUID()}` });
         const parent = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "owner-parent" });
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "owner-child" });
-        for (const [workerId, content] of [
-            [parent.workerId, "parent"],
-            [child.workerId, "child"],
+        for (const [workerId, name, content] of [
+            [parent.workerId, "owner-parent", "parent"],
+            [child.workerId, "owner-child", "child"],
         ] as const) {
             assert.equal((await daemon.dispatchAsClient({
                 workspaceId: workspace.workspaceId,
                 workerId,
-                statement: Dsl.buildEdit({ target: "worker://~/same", content }),
+                statement: Dsl.buildEdit({ target: `worker://${name}/same`, content }),
             })).status, 201);
         }
 
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: parent.workerId,
-            target: "worker://~/same",
+            target: "worker://owner-parent/same",
         })).channels.body?.content, "parent");
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: child.workerId,
-            target: "worker://~/same",
+            target: "worker://owner-child/same",
         })).channels.body?.content, "child");
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,

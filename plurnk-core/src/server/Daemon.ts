@@ -312,7 +312,7 @@ export default class Daemon implements ApplicationPort {
                     // Worker settings can change while Functionality remains
                     // resident. Reconcile the worker-private discovery surface
                     // at the same pre-inference boundary used for activation.
-                    await this.#residency.reconcile(workspaceId, workerId);
+                    await this.#residency.reconcile(workspaceId);
                     const { provider, childProvider } = await this.#providersForLoop(loopId);
                     return await this.#engine.runLoop({
                         provider,
@@ -892,7 +892,7 @@ export default class Daemon implements ApplicationPort {
         const { workspaceId, workerId, loopId, statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
-            await this.#residency.reconcile(workspaceId, workerId);
+            await this.#residency.reconcile(workspaceId);
             const { id: turnId } = await Turn.open(this.#db, {
                 loopId,
                 producer: "client",
@@ -943,7 +943,7 @@ export default class Daemon implements ApplicationPort {
         try {
             const releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
             try {
-                await this.#residency.reconcile(workspaceId, workerId);
+                await this.#residency.reconcile(workspaceId);
                 const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
                 try {
                     const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
@@ -1223,7 +1223,6 @@ export default class Daemon implements ApplicationPort {
             this.#db,
             workerId,
             name,
-            (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, workspaceId),
         );
         const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
@@ -1338,7 +1337,7 @@ export default class Daemon implements ApplicationPort {
             if (context.scope === "worker") {
                 const release = await this.#workspaceGate.acquireTurn(context.workspaceId, context.workerId);
                 try {
-                    await this.#residency.reconcile(context.workspaceId, context.workerId);
+                    await this.#residency.reconcile(context.workspaceId);
                 } finally {
                     release();
                 }
@@ -1707,7 +1706,7 @@ export default class Daemon implements ApplicationPort {
             max_turns: number;
             open_paths: string | null;
             prompt_source: string | null;
-        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
+        }>({ loop_id: endedLoopId, worker_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
         const first = frames[0];
         if (first === undefined) return;
         const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
@@ -1728,7 +1727,7 @@ export default class Daemon implements ApplicationPort {
         if (recovery === undefined) throw new Error("reconcileOrphanedPrompts: enqueue returned no row");
         if (recovery.status !== 100) return;
         const moved = await this.#db.drain_rehome_orphaned_prompt_frames.all<{ id: number; pathname: string }>({
-            owner_id: workerId,
+            worker_id: workerId,
             source_loop_id: endedLoopId,
             source_pattern: `${prefix}%`,
             source_prefix_len: prefix.length,

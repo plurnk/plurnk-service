@@ -7,7 +7,6 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import Owner from "../../src/core/Owner.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -91,14 +90,13 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     ...overrides,
 });
 
-export const makeHandlerCtx = (
+export const makeHandlerCtx = async (
     ctx: PlurnkSchemeContext,
     manifest: SchemeManifest,
     authority = "",
-): SchemeCtxImpl =>
+): Promise<SchemeCtxImpl> =>
     new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions(), {
         authority,
-        ownerId: manifest.category === "data" ? ctx.workerId : null,
     });
 
 export const seedStaticChannel = async (
@@ -107,7 +105,7 @@ export const seedStaticChannel = async (
     channel: { readonly name: string; readonly content: string; readonly mimetype: string; readonly weight?: number },
 ): Promise<void> => {
     if (entryId === undefined) throw new Error("A static channel fixture requires an entry id.");
-    await db.crud_write_channel.run({
+    await db.test_seed_channel_hashed.run({
         entry_id: entryId,
         name: channel.name,
         content: channel.content,
@@ -209,6 +207,17 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
     if (exec?.idle !== undefined) await exec.idle();
 };
 
+// Follow the actual invocation receipt; output URIs do not encode log coordinates.
+export const executionAddress = async (db: Db, turnId: number, sequence = 1): Promise<string> => {
+    const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; attrs: string }>({ turn_id: turnId });
+    const row = rows.find((item) => item.sequence === sequence && item.op === "EXEC");
+    const stream: unknown = row === undefined ? undefined : JSON.parse(row.attrs).stream;
+    if (typeof stream !== "string" || !/^[a-z][a-z0-9+.-]*:\/\/\/[a-f0-9]{8}$/u.test(stream)) {
+        throw new Error(`Execution ${turnId}/${sequence} did not publish a workspace output address.`);
+    }
+    return stream;
+};
+
 // Test-only viable context ({§definition-table-projection}, {§tokenomics-window-partition}):
 // preserve three times the current authored teaching as input under the provider-owned
 // output policy. Conclusion fixtures stay viable as teaching grows; pressure
@@ -240,7 +249,6 @@ export const viableWindow = (): number => {
 export const insertWorkspace = async (db: Db, name: string): Promise<number> => {
     const row = await db.test_insert_workspace.get<{ id: number }>({ name });
     if (row === undefined) throw new Error("insertWorkspace: insert returned no row");
-    await Owner.commonsId(db, row.id); // {§entry-owner} — the workspace's commons row, eagerly (seeds' owner subselects resolve)
     return row.id;
 };
 
@@ -347,9 +355,8 @@ export const seedEntryWithChannel = async (
     db: Db,
     opts: {
         workspaceId: number;
-        // {§entry-owner} — the seeded entry's owner; absent = the workspace commons (shared
-        // content). A stream seed passes the owning worker.
-        ownerId?: number;
+        defaultChannel?: string;
+        output?: boolean;
         scheme?: string;
         authority?: string;
         pathname?: string;
@@ -361,10 +368,11 @@ export const seedEntryWithChannel = async (
 ): Promise<number> => {
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
         workspace_id: opts.workspaceId,
-        owner_id: opts.ownerId ?? await Owner.commonsId(db, opts.workspaceId),
         scheme: opts.scheme ?? "worker",
         authority: opts.authority ?? "",
         pathname: opts.pathname ?? "/x",
+        default_channel: opts.defaultChannel ?? opts.channel ?? "body",
+        output: opts.output === true ? 1 : 0,
     });
     if (entry === undefined) throw new Error("seedEntryWithChannel: insert returned no row");
     await db.test_seed_channel.run({
@@ -381,8 +389,6 @@ export const schemeManifest = (name: string, channels: Record<string, string> = 
     channels,
     defaultChannel,
     category: "data",
-    entryOwner: "commons",
-    inherit: "none",
     writableBy: ["model", "client", "_plurnk", "plugin"],
     volatile: false,
     modelVisible: true,
@@ -404,17 +410,9 @@ export const awaitExecOutcome = async (
         timeoutMs?: number;
     },
 ): Promise<Record<string, unknown>> => {
-    const coordinate = (pathname: string): number[] => pathname.split("/").filter((part) => part.length > 0).map(Number);
-    const newestFirst = (left: { pathname: string }, right: { pathname: string }): number => {
-        const [a, b] = [coordinate(left.pathname), coordinate(right.pathname)];
-        for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-            if ((a[index] ?? -1) !== (b[index] ?? -1)) return (b[index] ?? -1) - (a[index] ?? -1);
-        }
-        return 0;
-    };
     const start = Date.now();
     for (;;) {
-        const outputs = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme, prefix: "/%" })).toSorted(newestFirst);
+        const outputs = (await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme, prefix: "/%" })).toSorted((a, b) => b.id - a.id);
         for (const { pathname } of outputs.length > after ? outputs : []) {
             const settled = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme, name: channel });
             // closed or errored — the two terminal channel states ({§stream-control}); a refused verb ends errored.

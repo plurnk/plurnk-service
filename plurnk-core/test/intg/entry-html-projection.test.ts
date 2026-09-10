@@ -11,7 +11,6 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
@@ -29,9 +28,8 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
-        const ownerId = await Owner.commonsId(db, workspaceId);
 
-        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker", ownerId);
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
@@ -53,7 +51,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
     engine.registerRuntime("fetchstub", {
         executor: {
             runtime: "fetchstub", glyph: "?",
-            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/html" } }; },
             effect: () => "pure" as const,
@@ -108,7 +106,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
                 header: { content: "HTTP 200 OK", mimetype: "text/plain" },
                 html: { content: "<p>one</p><p>two</p><p>three</p><p>four</p>", mimetype: "text/html" },
             },
-        }, ctx, "https", workerId);
+        }, ctx, "https");
         const statement: ReadStatement = {
             metadata: null,
             op: "READ", annotation: null,
@@ -140,7 +138,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
                     mimetype: "text/plain",
                 },
             },
-        }, ctx, "https", workerId);
+        }, ctx, "https");
         const statement: ReadStatement = {
             metadata: null,
             op: "READ", annotation: null,

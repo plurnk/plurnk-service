@@ -21,8 +21,6 @@ test("{§schemes-directory}: stored packets carry language and policy without an
                 channels: { body: "text/plain" },
                 defaultChannel: "body",
                 category: "data",
-                entryOwner: "commons",
-                inherit: "none",
                 writableBy: ["model"],
                 volatile: false,
                 modelVisible: true,
@@ -44,7 +42,7 @@ test("{§schemes-directory}: stored packets carry language and policy without an
         const system = packet.sections.filter((section: { slot: string }) => section.slot === "system");
         assert.deepEqual(system.map((section: { name: string }) => section.name), ["definition", "system-policy"]);
         assert.doesNotMatch(JSON.stringify(system), /glyph-test|GLYPH_MUST_STAY_CLIENT_SIDE/, "neither references nor client glyphs are injected");
-        const reference = (await engine.referenceEntries(workspaceId, workerId))
+        const reference = (await engine.referenceEntries(workspaceId))
             .find(({ pathname }) => pathname === "/_plurnk/plurnk/glyph-test.md");
         assert.match(reference?.content ?? "", /```READ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
     } finally {

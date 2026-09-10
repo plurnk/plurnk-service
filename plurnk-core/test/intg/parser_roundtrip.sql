@@ -1,5 +1,5 @@
 -- PREP: test_parser_entries_first
-SELECT owner_id, scheme, pathname FROM entries LIMIT 1;
+SELECT workspace_id, scheme, pathname FROM entries LIMIT 1;
 
 -- PREP: test_parser_body_first
 SELECT content FROM entry_channels WHERE name = 'body' LIMIT 1;

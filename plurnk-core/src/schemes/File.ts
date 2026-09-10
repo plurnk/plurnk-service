@@ -1,6 +1,5 @@
 import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import Namespace from "../core/namespace.ts";
-import Owner from "../core/Owner.ts";
 import { basename, dirname, relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
@@ -106,8 +105,6 @@ export default class File extends CoreSchemeAdapterBase {
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
-        entryOwner: "commons",
-        inherit: "none",
         writableBy: ["model", "client", "plugin", "_plurnk"],
         volatile: false,
         modelVisible: true,
@@ -155,7 +152,7 @@ export default class File extends CoreSchemeAdapterBase {
         );
         if (pathname === null) return null;
         if (access === "write") {
-            const member = await core.db.crud_get_member_sig.get<{ membership_origin: string | null }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", authority: "", pathname });
+            const member = await core.db.crud_get_member_sig.get<{ membership_origin: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname });
             const denied = File.#memberWriteDenial(pathname, member);
             if (denied !== null) return Results.failure("scheme:file", denied.code, denied.status, denied.detail, {}, denied.extensions);
         }
@@ -179,7 +176,6 @@ export default class File extends CoreSchemeAdapterBase {
         // same seam READ/EDIT use; a bare `notes.md` and `/notes.md` scan identically.
         const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
         return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest, {
-            ownerId: await Owner.commonsId(core.db, core.workspaceId),
             bytes: (pathname) => this.byteSource({ authority: "", pathname }, core),
         });
     }
@@ -201,7 +197,6 @@ export default class File extends CoreSchemeAdapterBase {
                 { authority: "", pathname: canonical },
                 core,
                 "file",
-                await Owner.commonsId(core.db, core.workspaceId),
             );
         if (result.status !== 404) return result;
         return (await this.missRefusal(pathname, core, { entry: null }) as ReadEntryResult | null) ?? result;
@@ -333,7 +328,7 @@ export default class File extends CoreSchemeAdapterBase {
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         let creationAdmission: AdmittedCreation | null = null;
         if (fileExists) {
-            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel });
+            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined) {
@@ -356,7 +351,7 @@ export default class File extends CoreSchemeAdapterBase {
                 return { ok: false, ...FileMaterialization.rejection(rel, currentMaterialization) };
             }
             // {§membership-edit-write-cas}: diff against the READ snapshot; CAS protects the disk landing.
-            const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel, channel: "body" });
+            const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
         } else {
@@ -602,7 +597,6 @@ export default class File extends CoreSchemeAdapterBase {
                     { authority: "", pathname: attrs.deletePath },
                     core,
                     "file",
-                    await Owner.commonsId(core.db, core.workspaceId),
                 );
             }
             await GitMembership.removeCreationRecord(core.db, core.workspaceId, attrs.deletePath);
@@ -746,7 +740,7 @@ export default class File extends CoreSchemeAdapterBase {
                 })
                 : await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
                     channels: { body: { content: registerContent, mimetype } },
-                }, core, "file", await Owner.commonsId(core.db, core.workspaceId));
+                }, core, "file");
             const { entryId } = write;
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.
@@ -776,7 +770,7 @@ export default class File extends CoreSchemeAdapterBase {
                 try {
                     const row = await core.db.crud_find_workspace_entry.get<{ id: number }>({
                         workspace_id: core.workspaceId,
-                        owner_id: await Owner.commonsId(core.db, core.workspaceId),
+
                         scheme: "file",
                         authority: "",
                         pathname: relPath,
@@ -866,7 +860,7 @@ export default class File extends CoreSchemeAdapterBase {
         }
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${pathname}.`, {}, { target: pathname }) as DeleteEntryResult;
-        const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", authority: "", pathname: rel });
+        const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${rel}.`, {}, { target: rel }) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
     }

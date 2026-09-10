@@ -27,6 +27,26 @@ const turn = (ops: string, terminal = false) => ({
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
+test("{§skills-resources} independent workers concurrently discover the shared skill tree", async (t) => {
+    await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        t.after(() => ws.close());
+        const created = await rpcCall(ws, 1, "workspace.create", { name: `skill-concurrency-${crypto.randomUUID()}` });
+        const workspaceId = (created.result as { id: number }).id;
+        const workers = await Promise.all(Array.from({ length: 8 }, (_, index) => insertWorker(db, workspaceId, null, `client-${index}`, "client")));
+        const results = await Promise.all(workers.map((workerId) => daemon.dispatchAsClient({
+            workspaceId, workerId,
+            statement: { ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } },
+        })));
+        for (const result of results) {
+            assert.equal(result.status, 200, JSON.stringify(result));
+            assert.ok(Array.isArray(result.results));
+            assert.ok((result.results.flat() as Array<{ path: string }>).some(({ path }) => path === "skill://plurnk/SKILL.md"),
+                "every caller receives the shared catalog, not a swallowed publication error");
+        }
+    });
+});
+
 test("{§skills-resources} live trees preserve authority isolation, pattern composition, withdrawal and read-only ownership", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));

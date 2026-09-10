@@ -4,13 +4,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
 import { readWorkerTopology } from "../WorkerTopology.ts";
-import Owner from "../../src/core/Owner.ts";
 
 test("{§methods-worker-list} topology reporting counts children and grandchildren, not independent roots", async () => {
     const db = await openMigrated();
     try {
         const workspace = await insertWorkspace(db, "topology-report");
-        const commons = await Owner.commonsId(db, workspace);
         const root = await insertWorker(db, workspace, null, "root", "model");
         const independent = await insertWorker(db, workspace, null, "independent", "model");
         const child = await insertWorker(db, workspace, root, "child", "model");
@@ -18,7 +16,7 @@ test("{§methods-worker-list} topology reporting counts children and grandchildr
         const client = await insertWorker(db, workspace, null, "client", "client");
         const report = await readWorkerTopology(db, workspace);
         assert.equal(report.delegatedWorkers, 2);
-        assert.deepEqual(new Set(report.workers.map(({ id }) => id)), new Set([commons, root, independent, child, grandchild, client]));
+        assert.deepEqual(new Set(report.workers.map(({ id }) => id)), new Set([root, independent, child, grandchild, client]));
     } finally { await db.close(); }
 });
 

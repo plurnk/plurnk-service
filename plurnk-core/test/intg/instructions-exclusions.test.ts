@@ -41,7 +41,7 @@ test("an ignored or excluded AGENTS.md is never projected; the standard does not
                 assert.equal(finalStatus, 200);
                 const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
                 const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId, owner_id: workerId, scheme: "worker", authority: "", pathname,
+                    workspace_id: workspaceId, scheme: "worker", authority: "", pathname,
                 });
                 assert.equal(await entry("/_plurnk/agents.md"), undefined, "a gitignored root AGENTS.md is not projected");
                 assert.equal(await entry("/_plurnk/instructions/packages/secret/AGENTS.md"), undefined, "a gitignored nested AGENTS.md is not projected");

@@ -26,10 +26,10 @@ test("required built-in corpus absence rejects workspace doc materialization wit
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `teaching-absent-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        await insertWorker(db, workspaceId);
 
         await assert.rejects(
-            () => LoopDocs.materialize(engine, db, workspaceId, workerId),
+            () => LoopDocs.materialize(engine, db, workspaceId),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
                 assert.match(error.message, /required teaching source 'docs\/worker\.md' could not be read/);
@@ -51,10 +51,10 @@ test("a failed required corpus read is not reclassified as optional absence", as
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `teaching-unreadable-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        await insertWorker(db, workspaceId);
 
         await assert.rejects(
-            () => LoopDocs.materialize(engine, db, workspaceId, workerId),
+            () => LoopDocs.materialize(engine, db, workspaceId),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
                 assert.match(error.message, /required teaching source 'docs\/worker\.md' could not be read/);

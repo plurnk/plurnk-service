@@ -6,12 +6,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated } from "./_helpers.ts";
+import { insertWorker, openMigrated } from "./_helpers.ts";
 
 // These fixtures exercise the lifecycle after a stream genuinely becomes
 // monitored. Optimistic settlement has its own matrix; disable it here so the
@@ -38,7 +39,7 @@ const mockResponse = (dsl: string) => {
     };
 };
 
-test("{§worker-lifecycle-wake-liveness}: cancelling one stream wakes its still-live waiting worker", async () => {
+test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async () => {
     const mock = new Mock({ contextWindow: 65536, responses: [
         mockResponse("```EXEC\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command's outcome.\",\"status\":\"waiting\"}]\n```"),
         mockResponse("```SEND\nThe command was cancelled.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
@@ -54,7 +55,13 @@ test("{§worker-lifecycle-wake-liveness}: cancelling one stream wakes its still-
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
             const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
             assert.equal(subscriptions.length, 1);
-            assert.equal(await daemon.engine.cancelSubscription(subscriptions[0]!.id), true);
+            const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0]!.id });
+            const resource = await db.test_get_entry_by_id.get<{ pathname: string; scheme: string }>({ id: subscription!.entry_id });
+            const peer = await insertWorker(db, workspaceId, null, "controller", "client");
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)).items[0];
+            if (parsed?.kind !== "statement") throw new Error("Expected KILL");
+            const killed = await daemon.dispatchAsClient({ workspaceId, workerId: peer, statement: parsed.statement });
+            assert.equal(killed.status, 200, JSON.stringify(killed));
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200, { timeoutMs: 1500 });
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled worker scope");
         } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
@@ -390,15 +397,13 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 200);
             assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
-            assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+\/sh completed \(exit 0\)/,
-                "summary references the stream's item address <runtime>:///<loop>/<turn>/<seq>/sh");
+            assert.match(wake.summary, /^sh:\/\/\/[a-f0-9]{8} completed \(exit 0\)/,
+                "summary references the workspace-stable stream address");
             assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
             assert.equal(Object.hasOwn(wake, "wakeLoopId"), false);
 
-            const seg = wake.target.replace(/^sh:\/\/\//, "").split("/");  // [loop, turn, seq]
-            assert.equal(wake.loop_seq, Number(seg[0]), "stream/concluded carries loop_seq as a field matching the URI");
-            assert.equal(wake.turn_seq, Number(seg[1]), "carries turn_seq");
-            assert.equal(wake.sequence, Number(seg[2]), "carries sequence");
+            assert.deepEqual([wake.loop_seq, wake.turn_seq, wake.sequence], [1, 2, 2],
+                "stream/concluded carries causal coordinates independently of its output URI");
 
             // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,
             // never through loop.worker's (already-returned) result.

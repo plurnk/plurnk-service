@@ -104,7 +104,7 @@ export type FunctionalityOutcome =
 
 interface FunctionalityDocument {
     // Relative to the Worker's generated subtree root; the coordinator prefixes
-    // `worker://~/_plurnk/`.
+    // `worker:///_plurnk/`.
     readonly pathname: string;
     readonly content: string;
 }

@@ -71,10 +71,10 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
                     name: `skills-loop-${crypto.randomUUID()}`,
                     projectRoot: root,
                 })).result as { id: number };
-                const ownerId = await daemon.ensureModelWorker(created.id);
+                await daemon.ensureModelWorker(created.id);
+
                 const entry = async (name: string) => db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: created.id,
-                    owner_id: ownerId,
                     scheme: "skill",
                     authority: name,
                     pathname: "/SKILL.md",

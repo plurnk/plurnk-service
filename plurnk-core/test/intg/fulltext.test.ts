@@ -152,7 +152,7 @@ test("FTS5 uses native BM25 relevance before the identity tie-breaker", async ()
     } finally { await db.close(); }
 });
 
-test("FTS5 respects resolved worker ownership and removes deleted targets from results", async () => {
+test("FTS5 respects literal namespaces and removes deleted targets from every observer's results", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-owner-${crypto.randomUUID()}`);
@@ -161,22 +161,25 @@ test("FTS5 respects resolved worker ownership and removes deleted targets from r
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const sibling = makeSchemeCtx({ db, workspaceId, workerId: siblingId });
         const worker = new Worker();
-        const owned = { ...url("note.txt"), raw: "worker://~/note.txt", hostname: "~" };
+        const owned = { ...url("note.txt"), raw: "worker://first/note.txt", hostname: "first" };
+        const second = { ...url("note.txt"), raw: "worker://second/note.txt", hostname: "second" };
         await worker.edit(edit("note.txt", "commonsneedle"), ctx);
         await worker.edit({ ...edit("note.txt", "firstneedle"), target: owned }, ctx);
-        await worker.edit({ ...edit("note.txt", "secondneedle"), target: owned }, sibling);
+        await worker.edit({ ...edit("note.txt", "secondneedle"), target: second }, sibling);
         await SearchIndex.maintain(ctx);
         const query = "commonsneedle OR firstneedle OR secondneedle";
         assert.deepEqual(resourcePaths(await worker.find(find("*", query), ctx)), ["worker:///note.txt"]);
-        const ownFind = { ...find("*", query), target: { ...url("*"), raw: "worker://~/*", hostname: "~" } };
-        assert.deepEqual(resourcePaths(await worker.find(ownFind, ctx)), ["worker://~/note.txt"]);
+        const ownFind = { ...find("*", query), target: { ...url("*"), raw: "worker://first/*", hostname: "first" } };
+        assert.deepEqual(resourcePaths(await worker.find(ownFind, ctx)), ["worker://first/note.txt"]);
+        assert.deepEqual(resourcePaths(await worker.find(ownFind, sibling)), ["worker://first/note.txt"]);
         assert.equal((await worker.find({ ...ownFind, body: { dialect: "fts", raw: "~secondneedle" } }, ctx)).status, 204);
         assert.equal((await worker.killEntry({
             ...find("note.txt", query), op: "KILL", target: owned, body: null, lineMarker: null,
         }, ctx)).status, 200);
         await SearchIndex.maintain(ctx);
         assert.equal((await worker.find(ownFind, ctx)).status, 204);
-        assert.deepEqual(resourcePaths(await worker.find(ownFind, sibling)), ["worker://~/note.txt"], "deleting one owner's entry preserves the sibling's");
+        assert.equal((await worker.find(ownFind, sibling)).status, 204);
+        assert.deepEqual(resourcePaths(await worker.find({ ...ownFind, target: { ...ownFind.target, hostname: "second", raw: "worker://second/*" } }, ctx)), ["worker://second/note.txt"], "the independent namespace is preserved");
         assert.deepEqual(resourcePaths(await worker.find(find("*", query), ctx)), ["worker:///note.txt"], "the commons remain independent");
     } finally { await db.close(); }
 });

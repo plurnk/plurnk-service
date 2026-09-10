@@ -14,6 +14,7 @@ import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegis
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
+import WorkerName from "./WorkerName.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -305,7 +306,7 @@ export default class Engine {
             schemes,
             executors });
         this.#interactions = new ClientInteractions(db);
-        const entryAddresses = new EntryAddressBinding(db);
+        const entryAddresses = new EntryAddressBinding();
         this.#proposals = new ProposalLifecycle({
             db, schemes, notices: this.#notices,
             streamEventNotify, wakeWorkerNotify,
@@ -518,8 +519,8 @@ export default class Engine {
     ): ReturnType<TurnRunner["executeAdmittedTurn"]> {
         return this.#turnRunner.executeAdmittedTurn(args);
     }
-    referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
-        return this.#packets.referenceEntries(workspaceId, workerId);
+    referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
+        return this.#packets.referenceEntries(workspaceId);
     }
 
     // {§env-delta-log-pull} — materialize one closed interval of the ambient
@@ -632,7 +633,7 @@ export default class Engine {
     }
 
     // Inject a prompt into the admitted non-terminal loop. Writes the
-    // next owner-keyed prompt:///<loop>/<N> entry; the next turn publishes it
+    // next prompt://<worker>/<loop>/<N> entry; the next turn publishes it
     // as one actionless prompt row. Prompt-frame writes serialize per loop,
     // so concurrent arrivals retain distinct ordered ordinals.
     //
@@ -672,7 +673,7 @@ export default class Engine {
         // slot: rapid arrivals land as N and N+1, both contained, nothing superseded.
         const prefix = promptLoopPrefix(loopRow.sequence);
         const ordinalRow = await this.#db.drain_next_prompt_ordinal_for_loop.get<{ next: number }>({
-            owner_id: workerId,
+            worker_id: workerId,
             pattern: `${prefix}%`,
             prefix_len: prefix.length });
         const pathname = promptPathname(loopRow.sequence, ordinalRow?.next ?? 2);
@@ -688,7 +689,7 @@ export default class Engine {
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
             attributes: { openPaths, ...(source === undefined ? {} : { source }) } };
-        await EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "prompt", workerId);
+        await EntryCrud.writeEntry({ authority: await WorkerName.forId(this.#db, workerId), pathname }, entry, ctx, "prompt");
         return { loopId, turnSeq };
     }
 

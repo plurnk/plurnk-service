@@ -1,5 +1,5 @@
 // Project AGENTS.md turn-0 stunt ({§turn0-agents-stunt}). The project's
-// AGENTS.md is materialized as worker://~/_plurnk/agents.md by an ordinary _plurnk
+// AGENTS.md is materialized as worker:///_plurnk/agents.md by an ordinary _plurnk
 // administrative turn in the addressed Worker, then foisted as a READ into
 // that Worker's turn 0.
 // Global policy stays in the system prompt; nothing else is force-read.
@@ -26,13 +26,13 @@ test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worke
                     projectRoot: dir,
                 })).result as { id: number }).id;
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
-                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
+                const { loopId } = resp as { loopId: number };
 
                 const rows = await db.test_log_entries_by_loop.all<{
                     op: string; pathname: string; scheme: string; hostname: string | null; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/agents.md");
-                assert.ok(docRead !== undefined, "model turn-0 carries a READ of worker://~/_plurnk/agents.md");
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/agents.md");
+                assert.ok(docRead !== undefined, "model turn-0 carries a READ of worker:///_plurnk/agents.md");
                 assert.equal(docRead!.status_rx, 200, "the stunt READ hits the materialized entry, not a 404");
 
                 const editInInferenceLoop = rows.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/_plurnk/agents.md");
@@ -40,7 +40,6 @@ test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worke
 
                 const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    owner_id: modelWorkerId,
                     scheme: "worker",
                     authority: "",
                     pathname: "/_plurnk/agents.md",

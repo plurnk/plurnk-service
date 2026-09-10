@@ -8,6 +8,7 @@ import type { CapabilityPolicy, ExecStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { copyStmt, editStmt, killStmt, moveStmt, readStmt, dispositionStmt, urlPath } from "./_dsl.ts";
@@ -72,14 +73,14 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `workspace-policy-render-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const before = await engine.referenceEntries(workspaceId, workerId);
+        const before = await engine.referenceEntries(workspaceId);
         assert.ok(before.some((doc) => doc.pathname === "/_plurnk/plurnk/node.md"));
 
         await db.test_set_workspace_settings.run({
             id: workspaceId,
             settings: JSON.stringify({ capabilities: { deny: [{ runtime: "node" }] } }),
         });
-        const after = await engine.referenceEntries(workspaceId, workerId);
+        const after = await engine.referenceEntries(workspaceId);
         assert.ok(!after.some((doc) => doc.pathname === "/_plurnk/plurnk/node.md"));
         assert.ok(after.some((doc) => doc.pathname === "/_plurnk/plurnk/sh.md"));
 
@@ -182,11 +183,11 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         if (layer === "workspace") await db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities }),
         });
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         const loopId = await insertLoop(db, workerId, 2, "Read the worker reference.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
-                readStmt({ ...urlPath("worker", "/_plurnk/plurnk/worker.md"), hostname: "~", raw: "worker://~/_plurnk/plurnk/worker.md" }, { marks: [1, -1] }),
+                readStmt({ ...urlPath("worker", "/_plurnk/plurnk/worker.md"), hostname: null, raw: "worker:///_plurnk/plurnk/worker.md" }, { marks: [1, -1] }),
                 dispositionStmt("in_progress"),
             ] } },
         ] });
@@ -213,7 +214,7 @@ test("{§worker-generated-subtree}: runtime maintenance preserves external polic
         const workspaceId = await insertWorkspace(db, "generated-state-policy");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "inspect references");
-        const target = (path: string) => ({ ...urlPath("worker", path), hostname: "~", raw: `worker://~${path}` });
+        const target = (path: string) => ({ ...urlPath("worker", path), hostname: null, raw: `worker://${path}` });
         const generated = target("/_plurnk/test.md");
         const external = target("/notes.md");
         let sequence = 0;
@@ -232,7 +233,7 @@ test("{§worker-generated-subtree}: runtime maintenance preserves external polic
         assert.equal((await dispatch(editStmt(generated, "updated reference", { marks: [1, -1] }))).status, 200);
         assert.equal((await dispatch(readStmt(generated))).status, 200);
         for (const origin of ["model", "client", "plugin"] as const) {
-            assert.equal((await dispatch(editStmt(generated, "overwrite"), origin)).status, 403, origin);
+            assert.equal((await dispatch(editStmt(generated, "overwrite", { marks: [1, -1] }), origin)).status, 403, origin);
         }
         for (const operation of [editStmt(external, "outside"), copyStmt(generated, external), moveStmt(generated, external)]) {
             const result = await dispatch(operation);
@@ -246,16 +247,15 @@ test("{§worker-generated-subtree}: runtime maintenance preserves external polic
         await policy({});
         assert.equal((await dispatch(editStmt(external, "source"))).status, 201);
         for (const origin of ["model", "client"] as const) {
-            const result = await dispatch(editStmt(generated, "overwrite"), origin);
-            assert.equal(result.status, 403);
-            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-generated-read-only");
+            const result = await dispatch(editStmt(generated, `${origin} content`, { marks: [1, -1] }), origin);
+            assert.equal(result.status, origin === "model" ? 201 : 200, JSON.stringify(result));
         }
         await policy({ only: [{ access: "mutate" }] });
         const deniedCopy = await dispatch(copyStmt(external, generated));
         assert.equal(deniedCopy.status, 403, "an intrinsic destination does not authorize its source read");
         assert.equal(deniedCopy.problem?.access, "observe");
         await policy({ only: [] });
-        assert.equal((await dispatch(editStmt(generated, "owned state"))).status, 201);
+        assert.equal((await dispatch(editStmt(generated, "reference state", { marks: [1, -1] }))).status, 200);
         assert.equal((await dispatch(readStmt(generated))).status, 403, "runtime reads still use the workspace policy");
     } finally { await db.close(); }
 });
@@ -268,7 +268,7 @@ test("{§schemes-self-doc-materialization}: read-only reconciliation records cre
         schemes.register("readable", {
             get manifest() {
                 return {
-                    name: "readable", category: "data", entryOwner: "worker", inherit: "none",
+                    name: "readable", category: "data",
                     channels: { body: "text/plain" }, defaultChannel: "body",
                     writableBy: [], modelVisible: true, volatile: false, documentation,
                 };
@@ -276,25 +276,25 @@ test("{§schemes-self-doc-materialization}: read-only reconciliation records cre
         });
         const engine = new Engine({ db, schemes });
         const workspaceId = await insertWorkspace(db, "read-only-reconciliation");
-        const workerId = await insertWorker(db, workspaceId);
+        await insertWorker(db, workspaceId);
         const policy = (deny: CapabilityPolicy["deny"] = []) => db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities: { only: [{ access: "observe" }], deny } }),
         });
         await policy();
         const current = async () => (await db.loop_docs_materialized.all<{ pathname: string; content: string }>({
-            workspace_id: workspaceId, owner_id: workerId,
+            workspace_id: workspaceId,
         })).find(({ pathname }) => pathname === "/_plurnk/plurnk/readable.md");
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal((await current())?.content, documentation);
         documentation = "# Reference\n\n## Summary\n\nSecond revision.";
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal((await current())?.content, documentation);
         await policy([{ scheme: "readable" }]);
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal(await current(), undefined);
         const rows = await db.test_log_entries_by_worker.all<{
             op: string; pathname: string; origin: string; status_rx: number; turn_id: number;
-        }>({ worker_id: workerId });
+        }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
         const changes = rows.filter(({ pathname, op }) => pathname === "/_plurnk/plurnk/readable.md" && ["EDIT", "KILL"].includes(op));
         assert.deepEqual(changes.map(({ op, origin, status_rx }) => [op, origin, status_rx]), [
             ["EDIT", "_plurnk", 201], ["EDIT", "_plurnk", 200], ["KILL", "_plurnk", 200],

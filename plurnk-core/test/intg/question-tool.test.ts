@@ -9,11 +9,11 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import QuestionTool, { questionRuntimeDecl } from "../../src/schemes/QuestionTool.ts";
-import { Mock } from "@plurnk/plurnk-providers";
+import StreamMock from "./_stream-mock.ts";
 import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 import { localPath } from "./_dsl.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
@@ -96,7 +96,7 @@ for (const timing of ["before park", "after park"] as const) {
             const body = JSON.stringify({ message: "Which branch?", requestedSchema: {
                 type: "object", properties: { branch: { type: "string" }, notes: { type: "string" } },
             } });
-            const provider = new Mock({ contextWindow: 100_000, responses: [
+            const provider = new StreamMock({ contextWindow: 100_000, responses: [
                 makeMockResponse(`\`\`\`question
 ${body}
 \`\`\`
@@ -134,7 +134,7 @@ ${body}
                     const answer = rows.find((row) => row.op === "READ" && JSON.parse(row.rx).content?.includes(`"${action}"`));
                     assert.ok(answer, "the answer or cancellation is materialized in the resumed loop");
                     const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-                        scheme: "question", pathname: "/1/2/2/question",
+                        scheme: "question", pathname: new URL(await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).pathname,
                     });
                     assert.ok(entry);
                     const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "results" });
@@ -151,7 +151,7 @@ ${body}
 }
 
 test("{§question-tool}: cancelling the worker concludes a pending question as cancellation, not an executor crash", async () => {
-    const provider = new Mock({ contextWindow: 100_000, responses: [makeMockResponse(
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [makeMockResponse(
         "```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```TASK\n[{\"content\":\"Awaiting an answer.\",\"status\":\"waiting\"}]\n```",
     )] });
     await withDaemon(provider, async (db, daemon) => {
@@ -163,7 +163,7 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: run.loopId });
         assert.equal(loop?.status, 499);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: "/1/2/2/question" });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: new URL(await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).pathname });
         assert.ok(entry);
         const channel = await waitForDb(
             () => db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" }),
@@ -176,9 +176,9 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
 });
 
 test("{§client-interactions}: KILL ends the question's own waiter without cancelling its loop", async () => {
-    const provider = new Mock({ contextWindow: 100_000, responses: [
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse("```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```TASK\n[{\"content\":\"Continue while the question is pending.\",\"status\":\"in_progress\"}]\n```"),
-        makeMockResponse("```KILL (question:///1/2/2/question)```\n```TASK\n[{\"content\":\"Cancel the question.\",\"status\":\"in_progress\"}]\n```"),
+        makeMockResponse("```KILL ($STREAM)```\n```TASK\n[{\"content\":\"Cancel the question.\",\"status\":\"in_progress\"}]\n```"),
         makeMockResponse("```SEND\nDone.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
@@ -188,7 +188,7 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });
         assert.equal(provider.remaining, 0);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: "/1/2/2/question" });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "question", pathname: new URL(await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).pathname });
         assert.ok(entry);
         const channel = await db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" });
         const result = JSON.parse(channel?.producer_result ?? "null");

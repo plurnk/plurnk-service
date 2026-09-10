@@ -10,12 +10,12 @@ import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 
 test("{§worker-scheduled-send}: directed timing queues a separate task without early inference or blocking a ready arrival", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```SEND (worker://~) <60>\nCheck for updated revenue figures.\n```\n```SEND\nCheck scheduled.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        makeMockResponse("```SEND (worker://scheduler) <60>\nCheck for updated revenue figures.\n```\n```SEND\nCheck scheduled.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         makeMockResponse("```SEND\nAnswered the independent question.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-arrival" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         try {
             const before = Date.now();
             const initial = await daemon.runLoop({ workspaceId, workerId, prompt: "Schedule a later check." });
@@ -46,7 +46,7 @@ test("{§worker-scheduled-send}: directed timing queues a separate task without 
 for (const scope of ["<-1>", "<0,0>", "<0,-1>", "<0.5>", "<0,1,2>"]) {
     test(`{§worker-scheduled-send}: invalid timing ${scope} refuses only that SEND and admits no task`, async () => {
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse(`\`\`\`SEND (worker://~) ${scope}
+            makeMockResponse(`\`\`\`SEND (worker://scheduler) ${scope}
 Unadmitted scheduled instruction.
 \`\`\`
 \`\`\`TASK
@@ -56,7 +56,7 @@ Unadmitted scheduled instruction.
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "invalid-schedule" });
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
             try {
                 const initial = await daemon.runLoop({ workspaceId, workerId, prompt: "Check invalid timing." });
                 await waitForDb(() => db.test_get_loop_status.get({ id: initial.loopId }), (row) => row?.status === 200);
@@ -97,7 +97,7 @@ for (const [recurring, statuses] of [
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-restart" });
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
             const now = Date.now();
             const nextArmed = Promise.withResolvers<void>();
             const schedule = DrainSupervisor.prototype.scheduleWakes;
@@ -175,7 +175,7 @@ test("{§worker-scheduled-send}: a backwards clock cannot re-delay a resumed occ
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "resumed-schedule-clock" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const now = Date.now();
         const args = { workspaceId, workerId, prompt: "Recurring check.",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
@@ -205,7 +205,7 @@ test("{§worker-scheduled-send}: owner loss fails an active recurrence without r
     const provider = new Mock({ contextWindow: 100000, responses: [] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "interrupted-recurrence" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const accepted = await daemon.inject({
             workspaceId, workerId, prompt: "Do not replay uncertain work.",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
@@ -229,7 +229,7 @@ test("{§worker-scheduled-send}: concurrent scheduled arrivals and a successful 
     const provider = new Mock({ contextWindow: 100000, responses: [] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "concurrent-scheduled-arrivals" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const args = { workspaceId, workerId, prompt: "Recurring instruction.",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
             reasoningPolicy: "adaptive" as const, systemPrompt: "test system", schedule: { delayMs: 60_000 } };
@@ -258,7 +258,7 @@ test("{§worker-scheduled-send}: parked occurrences do not overlap, and correcti
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "nonoverlapping-recurrence" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const now = Date.now();
         const parked = Promise.withResolvers<void>();
         const schedule = DrainSupervisor.prototype.scheduleWakes;
@@ -303,7 +303,7 @@ for (const ordering of ["cancel-before-success", "success-before-cancel"] as con
         const provider = new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\nOccurrence complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: ordering });
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
             const boundary = Promise.withResolvers<void>();
             const release = Promise.withResolvers<void>();
             const settled = Promise.withResolvers<void>();
@@ -352,7 +352,7 @@ for (const ordering of ["cancel-before-success", "success-before-cancel"] as con
 test("{§worker-scheduled-send}: cancellation reports a successor admitted after it began collecting targets", async (t) => {
     await withDaemon(new Mock({ contextWindow: 100000, responses: [] }), async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancellation-successor" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const accepted = await daemon.inject({
             workspaceId, workerId, prompt: "Recurring check.",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
@@ -384,7 +384,7 @@ test("{§worker-scheduled-send}: AG-UI reattachment exposes durable timing witho
     await withDaemon(provider, async (_db, daemon) => {
         const name = "scheduled-client";
         const { workspaceId } = await daemon.createWorkspace({ name });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const accepted = await daemon.inject({
             workspaceId, workerId, prompt: "Hourly review.",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
@@ -396,7 +396,7 @@ test("{§worker-scheduled-send}: AG-UI reattachment exposes durable timing witho
                 const response = await fetch(`http://127.0.0.1:${agui.address().port}/`, {
                     method: "POST", headers: { "content-type": "application/json" },
                     body: JSON.stringify({
-                        threadId: name, runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                        threadId: "scheduler", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
                         forwardedProps: { plurnk: { workspace: name, action: { kind: "worker.model.get" } } },
                     }),
                 });
@@ -428,7 +428,7 @@ test("{§worker-scheduled-send}: a scheduled child's future work is visible, pre
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-child-obligation" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
         const childId = await insertWorker(db, workspaceId, workerId, "reviewer", "model");
         await daemon.setWorkerModel({ workspaceId, workerId: childId, selector: "mocktest" });
         try {

@@ -10,7 +10,7 @@ The system `jq` as a runtime: the **body is the jq program**, the **`(target)` i
 .users[].name
 ````
 
-````jq (sqlite:///1/2/3/sqlite#results)
+````jq (sqlite:///ab3d5678#results)
 .[] | .name
 ````
 
@@ -35,10 +35,10 @@ address.
 .value * 2
 ````
 
-Use the returned stream address, here `jq:///1/2/3/jq`. A SEND body is input
+Use the returned stream address, here `jq:///c4e56789`. A SEND body is input
 JSON, not another jq program; this example closes stdin after sending its value:
 
-````SEND (jq:///1/2/3/jq) {eof=true}
+````SEND (jq:///c4e56789) {eof=true}
 {"value":21}
 ````
 

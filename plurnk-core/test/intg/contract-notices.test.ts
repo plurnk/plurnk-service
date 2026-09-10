@@ -435,7 +435,7 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
 test("{§fence-boundary}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const emission = "````EDIT (worker://~/a.md) <!-- first note -->\nalpha\n```EDIT (worker://~/b.md) <!-- literal example -->\nbeta\n```\n```EDIT (worker://~/c.md)\ngamma\n```\n````\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
+        const emission = "````EDIT (worker:///a.md) <!-- first note -->\nalpha\n```EDIT (worker:///b.md) <!-- literal example -->\nbeta\n```\n```EDIT (worker:///c.md)\ngamma\n```\n````\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
         const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);

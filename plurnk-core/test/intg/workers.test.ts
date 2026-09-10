@@ -252,24 +252,21 @@ test("workers: index workers_parent_worker_id exists", async () => {
     } finally { await db.close(); }
 });
 
-test("workers: a name repeats within a workspace — reclamation across time, not store-unique", async () => {
+test("workers: retained names are workspace-unique so old resource addresses remain stable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-reclaim");
         const first = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        // The store PERMITS a second 'worker': a name is frozen per worker but reclaimable across time —
-        // a terminated worker keeps its name in permanent history while a fresh spawn reuses it. A LIVE
-        // collision is refused at the spawn gate (Engine.#handleWorkerCopy → worker_live_by_name → 409), never by the
-        // store. The dropped UNIQUE index returned a raw 500 the model couldn't read.
-        const second = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        assert.notEqual(first?.id, second?.id, "two distinct workers can hold the same name");
-        // Resolution is newest-wins — the live/fresh worker, never the corpse.
+        await assert.rejects(
+            db.test_workers_insert_returning.get({ workspace_id: workspaceId, name: "worker" }),
+            /UNIQUE constraint failed: workers.workspace_id, workers.name/,
+        );
         const resolved = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        assert.equal(resolved?.id, second?.id, "worker_resolve_by_name resolves the newest holder");
+        assert.equal(resolved?.id, first?.id);
     } finally { await db.close(); }
 });
 
-test("workers: index workers_workspace_name exists (plain — the by-name resolve/spawn lookup, not a uniqueness constraint)", async () => {
+test("workers: index workers_workspace_name exists", async () => {
     const db = await openMigrated();
     try {
         const row = await db.test_workers_index_exists.get<{ name: string }>({ name: "workers_workspace_name" });

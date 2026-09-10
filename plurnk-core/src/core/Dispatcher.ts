@@ -70,7 +70,6 @@ export type DispatchContext = {
 export type DispatchResult = SchemeResult;
 
 export interface ResolvedClientEntryAddress {
-    readonly ownerId: number;
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;
@@ -205,11 +204,11 @@ export default class Dispatcher {
             applyProposal: (statement, result, resolution, ids) =>
                 this.#proposals.workerApply(statement, result, resolution, ids),
         });
-        this.#workerControl = new WorkerControlHandler({ db: this.#db, schemes: this.#schemes, failure: Dispatcher.#failure });
+        this.#workerControl = new WorkerControlHandler({ db: this.#db, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
         this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
-        this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
+        this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
 
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
@@ -220,17 +219,12 @@ export default class Dispatcher {
         this.#rootCache.delete(workspaceId);
     }
 
-    async #fixedEntryOwnerId(manifest: SchemeManifest, ctx: PlurnkSchemeContext): Promise<number | null> {
-        return this.#entryAddresses.fixedOwnerId(manifest, ctx);
-    }
-
     async #handlerContext(scheme: string, ctx: PlurnkSchemeContext, authority = ""): Promise<SchemeCtxImpl | null> {
         const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
         return manifest === undefined
             ? null
             : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions, {
                 authority,
-                ownerId: await this.#fixedEntryOwnerId(manifest, ctx),
             });
     }
 
@@ -243,7 +237,6 @@ export default class Dispatcher {
         return manifest?.category === "data"
             ? new SchemeCtxImpl(ctx, address.scheme, manifest, this.#liveSubscriptions, {
                 authority: address.authority,
-                ownerId: address.ownerId,
             })
             : null;
     }
@@ -699,7 +692,6 @@ export default class Dispatcher {
             : renderTarget({ scheme: null, pathname: target.raw, fragment: null });
         if (rendered === null) throw new TypeError("Resolved entry target did not render.");
         return {
-            ownerId: resolved.address.ownerId,
             scheme: resolved.address.scheme,
             authority: resolved.address.authority,
             pathname: resolved.address.pathname,
@@ -803,7 +795,6 @@ export default class Dispatcher {
             this.#liveSubscriptions,
             {
                 authority: address.authority,
-                ownerId: address.ownerId,
                 publishedChannel,
             },
         );
@@ -912,7 +903,7 @@ export default class Dispatcher {
         }
 
         // {§stream-control}, {§exec-input}: process control is not a write to
-        // stored output. The execution owner enforces self-only KILL and SEND.
+        // stored output. The workspace execution binding owns KILL and SEND.
         if (statement.op === "KILL" || statement.op === "SEND") {
             const target = schemeNameOf(statement.target);
             if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) return null;
@@ -1086,9 +1077,9 @@ export default class Dispatcher {
     async captureReasoning({ verbatim, workspaceId, workerId, loopId, turnId, modelCallId }: {
         verbatim: string; workspaceId: number; workerId: number; loopId: number; turnId: number; modelCallId: number;
     }): Promise<number> {
-        const coordinate = await this.#db.reasoning_call_coordinate.get<{ pathname: string }>({ model_call_id: modelCallId, turn_id: turnId });
+        const coordinate = await this.#db.reasoning_call_coordinate.get<{ authority: string; pathname: string }>({ model_call_id: modelCallId, turn_id: turnId });
         if (coordinate === undefined) throw new Error("Reasoning capture requires its producing model call.");
-        const ctx = await this.#handlerContext("reasoning", this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin: "_plurnk" }));
+        const ctx = await this.#handlerContext("reasoning", this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin: "_plurnk" }), coordinate.authority);
         if (ctx === null) throw new Error("The reasoning resource scheme is unavailable.");
         const result = await ctx.entries.write(coordinate.pathname, {
             channels: { body: { content: verbatim, mimetype: "text/plain" } },
@@ -1283,7 +1274,7 @@ export default class Dispatcher {
         if (maxId === undefined) {
             throw new Error(`log selection boundary could not be resolved for worker ${ctx.workerId}`);
         }
-        const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions, { ownerId: null });
+        const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions, { });
         const outcome = await handler.curate(statement, schemeCtx, maxId);
         return { result: Results.assert(outcome.result), plan: outcome.plan };
     }

@@ -27,9 +27,9 @@ import Fork from "../../src/core/fork.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
-import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace, urlPath } from "./_dsl.ts";
+import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace } from "./_dsl.ts";
 
-// {§worker-scheme} — the authority is a worker name or the current-worker sigil `~`.
+// {§worker-scheme} — the authority is a literal Worker name.
 // Control operations carry no entry path; storage operations do.
 const workerPath = (name: string): ParsedPath => ({
     kind: "url", raw: `worker://${name}`, scheme: "worker",
@@ -43,7 +43,7 @@ const authoredWorkerPath = (raw: string): ParsedPath => {
     return target;
 };
 
-// An owner-addressed private entry: worker://<owner>/<path>, entry path present.
+// A named scratch entry; the authority is a coordinate, not an access policy.
 const workerEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker",
     username: null, password: null, hostname: owner, port: null,
@@ -77,7 +77,7 @@ const recordingInjectWorker = () => {
 
 const weigh = (text: string): number => Math.ceil(text.length / 4);
 
-// FIND in one owner's space: worker://<owner>/<glob>.
+// FIND in one named namespace: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
     metadata: null,
     op: "FIND", annotation: null,
@@ -85,7 +85,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// READ from one owner's space: worker://<owner>/<path>.
+// READ from one named namespace: worker://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
     metadata: null,
     op: "READ", annotation: null,
@@ -93,7 +93,7 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// KILL in one owner's space: worker://<owner>/<path> — deletes the private entry (path present).
+// KILL in one named namespace: worker://<owner>/<path> — deletes the scratch entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
     metadata: null,
     op: "KILL", annotation: null,
@@ -101,66 +101,41 @@ const killEntry = (owner: string, path: string): KillStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("a fork inherits the parent's private entries under its own owner, then diverges", async () => {
+test("{§machine-processes-entry-inheritance}: a fork copies named scratch without changing literal references", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `fork-scratch-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
         const parent = await insertWorker(db, workspaceId, null, "alpha");
-        const ctxP = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0 });
-        const workerScheme = new Worker();
-        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), ctxP);
-
-        // Fork the parent — the branch must open with the parent's scratch as its OWN ({§entry-owner}).
-        const forkId = await Fork.fork(
-            db,
-            parent,
-            "alpha-fork",
-            (scheme) => scheme === "worker" ? "snapshot" : "none",
-        );
-        const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
-
-        const inherited = await workerScheme.find(findEntry("~", "**"), ctxF);
-        assert.deepEqual(resourcePaths(inherited), ["worker://~/todo.md"], "the fork's own-space FIND holds the inherited scratch, addressed as its own");
-        const fRead = await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxF);
-        assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
-
-        // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
-        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "fork note", fullReplace), ctxF);
-        assert.equal((await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
-        assert.equal((await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
+        const ctxP = makeSchemeCtx({ db, workspaceId, workerId: parent });
+        const scheme = new Worker();
+        const body = "parent note: worker://alpha/original.md";
+        assert.equal((await scheme.edit(editStmt(workerEntry("alpha", "todo.md"), body), ctxP)).status, 201);
+        const forkId = await Fork.fork(db, parent, "alpha-fork");
+        const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId });
+        assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), ctxF)), ["worker://alpha-fork/todo.md"]);
+        assert.equal((await lookThroughScheme("worker", null, readEntry("alpha-fork", "todo.md"), ctxF)).content, body);
+        assert.equal((await scheme.edit(editStmt(workerEntry("alpha-fork", "todo.md"), "fork note", fullReplace), ctxP)).status, 200);
+        for (const ctx of [ctxP, ctxF]) {
+            assert.equal((await lookThroughScheme("worker", null, readEntry("alpha", "todo.md"), ctx)).content, body);
+            assert.equal((await lookThroughScheme("worker", null, readEntry("alpha-fork", "todo.md"), ctx)).content, "fork note");
+        }
     } finally { await db.close(); }
 });
 
-test("FIND draws from the resolved principal alone — ~ is own space, a name is any worker's space, perspectives never bleed", async () => {
+test("{§worker-read-scope}: FIND addresses literal namespaces identically from unrelated Workers", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `worker-find-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
-        const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's CHILD (ancestry gates the named read)
-        const ctxA = makeSchemeCtx({ db, workspaceId, workerId: alpha, loopId: 0, turnId: 0 });
-        const ctxB = makeSchemeCtx({ db, workspaceId, workerId: beta, loopId: 0, turnId: 0 });
-        const workerScheme = new Worker();
-
-        // Each worker writes its OWN space (worker://~).
-        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "alpha note"), ctxA);
-        await workerScheme.edit(editStmt(workerEntry("~", "plan.md"), "beta note"), ctxB);
-
-        // alpha's own-space FIND sees ONLY alpha's entries, addressed as its own.
-        const own = await workerScheme.find(findEntry("~", "**"), ctxA);
-        assert.equal(own.status, 200);
-        assert.deepEqual(resourcePaths(own), ["worker://~/todo.md"], "FIND(worker://~/**) returns only the caller's own space ({§entry-owner})");
-
-        // beta's perspective excludes alpha's — isolation is structural (the owner column).
-        const betaOwn = await workerScheme.find(findEntry("~", "**"), ctxB);
-        assert.deepEqual(resourcePaths(betaOwn), ["worker://~/plan.md"], "a sibling never sees another's space in its own perspective");
-
-        // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down)…
-        const child = await workerScheme.find(findEntry("beta", "**"), ctxA);
-        assert.deepEqual(resourcePaths(child), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named child's space");
-        // …and a child names its parent's space just the same — topology is the parent's design (#394).
-        const upward = await workerScheme.find(findEntry("alpha", "**"), ctxB);
-        assert.equal(upward.status, 200, "a child naming its parent's space reads it");
-        assert.deepEqual(resourcePaths(upward), ["worker://alpha/todo.md"], "FIND(worker://alpha/**) from the child reaches the parent's space by name");
+        const beta = await insertWorker(db, workspaceId, null, "beta");
+        const contexts = [alpha, beta].map((workerId) => makeSchemeCtx({ db, workspaceId, workerId }));
+        const scheme = new Worker();
+        assert.equal((await scheme.edit(editStmt(workerEntry("alpha", "todo.md"), "alpha note"), contexts[1]!)).status, 201);
+        assert.equal((await scheme.edit(editStmt(workerEntry("beta", "plan.md"), "beta note"), contexts[0]!)).status, 201);
+        for (const ctx of contexts) {
+            assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha", "**"), ctx)), ["worker://alpha/todo.md"]);
+            assert.deepEqual(resourcePaths(await scheme.find(findEntry("beta", "**"), ctx)), ["worker://beta/plan.md"]);
+        }
     } finally { await db.close(); }
 });
 
@@ -170,7 +145,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-spawn-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "parent", "model");
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
@@ -183,7 +158,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         if (worker === undefined) throw new Error("spawn must create a worker named 'worker' in the workspace");
         const meta = await db.fork_get_worker.get<{ workspace_id: number; origin: string }>({ id: worker.id });
-        assert.equal(meta?.origin, "model", "spawned worker's origin is the spawning writer");
+        assert.equal(meta?.origin, "model", "spawned worker's actor class follows its parent");
         assert.equal(meta?.workspace_id, workspaceId, "spawned worker shares the workspace (sisters)");
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
@@ -192,6 +167,45 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.deepEqual(spawnPolicy, { proposals: "review" }, "the delegating loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
+
+test("{§worker-scheme-spawn}: concurrent WORK and FORK cannot claim the same literal address", async () => {
+    await using db = await openMigrated();
+    const { calls, injectWorker } = recordingInjectWorker();
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+    const workspaceId = await insertWorkspace(db, "named-claim-race");
+    const workerId = await insertWorker(db, workspaceId, null, "parent");
+    const loopId = await insertLoop(db, workerId, 1);
+    const turnId = await insertTurn(db, loopId, 1);
+    const results = await Promise.all([spawnedWorker("child", "fresh"), forkWorker("child", "branch")].map((statement, index) =>
+        engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: index + 1, origin: "model" })));
+    assert.deepEqual(results.map(({ status }) => status).toSorted(), [200, 409]);
+    const failure = results.find(({ status }) => status === 409)!;
+    assert.match(failure.problem!.type, /worker-name-conflict$/);
+    assert.equal(failure.problem!.worker, "child");
+    assert.equal(calls.length, 1, "only the successful claim starts a child");
+    const child = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "child" });
+    assert.equal(child?.id, calls[0].workerId);
+});
+
+for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
+    test(`{§machine-processes-worker-origin}: a ${origin} turn delegates within its actor's lineage`, async () => {
+        await using db = await openMigrated();
+        const { calls, injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+        const workspaceId = await insertWorkspace(db, `delegating-${origin}`);
+        const workerId = await insertWorker(db, workspaceId, null, "parent", "model");
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = origin === "model" ? await insertTurn(db, loopId, 1) : await insertOperationTurn(db, loopId, 1, origin);
+        for (const [index, statement] of [spawnedWorker("fresh", "go"), forkWorker("branch", "go")].entries()) {
+            const result = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: index + 1, origin });
+            assert.equal(result.status, 200, JSON.stringify(result));
+            const child = await db.fork_get_worker.get<{ origin: string }>({ id: calls[index].workerId });
+            assert.equal(child?.origin, "model", "operation producer is not the child actor class");
+            const lineage = await db.test_worker_lineage.get<{ parent_worker_id: number }>({ id: calls[index].workerId });
+            assert.equal(lineage?.parent_worker_id, workerId);
+        }
+    });
+}
 
 for (const op of ["WORK", "FORK"] as const) {
     test(`{§worker-auto-name}: addressless ${op} allocates and reports a distinct short child address`, async (t) => {
@@ -393,59 +407,34 @@ test("the exact worker control address is enforced before every operation path (
     } finally { await db.close(); }
 });
 
-test("~ is the sole current-worker sigil; self is an ordinary worker name", async () => {
+test("{§worker-control-addressing}: all Worker names are literal; tilde is not an alias", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const killed: number[] = [];
-        const engine = new Engine({
-            db,
-            schemes: new SchemeRegistry(),
-            injectWorker,
-            cancelWorker: async (workerId: number): Promise<void> => { killed.push(workerId); },
-            weigh,
-        });
-        const workspaceId = await insertWorkspace(db, `worker-self-address-${crypto.randomUUID()}`);
-        const actorId = await insertWorker(db, workspaceId, null, "actor");
-        const loopId = await insertLoop(db, actorId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, cancelWorker: async (id) => { killed.push(id); }, weigh });
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
+        const workerId = await insertWorker(db, workspaceId, null, "actor");
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-
-        const spawn = await engine.dispatch({
-            statement: spawnedWorker("self", "be the literally named worker"),
-            workspaceId, workerId: actorId, loopId, turnId, sequence: 1, origin: "model",
-        });
-        assert.equal(spawn.status, 200, "self is mintable as an ordinary worker name");
+        let sequence = 0;
+        const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model" });
+        assert.equal((await dispatch(spawnedWorker("self", "be the literally named worker"))).status, 200);
         const named = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "self" });
-        if (named === undefined) throw new Error("WORK(worker://self) must create the literally named worker");
-
-        assert.equal((await engine.dispatch({
-            statement: sendStmt(workerPath("~"), "message the caller"),
-            workspaceId, workerId: actorId, loopId, turnId, sequence: 2, origin: "model",
-        })).status, 200);
-        assert.equal((await engine.dispatch({
-            statement: sendStmt(workerPath("self"), "message the named worker"),
-            workspaceId, workerId: actorId, loopId, turnId, sequence: 3, origin: "model",
-        })).status, 200);
-        assert.deepEqual(
-            calls.slice(1).map(({ workerId }) => workerId),
-            [actorId, named.id],
-            "~ routes to the caller while self resolves through the ordinary named-worker namespace",
-        );
-
-        assert.equal((await engine.dispatch({
-            statement: editStmt(workerEntry("~", "notes.md"), "private"),
-            workspaceId, workerId: actorId, loopId, turnId, sequence: 4, origin: "model",
-        })).status, 201, "worker://~/path is writable own-space storage");
-        assert.equal((await engine.dispatch({
-            statement: editStmt(workerEntry("self", "notes.md"), "not mine"),
-            workspaceId, workerId: actorId, loopId, turnId, sequence: 5, origin: "model",
-        })).status, 403, "worker://self/path is the named worker's space, not an own-space alias");
-
-        const killCurrent: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
-        const killNamed: KillStatement = { ...killCurrent, target: workerPath("self") };
-        assert.equal((await engine.dispatch({ statement: killCurrent, workspaceId, workerId: actorId, loopId, turnId, sequence: 6, origin: "model" })).status, 200);
-        assert.equal((await engine.dispatch({ statement: killNamed, workspaceId, workerId: actorId, loopId, turnId, sequence: 7, origin: "model" })).status, 200);
-        assert.deepEqual(killed, [actorId, named.id], "KILL distinguishes the current-worker sigil from the literal name");
+        assert.ok(named);
+        assert.equal((await dispatch(sendStmt(workerPath("actor"), "message the caller"))).status, 200);
+        assert.equal((await dispatch(sendStmt(workerPath("self"), "message the named worker"))).status, 200);
+        assert.deepEqual(calls.slice(1).map(({ workerId: id }) => id), [workerId, named.id]);
+        assert.equal((await dispatch(sendStmt(workerPath("~"), "no alias"))).status, 404);
+        assert.equal((await dispatch(editStmt(workerEntry("~", "notes.md"), "literal namespace"))).status, 201);
+        assert.equal((await dispatch(readStmt(workerEntry("actor", "notes.md")))).status, 404,
+            "a literal tilde never aliases the caller's named scratch");
+        for (const name of ["actor", "self"]) {
+            assert.equal((await dispatch(editStmt(workerEntry(name, "notes.md"), "scratch"))).status, 201);
+            const kill: KillStatement = { metadata: null, op: "KILL", annotation: null, target: workerPath(name), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+            assert.equal((await dispatch(kill)).status, 200);
+        }
+        assert.deepEqual(killed, [workerId, named.id]);
     } finally { await db.close(); }
 });
 
@@ -467,7 +456,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
-        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/, "the message names the live worker");
+        assert.match(result.problem?.detail ?? "", /already exists in this workspace/, "the message names the live worker");
         assert.equal(calls.length, 0, "no inject on a refused spawn");
     } finally { await db.close(); }
 });
@@ -494,7 +483,7 @@ test("WORK-spawning a name held by a PARKED sister is refused 409", async () => 
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 409, "a parked worker remains live and keeps its name");
-        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/);
+        assert.match(result.problem?.detail ?? "", /already exists in this workspace/);
         assert.equal(calls.length, 0, "a parked name collision never reaches injection");
     } finally { await db.close(); }
 });
@@ -537,35 +526,25 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
     } finally { await db.close(); }
 });
 
-test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", async () => {
+test("{§worker-scheme-spawn}: a completed Worker retains its name and scratch identity", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
-        const workspaceId = await insertWorkspace(db, `worker-spawn-reclaim-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        // A sister 'worker' that already TERMINATED (its loop crossed into 200) — its name is spent.
-        const dead = await insertWorker(db, workspaceId, null, "worker");
-        const deadLoop = await insertLoop(db, dead, 1, "done");
-        await db.test_set_loop_status.run({
-            id: deadLoop,
-            status: 200,
-            terminal_result: JSON.stringify({ status: 200 }),
-        });
-
-        const result = await engine.dispatch({
-            statement: spawnedWorker("worker", "fresh work"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
-        });
-        assert.equal(result.status, 200, "a terminated name is free to reclaim");
-        assert.equal(calls.length, 1, "the reclaimed spawn injects its fresh prompt");
-        // The frozen-name/permanent-history invariant: the dead worker keeps its name (a new row holds it
-        // too) and resolution picks the newest — the reclaimed worker, not the corpse.
-        const resolved = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        assert.notEqual(resolved?.id, dead, "worker_resolve_by_name resolves the fresh worker, never the terminated one");
-        assert.equal(calls[0]?.workerId, resolved?.id, "inject targets the reclaimed worker");
+        const retained = await insertWorker(db, workspaceId, null, "worker");
+        const completed = await insertLoop(db, retained, 1, "done");
+        await db.test_set_loop_status.run({ id: completed, status: 200, terminal_result: JSON.stringify({ status: 200 }) });
+        for (const [index, statement] of [spawnedWorker("worker", "fresh work"), forkWorker("worker", "branch")].entries()) {
+            const result = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: index + 1, origin: "model" });
+            assert.equal(result.status, 409);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-conflict");
+        }
+        assert.equal(calls.length, 0);
+        assert.equal((await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" }))?.id, retained);
     } finally { await db.close(); }
 });
 
@@ -661,7 +640,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-entity-not-editable");
         assert.equal(result.problem?.detail, "A worker entity is not an editable entry.");
-        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker://~/notes.md.");
+        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker:///notes.md.");
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
@@ -766,43 +745,27 @@ test("worker IRC rejects contract-invalid delegator policy before inheritance (#
     } finally { await db.close(); }
 });
 
-// {§worker-control-addressing} {§worker-read-scope} {§worker-write-scoping}: KILL of an
-// owner-addressed entry deletes the entry rather than cancelling the worker and obeys the same
-// ancestry gates as other entry mutations. Drive the real dispatch route that distinguishes an
-// authority-only control address from an entry path.
-test("entry KILL: a named space is read-only from below and from above (403); the worker survives", async () => {
+test("{§worker-write-scoping}: entry KILL works upward, downward and on self without cancelling actors", async () => {
     const db = await openMigrated();
     try {
-        const { injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
-        const workspaceId = await insertWorkspace(db, `worker-kill-entry-${crypto.randomUUID()}`);
+        const killed: number[] = [];
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id) => { killed.push(id); }, weigh });
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
-        const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's child
-        const loopA = await insertLoop(db, alpha, 1, "go");
-        const turnA = await insertTurn(db, loopA, 1, 102);
-        const loopB = await insertLoop(db, beta, 1, "go");
-        const turnB = await insertTurn(db, loopB, 1, 102);
-
-        await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt(workerEntry("~", "child-note.md"), "beta scratch"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
-
-        // {§worker-read-scope} {§worker-write-scoping} — a child KILLing UPWARD sees the parent's space (#394) and cannot write into it: 403.
-        const upward = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 10, origin: "model" });
-        assert.equal(upward.status, 403, "a child's named KILL is read-only — a named space takes no model writes");
-        // {§worker-write-scoping} — the PARENT sees the child's space (ancestor read) but cannot write into it: 403.
-        const downward = await engine.dispatch({ statement: killEntry("beta", "child-note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 10, origin: "model" });
-        assert.equal(downward.status, 403, "an ancestor's named KILL is read-only — a named space takes no model writes");
-        assert.equal((await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 20, origin: "model" })).status, 200, "the denied KILLs left the entries intact");
-
-        // Only `~` is writable, even when a literal name denotes the caller.
-        const namedSelf = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 3, origin: "model" });
-        assert.equal(namedSelf.status, 403, "a literal self-name remains a read-only owner selector");
-        const killed = await engine.dispatch({ statement: killEntry("~", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 4, origin: "model" });
-        assert.equal(killed.status, 200, "KILL(worker://~/note.md) deletes the caller's scratch entry");
-        const gone = await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 5, origin: "model" });
-        assert.equal(gone.status, 404, "the killed scratch entry is gone");
-        const workerStillExists = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "alpha" });
-        assert.notEqual(workerStillExists, undefined, "the worker alpha survives — KILL of an entry path is entry-delete, not worker cancellation");
+        const beta = await insertWorker(db, workspaceId, alpha, "beta");
+        for (const [index, [writer, target]] of [[beta, "alpha"], [alpha, "beta"], [alpha, "alpha"]].entries()) {
+            const workerId = writer as number;
+            const name = target as string;
+            const loopId = await insertLoop(db, workerId, index + 1, "go");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+            let sequence = 0;
+            const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model" });
+            assert.equal((await dispatch(editStmt(workerEntry(name, "note.md"), "scratch"))).status, 201);
+            assert.equal((await dispatch(killEntry(name, "note.md"))).status, 200);
+            assert.equal((await dispatch(readEntry(name, "note.md"))).status, 404);
+            assert.ok(await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name }));
+        }
+        assert.deepEqual(killed, []);
     } finally { await db.close(); }
 });
 
@@ -897,7 +860,7 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
     } finally { await db.close(); }
 });
 
-for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "parent" : "unrelated worker"} reads a named entry without gaining write access`, async () => {
+for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "parent" : "unrelated worker"} reads and writes a named entry`, async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -908,25 +871,26 @@ for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "p
         const turnId = await insertTurn(db, loopId, 1, 102);
         const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
 
-        // own-space EDIT(worker://~/note.md) — owner-keyed storage, BARE pathname ({§entry-owner}).
+        // {§entry-owner}: the authority is part of the workspace entry key.
         const childLoop = await insertLoop(db, childId, 1, "go");
         const childTurn = await insertTurn(db, childLoop, 1, 102);
-        const write = await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: childId, loopId: childLoop, turnId: childTurn, sequence: 1, origin: "model" });
+        const write = await engine.dispatch({ statement: editStmt(workerEntry("author", "note.md"), "scratch"), workspaceId, workerId: childId, loopId: childLoop, turnId: childTurn, sequence: 1, origin: "model" });
         assert.equal(write.status, 201, "own-space write creates the entry");
-        const stored = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", authority: "", pathname: "/note.md" });
-        if (stored === undefined) throw new Error("entry must be keyed (owner=child, /note.md) — the owner is the column, never the pathname");
+        const stored = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "worker", authority: "author", pathname: "/note.md" });
+        if (stored === undefined) throw new Error("entry must be keyed by workspace and literal authority");
 
         const readCross = await engine.dispatch({ statement: readOf(workerEntry("author", "note.md")), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(readCross.status, 200, "a named READ reaches another worker's entry without ancestry");
         assert.equal(readCross.content, "scratch");
 
         // {§worker-write-scoping} applies independently to the destination.
-        const writeCross = await engine.dispatch({ statement: editStmt(workerEntry("author", "note.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
-        assert.equal(writeCross.status, 403, "a named space takes no model writes — write to the commons or your own ~");
+        const writeCross = await engine.dispatch({ statement: editStmt(workerEntry("author", "note.md"), "updated", fullReplace), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
+        assert.equal(writeCross.status, 200);
+        assert.equal((await engine.dispatch({ statement: readOf(workerEntry("author", "note.md")), workspaceId, workerId: meId, loopId, turnId, sequence: 3, origin: "model" })).content, "updated");
     } finally { await db.close(); }
 });
 
-test("the reserved runtime worker is an ordinary named space: readable by name, writable only by itself", async () => {
+test("the reserved runtime worker is an ordinary named space: readable and writable by everyone", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -944,7 +908,7 @@ test("the reserved runtime worker is an ordinary named space: readable by name, 
         const kernelLoop = await insertLoop(db, kernelId!, 1, "runtime evidence");
         const kernelTurn = await insertTurn(db, kernelLoop, 1, 102);
         const runtimeWrite = await engine.dispatch({
-            statement: editStmt(workerEntry("~", "runtime.md"), "private runtime evidence"),
+            statement: editStmt(workerEntry("plurnk", "runtime.md"), "private runtime evidence"),
             workspaceId,
             workerId: kernelId!,
             loopId: kernelLoop,
@@ -964,10 +928,10 @@ test("the reserved runtime worker is an ordinary named space: readable by name, 
             origin: "model",
         });
         assert.equal(read.status, 200, "an independent root reads the runtime actor's named space (#394)");
-        const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "runtime.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
-        assert.equal(write.status, 403, "a named space takes no model writes ({§worker-write-scoping})");
-        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", authority: "", pathname: "/runtime.md" });
-        assert.equal(leaked, undefined, "the refused write left nothing behind under any owner");
+        const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "runtime.md"), "updated", fullReplace), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
+        assert.equal(write.status, 200, "the runtime actor has no privileged scratch access");
+        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/runtime.md" });
+        assert.equal(leaked, undefined, "named writes do not create a second copy in shared scratch");
     } finally { await db.close(); }
 });
 
@@ -1118,64 +1082,43 @@ test("an empty waiting inventory stays runnable in the same turn", async () => {
     } finally { await db.close(); }
 });
 
-test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — model EDIT, KILL and COPY into it are 403 while it stays readable", async () => {
+test("{§worker-generated-subtree}: generated documents are ordinary editable workspace scratch", async () => {
     const db = await openMigrated();
     try {
-        const { injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
-        const workspaceId = await insertWorkspace(db, `worker-generated-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
         const workerId = await insertWorker(db, workspaceId, null, "alpha");
         const loopId = await insertLoop(db, workerId, 1, "go");
-        // A log row must match its turn's producer: one turn per writer tier.
-        const turns = {
-            model: await insertTurn(db, loopId, 1, 102),
-            client: await insertOperationTurn(db, loopId, 2, "client"),
-            _plurnk: await insertOperationTurn(db, loopId, 3, "_plurnk"),
-        };
-        const dispatch = (statement: PlurnkStatement, origin: keyof typeof turns, sequence: number) =>
-            engine.dispatch({ statement, workspaceId, workerId, loopId, turnId: turns[origin], sequence, origin });
-        const generated = "_plurnk/plurnk/example.md";
-
-        // Plurnk materializes; the model reads.
-        assert.equal((await dispatch(editStmt(workerEntry("~", generated), "# Example"), "_plurnk", 1)).status, 201, "the _plurnk writer materializes generated documents");
-        assert.equal((await dispatch(readEntry("~", generated), "model", 2)).status, 200, "the subtree is readable like the rest of the space");
-
-        // Every other writer tier is refused with the exact Problem, in own space and the commons alike.
-        for (const [sequence, origin] of [[3, "model"], [4, "client"]] as const) {
-            const edit = await dispatch(editStmt(workerEntry("~", generated), "clobbered", fullReplace), origin, sequence);
-            assert.equal(edit.status, 403, `${origin} EDIT into the generated subtree is refused`);
-            assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-generated-read-only");
+        for (const [index, origin] of ["_plurnk", "model", "client"].entries()) {
+            const writer = origin as "model" | "client" | "_plurnk";
+            const turnId = writer === "model"
+                ? await insertTurn(db, loopId, index + 1, 102)
+                : await insertOperationTurn(db, loopId, index + 1, writer);
+            let sequence = 0;
+            const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: writer });
+            const target = workerEntry("", "_plurnk/plurnk/example.md");
+            assert.equal((await dispatch(editStmt(target, "# Example"))).status, 201);
+            assert.equal((await dispatch(editStmt(target, "# Updated", fullReplace))).status, 200);
+            assert.equal((await dispatch(readStmt(target))).content, "# Updated");
+            assert.equal((await dispatch(copyStmt(target, workerEntry("", "_plurnk/copied.md")))).status, 201);
+            assert.equal((await dispatch(killEntry("", "_plurnk/plurnk/example.md"))).status, 200);
+            assert.equal((await dispatch(killEntry("", "_plurnk/copied.md"))).status, 200);
         }
-        assert.equal((await dispatch(killEntry("~", generated), "model", 5)).status, 403, "model KILL in the generated subtree is refused");
-        assert.equal((await dispatch(editStmt(workerEntry("", "_plurnk/notes.md"), "squat"), "model", 7)).status, 403, "the commons reserves the same subtree");
-        assert.equal((await dispatch(editStmt(workerEntry("~", "_plurnk"), "root"), "model", 8)).status, 403, "the root itself is reserved");
-        assert.equal((await dispatch(editStmt(workerEntry("", "free.md"), "free"), "model", 9)).status, 201);
-        const copied = await dispatch(copyStmt(urlPath("worker", "/free.md"), urlPath("worker", "/_plurnk/copied.md")), "model", 13);
-        assert.equal(copied.status, 403, "COPY cannot land a commons entry inside the generated subtree");
-        assert.equal(copied.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-generated-read-only");
-
-        // Ordinary own-space and commons writes are untouched.
-        assert.equal((await dispatch(editStmt(workerEntry("~", "_plurnkish.md"), "mine"), "model", 10)).status, 201, "only the exact /_plurnk/ prefix is reserved");
-        assert.equal((await dispatch(editStmt(workerEntry("~", "notes/plurnk.md"), "mine"), "model", 11)).status, 201);
-        assert.equal((await dispatch(readEntry("~", generated), "model", 12)).content, "# Example", "every refusal left the generated document intact");
     } finally { await db.close(); }
 });
 
-test("{§worker-generated-subtree} a fork rederives the generated subtree — only ordinary own-space entries are snapshotted", async () => {
+test("{§worker-generated-subtree}: shared docs are not forked; every named scratch path is copied", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `fork-generated-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, crypto.randomUUID());
         const parent = await insertWorker(db, workspaceId, null, "alpha");
-        const plurnkCtx = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0, writer: "_plurnk" });
-        const modelCtx = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0 });
-        const workerScheme = new Worker();
-        await workerScheme.edit(editStmt(workerEntry("~", "_plurnk/plurnk/example.md"), "# Example"), plurnkCtx);
-        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), modelCtx);
-
-        const forkId = await Fork.fork(db, parent, "alpha-fork", (scheme) => scheme === "worker" ? "snapshot" : "none");
-        const forkCtx = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
-        const inherited = await workerScheme.find(findEntry("~", "**"), forkCtx);
-        assert.deepEqual(resourcePaths(inherited), ["worker://~/todo.md"], "the branch inherits scratch but not generated bytes; LoopDocs rederives those from its own Functionality");
-        assert.equal((await lookThroughScheme("worker", null, readEntry("~", "_plurnk/plurnk/example.md"), modelCtx)).content, "# Example", "the parent's generated document is untouched");
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId: parent });
+        const scheme = new Worker();
+        assert.equal((await scheme.edit(editStmt(workerEntry("", "_plurnk/example.md"), "# Shared"), ctx)).status, 201);
+        assert.equal((await scheme.edit(editStmt(workerEntry("alpha", "_plurnk/note.md"), "ordinary scratch"), ctx)).status, 201);
+        const forkId = await Fork.fork(db, parent, "alpha-fork");
+        const forkCtx = makeSchemeCtx({ db, workspaceId, workerId: forkId });
+        assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), forkCtx)), ["worker://alpha-fork/_plurnk/note.md"]);
+        assert.equal((await lookThroughScheme("worker", null, readEntry("", "_plurnk/example.md"), forkCtx)).content, "# Shared");
     } finally { await db.close(); }
 });

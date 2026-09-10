@@ -1,10 +1,5 @@
 -- Durable workspace module state. {§module-workspace-state}
 
--- PREP: workspace_generated_document_workers
-SELECT DISTINCT e.owner_id AS worker_id
-FROM entries e JOIN workers w ON w.id = e.owner_id
-WHERE w.workspace_id = $workspace_id AND e.scheme = 'worker' AND e.pathname LIKE $prefix;
-
 -- PREP: workspace_module_state_get
 SELECT state
 FROM workspace_module_state

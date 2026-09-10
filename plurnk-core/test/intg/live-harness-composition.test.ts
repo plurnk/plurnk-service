@@ -23,7 +23,7 @@ test("{§service-worker-composition} live workspaces expose the default worker r
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
         for (const reference of ["worker", "members", "skills", "mcp", "agents", "a2a", "sh"]) {
-            const result = await read(`worker://~/_plurnk/plurnk/${reference}.md`);
+            const result = await read(`worker:///_plurnk/plurnk/${reference}.md`);
             assert.equal(result.status, 200, `${reference}.md is READ-able in the worker's actual generated tree`);
             assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
         }

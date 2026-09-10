@@ -158,7 +158,7 @@ test("an empty failed child stream is observed by the child before its terminal 
             decl: { name: "emptyfail", glyph: "×", summary: "Empty failure fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } },
             executor: {
                 runtime: "emptyfail", glyph: "×",
-                get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+                get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
                 get defaultChannel() { return "results"; },
                 get channels() { return { results: { mimetype: "text/plain" } }; },
                 effect: () => "pure",
@@ -206,10 +206,10 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
     });
     const materialize = LoopDocs.materialize;
     t.mock.method(LoopDocs, "materialize", async (...args: Parameters<typeof materialize>) => {
-        const [, db, , workerId] = args;
-        const worker = await db.envelope_get_worker_by_id.get<{ name: string }>({ id: workerId });
-        if (worker?.name === "child") {
-            childId = workerId;
+        const [, db, workspaceId] = args;
+        const child = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "child" });
+        if (child !== undefined) {
+            childId = child.id;
             activationStarted.resolve();
             await releaseActivation.promise;
         }
@@ -243,13 +243,7 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
             const loops = await db.test_list_loops_all.all<{ id: number; worker_id: number; status: number }>({});
             assert.ok(loops.every(({ status }) => ![100, 102, 202].includes(status)), `no unresolved descendant survives abandonment: ${JSON.stringify(loops)}`);
             const childLoops = loops.filter(({ worker_id }) => worker_id === childId);
-            assert.deepEqual(childLoops.map(({ status }) => status), [499, 200]);
-            const turns = await db.test_list_turns_in_loop.all<{ producer: string; kind: string; status: number }>({
-                loop_id: childLoops[1]!.id,
-            });
-            assert.deepEqual(turns.map(({ producer, kind, status }) => ({ producer, kind, status })), [
-                { producer: "_plurnk", kind: "maintenance", status: 200 },
-            ], "the later loop is completed maintenance, not resurrected model work");
+            assert.deepEqual(childLoops.map(({ status }) => status), [499], "workspace document maintenance does not create child loops");
             assert.equal(mock.remaining, 1, "the cancelled child never calls the model");
         } finally { releaseActivation.resolve(); ws.close(); }
     });

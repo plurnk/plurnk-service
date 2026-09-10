@@ -15,7 +15,6 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import MembersFunctionality from "../../src/server/MembersFunctionality.ts";
-import Owner from "../../src/core/Owner.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_helpers.ts";
@@ -71,7 +70,7 @@ const withEnv = async (overrides: Record<string, string | undefined>, run: () =>
 
 const memberOf = async (db: Db, workspaceId: number, pathname: string): Promise<boolean> =>
     (await db.crud_find_workspace_entry.get<{ id: number }>({
-        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname,
+        workspace_id: workspaceId, scheme: "file", authority: "", pathname,
     })) !== undefined;
 
 const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
@@ -127,7 +126,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             await daemon.settleFunctionality(workspaceId);
             // {§functionality-document-body} — the family document teaches tracked-or-picked and the scope
             // lattice beneath its generated header, from plurnk-core/docs/members.md.
-            const membersDoc = (await daemon.engine.referenceEntries(workspaceId, model)).find(({ pathname }) => pathname === "/_plurnk/plurnk/members.md");
+            const membersDoc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/members.md");
             assert.ok(membersDoc, "the members family document is a reference entry");
             assert.match(membersDoc.content, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
             assert.match(membersDoc.content, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
@@ -137,10 +136,10 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
-            await daemon.look({ workspaceId, workerId: model, statement: parseOne("```READ (worker://~/_plurnk/members/docs.md) <1,-1>```") });
+            await daemon.look({ workspaceId, workerId: model, statement: parseOne("```READ (worker:///_plurnk/members/docs.md) <1,-1>```") });
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
                 .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs.md" && row.channel === "body");
-            assert.ok(doc !== undefined, "an enabled definition is one generated document under worker://~/_plurnk/members/");
+            assert.ok(doc !== undefined, "an enabled definition is one generated document under worker:///_plurnk/members/");
             assert.match(doc.content, /^# docs\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
             assert.match(doc.content, /\| origin \| service \|/u);
 

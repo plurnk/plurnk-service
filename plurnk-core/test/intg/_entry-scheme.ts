@@ -5,7 +5,7 @@ import type { ResolvedEditStatement, SchemeCtx, SchemeHandler, SchemeManifest } 
 export default class EntryScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "fixture", authority: "namespace", category: "data",
-        channels: { body: "text/plain" }, defaultChannel: "body", entryOwner: "commons", inherit: "none",
+        channels: { body: "text/plain" }, defaultChannel: "body",
         writableBy: ["model", "client", "plugin", "_plurnk"],
         folderScopes: true, volatile: false, modelVisible: true,
     };

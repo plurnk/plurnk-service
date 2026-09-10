@@ -1,6 +1,5 @@
 // The durable writes a turn makes beside its packet: environment and stream deltas, filesystem fictions, the prompt log. Split out of TurnRunner.
 import type { UrlPath } from "@plurnk/plurnk-contracts";
-import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
 import { type FsDivergence } from "./git-membership.ts";
 import { type GitStatusSnapshot } from "./git-state.ts";
@@ -14,20 +13,16 @@ import WorkerControlAddress from "./WorkerControlAddress.ts";
 import Turn from "./Turn.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
-import LogEntryProjection from "./LogEntryProjection.ts";
 
 export default class TurnMaterialization {
     readonly #db: Db;
-    readonly #schemes: SchemeRegistry;
     readonly #weighContent: (text: string) => number;
 
-    constructor({ db, schemes, weighContent }: {
+    constructor({ db, weighContent }: {
         db: Db;
-        schemes: SchemeRegistry;
         weighContent: (text: string) => number;
     }) {
         this.#db = db;
-        this.#schemes = schemes;
         this.#weighContent = weighContent;
     }
 
@@ -149,11 +144,12 @@ export default class TurnMaterialization {
     async materializeStreamDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
+        const { workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; publication_id: number; published_end: number;
             runtime: string; authority: string; coord: string; channel: string; content: string;
             mimetype: string; state: string; producer_result: string | null; published_channel: string | null;
+            source: string | null; default_channel: string;
         }>({ worker_id: workerId });
         let written = 0;
         for (const ch of channels) {
@@ -162,7 +158,7 @@ export default class TurnMaterialization {
             // ordinary address to the model; only an explicitly non-default
             // channel earns a fragment in the log.
             const visibleFragment = ch.published_channel !== null
-                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
+                && ch.channel === ch.default_channel
                 ? null
                 : ch.channel;
             const targetParts = authorityParts(ch.authority);
@@ -173,12 +169,7 @@ export default class TurnMaterialization {
             if (ch.state !== "closed" && ch.state !== "errored") continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + written;
-            // {§log-coordinate-hierarchy} — the stream lives at its EXEC item's own address, so the
-            // causal source is that address under the log scheme.
-            const source = this.#schemes.isRuntimeScheme(ch.runtime, workspaceId)
-                && LogEntryProjection.streamCoordinate(ch.coord, ch.runtime) !== undefined
-                ? `log://${ch.coord}`
-                : null;
+            const source = ch.source;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const result = Results.assert({
                 ...terminal,

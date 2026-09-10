@@ -549,7 +549,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             );
             assert.ok(contextReads.every((row) => row.turn_id === frames[0]?.turn_id),
                 "all promoted frame paths are read in the turn that publishes the frames");
-            const promptPaths = await db.test_prompt_paths_by_owner.all<{ pathname: string }>({ owner_id: (r2.result as { modelWorkerId: number }).modelWorkerId });
+            const promptPaths = await db.test_prompt_paths_by_worker.all<{ pathname: string }>({ worker_id: (r2.result as { modelWorkerId: number }).modelWorkerId });
             const firstLoopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
                 loop_id: firstLoopId,
             }))!.sequence;

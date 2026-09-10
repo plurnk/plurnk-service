@@ -374,9 +374,7 @@ export default class ProposalLifecycle {
             return {
                 scheme: row.scheme,
                 authority: "",
-                pathname: authorityMode === "owner"
-                    ? row.pathname
-                    : foldAuthorityIntoPath(row.hostname, row.pathname),
+                pathname: foldAuthorityIntoPath(row.hostname, row.pathname),
             };
         }
         if (
@@ -490,7 +488,6 @@ export default class ProposalLifecycle {
                     ? ""
                     : entryCoordinateOf(authoredTarget, manifest.authority ?? "namespace").authority
                 : proposalTarget.authority;
-            let ownerId = await this.#entryAddresses.fixedOwnerId(manifest, applyCtx);
             if (
                 manifest.category === "data"
                 && statement.op !== "EXEC"
@@ -528,15 +525,11 @@ export default class ProposalLifecycle {
                         applied,
                     };
                 }
-                ownerId = binding.address.ownerId;
                 authority = binding.address.authority;
-            }
-            if (manifest.category === "data" && ownerId === null) {
-                throw new Error(`scheme '${schemeName}' proposal has no bound entry owner`);
             }
             const applyResult = Results.assert(await handler.applyResolution(
                 request,
-                new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions, { authority, ownerId }),
+                new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions, { authority }),
             ));
             if (applyResult.status >= 400) {
                 return {

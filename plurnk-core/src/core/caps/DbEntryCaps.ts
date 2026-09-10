@@ -29,7 +29,6 @@ export default class DbEntryCaps implements EntryCaps {
     readonly #scheme: string;
     readonly #authority: string;
     readonly #manifest: SchemeManifest;
-    readonly #ownerId: number;
     readonly #editPrecondition: LineAnchorPrecondition | null;
     readonly operations: EntryOperationCaps;
 
@@ -38,7 +37,6 @@ export default class DbEntryCaps implements EntryCaps {
         scheme: string,
         manifest: SchemeManifest,
         authority: string,
-        ownerId: number,
         editPrecondition: LineAnchorPrecondition | null = null,
     ) {
         this.#ctx = ctx;
@@ -49,7 +47,6 @@ export default class DbEntryCaps implements EntryCaps {
         // direct CRUD already uses #scheme; standard operations derive identity
         // from manifest.name, so give them the same addressed face.
         this.#manifest = manifest.name === scheme ? manifest : { ...manifest, name: scheme };
-        this.#ownerId = ownerId;
         this.#editPrecondition = editPrecondition;
         this.operations = {
             editBatch: (statements) => this.#editBatch(statements),
@@ -70,46 +67,38 @@ export default class DbEntryCaps implements EntryCaps {
             statements,
             this.#ctx,
             this.#manifest,
-            this.#ownerId,
             this.#editPrecondition,
         )) as EntryEditResult;
     }
 
     async #find(statement: FindStatement): Promise<EntryFindResult> {
         return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, {
-            ownerId: this.#ownerId,
             authority: this.#authority,
         })) as EntryFindResult;
     }
 
     async #send(statement: SendStatement): Promise<SchemeResult> {
-        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId));
+        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#manifest));
     }
 
     async read(pathname: string): Promise<EntryStorageReadResult> {
-        return EntryCrud.readEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId);
+        return EntryCrud.readEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme);
     }
 
     async address(pathname: string): Promise<string> {
-        let authority = this.#authority;
-        if (this.#manifest.authority === "owner") {
-            const owner = await this.#ctx.db.envelope_get_worker_by_id.get<{ name: string }>({ id: this.#ownerId });
-            if (owner === undefined) throw new Error("Bound entry owner no longer exists.");
-            authority = owner.name;
-        }
-        return renderAddress({ scheme: this.#scheme, authority, pathname });
+        return renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname });
     }
 
     async write(pathname: string, entry: EntryData): Promise<EntryStorageWriteResult> {
         return EntryCrud.writeEntry({ authority: this.#authority, pathname }, {
             channels: entry.channels,
             ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
-        }, this.#ctx, this.#scheme, this.#ownerId);
+        }, this.#ctx, this.#scheme);
     }
 
     async delete(pathname: string, channel?: string): Promise<SchemeResult> {
         return channel === undefined
-            ? EntryCrud.deleteEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId)
-            : EntryCrud.deleteChannel({ authority: this.#authority, pathname }, channel, this.#ctx, this.#scheme, this.#ownerId);
+            ? EntryCrud.deleteEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme)
+            : EntryCrud.deleteChannel({ authority: this.#authority, pathname }, channel, this.#ctx, this.#scheme);
     }
 }

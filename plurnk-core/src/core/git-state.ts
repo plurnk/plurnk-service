@@ -3,7 +3,6 @@ import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-
 import { matchesGlob } from "node:path";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
-import Owner from "./Owner.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 
@@ -79,12 +78,11 @@ export default class GitState {
     static async #markMembers(db: Db, workspaceId: number, snapshot: GitStatusSnapshot): Promise<void> {
         const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.RENDERED_PATHS);
         if (untracked.length === 0) return;
-        const commonsId = await Owner.commonsId(db, workspaceId);
         const inclusions = (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
             .filter((row) => row.effect === "include");
         for (const file of untracked) {
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname: file.path,
+                workspace_id: workspaceId, scheme: "file", authority: "", pathname: file.path,
             });
             if (entry === undefined) { file.member = null; continue; }
             const row = inclusions.find((candidate) => (candidate.source === "create" ? candidate.glob === file.path : matchesGlob(file.path, candidate.glob)));

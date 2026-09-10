@@ -28,8 +28,6 @@ class WritableScheme {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        entryOwner: "commons",
-        inherit: "none",
         writableBy: ["model", "client", "_plurnk"],
         volatile: false,
         modelVisible: true,

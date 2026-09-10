@@ -184,11 +184,11 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```EDIT (worker://~/prompt.md)",
+                "```EDIT (worker:///prompt.md)",
                 "" + (prompt) + "",
                 "```",
-                "```BARE (worker://~/prompt.md)```",
-                "```BARE (worker://~/prompt.md)",
+                "```BARE (worker:///prompt.md)```",
+                "```BARE (worker:///prompt.md)",
                 "Compare these findings.",
                 "```",
                 "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
@@ -211,7 +211,7 @@ test("{§bare-inference}: missing resources preserve the source error without ca
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```BARE (worker://~/missing.md)",
+                "```BARE (worker:///missing.md)",
                 "Do not infer from this tail alone.",
                 "```",
                 "```BARE",
@@ -240,7 +240,7 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
     schemes.register("interrupted-prompt", {
         manifest: {
             name: "interrupted-prompt", channels: { body: "text/plain" }, defaultChannel: "body",
-            category: "data", entryOwner: "commons", inherit: "none", writableBy: ["model"],
+            category: "data", writableBy: ["model"],
             volatile: false, modelVisible: true,
         },
         async prepareRepresentation() {
@@ -277,8 +277,8 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
 
 for (const [denied, target] of [
     [{ operation: "BARE" }, ""],
-    [{ operation: "BARE" }, " (worker://~/prompt.md)"],
-    [{ scheme: "worker", access: "observe" }, " (worker://~/prompt.md)"],
+    [{ operation: "BARE" }, " (worker:///prompt.md)"],
+    [{ scheme: "worker", access: "observe" }, " (worker:///prompt.md)"],
 ] as const) {
     test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
@@ -288,7 +288,7 @@ for (const [denied, target] of [
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "```EDIT (worker://~/prompt.md)",
+                    "```EDIT (worker:///prompt.md)",
                     "secret prompt",
                     "```",
                     "```BARE" + target,
@@ -311,12 +311,12 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
         const first = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [],
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```EDIT (worker://~/source.md)",
+                "```EDIT (worker:///source.md)",
                 "first",
                 "superseded",
                 "last",
                 "```",
-                "```READ (worker://~/source.md) <1,-1>```",
+                "```READ (worker:///source.md) <1,-1>```",
                 "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
             ].join("\n"))] }),
         });
@@ -341,7 +341,7 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
 });
 
 for (const [target, status, problem] of [
-    ["worker://~/prompt.md#missing", 404, "channel-not-found"],
+    ["worker:///prompt.md#missing", 404, "channel-not-found"],
     ["unregistered://prompt", 501, "scheme-not-found"],
     [null, 422, "bare-prompt-empty"],
 ] as const) {
@@ -352,7 +352,7 @@ for (const [target, status, problem] of [
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "```EDIT (worker://~/prompt.md)",
+                    "```EDIT (worker:///prompt.md)",
                     "source prompt",
                     "```",
                     "```BARE" + (target === null ? "" : ` (${target})`),

@@ -645,31 +645,45 @@ test("READ: duplicate canonical workspace address reuses its representation and 
     }
 });
 
-test("socket ownership isolates the same canonical address by owning worker within one workspace", async () => {
+test("{§ws-lifecycle}: workers share acquisition, input and KILL while other workspaces stay independent", async () => {
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
+    const seed = Promise.withResolvers<void>();
     const ws = new Ws(() => sockets[connects++]!);
-    const firstCtx = makeCtx({ workspaceId: 1, workerId: 11 });
+    const firstCtx = makeCtx({ workspaceId: 1, workerId: 11, write: async () => {
+        await seed.promise;
+        return { status: 201, created: true, entryId: 1 };
+    } });
     const secondCtx = makeCtx({ workspaceId: 1, workerId: 12 });
+    const foreignCtx = makeCtx({ workspaceId: 2, workerId: 13 });
     const target = wss(PUB, "/feed");
-    const reads = [
-        prepareRepresentation(ws, readStmt(target), firstCtx.ctx),
-        prepareRepresentation(ws, readStmt(target), secondCtx.ctx),
-    ];
+    let duplicateSettled = false;
+    const first = prepareRepresentation(ws, readStmt(target), firstCtx.ctx);
+    const second = prepareRepresentation(ws, readStmt(target), secondCtx.ctx).then((result) => {
+        duplicateSettled = true;
+        return result;
+    });
+    await flush();
+    assert.equal(duplicateSettled, false, "a shared READ waits for an actual readable representation");
+    seed.resolve();
     await flush();
     sockets[0].emit("open");
-    sockets[1].emit("open");
+    assert.equal((await first).status, 102);
+    assert.equal((await second).status, 102);
+    assert.equal(connects, 1);
+    assert.equal(secondCtx.inspect().opened, null);
+    const foreign = prepareRepresentation(ws, readStmt(target), foreignCtx.ctx);
     await flush();
-
-    assert.equal((await ws.send(sendStmt(target, "first"), firstCtx.ctx)).status, 200);
-    assert.equal((await ws.send(sendStmt(target, "second"), secondCtx.ctx)).status, 200);
-    assert.deepEqual(sockets[0].sent, ["first"]);
-    assert.deepEqual(sockets[1].sent, ["second"]);
-
-    sockets[0].close(1000);
+    sockets[1].emit("open");
+    assert.equal((await foreign).status, 102);
+    assert.equal((await ws.send(sendStmt(target, "shared input"), secondCtx.ctx)).status, 200);
+    assert.deepEqual(sockets[0].sent, ["shared input"]);
+    assert.deepEqual(sockets[1].sent, []);
+    assert.equal((await ws.kill(killStmt(target), secondCtx.ctx)).status, 200);
+    await firstCtx.awaitClosed();
+    assert.equal(sockets[1].closed, null);
     sockets[1].close(1000);
-    await Promise.all(reads);
-    await Promise.all([firstCtx.awaitClosed(), secondCtx.awaitClosed()]);
+    await foreignCtx.awaitClosed();
 });
 
 test("socket lookup isolates addressed protocol, port, and ordered query", async () => {

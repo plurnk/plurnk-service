@@ -94,13 +94,13 @@ test("{§send-directed-scope}: directed SEND preserves numeric timing without ch
 
 test("trailing operation annotations are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
-        "```gitea (list_issues) <!-- Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md) -->",
+        "```gitea (list_issues) <!-- Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.md) -->",
         "{\"owner\":\"plurnk\",\"repo\":\"plurnk-service\"}",
         "```",
     ].join("\n"));
     assert.equal(
         statement.annotation,
-        "Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md)",
+        "Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.md)",
     );
     assert.equal(oneStatement("```READ (README.md)```").annotation, null);
     assert.equal(oneStatement("```READ (README.md) <!-- -->```").annotation, "");
@@ -166,10 +166,10 @@ test("COPY and MOVE destinations use the target escape layer", () => {
 });
 
 test("a COPY destination path excludes the whitespace before its scope", () => {
-    const statement = oneStatement("```COPY (prompt:///1/1) (worker://~/prompts.md) <-1>```");
+    const statement = oneStatement("```COPY (prompt://alice/1/1) (worker://alice/prompts.md) <-1>```");
     if (statement.op !== "COPY") assert.fail("expected COPY");
-    assert.equal(statement.destination.target.raw, "worker://~/prompts.md");
-    assert.equal(statement.destination.target.kind === "url" ? statement.destination.target.hostname : null, "~");
+    assert.equal(statement.destination.target.raw, "worker://alice/prompts.md");
+    assert.equal(statement.destination.target.kind === "url" ? statement.destination.target.hostname : null, "alice");
     assert.deepEqual(statement.destination.lineMarker, { marks: [-1] });
 });
 
@@ -261,9 +261,9 @@ test("COPY and MOVE require exactly two singular path operands", () => {
 
 test("{§bare-statement} BARE accepts a prompt resource, inline input, or both", () => {
     for (const body of [undefined, "Compare the conclusions."]) {
-        const statement = oneStatement(section("BARE", " (worker://~/prompt.md) <!-- isolated review -->", body));
+        const statement = oneStatement(section("BARE", " (worker://alice/prompt.md) <!-- isolated review -->", body));
         if (statement.op !== "BARE") assert.fail("expected BARE");
-        assert.equal(statement.target?.raw, "worker://~/prompt.md");
+        assert.equal(statement.target?.raw, "worker://alice/prompt.md");
         assert.equal(statement.body, body ?? "");
         assert.equal(statement.annotation, "isolated review");
         assert.equal(statement.lineMarker, null);
@@ -275,7 +275,7 @@ test("{§bare-statement} BARE accepts a prompt resource, inline input, or both",
     if (metadata.op !== "BARE") assert.fail("expected BARE");
     assert.deepEqual(metadata.metadata, ['"Accept":"text/plain"']);
 
-    const body = "```BARE (prompt:///1/1)```";
+    const body = "```BARE (prompt://alice/1/1)```";
     const fenced = PlurnkParser.parseStatements(section("TASK", "", body));
     assert.equal(fenced.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"), false);
     const send = fenced.items.find((item) => item.kind === "statement")?.statement;

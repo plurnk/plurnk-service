@@ -17,9 +17,9 @@ const journeys = Object.freeze({
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.",
             content: [
-                "````READ (prompt:///1/1)````",
-                "````READ (worker://~/_plurnk/plurnk/worker.md) <1,-1>````",
-                "````READ (worker://~/_plurnk/plurnk/node.md) <1,-1>````",
+                "````READ (prompt://tui-worker/1/1)````",
+                "````READ (worker:///_plurnk/plurnk/worker.md) <1,-1>````",
+                "````READ (worker:///_plurnk/plurnk/node.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
                 "````READ (skill://plurnk/.env.defaults) <1,16>````",
                 "````TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n````",
@@ -133,15 +133,15 @@ export const startClientJourneyModel = async () => {
             const text = (body.messages ?? []).map((message) => typeof message.content === "string" ? message.content : "").join("\n");
             if (journey === "tui" && index === 1) {
                 for (const witness of [
-                    /(?:^|\n) *\d+:````WORK \(worker:\/\/capital-checker\)/u,
-                    /(?:^|\n) *\d+:````node <!--/u,
+                    /(?:^|\n)@[0-9A-Za-z]{5} +\d+:````WORK \(worker:\/\/capital-checker\)/u,
+                    /(?:^|\n)@[0-9A-Za-z]{5} +\d+:````node <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
                     /"target":"skill:\/\/plurnk\/\.env\.defaults"/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
                 }
-                if (/@[0-9A-Za-z]{5} +\d+:````(?:WORK|node)/u.test(text)) {
-                    throw new Error("installed read-only teaching advertised model EDIT anchors");
+                if (/@[0-9A-Za-z]{5} +\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u.test(text)) {
+                    throw new Error("installed read-only skill advertised model EDIT anchors");
                 }
             }
             if (journey === "nvim" && index === 3

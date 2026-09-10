@@ -14,18 +14,20 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { insertWorkspace, insertWorker } from "./_helpers.ts";
+import WorkerName from "../../src/core/WorkerName.ts";
 
 test("a client worker cannot self-SEND into model inference", async () => {
     const mock = new Mock({
         contextWindow: 8192,
         responses: [makeMockResponse("```SEND\nthis must remain unused\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)],
     });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "client-self-send" });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "client-self-send" });
+            const { workerId } = created.result as { workerId: number };
             const response = await rpcCall(ws, 2, "op.send", {
-                recipient: "worker://~",
+                recipient: `worker://${await WorkerName.forId(db, workerId)}`,
                 body: "run a model in this client actor",
             });
             const problem = rpcProblem(response);

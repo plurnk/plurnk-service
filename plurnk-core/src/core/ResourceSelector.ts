@@ -260,7 +260,6 @@ export default class ResourceSelector {
             storageAddress,
             ctx,
             storageAddress.scheme,
-            storageAddress.ownerId,
         );
         if (read.status >= 400) return { result: read };
         if (read.status !== 200 || read.entry === null) {

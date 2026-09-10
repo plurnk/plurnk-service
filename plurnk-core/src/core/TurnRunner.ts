@@ -69,20 +69,20 @@ import { observed, observedSync } from "../observe/spans.ts";
 import { GEN_AI_REQUEST_SPAN, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
+import WorkerName from "./WorkerName.ts";
 import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
-// The prompt entry target - prompt:///<loop>/<N>, self-only ({§prompt-self-only}):
-// the owner rides the owner_id column, the address carries only the loop coordinate.
-const promptTarget = (loopSeq: number, promptOrdinal: number): UrlPath => {
+// {§prompt-address}: the same literal address in every observer's packet.
+const promptTarget = (workerName: string, loopSeq: number, promptOrdinal: number): UrlPath => {
     const storage = promptPathname(loopSeq, promptOrdinal);
     return {
-        kind: "url", raw: `prompt://${storage}`,
+        kind: "url", raw: `prompt://${workerName}${storage}`,
         scheme: "prompt", username: null, password: null,
-        hostname: null, port: null,
+        hostname: workerName, port: null,
         pathname: storage, query: null, fragment: null,
     };
 };
@@ -95,11 +95,11 @@ const workerCatalogTarget = (
     const pathname = generatedPathname(`/${namespace}/*.md`);
     return {
         kind: "url",
-        raw: `worker://~${pathname}`,
+        raw: `worker://${pathname}`,
         scheme: "worker",
         username: null,
         password: null,
-        hostname: "~",
+        hostname: null,
         port: null,
         pathname,
         query: null,
@@ -415,7 +415,7 @@ export default class TurnRunner {
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
         this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
-        this.#materialization = new TurnMaterialization({ db: this.#db, schemes: this.#schemes, weighContent: this.#weighContent });
+        this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent });
         this.#bareBatch = new BareBatchRunner({ db: this.#db, providerAttributions: this.#providerAttributions.bind(this), providerFailure: TurnRunner.#providerFailure });
         this.#admitted = new AdmittedTurnExecutor({ db: this.#db, schemes: this.#schemes, notices: this.#notices, problems: this.#problems, dispatcher: this.#dispatcher, bareBatch: this.#bareBatch });
     }
@@ -585,7 +585,7 @@ export default class TurnRunner {
             const handler = this.#schemes.get(attachment.scheme, ctx.workspaceId) as SchemeHandler | undefined;
             let source = handler?.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
             if (source === undefined && handler?.manifest !== undefined) {
-                const stored = await EntryCrud.readEntry(resolved.address, ctx, resolved.address.scheme, resolved.address.ownerId);
+                const stored = await EntryCrud.readEntry(resolved.address, ctx, resolved.address.scheme);
                 if (stored.entry !== null) source = await EntryCrud.storedByteSource(stored.entry, handler.manifest.defaultChannel, ctx.mimetypes);
             }
             if (source === undefined) return null;
@@ -621,6 +621,7 @@ export default class TurnRunner {
         // Contract Strikes: recovery is informed when the rail permits continuation).
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
+        const workerName = await WorkerName.forId(this.#db, workerId);
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
             ? invalidEmissionRecoveryEntryId
             : null;
@@ -707,7 +708,7 @@ export default class TurnRunner {
             ? {
                 content: loopRow.prompt,
                 source: loopRow.prompt_source,
-                path: promptTarget(loopRow.sequence, 1),
+                path: promptTarget(workerName, loopRow.sequence, 1),
                 openPaths: assertOpenPaths(JSON.parse(loopRow.open_paths) as unknown, `Loop ${loopId} open_paths`),
             }
             : null;
@@ -719,22 +720,19 @@ export default class TurnRunner {
                     ...(promptPublication.source === null ? {} : { source: promptPublication.source }),
                 },
             };
-            await EntryCrud.writeEntry({ authority: "", pathname: promptPublication.path.pathname }, entry, systemCtx, "prompt", workerId);
+            await EntryCrud.writeEntry({ authority: workerName, pathname: promptPublication.path.pathname }, entry, systemCtx, "prompt");
         }
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and an ordinary TASK.
         if (initializationTurn !== null) {
-            // {§worker-initialization-entry} — the prompt is archived into the
-            // worker's private space: the worked COPY specimen, and the private
-            // space shown as scratch. An append onto an absent entry creates it.
-            // Archive before surveying ({§op-execution-order}).
+            // {§worker-initialization-entry}: archive into named scratch before surveying.
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
                     op: "COPY", annotation: null,
                     source: { target: promptPublication.path, metadata: null, lineMarker: null },
                     destination: {
-                        target: { kind: "url", raw: "worker://~/prompts.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/prompts.md", query: null, fragment: null },
+                        target: { kind: "url", raw: `worker://${workerName}/prompts.md`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/prompts.md", query: null, fragment: null },
                         metadata: null,
                         lineMarker: { marks: [-1] },
                     },
@@ -743,21 +741,20 @@ export default class TurnRunner {
                 initializationStatements.push(archive);
             }
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
-            // worker://~/_plurnk/agents.md) gets one foisted READ on the worker's first
+            // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
             // stays in the system prompt; nothing else is force-read.
             if (workerFirstInference) {
                 const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    owner_id: workerId,
                     scheme: "worker",
                     authority: "",
                     pathname: generatedPathname("/agents.md"),
                 });
                 if (agentsEntry !== undefined) {
                     const agentsTarget: UrlPath = {
-                        kind: "url", raw: "worker://~/_plurnk/agents.md", scheme: "worker",
-                        username: null, password: null, hostname: "~", port: null,
+                        kind: "url", raw: "worker:///_plurnk/agents.md", scheme: "worker",
+                        username: null, password: null, hostname: null, port: null,
                         pathname: generatedPathname("/agents.md"), query: null, fragment: null,
                     };
                     const agentsRead: ReadStatement = {
@@ -800,7 +797,7 @@ export default class TurnRunner {
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
         // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
         // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
-        // and private surfaces, in that order.
+        // and named scratch, in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
         if (initializationTurn !== null) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -830,7 +827,7 @@ export default class TurnRunner {
                     toolExpansions.push({
                         statement: {
                             op: "FIND", annotation: null,
-                            target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
+                            target: { kind: "url", raw: `worker:///_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             metadata: null,
                             body: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
                             lineMarker: null, position: UNKNOWN_POSITION,
@@ -875,7 +872,7 @@ export default class TurnRunner {
                         // the exact card stays pullable through READ a2a://<alias>.
                         statement: {
                             op: "FIND", annotation: null,
-                            target: { kind: "url", raw: "worker://~/_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
+                            target: { kind: "url", raw: "worker:///_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
@@ -885,7 +882,7 @@ export default class TurnRunner {
                         // level; each row's summary is what its glob resolved to.
                         statement: {
                             op: "FIND", annotation: null,
-                            target: { kind: "url", raw: "worker://~/_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
+                            target: { kind: "url", raw: "worker:///_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
@@ -910,8 +907,8 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", annotation: "private worker entries",
-                            target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
+                            op: "FIND", annotation: "worker scratch",
+                            target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
@@ -987,7 +984,7 @@ export default class TurnRunner {
             const loopSeq = loopSeqRow?.sequence ?? loopId;
             const prefix = promptLoopPrefix(loopSeq);
             const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
-                owner_id: workerId,
+                worker_id: workerId,
                 pattern: `${prefix}%`,
                 prefix_len: prefix.length,
                 loop_id: loopId,
@@ -1004,7 +1001,7 @@ export default class TurnRunner {
                     loopId,
                     turnId,
                     sequence: nextActionIndex++,
-                    target: promptTarget(loopSeq, ordinal),
+                    target: promptTarget(workerName, loopSeq, ordinal),
                     content: injectedRow.content,
                     source: promptSourceFromAttributes(
                         attributes,
@@ -1925,7 +1922,7 @@ export default class TurnRunner {
     }
 
     // #note12 — plugin reference docs are materialized beneath
-    // worker://~/_plurnk/plurnk/ by LoopDocs.
+    // worker:///_plurnk/plurnk/ by LoopDocs.
 
     // {§exec-poll} — EXEC `<0>` is turn-scoped: abort the worker's open turn-scoped streams via their
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn

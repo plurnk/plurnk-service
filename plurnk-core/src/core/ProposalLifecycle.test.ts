@@ -21,7 +21,7 @@ const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
     loopSignal: () => undefined,
     liveSubscriptions: new LiveSubscriptions(),
     interactions: new ClientInteractions(db),
-    entryAddresses: new EntryAddressBinding(db),
+    entryAddresses: new EntryAddressBinding(),
 });
 
 test("proposal timeout rejects every explicit non-positive or non-finite value at its owner", (t) => {
@@ -100,8 +100,14 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         return { status: 200, outcome: "published", body: "landed body" };
     };
 
+    const db = {
+        envelope_get_worker_by_name: { get: async (args: { workspace_id: number; name: string }) => {
+            assert.deepEqual(args, { workspace_id: 11, name: "commons" });
+            return { id: 15 };
+        } },
+    } as unknown as Db;
     const lifecycle = new ProposalLifecycle({
-        db: {} as Db,
+        db,
         schemes,
         notices: { push() {} } as unknown as NoticeChannel,
         weigh: (text) => text.length,
@@ -109,18 +115,18 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         loopSignal: () => undefined,
         liveSubscriptions: new LiveSubscriptions(),
         interactions: new ClientInteractions({} as Db),
-        entryAddresses: new EntryAddressBinding({} as Db),
+        entryAddresses: new EntryAddressBinding(),
     });
     const statement = {
         op: "EDIT",
         metadata: ["Authorization: secret"],
         target: {
             kind: "url",
-            raw: "http:///article",
+            raw: "https://example.test/article",
             scheme: "https",
             username: null,
             password: null,
-            hostname: null,
+            hostname: "example.test",
             port: null,
             pathname: "/article",
             query: null,

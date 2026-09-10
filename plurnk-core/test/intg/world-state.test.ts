@@ -9,7 +9,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WorldState from "./world-state.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace } from "./_helpers.ts";
 
 test("a lawful world reports ZERO violations after real lifecycle traffic", async () => {
@@ -20,10 +19,9 @@ test("a lawful world reports ZERO violations after real lifecycle traffic", asyn
         await rootWorkspace(db, workspaceId, root);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-        const commonsId = await Owner.commonsId(db, workspaceId);
         await writeFile(join(root, "a.md"), "a\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file", commonsId);
-        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname: "b.md", membership_origin: "git" });
+        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "b.md", membership_origin: "git" });
 
         const violations = await WorldState.check(db);
         assert.deepEqual(violations, [], "the lawful world is silent");
@@ -36,9 +34,9 @@ test("the detector CATCHES: a non-canon stored key and an alien grantor both sel
     try {
         const workspaceId = await insertWorkspace(db, `ws-bad-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const commons = await Owner.commonsId(db, workspaceId);
+
         // A pre-canon legacy key smuggled in raw (the class the v3 heal folds).
-        await db.crud_insert_workspace_entry.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", authority: "", pathname: "/legacy.md" });
+        await db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: "/legacy.md" });
         // An alien grantor cannot even be MANUFACTURED — the schema CHECK is the wall
         // (stronger than detection); ws_alien_origin stays in the harness as the belt for
         // pre-wall specimens bench may sweep.

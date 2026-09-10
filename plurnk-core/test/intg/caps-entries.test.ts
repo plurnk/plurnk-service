@@ -6,7 +6,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
-import Owner from "../../src/core/Owner.ts";
 import { parsePath } from "@plurnk/plurnk-contracts";
 import { readStmt } from "./_dsl.ts";
 
@@ -15,10 +14,9 @@ test("{§binary-parity} public entry writes retain bytes for ordinary byte READs
     try {
         const workspaceId = await insertWorkspace(db, `caps-bytes-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const ownerId = await Owner.commonsId(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         class Notes { static manifest = schemeManifest("notes"); }
-        const caps = new DbEntryCaps(ctx, "notes", Notes.manifest, "", ownerId);
+        const caps = new DbEntryCaps(ctx, "notes", Notes.manifest, "");
         const bytes = Uint8Array.from([0, 255, 128, 65]);
         const written = await caps.write("/binary", {
             channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } },
@@ -35,8 +33,7 @@ test("DbEntryCaps: write creates (201) → read round-trips → re-write updates
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-entries-${crypto.randomUUID()}`);
-        const ownerId = await Owner.commonsId(db, workspaceId);
-        const caps = new DbEntryCaps(makeSchemeCtx({ db, workspaceId }), "notes", schemeManifest("notes"), "", ownerId);
+        const caps = new DbEntryCaps(makeSchemeCtx({ db, workspaceId }), "notes", schemeManifest("notes"), "");
 
         // write a new entry → 201 created, real entryId
         const w = await caps.write("/note.md", {

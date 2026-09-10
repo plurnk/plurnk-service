@@ -1,3 +1,4 @@
+import WorkerName from "../../src/core/WorkerName.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -291,13 +292,13 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
         for (const [ordinal, content] of ["first orphan", "second orphan"].entries()) {
             const entryId = await seedEntryWithChannel(db, {
                 workspaceId,
-                ownerId: workerId,
+                authority: await WorkerName.forId(db, workerId),
                 scheme: "prompt",
                 pathname: `/1/${ordinal + 2}`,
                 content,
                 mimetype: "text/markdown",
             });
-            await db.crud_set_entry_attributes.run({
+            await db.test_set_entry_attributes.run({
                 entry_id: entryId,
                 attributes: JSON.stringify({ openPaths: [], source: `worker://sender-${ordinal + 1}` }),
             });
@@ -371,7 +372,7 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
         const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, "Original task.");
         await seedEntryWithChannel(db, {
-            workspaceId, ownerId: workerId, scheme: "prompt", pathname: "/1/2",
+            workspaceId, authority: await WorkerName.forId(db, workerId), scheme: "prompt", pathname: "/1/2",
             content: "A follow-up admitted before cancellation.", mimetype: "text/markdown",
         });
         const lifecycle = new LoopLifecycle(db);
@@ -382,7 +383,7 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
             "boot must not promote a cancelled prompt into fresh work");
         assert.equal(mock.received.length, 0);
         const entries = await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string }>({
-            owner_id: workerId, pattern: "/1/%", prefix_len: 3,
+            worker_id: workerId, pattern: "/1/%", prefix_len: 3,
         });
         assert.deepEqual(entries.map(({ content }) => content), ["A follow-up admitted before cancellation."],
             "cancellation preserves the message as evidence without executing it");
@@ -500,7 +501,6 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
 
         const entryId = await seedEntryWithChannel(db, {
             workspaceId,
-            ownerId: childId,
             scheme: "sh",
             pathname: "/interrupted",
             channel: "stdout",

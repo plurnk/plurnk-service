@@ -11,7 +11,7 @@ import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-s
 import { contentHash } from "../core/content-hash.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 
-// Shared static-method helpers for owner-addressed entry-bearing schemes.
+// Shared static-method helpers for workspace entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
 // and defaultChannel. Channel routing
 // follows SPEC {§channel-selection}: path.fragment ?? manifest.defaultChannel.
@@ -36,7 +36,6 @@ export type ReadResult = SchemeResultBase & {
 export type OpenFoldResult = SchemeResultBase;
 
 interface ReadAddress {
-    readonly ownerId: number;
     readonly authority?: string;
     readonly pathname?: string;
 }
@@ -95,7 +94,6 @@ export default class EntryOps {
         statements: readonly ResolvedEditStatement[],
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-        ownerId: number,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<EditResult> {
         LineAnchors.assertResolved(statements);
@@ -160,7 +158,7 @@ export default class EntryOps {
             }
         }
 
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, authority, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme, authority, pathname });
 
         // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
         if (existing === undefined && fragment !== null) {
@@ -175,7 +173,6 @@ export default class EntryOps {
                 authority,
                 pathname,
                 channel: targetChannel,
-                owner_id: ownerId,
             });
 
         // {§ext-mimetype-extension-mimetype} Resolve a type only for a new channel.
@@ -276,7 +273,6 @@ export default class EntryOps {
         if (existing === undefined) {
             const row = await db.ops_insert_workspace_entry_if_absent.get<{ id: number }>({
                 workspace_id: workspaceId,
-                owner_id: ownerId,
                 scheme,
                 authority,
                 pathname,
@@ -342,9 +338,8 @@ export default class EntryOps {
         };  // {§edit-status-201-200}
     }
 
-    // Owner-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves
-    // the exact owner-held row, then deletes it (including channels by CASCADE). 404 when absent.
-    static async deleteWorkspaceEntry(statement: { target: ResolvedEditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, ownerId: number): Promise<SchemeResultBase> {
+    // Delete the exact workspace resource; its channels follow by CASCADE. 404 when absent.
+    static async deleteWorkspaceEntry(statement: { target: ResolvedEditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<SchemeResultBase> {
         if (statement.target === null) {
             return Results.failure(
                 `scheme:${manifest.name}`,
@@ -361,7 +356,7 @@ export default class EntryOps {
         const { db, workspaceId } = ctx;
         const { authority, pathname } = EntryOps.#coordinateOf(statement, manifest);
         const fragment = EntryOps.#fragmentOf(statement);
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, authority, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: manifest.name, authority, pathname });
         if (existing === undefined) {
             return Results.failure(
                 `scheme:${manifest.name}`,
@@ -437,7 +432,7 @@ export default class EntryOps {
         const identity = selectedChannel === manifest.defaultChannel
             ? baseIdentity
             : `${baseIdentity}#${PathSyntax.escapeTarget(selectedChannel)}`;
-        const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme, address.ownerId);
+        const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {

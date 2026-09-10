@@ -30,7 +30,6 @@ import { glob, stat } from "node:fs/promises";
 import { resolve, matchesGlob, relative, isAbsolute } from "node:path";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import Owner from "./Owner.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 import FileCreationPolicy from "./file-creation-policy.ts";
@@ -461,12 +460,11 @@ export default class GitMembership {
         // Reconcile so entries == members (the constitutive invariant): register the
         // desired with their origin, then un-register any overlay-owned member ('git'
         // or 'constraint') no longer desired — untracked, unmatched, or newly excluded.
-        const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, membership_origin: "git" });
+            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname, membership_origin: "git" });
         }
         for (const pathname of desiredIncluded) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, membership_origin: "constraint" });
+            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname, membership_origin: "constraint" });
         }
         const registered = await db.crud_list_reconcilable_members.all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         const removed: FsDivergence[] = [];
@@ -478,7 +476,7 @@ export default class GitMembership {
                 if (!candidateSet.has(m.pathname)) {
                     const prior = await db.ops_read_channel.get<{ content: string }>({
                         workspace_id: workspaceId,
-                        owner_id: commonsId,
+
                         scheme: "file",
                         authority: "",
                         pathname: m.pathname,

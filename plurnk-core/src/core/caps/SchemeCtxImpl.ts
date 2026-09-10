@@ -15,7 +15,6 @@ import type LiveSubscriptions from "../LiveSubscriptions.ts";
 import type { LineAnchorPrecondition } from "../../content/index.ts";
 
 interface SchemeCtxOptions {
-    readonly ownerId: number | null;
     readonly authority?: string;
     readonly publishedChannel?: string | null;
     readonly editPrecondition?: LineAnchorPrecondition | null;
@@ -53,32 +52,17 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.projection = new DbProjectionCaps(ctx);
         this.interactions = new CoreInteractionCaps(ctx);
         if (manifest.category === "data") {
-            const ownerId = options.ownerId;
-            if (ownerId === null) {
-                this.entries = SchemeCtxImpl.#unavailable<EntryCaps>(scheme, "entries");
-                this.channels = SchemeCtxImpl.#unavailable<ChannelCaps>(scheme, "channels");
-                this.notify = SchemeCtxImpl.#unavailable<NotifyCaps>(scheme, "notify");
-                this.subscriptions = SchemeCtxImpl.#unavailable<SubscriptionCaps>(scheme, "subscriptions");
-                return;
-            }
-            if (!Number.isSafeInteger(ownerId) || ownerId < 1) {
-                throw new Error(`Data scheme '${scheme}' context received an invalid entry owner.`);
-            }
-            this.entries = new DbEntryCaps(ctx, scheme, manifest, authority, ownerId, this.#editPrecondition);
-            this.channels = new DbChannelCaps(ctx, scheme, authority, ownerId);
-            this.notify = new DbNotifyCaps(ctx, scheme, authority, ownerId);
+            this.entries = new DbEntryCaps(ctx, scheme, manifest, authority, this.#editPrecondition);
+            this.channels = new DbChannelCaps(ctx, scheme, authority);
+            this.notify = new DbNotifyCaps(ctx, scheme, authority);
             this.subscriptions = new DbSubscriptionCaps(
                 ctx,
                 scheme,
                 authority,
                 liveSubscriptions,
                 options.publishedChannel ?? null,
-                ownerId,
             );
         } else {
-            if (options.ownerId !== null) {
-                throw new Error(`Non-data scheme '${scheme}' context cannot bind an entry owner.`);
-            }
             this.entries = SchemeCtxImpl.#unavailable<EntryCaps>(scheme, "entries");
             this.channels = SchemeCtxImpl.#unavailable<ChannelCaps>(scheme, "channels");
             this.notify = SchemeCtxImpl.#unavailable<NotifyCaps>(scheme, "notify");

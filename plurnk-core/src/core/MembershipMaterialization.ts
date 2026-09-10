@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { MimetypeInputLimitError, type Mimetypes, type ProcessInput } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import Owner from "./Owner.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import FileMaterialization, { type FileMaterializationMetadata } from "./file-materialization.ts";
 import type { FsDivergence, SourceProjectionMetadata, MemberSnapshot } from "./git-membership.ts";
@@ -61,9 +60,8 @@ export default class MembershipMaterialization {
         identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
         const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
-        const commonsId = await Owner.commonsId(ctx.db, ctx.workspaceId);
         const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
-            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname,
+            workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname,
         });
         // SPEC {§membership-change-gated-sync} — the cheap detect is a stat (mtime:size),
         // never a content read: a member whose signature matches its last sync is a
@@ -84,7 +82,7 @@ export default class MembershipMaterialization {
                 if (known === undefined || known.synced_sig === ABSENT_SIG) return null;
                 const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
                     workspace_id: ctx.workspaceId,
-                    owner_id: commonsId,
+
                     scheme: "file",
                     authority: "",
                     pathname,
@@ -157,7 +155,7 @@ export default class MembershipMaterialization {
         const diskChanged = known?.synced_sig !== sig;
         const prior = diskChanged
             ? await ctx.db.ops_read_channel.get<{ content: string }>({
-                workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, channel: "body",
+                workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname, channel: "body",
             })
             : undefined;
         const result = await EntryCrud.writeEntry(
@@ -168,7 +166,6 @@ export default class MembershipMaterialization {
             },
             ctx,
             "file",
-            commonsId,
         );
         if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
         const changed = prior !== undefined && prior.content !== content;
@@ -229,7 +226,7 @@ export default class MembershipMaterialization {
         const prior = diskChanged && metadata.disposition === "projected"
             ? await ctx.db.ops_read_channel.get<{ content: string }>({
                 workspace_id: ctx.workspaceId,
-                owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId),
+
                 scheme: "file",
                 authority: "",
                 pathname,
@@ -244,7 +241,6 @@ export default class MembershipMaterialization {
             },
             ctx,
             "file",
-            await Owner.commonsId(ctx.db, ctx.workspaceId),
         );
         if (result.entryId !== null) {
             await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
@@ -287,11 +283,10 @@ export default class MembershipMaterialization {
         metadata: FileMaterializationMetadata,
         ctx: PlurnkSchemeContext,
     ): Promise<FsDivergence | null> {
-        const commonsId = await Owner.commonsId(ctx.db, ctx.workspaceId);
         const prior = diskChanged
             ? await ctx.db.ops_read_channel.get<{ content: string }>({
                 workspace_id: ctx.workspaceId,
-                owner_id: commonsId,
+
                 scheme: "file",
                 authority: "",
                 pathname,
@@ -312,7 +307,6 @@ export default class MembershipMaterialization {
             },
             ctx,
             "file",
-            commonsId,
         );
         if (result.entryId !== null) {
             await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });

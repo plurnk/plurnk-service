@@ -46,7 +46,7 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; continue (same-turn completion would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///**)```\n```TASK\n[{\"content\":\"wrote and listed\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///abs/**)```\n```TASK\n[{\"content\":\"wrote and listed\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

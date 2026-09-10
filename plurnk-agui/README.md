@@ -30,7 +30,7 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Harness activity | `CUSTOM plurnk.ambient`, without invented model speech. |
 | Packet and terminal usage | State updates and `plurnk.terminated`; daemon quantities pass through unchanged. |
 
-READ of `reasoning:///…` is an operation receipt, not another reasoning stream.
+READ of `reasoning://<worker>/…` is an operation receipt, not another reasoning stream.
 On reattach, the durable conversation snapshot restores accepted reasoning,
 SENDs, and the latest PLAN. `forwardedProps.plurnk.mode="sync"` obtains that
 state without a prompt or model inference ({§agui-conversation-sync}).

@@ -162,7 +162,7 @@ test("a direct readable PDF persists only its header facts plus projection evide
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const manifest = { ...Http.manifest, name: "https" };
-        const handlerCtx = makeHandlerCtx(ctx, manifest, "93.184.216.34");
+        const handlerCtx = await makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
         assert.equal((await readHttp(http, statement(null, "/paper.pdf"), ctx)).status, 200);
         const entry = await handlerCtx.entries.read("/paper.pdf");
@@ -202,7 +202,7 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const manifest = { ...Http.manifest, name: "https" };
-        const handlerCtx = makeHandlerCtx(ctx, manifest, "93.184.216.34");
+        const handlerCtx = await makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
         assert.equal((await readHttp(http, legacyTextStatement(), ctx)).status, 200);
 
@@ -257,7 +257,7 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         const workspaceId = await insertWorkspace(db, `http-channel-outcomes-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const pathname = "/hard.html";
 
         const acquired = await readHttp(http, statement(null, "/hard.html"), ctx);
@@ -325,7 +325,7 @@ test("an empty finite GET materializes atomically and remains reusable through 3
         const workspaceId = await insertWorkspace(db, `http-empty-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const pathname = "/empty";
 
         const acquiring = readHttp(http, emptyStatement(), ctx);
@@ -391,7 +391,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         const workspaceId = await insertWorkspace(db, `http-variants-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const publicRead = parsedRead("https://93.184.216.34/account");
         const privateRead = parsedRead(
             "https://93.184.216.34/account",
@@ -459,7 +459,7 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         const workspaceId = await insertWorkspace(db, `http-no-store-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const read = parsedRead("https://93.184.216.34/evidence");
         const pathname = "/evidence";
 

@@ -16,8 +16,6 @@ class StructuredFixture {
         channels: { results: "application/json" },
         defaultChannel: "results",
         category: "data",
-        entryOwner: "worker",
-        inherit: "none",
         writableBy: ["_plurnk"],
         volatile: true,
         modelVisible: false,
@@ -46,7 +44,6 @@ const setup = async (
     const engine = new Engine({ db, schemes });
     const entryId = await seedEntryWithChannel(db, {
         workspaceId,
-        ownerId: workerId,
         scheme: "structured-fixture",
         pathname: "/1/0/1",
         channel: "results",
@@ -100,12 +97,14 @@ const close = async (fixture: Fixture, chunk?: string): Promise<void> => {
     if (chunk !== undefined) {
         await ChannelWrite.appendToChannel(fixture.db, {
             entryId: fixture.entryId,
+            producerWorkerId: fixture.workerId,
             channel: "results",
             chunk,
         });
     }
     await ChannelWrite.setChannelState(fixture.db, {
         entryId: fixture.entryId,
+        producerWorkerId: fixture.workerId,
         channel: "results",
         state: "closed",
     });
@@ -269,6 +268,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
     try {
         await ChannelWrite.setChannelState(fixture.db, {
             entryId: fixture.entryId,
+            producerWorkerId: fixture.workerId,
             channel: "results",
             state: "errored",
         });

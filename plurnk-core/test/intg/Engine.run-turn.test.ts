@@ -3,6 +3,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { type EditStatement, type LineMarker, type PlurnkStatement, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
+import WorkerName from "../../src/core/WorkerName.ts";
 import Engine from "../../src/core/Engine.ts";
 import type { ReasoningEventNotify, ReasoningEventPayload } from "../../src/core/ReasoningEvent.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
@@ -54,7 +55,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
     static manifest = {
-        name: "sealed", channels: {}, defaultChannel: "", category: "data", entryOwner: "commons", inherit: "none",
+        name: "sealed", channels: {}, defaultChannel: "", category: "data",
         writableBy: ["_plurnk"], volatile: false, modelVisible: true,
     };
 }
@@ -843,10 +844,11 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         // Found by its stable identity (origin + target),
         // robust to the turn-0 initialization at 1/1/1 ({§worker-initialization-entry}) and any
         // catalog-preview FIND that shifts its coordinate.
-        const prompt = log.find((e) => e.origin === "_plurnk" && e.target === "prompt:///1/1");
+        const promptTarget = `prompt://${await WorkerName.forId(db, workerId)}/1/1`;
+        const prompt = log.find((e) => e.origin === "_plurnk" && e.target === promptTarget);
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
         assert.equal(prompt.origin, "_plurnk");
-        assert.equal(prompt.target, "prompt:///1/1");
+        assert.equal(prompt.target, promptTarget);
         assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation delimiter");
     } finally { await db.close(); }
 });
@@ -869,7 +871,7 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
         // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "_plurnk" && typeof e.target === "string" && e.target.startsWith("prompt:///") && String(e.path).endsWith("/prompt")), "prompt row logged");
+        assert.ok(log.find((e) => e.origin === "_plurnk" && typeof e.target === "string" && e.target.startsWith("prompt://") && String(e.path).endsWith("/prompt")), "prompt row logged");
         const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);

@@ -1,3 +1,4 @@
+import WorkerName from "../../src/core/WorkerName.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
@@ -15,7 +16,7 @@ test("{§reasoning-initial-read}: packet preflight preserves stream growth until
         const loopId = await insertLoop(db, workerId, 1);
         const schemes = new SchemeRegistry();
         const entryId = await seedEntryWithChannel(db, {
-            workspaceId, ownerId: workerId, scheme: "worker", pathname: "/progress",
+            workspaceId, authority: await WorkerName.forId(db, workerId), scheme: "worker", pathname: "/progress",
             channel: "stdout", content: "running\n", mimetype: "text/stream", state: "active",
         });
         await db.test_seed_channel.run({
@@ -39,7 +40,7 @@ test("{§reasoning-initial-read}: packet preflight preserves stream growth until
         assert.equal(packets.curationOverflow(attributed), null, "ordinary attribution copies preserve measured admission identity");
         await packets.recordObservations(attributed);
         assert.equal(await cursor(), 8);
-        await ChannelWrite.appendToChannel(db, { entryId, channel: "stdout", chunk: "more\n" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "stdout", chunk: "more\n" });
         const newer = await build();
         assert.equal(await cursor(), 8);
         assert.match(newer.sections.find(({ name }) => name === "child-streams")!.content, /\(\+5 bytes\)/);

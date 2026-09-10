@@ -206,7 +206,7 @@ test("worker-name contract: WORKER_NAME is a lowercase DNS label", () => {
     for (const bad of ["Alice", "-lead", "trail-", "under_score", "dot.name", "~", "", "sp ace"]) {
         assert.ok(!WORKER_NAME.test(bad), `${bad} must NOT be mintable`);
     }
-    assert.deepEqual([...RESERVED_AUTHORITIES], ["commons", "plurnk"]);
+    assert.deepEqual([...RESERVED_AUTHORITIES], ["plurnk"]);
 });
 
 test("worker-name contract: the case footgun is real — parser preserves authority case", () => {

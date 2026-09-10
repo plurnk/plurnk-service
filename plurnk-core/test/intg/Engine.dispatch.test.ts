@@ -1,5 +1,4 @@
 import test from "node:test";
-import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import { PlanValue } from "@plurnk/plurnk-contracts";
@@ -534,8 +533,6 @@ test("Engine.dispatch: a mutation between anchor resolution and landing is an ed
             channels: { body: "text/markdown" },
             defaultChannel: "body",
             category: "data",
-            entryOwner: "commons",
-            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,
@@ -602,15 +599,13 @@ test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resou
             channels: { body: "text/markdown" },
             defaultChannel: "body",
             category: "data",
-            entryOwner: "resolved",
-            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,
             textEditScopes: true,
         },
         async resolveEntryAddress() {
-            return { authority: "", pathname: "/canonical.md", owner: "commons" as const };
+            return { authority: "", pathname: "/canonical.md" };
         },
         async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) {
             return ctx.entries.operations.editBatch(statements.map((statement) => ({
@@ -652,8 +647,6 @@ test("Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor be
             channels: { body: "text/markdown" },
             defaultChannel: "body",
             category: "data",
-            entryOwner: "commons",
-            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,
@@ -821,22 +814,21 @@ test("Engine.dispatch: origin field captured in log", async () => {
 test("Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
-        // worker://'s writableBy is ['model','client','_plurnk'] — a plugin-origin EDIT 403s at the gate.
         const turnId = await insertOperationTurn(db, env.loopId, 2, "plugin");
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("prompt", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
             sequence: 1, origin: "plugin",
         });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
         assert.equal(result.problem?.writer, "plugin");
-        assert.equal(result.problem?.scheme, "worker");
-        assert.deepEqual(result.problem?.allowedWriters, ["model", "client", "_plurnk"]);
+        assert.equal(result.problem?.scheme, "prompt");
+        assert.deepEqual(result.problem?.allowedWriters, ["client", "_plurnk"]);
         // 403 still writes a log row
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: turnId });
         assert.equal(log?.status_rx, 403);
-        assert.equal(log?.scheme, "worker");
+        assert.equal(log?.scheme, "prompt");
     } finally { await db.close(); }
 });
 
@@ -866,17 +858,16 @@ test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client ow
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: an unrelated model cannot write into a named runtime worker's space through EDIT", async () => {
+test("Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
-        await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
         await Envelope.ensurePlurnkWorker(db, env.workspaceId);
         const result = await engine.dispatch({
             statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/private.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/private.md", query: null, fragment: null }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 403, "a named space is readable by any worker of the workspace and takes no model writes (#394)");
+        assert.equal(result.status, 201, "runtime scratch has the same workspace access as any named scratch");
     } finally { await db.close(); }
 });
 
@@ -919,8 +910,6 @@ test("Engine.dispatch: an instance manifest enforces writableBy like a static ma
                 channels: {},
                 defaultChannel: "",
                 category: "data" as const,
-                entryOwner: "commons" as const,
-                inherit: "none" as const,
                 writableBy: ["plugin" as const],
                 volatile: false,
                 modelVisible: true,
@@ -967,8 +956,6 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
         static manifest = {
             name: "boom", channels: {}, defaultChannel: "",
             category: "data" as const,
-            entryOwner: "commons" as const,
-            inherit: "none" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async editBatch() { throw new Error("scheme handler deliberately threw"); }
@@ -1006,8 +993,6 @@ test("Engine.dispatch: non-Error throw becomes the same generic contract Problem
         static manifest = {
             name: "boomstr", channels: {}, defaultChannel: "",
             category: "data" as const,
-            entryOwner: "commons" as const,
-            inherit: "none" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async editBatch(): Promise<never> { throw "raw string thrown"; }

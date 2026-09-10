@@ -5,7 +5,7 @@ import type { SchemeManifest, StoredEntryData } from "@plurnk/plurnk-schemes";
 import ReadProjector from "./read-projector.ts";
 
 const manifest: SchemeManifest = {
-    name: "fixture", category: "data", entryOwner: "commons", inherit: "none",
+    name: "fixture", category: "data",
     channels: { body: "text/plain", stderr: "text/plain" }, defaultChannel: "body",
     writableBy: ["model"], volatile: false, modelVisible: true,
 };

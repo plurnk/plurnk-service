@@ -79,7 +79,7 @@ const dispatch = (context: Context, statement: PlurnkStatement) =>
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
     if (pathname.includes("://")) return (await dispatch(context, parseOne(`\`\`\`READ (${pathname})\`\`\``))).status;
     const result = await context.daemon.look({ workspaceId: context.workspaceId, workerId: context.modelWorkerId,
-        statement: parseOne(`\`\`\`READ (worker://~${pathname})\`\`\``) });
+        statement: parseOne(`\`\`\`READ (worker://${pathname})\`\`\``) });
     return result.status;
 };
 
@@ -311,12 +311,12 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(await live(family.service), true, "the configured definition is live");
         assert.equal(await document(family.service.alias), 200, "the active definition has its generated document");
         // {§functionality-model-projection} — real installed managers use the same schema documents as attached tools.
-        const references = await daemon.engine.referenceEntries(workspaceId, model);
+        const references = await daemon.engine.referenceEntries(workspaceId);
         const managerPath = `/_plurnk/plurnk/${family.family}`;
         const managerDoc = references.find(({ pathname }) => pathname === `${managerPath}.md`)!;
         const addDoc = references.find(({ pathname }) => pathname === `${managerPath}/add.md`)!;
         assert.ok(managerDoc && addDoc, "the manager catalog links to a materialized input schema");
-        assert.ok(managerDoc.content.includes(`Schema: worker://~${managerPath}/add.md`));
+        assert.ok(managerDoc.content.includes(`Schema: worker://${managerPath}/add.md`));
         // {§functionality-document-body} — the adapter package's docs/<family>.md rides beneath the generated header.
         assert.match(managerDoc.content, family.teaching, `${family.family}.md carries its authored teaching body`);
         assert.ok(managerDoc.content.indexOf("## Tools") < managerDoc.content.search(family.teaching), "the generated verb table precedes the authored body");

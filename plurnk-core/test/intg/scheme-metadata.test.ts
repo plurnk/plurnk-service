@@ -22,8 +22,6 @@ const manifest = (name: string, metadataModifier = false) => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data" as const,
-    entryOwner: "commons" as const,
-    inherit: "none" as const,
     writableBy: ["model" as const],
     volatile: false,
     modelVisible: true,

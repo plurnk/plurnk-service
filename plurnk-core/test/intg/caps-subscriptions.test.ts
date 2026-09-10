@@ -17,7 +17,6 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
     try {
         const workspaceId = await insertWorkspace(db, `caps-sub-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const entryOwnerId = workerId;
         const streamEvents: StreamEventPayload[] = [];
         const wakes: WakeWorkerPayload[] = [];
         const parentAbort = new AbortController();
@@ -26,9 +25,9 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
             streamEventNotify: (_s, e) => streamEvents.push(e),
             wakeWorkerNotify: (p) => wakes.push(p),
         });
-        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"), "", entryOwnerId);
+        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"), "");
         const liveSubscriptions = new LiveSubscriptions();
-        const subs = new DbSubscriptionCaps(ctx, "exec", "", liveSubscriptions, "stdout", entryOwnerId);
+        const subs = new DbSubscriptionCaps(ctx, "exec", "", liveSubscriptions, "stdout");
 
         const seeded = await entries.write("/run", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
@@ -40,7 +39,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         let cancelCalls = 0;
         const signal = await subs.open("/run", { cancel: () => { cancelCalls += 1; } });
         assert.equal(signal.aborted, false);
-        const subscription = await db.find_active_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId });
+        const subscription = await db.find_active_subscription.get<{ id: number }>({ entry_id: entryId });
         const publication = await db.test_subscription_published_channel.get<{ published_channel: string | null }>({ id: subscription?.id });
         assert.equal(publication?.published_channel, "stdout", "the model-facing selection persists through the completion wake");
 
@@ -51,6 +50,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal((await entries.read("/run")).entry?.channels.stdout.content, "hello world");
         assert.equal((await entries.read("/run")).entry?.channels.stderr.content, "diagnostic", "unpublished auxiliary content is still durable");
         assert.ok(streamEvents.length >= 2, "each chunk fired a stream/event");
+        assert.ok(streamEvents.every((event) => event.workerId === workerId), "stream updates identify their producer");
 
         // close(result) → channel terminal, exact result persisted, worker woken with the summary
         await subs.close({ status: 200 }, "exit 0; 11 bytes");
@@ -60,8 +60,6 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal((await entries.read("/run")).entry?.channels.stdout.state, "closed");
         assert.equal(wakes.length, 1);
         assert.equal(wakes[0].workerId, workerId, "the lifecycle wake still targets the invoking worker");
-        assert.equal(wakes[0].entryOwnerId, entryOwnerId, "the conclusion carries the structurally identical stream owner");
-        assert.equal(wakes[0].entryOwnerId, wakes[0].workerId);
         assert.deepEqual(wakes[0].result, { status: 200 });
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");

@@ -174,7 +174,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "find-test" });
-            const response = await rpcCall(ws, 2, "op.find", { scope: "worker:///" });
+            const response = await rpcCall(ws, 2, "op.find", { scope: "worker:///empty/" });
             const result = response.result as { status: number; results: string[]; content: string };
             assert.equal(result.status, 200);
             assert.deepEqual(result.results, []);

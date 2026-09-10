@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import Owner from "../../src/core/Owner.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
@@ -15,7 +15,7 @@ test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped wi
             const captured = subscribeNotifications(ws, "stream/event");
 
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hello", state: "active" });
-            const workerId = await Owner.commonsId(db, workspaceId);
+            const workerId = await RuntimeWorker.ensure(db, workspaceId);
             daemon.notifyStreamEvent(workspaceId, {
                 entryId, workerId, target: "worker:///x", channel: "body", state: "active", contentLength: 5, mimetype: "text/markdown",
             });
@@ -44,8 +44,8 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
 
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify });
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "!", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "?", notify });
             await flush();
 
             const events = captured() as Array<{ contentLength: number; target: string }>;
@@ -66,7 +66,7 @@ test("setChannelState end-to-end fires stream/event with state change", async ()
             const captured = subscribeNotifications(ws, "stream/event");
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "done", state: "active" });
 
-            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
+            await ChannelWrite.setChannelState(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
             await flush();
 
             const events = captured() as Array<{ state: string }>;
@@ -90,13 +90,13 @@ test("stream/event is workspace-scoped — other workspaces don't see it", async
             const bEvents = subscribeNotifications(wsB, "stream/event");
 
             const entryIdA = await seedEntryWithChannel(db, { workspaceId: workspaceA, content: "hi", state: "active" });
-            const workerIdA = await Owner.commonsId(db, workspaceA);
+            const workerIdA = await RuntimeWorker.ensure(db, workspaceA);
             daemon.notifyStreamEvent(workspaceA, {
                 entryId: entryIdA, workerId: workerIdA, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
             });
 
             const entryIdB = await seedEntryWithChannel(db, { workspaceId: workspaceB, content: "yo", state: "active" });
-            const workerIdB = await Owner.commonsId(db, workspaceB);
+            const workerIdB = await RuntimeWorker.ensure(db, workspaceB);
             daemon.notifyStreamEvent(workspaceB, {
                 entryId: entryIdB, workerId: workerIdB, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
             });
@@ -126,8 +126,8 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             const coordinate = { loop_seq: 1, turn_seq: 2, sequence: 3 };
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify, coordinate });
-            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify, coordinate });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "!", notify, coordinate });
+            await ChannelWrite.setChannelState(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", state: "closed", notify, coordinate });
             await flush();
 
             const events = captured() as Array<{ loop_seq?: number; turn_seq?: number; sequence?: number }>;
@@ -154,9 +154,9 @@ test("appendToChannel with a mimetype retypes the channel + surfaces it on strea
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             // First chunk carries the now-known per-call type → retype.
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "{", notify, mimetype: "application/json" });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "{", notify, mimetype: "application/json" });
             // A later chunk omits it — the retype must persist (stored, not per-event).
-            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "}", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "}", notify });
             await flush();
 
             const events = captured() as Array<{ mimetype?: string }>;

@@ -52,7 +52,7 @@ tag independently. A name uses lowercase URI-scheme syntax
 `[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `summary` is the
 one-line capability description. `invocation` defines the body and optional
 target buckets used for dispatch enforcement and a canonical example for its
-generated `worker://~/_plurnk/plurnk/<tag>.md` document. A `docs/<tag>.md` file supplies
+generated `worker:///_plurnk/plurnk/<tag>.md` document. A `docs/<tag>.md` file supplies
 supplemental detail. See {§executor-runtime-declaration}.
 
 For JSON inputs, supply `invocation.inputSchema` instead of an authored example
@@ -115,8 +115,8 @@ batch EOF. See [the live-input contract](SPEC.md#executor-live-input-invocation-
 ### Address output
 
 The runtime tag is also the output scheme. A subprocess result is therefore
-read at an address such as `sh:///1/2/3#stdout`, while a structured result may
-be `sqlite:///1/2/3#results`. `exec://` is not an output address. Executors only
+read at an address such as `sh:///ab3d5678#stdout`, while a structured result may
+be `sqlite:///f2c49a10#results`. `exec://` is not an output address. Executors only
 produce channels; the consumer owns storage and every later READ/FIND. See
 {§executor-output-address}.
 

@@ -82,8 +82,8 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 -- greatest materialized ordinal. The initial frame reserves ordinal 1 even
 -- before turn 1 materializes it, so an injection starts at 2.
 SELECT COALESCE(MAX(CAST(substr(pathname, $prefix_len + 1) AS INTEGER)), 1) + 1 AS next
-FROM entries
-WHERE scheme = 'prompt' AND authority = '' AND owner_id = $owner_id AND pathname LIKE $pattern;
+FROM entries e JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE scheme = 'prompt' AND w.id = $worker_id AND pathname LIKE $pattern;
 
 -- PREP: drain_undelivered_prompts_for_loop
 -- {§prompt-loop-containment} - the prompts the loop contains but has not yet delivered: no
@@ -91,10 +91,10 @@ WHERE scheme = 'prompt' AND authority = '' AND owner_id = $owner_id AND pathname
 -- boundary publishes each, so every arrival reaches the model exactly once.
 SELECT c.content, e.pathname, e.attributes
 FROM entries e
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
-  AND e.authority = ''
-  AND e.owner_id = $owner_id
+  AND w.id = $worker_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
   AND NOT EXISTS (
@@ -107,15 +107,15 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- PREP: drain_get_all_prompt_bodies_for_loop
 -- Sources the Active Prompts section: EVERY prompt entry the
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
--- prompts (multiple prompt:///<loop>/<N> entries), all shown in order. Same pattern as
+-- prompts (multiple prompt://<worker>/<loop>/<N> entries), all shown in order. Same pattern as
 -- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
 -- each body in its fixed model-facing enclosure.
 SELECT c.content, e.pathname
 FROM entries e
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
-  AND e.authority = ''
-  AND e.owner_id = $owner_id
+  AND w.id = $worker_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
 ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
@@ -123,7 +123,7 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- PREP: drain_orphaned_prompts_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
 -- (a wake-on-completion, or a runLoop-while-active prompt that landed on a turn the
--- loop never reached). Engine.inject writes prompt:///<loop>/<N>;
+-- loop never reached). Engine.inject writes prompt://<worker>/<loop>/<N>;
 -- if the loop ended at turn K, an injected prompt at turn > K never ran.
 -- Return the complete orphan set oldest-first with the ended loop posture so
 -- one recovery loop can preserve frame cardinality and ordering.
@@ -136,14 +136,14 @@ SELECT c.content AS body, l.policy AS policy, l.model_route_id AS model_route_id
        json_extract(e.attributes, '$.openPaths') AS open_paths,
        json_extract(e.attributes, '$.source') AS prompt_source
 FROM entries e
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
 WHERE e.scheme = 'prompt'
   AND l.status IN (200, 413, 429, 499, 500, 504, 508)
   AND l.terminated_by IS NOT 'cancel'
   AND l.sequence > (SELECT cancelled_through_sequence FROM workers WHERE id = l.worker_id)
-  AND e.authority = ''
-  AND e.owner_id = $owner_id
+  AND w.id = $worker_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
   AND NOT EXISTS (
@@ -179,9 +179,9 @@ WITH orphaned(id, ordinal) AS MATERIALIZED (
                ORDER BY CAST(substr(e.pathname, $source_prefix_len + 1) AS INTEGER) ASC
            )
     FROM entries e
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
     WHERE e.scheme = 'prompt'
-      AND e.authority = ''
-      AND e.owner_id = $owner_id
+      AND w.id = $worker_id
       AND e.pathname LIKE $source_pattern
       AND EXISTS (
           SELECT 1 FROM entry_channels c

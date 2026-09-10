@@ -11,15 +11,14 @@ export default class CapsResolve {
         scheme: string,
         authority: string,
         pathname: string,
-        ownerId: number,
-    ): Promise<{ entryId: number; workerId: number } | null> {
+    ): Promise<{ entryId: number } | null> {
         const row = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
-            workspace_id: ctx.workspaceId, owner_id: ownerId, scheme, authority, pathname,
+            workspace_id: ctx.workspaceId, scheme, authority, pathname,
         });
-        return row === undefined ? null : { entryId: row.id, workerId: ownerId };
+        return row === undefined ? null : { entryId: row.id };
     }
 
-    static async entryId(ctx: PlurnkSchemeContext, scheme: string, authority: string, pathname: string, ownerId: number): Promise<number | null> {
-        return (await CapsResolve.entry(ctx, scheme, authority, pathname, ownerId))?.entryId ?? null;
+    static async entryId(ctx: PlurnkSchemeContext, scheme: string, authority: string, pathname: string): Promise<number | null> {
+        return (await CapsResolve.entry(ctx, scheme, authority, pathname))?.entryId ?? null;
     }
 }

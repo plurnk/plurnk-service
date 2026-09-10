@@ -84,7 +84,7 @@ export default class HttpRequester {
 
         // Local AbortController: the subscription handle and a KILL of the address both abort it ({§http-kill}).
         const local = new AbortController();
-        const release = this.#live.track(LiveAcquisitions.key(ctx.workerId, url), local);
+        const release = this.#live.track(LiveAcquisitions.key(ctx.workspaceId, url), local);
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 
         // {§http-lifecycle} open() binds an existing entry, so the handler seeds

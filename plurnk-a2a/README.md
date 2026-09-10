@@ -50,7 +50,7 @@ Functionality family (`OutboundModule`): every Worker lists, discovers, adds,
 enables, disables, and removes outbound agents through the common
 `workspace.agents.*` actions or the generated ```` ```agents ```` manager, and the
 `a2a://<alias>` scheme resolves an alias against the workspace's enabled
-snapshot. Enabled agents appear in Turn 0 as one `worker://~/_plurnk/agents/<alias>.md`
+snapshot. Enabled agents appear in Turn 0 as one `worker:///_plurnk/agents/<alias>.md`
 catalog row each; the exact Agent Card stays pullable with `READ a2a://<alias>`.
 
 The package also exports the outbound `a2a://` scheme handler for embedding.

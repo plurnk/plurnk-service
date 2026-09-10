@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -40,16 +41,16 @@ test("{§application-worker-observation} maintenance preserves work lifecycle an
                 });
             }
             engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady." }];
-            await LoopDocs.materialize(engine, db, workspaceId, workerId);
+            await LoopDocs.materialize(engine, db, workspaceId);
             const worker = await daemon.readWorker({ workspaceId, identity: { id: workerId } });
             assert.equal(worker?.lifecycle, lifecycle, "housekeeping does not replace work status");
             assert.equal((await daemon.listWorkers(workspaceId)).find(({ id }) => id === workerId)?.lifecycle, lifecycle);
             assert.deepEqual((await daemon.listWorkerLoops({ workspaceId, workerId })).map(({ id }) => id), loopId === null ? [] : [loopId],
                 "status snapshots see work, not administrative housekeeping loops");
             const loops = await db.test_loop_queue_by_worker.all<{ id: number }>({ worker_id: workerId });
-            assert.equal(loops.length, loopId === null ? 1 : 2);
-            const maintenance = loops.find(({ id }) => id !== loopId);
-            assert.ok(maintenance && maintenance.id !== loopId);
+            assert.deepEqual(loops.map(({ id }) => id), loopId === null ? [] : [loopId]);
+            const maintenance = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
+            assert.ok(maintenance);
             const turns = await db.test_list_turns_in_loop.all<{ kind: string }>({ loop_id: maintenance.id });
             assert.deepEqual(turns.map(({ kind }) => kind), ["maintenance"], "maintenance remains ordinary durable history");
         }
@@ -69,8 +70,9 @@ test("{§env-delta-child-termination} generated child documentation is durable w
         const parentLoopId = await insertLoop(db, parentId, 1, "observe child");
         engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady to use." }];
 
-        await LoopDocs.materialize(engine, db, workspaceId, childId);
-        const adminLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: childId });
+        await LoopDocs.materialize(engine, db, workspaceId);
+        assert.equal(await db.test_get_loop_by_worker.get({ worker_id: childId }), undefined);
+        const adminLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
         assert.ok(adminLoop);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: adminLoop.id }))?.status, 200,
             "the real maintenance program concluded");
@@ -108,10 +110,9 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
             mimetypes: DEFAULT_MIMETYPES,
         });
         const workspaceId = await insertWorkspace(db, `loop-docs-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        await insertWorker(db, workspaceId);
         const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            owner_id: workerId,
             scheme: "worker",
             authority: "",
             pathname,
@@ -121,7 +122,7 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
             { pathname: "/_plurnk/plurnk/retired.md", content: "# Retired" },
             { pathname: "/_plurnk/plurnk/tool-retired.md", content: "# Retired tool" },
         ];
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         assert.notEqual(await entry("/_plurnk/plurnk/retired.md"), undefined);
         assert.notEqual(await entry("/_plurnk/plurnk/tool-retired.md"), undefined);
 
@@ -129,7 +130,7 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
             { pathname: "/_plurnk/plurnk/current.md", content: "# Current" },
             { pathname: "/_plurnk/plurnk/tool-current.md", content: "# Current tool" },
         ];
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal(await entry("/_plurnk/plurnk/retired.md"), undefined);
         assert.equal(await entry("/_plurnk/plurnk/tool-retired.md"), undefined);
         assert.notEqual(await entry("/_plurnk/plurnk/current.md"), undefined);
@@ -147,8 +148,8 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(executors);
         const workspaceId = await insertWorkspace(db, `${runtime}-doc-invocations`);
-        const workerId = await insertWorker(db, workspaceId);
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await insertWorker(db, workspaceId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: `/_plurnk/plurnk/${runtime}.md`, scheme: "worker", name: "body",
         });
@@ -171,8 +172,7 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
         const runtimeSources = execs.flatMap(({ target }) => target?.kind === "url" && executors.availableRuntimes().includes(target.scheme) ? [target] : []);
         if (runtime === "jq") assert.ok(runtimeSources.length > 0, "jq demonstrates filtering another runtime's output");
         for (const target of runtimeSources) {
-            assert.match(target.pathname, /^\/\d+\/\d+\/\d+\/[^/]+$/, `${runtime} uses a complete executor stream address`);
-            assert.equal(target.pathname.split("/").at(-1), target.scheme, "the source stream names its invoked executor");
+            assert.match(target.pathname, /^\/[a-f0-9]{8}$/, `${runtime} uses an address independent of log coordinates`);
         }
     } finally { await db.close(); }
 });
@@ -186,15 +186,18 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
             mimetypes: DEFAULT_MIMETYPES,
         });
         const workspaceId = await insertWorkspace(db, `loop-docs-idem-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        await insertWorker(db, workspaceId);
         engine.documents = [
             { pathname: "/_plurnk/plurnk/stable.md", content: "# Stable" },
         ];
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
-        const before = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: workerId });
+        await LoopDocs.materialize(engine, db, workspaceId);
+        const runtime = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        assert.ok(runtime !== undefined, "maintenance has its actual runtime actor");
+        const before = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: runtime.id });
+        assert.ok(before !== undefined, "initial materialization recorded a maintenance loop");
 
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
-        const after = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: workerId });
+        await LoopDocs.materialize(engine, db, workspaceId);
+        const after = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: runtime.id });
         assert.equal(after?.id, before?.id, "the unchanged surface re-dispatches nothing — no new _plurnk turn, no 304 churn");
     } finally {
         await db.close();
@@ -207,8 +210,8 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, "shell-doc-stream-read");
-        const workerId = await insertWorker(db, workspaceId);
-        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        await insertWorker(db, workspaceId);
+        await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/_plurnk/plurnk/sh.md", scheme: "worker", name: "body",
         });
@@ -226,7 +229,7 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
             assert.equal(read.target?.kind, "url");
             if (read.target?.kind !== "url") throw new Error("The stream example must address a resource");
             assert.equal(read.target.scheme, "sh");
-            assert.match(read.target.pathname, /^\/\d+\/\d+\/\d+\/sh$/);
+            assert.match(read.target.pathname, /^\/[a-f0-9]{8}$/);
             assert.equal(read.target.fragment, "stdout");
             assert.equal(read.lineMarker?.marks.length, 2, "the example selects a line interval");
         }

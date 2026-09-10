@@ -70,7 +70,7 @@ hooks, HTTP, and content handling. Search the catalog for that subsystem instead
 of relying on a second list of knobs here.
 
 For file-access questions, inspect the generated
-[members reference](worker://~/_plurnk/plurnk/members.md) alongside the file
+[members reference](worker:///_plurnk/plurnk/members.md) alongside the file
 creation/membership defaults. Client controls inspect effective capabilities;
 a model cannot widen their ceiling by changing its policy prose.
 

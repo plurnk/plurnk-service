@@ -409,7 +409,7 @@ export default class DrainSupervisor {
                         const promptWaiting = await this.#withDrainLock(workerId, async () => {
                             const prefix = promptLoopPrefix(loopRow.sequence);
                             const undelivered = await this.#db.drain_undelivered_prompts_for_loop.get<{ pathname: string }>({
-                                owner_id: workerId,
+                                worker_id: workerId,
                                 pattern: `${prefix}%`,
                                 prefix_len: prefix.length,
                                 loop_id: loopRow.id,
@@ -759,8 +759,7 @@ export default class DrainSupervisor {
     }
 
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
-        const { entryOwnerId, workspaceId, ...wake } = payload;
-        const conclusion = { ...wake, workerId: entryOwnerId };
+        const { workspaceId, ...conclusion } = payload;
         // {§worker-lifecycle-no-resurrection}: scope cancellation, not the
         // command's result code, prevents a wake. Cancelling one command still
         // produces an observation owed to its live worker.

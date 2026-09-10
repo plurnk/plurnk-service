@@ -311,7 +311,7 @@ export default class ResourceTransfers {
             const curated = await handler.kill(
                 source.pathname,
                 source.lineMarker,
-                new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { ownerId: null }),
+                new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { }),
             );
             return MutationEffects.finalizeEffects(Results.assert(curated), source, [effect]);
         }
@@ -714,7 +714,6 @@ export default class ResourceTransfers {
                     this.#liveSubscriptions,
                     {
                         authority: binding.address.authority,
-                        ownerId: binding.address.ownerId,
                         publishedChannel: selection.channel,
                         editPrecondition: precondition,
                     },

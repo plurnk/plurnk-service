@@ -238,15 +238,15 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.deepEqual(
             initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),
             [
-                "worker://~/_plurnk/plurnk/*.md",
-                "worker://~/_plurnk/tools/*.md",
-                "worker://~/_plurnk/agents/*.md",
-                "worker://~/_plurnk/members/*.md",
+                "worker:///_plurnk/plurnk/*.md",
+                "worker:///_plurnk/tools/*.md",
+                "worker:///_plurnk/agents/*.md",
+                "worker:///_plurnk/members/*.md",
                 "*",
             ],
             "reference discovery precedes workspace discovery",
         );
-        assert.doesNotMatch(log, /worker:\/\/~\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
+        assert.doesNotMatch(log, /worker:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
     } finally {
         await db.close();
@@ -383,7 +383,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: log -> status clump -> active prompt paths -> Recap");
+        assert.deepEqual(slot("user"), ["worker", "log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: worker -> log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active Prompts");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
@@ -424,7 +424,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Worker
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n```EDIT (worker:///notes.md)\nNotes.\n```", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n```EDIT (worker:///notes.md)\nNotes.\n```", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -432,8 +432,8 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /"target":"worker:\/\/~\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
-        assert.match(log, /worker:\/\/~\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
+        assert.match(log, /"target":"worker:\/\/\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
+        assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"summary":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
         await db.close();
@@ -454,7 +454,7 @@ test("assembled packet: the bodyless Worker reference catalog succeeds when no r
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
-        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "~" && row.pathname === "/_plurnk/plurnk/*.md");
+        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === null && row.pathname === "/_plurnk/plurnk/*.md");
         assert.ok(docs !== undefined, "the Worker skills FIND executes without relying on materialized skills");
         assert.equal(docs.status_rx, 200, "an empty bodyless catalog remains a successful scope query");
         const result = JSON.parse(docs.rx) as { content?: string; results?: unknown[] };

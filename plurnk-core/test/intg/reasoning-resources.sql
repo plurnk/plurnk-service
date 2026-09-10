@@ -1,7 +1,8 @@
 -- PREP: test_reasoning_resources
 SELECT e.pathname, c.content
 FROM entries e JOIN entry_channels c ON c.entry_id = e.id AND c.name = 'body'
-WHERE e.owner_id = $worker_id AND e.scheme = 'reasoning'
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE w.id = $worker_id AND e.scheme = 'reasoning'
 ORDER BY e.id;
 
 -- PREP: test_reasoning_reads

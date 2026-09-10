@@ -74,10 +74,9 @@ interface ExecArgs {
 `ExecArgs` deliberately carries **no Worker identity**: an executor is a
 worker-agnostic capability, and `run` may assume nothing about which Worker,
 Loop, or workspace invoked it beyond the arguments given. A runtime whose
-behavior depends on a Worker — an attached MCP server, a Worker Functionality
-manager — is published per Worker by its owning module, closing over that
-identity at publication ({§functionality-model-projection} in the core
-specification; the MCP host is the precedent). Consumers must not smuggle
+behavior depends on a workspace — an attached MCP server or Functionality
+manager — is published per workspace by its module, closing over that
+identity at publication ({§functionality-model-projection}). Consumers must not smuggle
 identity through `env` or `body` conventions.
 
 interface RuntimeAvailability {
@@ -148,7 +147,7 @@ deliver live input. A receiver must honor cancellation at each delivery boundary
 
 | Responsibility | Owner |
 | --- | --- |
-| Address, ownership, capability checks, proposals | Consumer, using the existing execution identity and effect. |
+| Address, workspace admission, capability checks, proposals | Consumer, using the existing execution identity and effect. |
 | Delivery ordering, bounded backpressure, lifetime | Consumer; serialize accepted deliveries, never replay an ambiguous write, retire on execution settlement/cancellation. |
 | Input meaning, framing, EOF, delivery result | Receiver; acceptance does not imply consumption, command success, or execution completion. |
 | Output, progress, completion | Existing `write`, `setState`, and `run` result; input introduces no second output or wake path. |
@@ -264,17 +263,17 @@ no second scheme manifest.
 
 | Output                    | Model-facing address                                               |
 | ------------------------- | ------------------------------------------------------------------ |
-| Calling worker's stream   | `<tag>:///<loop>/<turn>/<sequence>/<tag>#<channel>`                 |
-| Fragmentless read         | `<tag>:///<loop>/<turn>/<sequence>/<tag>` → the declared default channel |
-| Example subprocess stdout | `sh:///1/2/3/sh#stdout`                                          |
-| Example structured result | `sqlite:///1/2/3/sqlite#results`                                     |
+| Workspace execution stream   | `<tag>:///<id>#<channel>`                 |
+| Fragmentless read         | `<tag>:///<id>` → the declared default channel |
+| Example subprocess stdout | `sh:///ab3d5678#stdout`                                          |
+| Example structured result | `sqlite:///c2d45678#results`                                     |
 
 The executor only produces through `write` and `setState`. The consumer stores
 the entry and serves every later READ/FIND through uniform entry machinery.
 An executor does not implement a private read face, orientation receipt,
-slicer, or index. Owner-qualified cross-worker addresses and packet projection
-belong to core's {§stream-owner-scoped} and {§exec-stream} contracts.
-Address resolution binds that owner without requiring an exact stored row:
+slicer, or index. Workspace-stable resource addresses and packet projection
+belong to core's {§execution-output-identity} and {§exec-stream} contracts.
+Address resolution binds the workspace without requiring an exact stored row:
 FIND patterns and descendant resource paths participate in ordinary discovery;
 an exact READ reports its own missing resource ({§entry-address-resolution}).
 
@@ -291,7 +290,7 @@ resource; publication alone does not attach media or wake a Worker.
 | Input | Meaning |
 | --- | --- |
 | Absolute resource URL | Materialize or update that resource through its scheme owner. |
-| `path: null` | Publish beneath this invocation's output address, in `resources/`. Preserve `name` as one URI-encoded component; otherwise allocate an eight-character hexadecimal identifier. Duplicate names receive a hash suffix, never overwrite another publication. The returned address names the owning Worker explicitly. |
+| `path: null` | Publish beneath this invocation's output address, in `resources/`. Preserve `name` as one URI-encoded component; otherwise allocate an eight-character hexadecimal identifier. Duplicate names receive a hash suffix, never overwrite another publication. The returned address is workspace-stable and carries no Worker selector. |
 | String content + mimetype | Supplied text; preserve its source layout. |
 | `Uint8Array` content + mimetype | Supplied bytes, retained as bytes, not a JSON/base64 body. |
 | `content: null` | Consumer-sourced acquisition from an absolute HTTP(S) URL. |
@@ -525,7 +524,7 @@ swallowed.
 ### §executor-policy Subtractive runtime policy
 
 Registration applies the daemon's policy to every tag, whether discovered from
-a package or supplied by a daemon module, including worker-scoped runtimes. The exported
+a package or supplied by a daemon module, including workspace-scoped runtimes. The exported
 `Policy` parser can apply the same grammar to additional consumer-owned layers.
 
 | Variable                                 | Enforced effect                                             |

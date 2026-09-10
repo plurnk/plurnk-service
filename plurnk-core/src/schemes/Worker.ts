@@ -1,49 +1,39 @@
-import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import type { SchemeManifest } from "../core/scheme-types.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { taskTiming } from "../core/LoopLifecycle.ts";
-import { isGeneratedPathname } from "../core/plurnk-uri.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
-import type { FindResult, MatchItem } from "./_entry-find.ts";
-import Owner from "../core/Owner.ts";
+import type { FindResult } from "./_entry-find.ts";
 import type { SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
     ChannelProducerResult,
+    EntryAddress,
     ResolvedEditStatement,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
-import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 
-// {§worker-scheme} — worker:// is the knowledgebase plus inter-worker control (irc=SEND; WORK/FORK are
-// Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
-//   worker:///notes.md         — the COMMONS, a shared blackboard
-//   worker://~/draft.md        — the calling worker's own private space
-//   worker://<name>/result.md  — a named worker's space, readable by any worker of the workspace (#394)
-// Writes are own-space-and-commons only ({§worker-write-scoping}): a named authority is read-only to
-// the model, so nothing worker-authored can ever land under another principal.
-// Path-absent forms are control on the worker-as-actor: READ collects the deliverable, SEND ircs;
-// WORK spawns / FORK forks (Dispatcher); EDIT on the bare entity is rejected.
+// {§worker-scheme} Named and shared scratch are workspace resources; pathless
+// addresses target actors through the ordinary delegation and messaging lifecycle.
 export default class Worker extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "worker",
-        authority: "owner",
+        authority: "resource",
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        entryOwner: "resolved",
-        inherit: "snapshot",
-        writableBy: ["model", "client", "_plurnk"],
+        writableBy: ["model", "client", "_plurnk", "plugin"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,
@@ -65,109 +55,23 @@ export default class Worker extends CoreSchemeAdapterBase {
         return p === "/" ? "" : p;
     }
 
-    // {§worker-authority-carving} — resolve the authority to the owning principal. Empty = the
-    // commons (writable — the blackboard default); `~` = the caller (writable — own space); the
-    // every name is a workspace-wide read ({§worker-read-scope}: the parent designs the
-    // topology by what it names to whom; the engine imposes none, #394). Unknown name → null →
-    // 404. Writability is the {§worker-write-scoping}
-    // law: only `~` and the commons take model writes; owner_id is engine-stamped, never model-set.
-    static async #resolveAuthority(authority: string, ctx: PlurnkSchemeContext): Promise<{ ownerId: number; writable: boolean } | null> {
-        if (authority === "") return { ownerId: await Owner.commonsId(ctx.db, ctx.workspaceId), writable: true };
-        if (authority === "~") return { ownerId: ctx.workerId, writable: true };
-        const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
-        if (named === undefined) return null;
-        if (named.id === ctx.workerId) return { ownerId: named.id, writable: false }; // `~` is the sole writable self-reference
-        const permitted = await ctx.db.owner_shares_workspace.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
-        return permitted === undefined ? null : { ownerId: named.id, writable: false };
-    }
-
-    // {§worker-generated-subtree} — `/_plurnk/` is Plurnk's generated subtree in every
-    // worker space: readable like the rest of the space, writable only by `_plurnk`.
-    static #generatedRefusal(pathname: string, writer: PlurnkSchemeContext["writer"]): {
-        code: string; status: 403; message: string; extensions: { recovery: string; retryable: false };
-    } | null {
-        if (writer === "_plurnk" || !isGeneratedPathname(pathname)) return null;
-        return {
-            code: "worker-generated-read-only",
-            status: 403,
-            message: `${pathname} is in Plurnk's generated subtree; only Plurnk writes worker://~/_plurnk/.`,
-            extensions: {
-                recovery: "READ generated documents under worker://~/_plurnk/; write elsewhere in your own space or the commons.",
-                retryable: false,
-            },
-        };
-    }
-
-    static async #entryPrincipal(authority: string, pathname: string, ctx: PlurnkSchemeContext, access: "read" | "write"):
-    Promise<{ ownerId: number } | SchemeResultBase> {
+    static #entryAddress(authority: string, pathname: string, access: "read" | "write"): EntryAddress | SchemeResultBase {
         if (access === "write" && pathname === "") return Results.failure(
             "scheme:worker", "worker-entity-not-editable", 400,
             "A worker entity is not an editable entry.", {},
-            { recovery: "EDIT requires an entry path, such as worker://~/notes.md.", retryable: false },
+            { recovery: "EDIT requires an entry path, such as worker:///notes.md.", retryable: false },
         );
-        const resolved = await Worker.#resolveAuthority(authority, ctx);
-        if (resolved === null) return Results.failure(
-            "scheme:worker", "worker-not-found", 404,
-            `Worker '${authority}' does not exist in this workspace.`, {},
-            { worker: authority, retryable: false },
-        );
-        if (access === "write") {
-            if (!resolved.writable) return Results.failure(
-                "scheme:worker", "worker-space-read-only", 403,
-                `The named address worker://${authority}/ is read-only.`, {},
-                { worker: authority, recovery: "Write through worker://~/ or worker:///.", retryable: false },
-            );
-            const refusal = Worker.#generatedRefusal(pathname, ctx.writer);
-            if (refusal !== null) return Results.failure(
-                "scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions,
-            );
-        }
-        return { ownerId: resolved.ownerId };
-    }
-
-    // Hand the statement to the shared entry helpers authority-stripped: the owner rides the
-    // resolved owner_id, the storage pathname is the bare entry path — never authority-folded.
-    static #stripAuthority<T extends { target: ParsedPath | null }>(statement: T): T {
-        const t = statement.target;
-        if (t === null || t.kind !== "url") return statement;
-        return { ...statement, target: { ...t, hostname: null } };
+        return { authority, pathname };
     }
 
     async resolveEntryAddress(
         target: ParsedPath,
-        ctx: CoreSchemeCallContext,
+        _ctx: CoreSchemeCallContext,
         access: "read" | "write" = "read",
-    ): Promise<CoreEntryAddress | SchemeResultBase | null> {
+    ): Promise<EntryAddress | SchemeResultBase | null> {
         const authority = Worker.#authority(target);
-        if (authority === null) return null;
-        const pathname = Worker.#entryPath(target);
-        // The authority-only form addresses the Worker actor, not its private
-        // entries. Bind its principal without resolving an entry;
-        // each control operation owns its own visibility and authorization.
-        if (pathname === "" && access === "read") {
-            if (authority === "") {
-                return { authority: "", pathname, ownerId: await Owner.commonsId(this.coreContext(ctx).db, ctx.workspaceId) };
-            }
-            if (authority === "~") return { authority: "", pathname, ownerId: ctx.workerId };
-            const named = await this.coreContext(ctx).db.worker_resolve_by_name.get<{ id: number }>({
-                workspace_id: ctx.workspaceId,
-                name: authority,
-            });
-            return named === undefined
-                ? Results.failure(
-                    "scheme:worker",
-                    "worker-not-found",
-                    404,
-                    `Worker '${authority}' does not exist in this workspace.`,
-                    {},
-                    { worker: authority, retryable: false },
-                )
-                : { authority: "", pathname, ownerId: named.id };
-        }
-        const resolved = await Worker.#entryPrincipal(authority, pathname, this.coreContext(ctx), access);
-        return "status" in resolved
-            ? resolved
-            : { authority: "", pathname, ownerId: resolved.ownerId };
+        return authority === null ? null
+            : Worker.#entryAddress(authority, Worker.#entryPath(target), access);
     }
 
     async prepareRepresentation(
@@ -188,7 +92,7 @@ export default class Worker extends CoreSchemeAdapterBase {
             return { status: 200 };
         }
         const authority = Worker.#authority(request.target);
-        if (authority === null || authority === "" || authority === "~") {
+        if (authority === null || authority === "") {
             return Results.failure(
                 "scheme:worker",
                 "named-worker-required",
@@ -332,12 +236,8 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const entryPath = Worker.#entryPath(statement.target);
 
-        const resolved = await Worker.#entryPrincipal(authority, entryPath, core, "write");
+        const resolved = Worker.#entryAddress(authority, entryPath, "write");
         if ("status" in resolved) return { ...resolved, entryId: null, channel: null };
-        for (const candidate of statements) {
-            const refusal = Worker.#generatedRefusal(Worker.#entryPath(candidate.target), core.writer);
-            if (refusal !== null) return failure(refusal.code, refusal.status, refusal.message, refusal.extensions);
-        }
         if (statements.some((candidate) => Worker.#authority(candidate.target) !== authority)) {
             return failure(
                 "edit-batch-mismatch",
@@ -350,10 +250,9 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         return EntryOps.editWorkspaceEntryBatch(
-            statements.map((candidate) => Worker.#stripAuthority(candidate)),
+            statements,
             core,
             Worker.manifest,
-            resolved.ownerId,
             precondition,
         );
     }
@@ -362,8 +261,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         return this.editBatch([statement], ctx);
     }
 
-    // KILL an ENTRY (path present). Same write-scoping as EDIT: own space + commons only. The
-    // path-ABSENT KILL form is worker cancellation, handled in Dispatcher.#handleKill.
+    // Pathless KILL is worker cancellation; an entry path is ordinary scratch deletion.
     async killEntry(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
@@ -380,16 +278,15 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        const resolved = await Worker.#entryPrincipal(authority, Worker.#entryPath(statement.target), core, "write");
+        const resolved = Worker.#entryAddress(authority, Worker.#entryPath(statement.target), "write");
         if ("status" in resolved) return resolved;
-        return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
+        return EntryOps.deleteWorkspaceEntry(statement, core, Worker.manifest);
     }
 
     // Terminal loop statuses ({§lifecycle-terms}); all other tasks remain unfinished.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
-    // FIND draws from the resolved principal's space alone: worker:///** the commons,
-    // worker://~/** your own, worker://<name>/** a named space (workspace-readable like READ).
+    // {§worker-read-scope} The requested namespace scopes discovery, not access.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
@@ -402,48 +299,18 @@ export default class Worker extends CoreSchemeAdapterBase {
                 retryable: false,
             }) as FindResult;
         }
-        const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) {
-            return Results.failure("scheme:worker", "worker-not-found", 404, `Worker '${authority}' does not exist in this workspace.`, {
-                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
-                matchingPathCount: 0, matchLocationCount: 0,
-            }, {
-                worker: authority,
-                retryable: false,
-            }) as FindResult;
-        }
-        const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
-            ownerId: resolved.ownerId,
-        });
-        // The catalog renders the empty-authority form; a non-empty queried authority re-applies —
-        // in results AND the serialized content the packet renders — so every path the model sees
-        // is the address it typed (worker://~/x, worker://beta/x).
-        if (authority === "") return found;
-        const reface = (p: string): string => p.replace(/^worker:\/\/\//, `worker://${authority}/`);
-        const results: MatchItem[] = found.results.map((result) => Array.isArray(result)
-            ? result.map((item) => ({ ...item, path: reface(item.path) })) as typeof result
-            : result);
-        const content = found.content === null ? null : found.content.replaceAll("worker:///", `worker://${authority}/`);
-        return { ...found, results, content };
+        return EntryFind.findWorkspaceEntries(statement, core, Worker.manifest, { authority });
     }
 
-    // The entry-copy seam ({§worker-authority-carving}) — pathname-keyed, COMMONS-scoped: the
-    // dispatcher refuses a non-empty authority upstream, so these faces only ever see worker:///….
+    // Bound contexts carry the exact resource authority through transfers.
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
         return "entries" in ctx
             ? ctx.entries.read(pathname)
-            : EntryCrud.readEntry({ authority: "", pathname }, core, Worker.manifest.name, core.workerId);
+            : EntryCrud.readEntry({ authority: "", pathname }, core, Worker.manifest.name);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
-        const refusal = Worker.#generatedRefusal(pathname, this.coreContext(ctx).writer);
-        if (refusal !== null) {
-            return Results.failure(
-                "scheme:worker", refusal.code, refusal.status, refusal.message,
-                { created: false, entryId: null }, refusal.extensions,
-            ) as WriteEntryResult;
-        }
         return "entries" in ctx
             ? ctx.entries.write(pathname, entry)
             : EntryCrud.writeEntry(
@@ -451,22 +318,16 @@ export default class Worker extends CoreSchemeAdapterBase {
                 entry,
                 this.coreContext(ctx),
                 Worker.manifest.name,
-                this.coreContext(ctx).workerId,
             );
     }
 
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
-        const refusal = Worker.#generatedRefusal(pathname, this.coreContext(ctx).writer);
-        if (refusal !== null) {
-            return Results.failure("scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions) as DeleteEntryResult;
-        }
         return "entries" in ctx
             ? ctx.entries.delete(pathname)
             : EntryCrud.deleteEntry(
                 { authority: "", pathname },
                 this.coreContext(ctx),
                 Worker.manifest.name,
-                this.coreContext(ctx).workerId,
             );
     }
 
@@ -488,21 +349,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         // An entry is not a message recipient ({§send-dispatch-entry-schemes-501}).
         if (Worker.#entryPath(statement.target) !== "") {
-            const resolved = await Worker.#resolveAuthority(authority, core);
-            if (resolved === null) {
-                return Results.failure(
-                    "scheme:worker",
-                    "worker-not-found",
-                    404,
-                    `Worker '${authority}' does not exist in this workspace.`,
-                    {},
-                    {
-                        worker: authority,
-                        retryable: false,
-                    },
-                );
-            }
-            return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
+            return EntrySend.sendToWorkspaceEntry(statement, core, Worker.manifest);
         }
         const address = WorkerControlAddress.resolve(statement.target, "SEND");
         if (!address.ok) return address.result;
@@ -521,24 +368,21 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const controlAuthority = address.authority;
         if (core.injectWorker === undefined) throw new Error("worker.send: injectWorker capability absent");
-        let workerId = core.workerId;
-        if (controlAuthority !== "~") {
-            const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: controlAuthority });
-            if (row === undefined) {
-                return Results.failure(
-                    "scheme:worker",
-                    "worker-not-found",
-                    404,
-                    `Worker '${controlAuthority}' does not exist in this workspace.`,
-                    {},
-                    {
-                        worker: controlAuthority,
-                        retryable: false,
-                    },
-                );
-            }
-            workerId = row.id;
+        const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: controlAuthority });
+        if (row === undefined) {
+            return Results.failure(
+                "scheme:worker",
+                "worker-not-found",
+                404,
+                `Worker '${controlAuthority}' does not exist in this workspace.`,
+                {},
+                {
+                    worker: controlAuthority,
+                    retryable: false,
+                },
+            );
         }
+        const workerId = row.id;
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
         // {§worker-delegation-inherits-policy} Only fresh loops inherit proposal

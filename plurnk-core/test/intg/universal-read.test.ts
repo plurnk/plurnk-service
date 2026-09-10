@@ -32,8 +32,6 @@ class EntryBackedScheme implements SchemeHandler {
         channels: { body: "text/plain" },
         defaultChannel: "body",
         category: "data",
-        entryOwner: "commons",
-        inherit: "none",
         writableBy: ["model"],
         volatile: false,
         modelVisible: true,
@@ -59,17 +57,15 @@ class ResolvedEntryScheme implements SchemeHandler {
     static manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "resolved-entry",
-        entryOwner: "resolved",
-        inherit: "none",
     };
 
-    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "worker" }> {
+    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string }> {
         assert.equal(target.kind, "url");
         if (target.kind === "url") {
             assert.equal(target.pathname, "/alias_(v1).txt");
             assert.equal(target.fragment, null);
         }
-        return { authority: "", pathname: "/canonical.txt", owner: "worker" };
+        return { authority: "", pathname: "/canonical.txt" };
     }
 }
 
@@ -77,12 +73,10 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
     static manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "owner-bound-preparation",
-        entryOwner: "resolved",
-        inherit: "none",
     };
 
-    async resolveEntryAddress(): Promise<{ authority: string; pathname: string; owner: "worker" }> {
-        return { authority: "", pathname: "/canonical.txt", owner: "worker" };
+    async resolveEntryAddress(): Promise<{ authority: string; pathname: string }> {
+        return { authority: "", pathname: "/canonical.txt" };
     }
 
     async prepareRepresentation(
@@ -110,21 +104,19 @@ class ArchiveScheme implements SchemeHandler {
     static manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "archive",
-        entryOwner: "resolved",
-        inherit: "none",
         channels: {
             body: "text/markdown",
             provenance: "application/json",
         },
     };
 
-    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "commons" }> {
+    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string }> {
         const pathname = target.kind === "url" && target.pathname === "/aliases/latest"
             ? "/objects/document.txt"
             : target.kind === "url"
                 ? target.pathname
                 : target.raw;
-        return { authority: "", pathname, owner: "commons" };
+        return { authority: "", pathname };
     }
 
     async prepareRepresentation(
@@ -276,7 +268,6 @@ test("inherited READ uses the scheme's canonical pathname and owner", async () =
         const turnId = await insertTurn(db, loopId, 1, 102);
         await seedEntryWithChannel(db, {
             workspaceId,
-            ownerId: workerId,
             scheme: "resolved-entry",
             pathname: "/canonical.txt",
             channel: "body",

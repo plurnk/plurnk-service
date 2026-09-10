@@ -56,6 +56,7 @@ interface SocketOwner {
     shutdownRequested: boolean;
     shutdown(): Promise<void>;
     readonly done: Promise<void>;
+    readonly acquisition: Promise<RepresentationPreparationResult>;
 }
 
 const SOCKET_OPEN = 1;
@@ -76,8 +77,6 @@ export default class Ws implements SchemeHandler {
         channels: { [MESSAGES]: "text/plain" },
         defaultChannel: MESSAGES,
         category: "data",
-        entryOwner: "worker",
-        inherit: "none",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
@@ -114,12 +113,13 @@ export default class Ws implements SchemeHandler {
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
         const pathname = request.pathname;
-        const key = Ws.#key(ctx.workerId, address);
+        const key = Ws.#key(ctx.workspaceId, address);
         const existing = this.#sockets.get(key);
         if (existing !== undefined) {
-            return { status: 200, connectionState: existing.state };
+            return existing.opened ? { status: 200, connectionState: existing.state } : existing.acquisition;
         }
         const done = Promise.withResolvers<void>();
+        const shared = Promise.withResolvers<RepresentationPreparationResult>();
         const owner: SocketOwner = {
             socket: null,
             state: "claimed",
@@ -128,263 +128,268 @@ export default class Ws implements SchemeHandler {
             shutdownRequested: false,
             async shutdown() {},
             done: done.promise,
+            acquisition: shared.promise,
         };
         this.#sockets.set(key, owner);
-        let retained = false;
-        let settled = false;
+        const acquire = async (): Promise<RepresentationPreparationResult> => {
+            let retained = false;
+            let settled = false;
 
-        try {
-            // {§ws-lifecycle} Seed the declared channel before subscription open.
-            const written = await ctx.entries.write(pathname, Ws.#seedEntry());
-            if (Results.isErrorStatus(written.status)) return Ws.#passthrough(written);
-            if (owner.shutdownRequested) return Ws.#cancelled(url);
-
-            let requestCancel = () => { owner.shutdownRequested = true; };
-            const handle: SubscriptionHandle = { cancel: () => requestCancel() };
-            const subscription: StreamSubscription = await ctx.subscriptions.open(pathname, handle);
-            if (owner.shutdownRequested) {
-                const cancelled = Ws.#cancelled(url);
-                await subscription.close(cancelled, "WebSocket execution was cancelled.");
-                return cancelled;
-            }
-
-            let socket: Socket;
             try {
-                socket = this.#connect(url);
-            } catch (err) {
-                console.error("WebSocket connection failed", { url, err });
-                const detail = `The WebSocket connection to ${url} failed.`;
-                const result = Ws.#bad(502, "connect-failed", detail, {
-                    target: url,
-                    stage: "connection",
-                    retryable: true,
-                });
-                await subscription.close(result, detail);
-                return result;
-            }
-            owner.socket = socket;
-            owner.state = "connecting";
+                // {§ws-lifecycle} Seed the declared channel before subscription open.
+                const written = await ctx.entries.write(pathname, Ws.#seedEntry());
+                if (Results.isErrorStatus(written.status)) return Ws.#passthrough(written);
+                if (owner.shutdownRequested) return Ws.#cancelled(url);
 
-            const acquisition = Promise.withResolvers<PassthroughResult>();
-            let messages = 0;
-            let settlement: Promise<void> | null = null;
-            let frameFailure: { result: PassthroughResult & ChannelProducerResult; summary: string } | null = null;
-            const pending = new Set<Promise<void>>();
-            const settle = (
-                terminal: PassthroughResult & ChannelProducerResult,
-                summary: string | (() => string),
-                transportClose?: { code: number; reason: string },
-                initial: PassthroughResult = terminal,
-            ): Promise<void> => {
-                if (settled) return settlement ?? Promise.resolve();
-                settled = true;
-                owner.state = "settling";
-                subscription.removeEventListener("abort", onAbort);
-                settlement = (async () => {
-                    const errors: unknown[] = [];
-                    try {
-                        await Promise.allSettled([...pending]);
-                        const failedFrame = frameFailure;
-                        const effectiveTerminal = !Results.isErrorStatus(terminal.status) && failedFrame !== null
-                            ? failedFrame.result
-                            : terminal;
-                        const effectiveSummary = !Results.isErrorStatus(terminal.status) && failedFrame !== null
-                            ? failedFrame.summary
-                            : typeof summary === "function" ? summary() : summary;
-                        if (transportClose !== undefined) {
+                let requestCancel = () => { owner.shutdownRequested = true; };
+                const handle: SubscriptionHandle = { cancel: () => requestCancel() };
+                const subscription: StreamSubscription = await ctx.subscriptions.open(pathname, handle);
+                if (owner.shutdownRequested) {
+                    const cancelled = Ws.#cancelled(url);
+                    await subscription.close(cancelled, "WebSocket execution was cancelled.");
+                    return cancelled;
+                }
+
+                let socket: Socket;
+                try {
+                    socket = this.#connect(url);
+                } catch (err) {
+                    console.error("WebSocket connection failed", { url, err });
+                    const detail = `The WebSocket connection to ${url} failed.`;
+                    const result = Ws.#bad(502, "connect-failed", detail, {
+                        target: url,
+                        stage: "connection",
+                        retryable: true,
+                    });
+                    await subscription.close(result, detail);
+                    return result;
+                }
+                owner.socket = socket;
+                owner.state = "connecting";
+
+                const acquisition = Promise.withResolvers<PassthroughResult>();
+                let messages = 0;
+                let settlement: Promise<void> | null = null;
+                let frameFailure: { result: PassthroughResult & ChannelProducerResult; summary: string } | null = null;
+                const pending = new Set<Promise<void>>();
+                const settle = (
+                    terminal: PassthroughResult & ChannelProducerResult,
+                    summary: string | (() => string),
+                    transportClose?: { code: number; reason: string },
+                    initial: PassthroughResult = terminal,
+                ): Promise<void> => {
+                    if (settled) return settlement ?? Promise.resolve();
+                    settled = true;
+                    owner.state = "settling";
+                    subscription.removeEventListener("abort", onAbort);
+                    settlement = (async () => {
+                        const errors: unknown[] = [];
+                        try {
+                            await Promise.allSettled([...pending]);
+                            const failedFrame = frameFailure;
+                            const effectiveTerminal = !Results.isErrorStatus(terminal.status) && failedFrame !== null
+                                ? failedFrame.result
+                                : terminal;
+                            const effectiveSummary = !Results.isErrorStatus(terminal.status) && failedFrame !== null
+                                ? failedFrame.summary
+                                : typeof summary === "function" ? summary() : summary;
+                            if (transportClose !== undefined) {
+                                try {
+                                    socket.close(transportClose.code, transportClose.reason);
+                                } catch (error) {
+                                    errors.push(error);
+                                }
+                            }
                             try {
-                                socket.close(transportClose.code, transportClose.reason);
+                                await subscription.close(effectiveTerminal, effectiveSummary);
+                                if (!owner.opened) acquisition.resolve(initial);
                             } catch (error) {
+                                if (!owner.opened) acquisition.reject(error);
                                 errors.push(error);
                             }
+                        } finally {
+                            if (this.#sockets.get(key) === owner) this.#sockets.delete(key);
+                            done.resolve();
                         }
-                        try {
-                            await subscription.close(effectiveTerminal, effectiveSummary);
-                            if (!owner.opened) acquisition.resolve(initial);
-                        } catch (error) {
-                            if (!owner.opened) acquisition.reject(error);
-                            errors.push(error);
-                        }
-                    } finally {
-                        if (this.#sockets.get(key) === owner) this.#sockets.delete(key);
-                        done.resolve();
-                    }
-                    if (errors.length === 1) throw errors[0];
-                    if (errors.length > 1) throw new AggregateError(errors, "WebSocket terminal cleanup failed");
-                })();
-                return settlement;
-            };
-            const reportCleanupFailure = (error: unknown) => {
-                console.error("WebSocket terminal cleanup failed", { url, error });
-            };
-            const track = (task: Promise<void>): Promise<void> => {
-                pending.add(task);
-                void task.then(
-                    () => pending.delete(task),
-                    () => pending.delete(task),
-                );
-                return task;
-            };
-            const cancelled = () => Ws.#cancelled(url);
-            requestCancel = () => {
-                owner.shutdownRequested = true;
-                const result = cancelled();
-                void settle(result, "WebSocket execution was cancelled.", {
-                    code: SOCKET_CLOSE_NORMAL,
-                    reason: "cancelled",
-                }).catch(reportCleanupFailure);
-            };
-            owner.shutdown = () => {
-                const result = cancelled();
-                return settle(result, () => `ws closed (${SOCKET_CLOSE_NORMAL}); ${messages} messages`, {
-                    code: SOCKET_CLOSE_NORMAL,
-                    reason: "shutdown",
-                });
-            };
+                        if (errors.length === 1) throw errors[0];
+                        if (errors.length > 1) throw new AggregateError(errors, "WebSocket terminal cleanup failed");
+                    })();
+                    return settlement;
+                };
+                const reportCleanupFailure = (error: unknown) => {
+                    console.error("WebSocket terminal cleanup failed", { url, error });
+                };
+                const track = (task: Promise<void>): Promise<void> => {
+                    pending.add(task);
+                    void task.then(
+                        () => pending.delete(task),
+                        () => pending.delete(task),
+                    );
+                    return task;
+                };
+                const cancelled = () => Ws.#cancelled(url);
+                requestCancel = () => {
+                    owner.shutdownRequested = true;
+                    const result = cancelled();
+                    void settle(result, "WebSocket execution was cancelled.", {
+                        code: SOCKET_CLOSE_NORMAL,
+                        reason: "cancelled",
+                    }).catch(reportCleanupFailure);
+                };
+                owner.shutdown = () => {
+                    const result = cancelled();
+                    return settle(result, () => `ws closed (${SOCKET_CLOSE_NORMAL}); ${messages} messages`, {
+                        code: SOCKET_CLOSE_NORMAL,
+                        reason: "shutdown",
+                    });
+                };
 
-            const onAbort = () => requestCancel();
-            subscription.addEventListener("abort", onAbort, { once: true });
-            const setChannelState = ctx.channels.setState.bind(ctx.channels);
-            const streamEvent = ctx.notify.streamEvent.bind(ctx.notify);
-            let nativeOpened = false;
-            let activation: Promise<void> = Promise.resolve();
-            let persistenceTail: Promise<void> = Promise.resolve();
-            socket.addEventListener("open", () => {
-                if (owner.state !== "connecting") return;
-                nativeOpened = true;
-                activation = track((async () => {
-                    try {
-                        const activated = await setChannelState(pathname, MESSAGES, "active");
-                        if (Results.isErrorStatus(activated.status)) {
-                            const result = Ws.#passthrough(activated);
+                const onAbort = () => requestCancel();
+                subscription.addEventListener("abort", onAbort, { once: true });
+                const setChannelState = ctx.channels.setState.bind(ctx.channels);
+                const streamEvent = ctx.notify.streamEvent.bind(ctx.notify);
+                let nativeOpened = false;
+                let activation: Promise<void> = Promise.resolve();
+                let persistenceTail: Promise<void> = Promise.resolve();
+                socket.addEventListener("open", () => {
+                    if (owner.state !== "connecting") return;
+                    nativeOpened = true;
+                    activation = track((async () => {
+                        try {
+                            const activated = await setChannelState(pathname, MESSAGES, "active");
+                            if (Results.isErrorStatus(activated.status)) {
+                                const result = Ws.#passthrough(activated);
+                                void settle(
+                                    result,
+                                    result.problem?.detail ?? "WebSocket channel activation failed.",
+                                    { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "activation failed" },
+                                ).catch(reportCleanupFailure);
+                                return;
+                            }
+                            if (owner.state !== "connecting") return;
+                            streamEvent(pathname, MESSAGES, "active", 0);
+                            owner.opened = true;
+                            owner.state = "open";
+                            acquisition.resolve({ shape: "passthrough", status: 102 });
+                        } catch (err) {
+                            console.error("WebSocket channel activation failed", { url, err });
+                            const result = Ws.#bad(
+                                500,
+                                "channel-activation-failed",
+                                "The WebSocket message channel could not enter its active state.",
+                                {
+                                    target: url,
+                                    stage: "persistence",
+                                    retryable: false,
+                                },
+                            );
                             void settle(
                                 result,
                                 result.problem?.detail ?? "WebSocket channel activation failed.",
                                 { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "activation failed" },
                             ).catch(reportCleanupFailure);
+                        }
+                    })());
+                }, { once: true });
+                // {§ws-lifecycle} One owner chain makes transport order independent
+                // of the subscription implementation's asynchronous scheduler.
+                socket.addEventListener("message", (event) => {
+                    if (!nativeOpened || settled || frameFailure !== null) return;
+                    const data = event.data;
+                    const persistence = persistenceTail.then(async () => {
+                        await activation;
+                        if (!owner.opened || frameFailure !== null) return;
+                        if (typeof data !== "string") {
+                            const detail = "The received WebSocket frame is binary; the messages channel accepts text only.";
+                            const result = Ws.#bad(
+                                415,
+                                "binary-frame-unsupported",
+                                detail,
+                                {
+                                    target: url,
+                                    stage: "materialization",
+                                    retryable: false,
+                                },
+                            );
+                            frameFailure = { result, summary: detail };
+                            void settle(
+                                result,
+                                detail,
+                                { code: SOCKET_CLOSE_UNSUPPORTED_DATA, reason: "binary unsupported" },
+                            ).catch(reportCleanupFailure);
                             return;
                         }
-                        if (owner.state !== "connecting") return;
-                        streamEvent(pathname, MESSAGES, "active", 0);
-                        owner.opened = true;
-                        owner.state = "open";
-                        acquisition.resolve({ shape: "passthrough", status: 102 });
-                    } catch (err) {
-                        console.error("WebSocket channel activation failed", { url, err });
-                        const result = Ws.#bad(
-                            500,
-                            "channel-activation-failed",
-                            "The WebSocket message channel could not enter its active state.",
-                            {
-                                target: url,
-                                stage: "persistence",
-                                retryable: false,
-                            },
-                        );
-                        void settle(
-                            result,
-                            result.problem?.detail ?? "WebSocket channel activation failed.",
-                            { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "activation failed" },
-                        ).catch(reportCleanupFailure);
-                    }
-                })());
-            }, { once: true });
-            // {§ws-lifecycle} One owner chain makes transport order independent
-            // of the subscription implementation's asynchronous scheduler.
-            socket.addEventListener("message", (event) => {
-                if (!nativeOpened || settled || frameFailure !== null) return;
-                const data = event.data;
-                const persistence = persistenceTail.then(async () => {
-                    await activation;
-                    if (!owner.opened || frameFailure !== null) return;
-                    if (typeof data !== "string") {
-                        const detail = "The received WebSocket frame is binary; the messages channel accepts text only.";
-                        const result = Ws.#bad(
-                            415,
-                            "binary-frame-unsupported",
-                            detail,
-                            {
-                                target: url,
-                                stage: "materialization",
-                                retryable: false,
-                            },
-                        );
-                        frameFailure = { result, summary: detail };
-                        void settle(
-                            result,
-                            detail,
-                            { code: SOCKET_CLOSE_UNSUPPORTED_DATA, reason: "binary unsupported" },
-                        ).catch(reportCleanupFailure);
-                        return;
-                    }
-                    try {
-                        await subscription.notifyChunk(MESSAGES, data, "text/plain");
-                        messages += 1;
-                    } catch (err) {
-                        if (frameFailure !== null) return;
-                        console.error("WebSocket message persistence failed", { url, err });
-                        const result = Ws.#bad(
-                            500,
-                            "message-persistence-failed",
-                            "The received WebSocket message could not be persisted.",
-                            {
-                                target: url,
-                                stage: "persistence",
-                                retryable: false,
-                            },
-                        );
-                        const failureSummary = result.problem?.detail ?? "WebSocket message persistence failed.";
-                        frameFailure = { result, summary: failureSummary };
-                        void settle(
-                            result,
-                            failureSummary,
-                            { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "persistence failed" },
-                        ).catch(reportCleanupFailure);
-                    }
+                        try {
+                            await subscription.notifyChunk(MESSAGES, data, "text/plain");
+                            messages += 1;
+                        } catch (err) {
+                            if (frameFailure !== null) return;
+                            console.error("WebSocket message persistence failed", { url, err });
+                            const result = Ws.#bad(
+                                500,
+                                "message-persistence-failed",
+                                "The received WebSocket message could not be persisted.",
+                                {
+                                    target: url,
+                                    stage: "persistence",
+                                    retryable: false,
+                                },
+                            );
+                            const failureSummary = result.problem?.detail ?? "WebSocket message persistence failed.";
+                            frameFailure = { result, summary: failureSummary };
+                            void settle(
+                                result,
+                                failureSummary,
+                                { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "persistence failed" },
+                            ).catch(reportCleanupFailure);
+                        }
+                    });
+                    persistenceTail = persistence;
+                    void track(persistence);
                 });
-                persistenceTail = persistence;
-                void track(persistence);
-            });
-            socket.addEventListener("error", (event) => {
-                console.error("WebSocket transport failed", { url, message: event.message });
-                const detail = `The WebSocket connection to ${url} failed.`;
-                const result = Ws.#bad(502, "connection-failed", detail, {
-                    target: url,
-                    stage: "connection",
-                    retryable: true,
-                });
-                void settle(result, detail, {
-                    code: SOCKET_CLOSE_INTERNAL_ERROR,
-                    reason: "transport failed",
-                }).catch(reportCleanupFailure);
-            });
-            socket.addEventListener("close", (event) => {
-                if (!owner.opened && !owner.killRequested && !subscription.aborted) {
-                    const detail = `The WebSocket connection to ${url} closed before it opened.`;
+                socket.addEventListener("error", (event) => {
+                    console.error("WebSocket transport failed", { url, message: event.message });
+                    const detail = `The WebSocket connection to ${url} failed.`;
                     const result = Ws.#bad(502, "connection-failed", detail, {
                         target: url,
                         stage: "connection",
                         retryable: true,
                     });
-                    void settle(result, detail).catch(reportCleanupFailure);
-                    return;
-                }
-                const summary = () => `ws closed (${event.code ?? 0}); ${messages} messages`;
-                const initial = subscription.aborted ? cancelled() : { shape: "passthrough", status: 102 } as const;
-                const terminal = subscription.aborted ? initial : { shape: "passthrough", status: 200 } as const;
-                void settle(terminal, summary, undefined, initial).catch(reportCleanupFailure);
-            });
+                    void settle(result, detail, {
+                        code: SOCKET_CLOSE_INTERNAL_ERROR,
+                        reason: "transport failed",
+                    }).catch(reportCleanupFailure);
+                });
+                socket.addEventListener("close", (event) => {
+                    if (!owner.opened && !owner.killRequested && !subscription.aborted) {
+                        const detail = `The WebSocket connection to ${url} closed before it opened.`;
+                        const result = Ws.#bad(502, "connection-failed", detail, {
+                            target: url,
+                            stage: "connection",
+                            retryable: true,
+                        });
+                        void settle(result, detail).catch(reportCleanupFailure);
+                        return;
+                    }
+                    const summary = () => `ws closed (${event.code ?? 0}); ${messages} messages`;
+                    const initial = subscription.aborted ? cancelled() : { shape: "passthrough", status: 102 } as const;
+                    const terminal = subscription.aborted ? initial : { shape: "passthrough", status: 200 } as const;
+                    void settle(terminal, summary, undefined, initial).catch(reportCleanupFailure);
+                });
 
-            if (owner.shutdownRequested || subscription.aborted) requestCancel();
-            const result = await acquisition.promise;
-            if (owner.opened && result.status === 102) retained = true;
-            return result;
-        } finally {
-            if (!retained && !settled) {
-                if (this.#sockets.get(key) === owner) this.#sockets.delete(key);
-                done.resolve();
+                if (owner.shutdownRequested || subscription.aborted) requestCancel();
+                const result = await acquisition.promise;
+                if (owner.opened && result.status === 102) retained = true;
+                return result;
+            } finally {
+                if (!retained && !settled) {
+                    if (this.#sockets.get(key) === owner) this.#sockets.delete(key);
+                    done.resolve();
+                }
             }
-        }
+        };
+        void acquire().then(shared.resolve, shared.reject);
+        return shared.promise;
     }
 
     async close(): Promise<void> {
@@ -469,7 +474,7 @@ export default class Ws implements SchemeHandler {
     ): Promise<PassthroughResult> {
         const address = Ws.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
-        const owner = this.#sockets.get(Ws.#key(ctx.workerId, address));
+        const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
         if (owner === undefined) {
             return Ws.#bad(
                 409,
@@ -530,7 +535,7 @@ export default class Ws implements SchemeHandler {
         }
         const address = Ws.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
-        const owner = this.#sockets.get(Ws.#key(ctx.workerId, address));
+        const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
         if (owner === undefined) {
             return Ws.#bad(
                 404,
@@ -558,7 +563,7 @@ export default class Ws implements SchemeHandler {
             socket.close(1000, "killed");
             return { shape: "passthrough", status: 200 };
         } catch (err) {
-            if (this.#sockets.get(Ws.#key(ctx.workerId, address)) === owner) {
+            if (this.#sockets.get(Ws.#key(ctx.workspaceId, address)) === owner) {
                 owner.killRequested = false;
                 owner.state = priorState;
             }
@@ -571,10 +576,9 @@ export default class Ws implements SchemeHandler {
         }
     }
 
-    // The durable entry is Worker-owned ({§manifest-entry-owner}); the live handle
-    // shares that principal, and a Worker id already determines its workspace.
-    static #key(workerId: number, address: NetworkAddress): string {
-        return `${workerId}:${address.scheme}:${address.pathname}`;
+    // {§runtime-resource-binding}: all workspace callers address the same live connection.
+    static #key(workspaceId: number, address: NetworkAddress): string {
+        return `${workspaceId}:${address.url}`;
     }
 
     static #address(target: UrlPath): NetworkAddress | PassthroughResult {

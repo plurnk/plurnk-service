@@ -42,7 +42,7 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.md");
-    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. Schema: worker:\/\/~\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}\n```/);
+    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}\n```/);
     assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
     assert.ok(detail!.content.includes(description), "complete multiline description is preserved");
     assert.deepEqual(JSON.parse(detail!.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!), schema);
@@ -89,7 +89,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
 
 test("{§tools-resource-discovery} annotation normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
-    assert.ok(family!.content.includes(`Schema: worker://~${detail!.pathname} -->`));
+    assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
 });
 
 test("{§executor-input-schema-preview} general schema-backed runtimes also expose an on-demand schema", () => {
@@ -98,7 +98,7 @@ test("{§executor-input-schema-preview} general schema-backed runtimes also expo
         invocation: { body: { role: "JSON arguments", required: true }, inputSchema: schema },
     });
     assert.equal(detail!.pathname, "/_plurnk/plurnk/query/input.md");
-    assert.ok(family!.content.includes(`Schema: worker://~${detail!.pathname} -->`));
+    assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
     assert.ok(family!.content.includes('{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown}'));
     assert.ok(detail!.content.includes(JSON.stringify(schema, null, 2)));
 });

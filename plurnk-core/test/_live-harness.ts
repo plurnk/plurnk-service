@@ -11,7 +11,6 @@
 
 import { after } from "node:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
-import Owner from "../src/core/Owner.ts";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
@@ -162,10 +161,8 @@ export const liveLoop = async (
     };
 };
 
-// Seed a workspace entry + body channel — a test PRECONDITION (the state the prompt
-// references), written through the prod crud statements (the same writes the File
-// scheme / git-membership use) so seeding can't drift from how entries really exist.
-// The model still has to emit the op to reach it; nothing is auto-shown.
+// Seed a workspace resource as a prompt precondition, not as model-visible output.
+// The model still has to emit an operation to reach it.
 export const seedEntry = async (
     db: Db, workspaceId: number,
     opts: { scheme?: string; pathname: string; content: string; mimetype?: string },
@@ -175,11 +172,11 @@ export const seedEntry = async (
     // Honor the convention. (readWorkspaceEntry is a direct scheme+pathname+channel lookup — no
     // membership filter — so a plain workspace entry resolves; no git materialization needed.)
     const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
-    const e = await db.crud_insert_workspace_entry.get<{ id: number }>({
-        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: opts.scheme ?? "worker", authority: "", pathname,
+    const e = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0,
+        workspace_id: workspaceId, scheme: opts.scheme ?? "worker", authority: "", pathname,
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
-    await db.crud_write_channel.run({
+    await db.test_seed_channel_hashed.run({
         entry_id: e.id, name: "body", content: opts.content, mimetype: opts.mimetype ?? "text/markdown", weight: 0, state: "static",
     });
     return e.id;

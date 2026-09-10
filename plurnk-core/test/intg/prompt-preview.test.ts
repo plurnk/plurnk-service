@@ -77,7 +77,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             assert.ok(promptSection, "the prompts section exists");
             assert.equal(promptSection!.slot, "user", "the prompt paths list closes the user-slot status clump");
             assert.equal(promptSection!.header, "Active Prompts");
-            assert.match(promptSection!.content, /^\["prompt:\/\/\/1\/1"\]$/, "paths-only, owner-keyed prompt:///1/1");
+            assert.match(promptSection!.content, /^\["prompt:\/\/[^/]+\/1\/1"\]$/, "paths-only, literal prompt address");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

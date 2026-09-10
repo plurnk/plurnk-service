@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_RETRIEVAL_LIMIT } from "@plurnk/plurnk-contracts";
-import { Mock } from "@plurnk/plurnk-providers";
+import StreamMock from "./_stream-mock.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 
@@ -21,11 +21,11 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 };
 
 test("a 40-line stream closes as its first page with the extent; a scoped READ still reaches line 40", async () => {
-    const provider = new Mock({
+    const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
             makeMockResponse("```EXEC\nseq 1 40\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-            makeMockResponse("```READ (sh:///1/2/2/sh#stdout) <38,40>```\n```TASK\n[{\"content\":\"reading the tail\",\"status\":\"in_progress\"}]\n```", 10),
+            makeMockResponse("```READ ($STREAM#stdout) <38,40>```\n```TASK\n[{\"content\":\"reading the tail\",\"status\":\"in_progress\"}]\n```", 10),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
@@ -75,7 +75,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
 });
 
 test("an active stream reaches the model only as a Child Streams pointer with its size and growth", async () => {
-    const provider = new Mock({
+    const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
             makeMockResponse("```EXEC\nseq 1 5; sleep 2\n```\n\n```TASK\n[{\"content\":\"let it run\",\"status\":\"in_progress\"}]\n```", 10),
@@ -93,9 +93,9 @@ test("an active stream reaches the model only as a Child Streams pointer with it
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "child-streams");
-            assert.match(pointers, /"status":"active","path":"sh:\/\/\/1\/2\/2\/sh","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
+            assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
-            assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/1\/2\/3#stdout"/, "nothing of the stream enters the Log while it is active");
+            assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {
             ws.close();
         }
@@ -119,14 +119,14 @@ for (const specimen of [
     },
 ]) test(`{§exec-stream-page}: automatic ${specimen.name} shares the character bound; explicit READ retains the full stream`, async () => {
     const { content } = specimen;
-    const provider = new Mock({ contextWindow: 100_000, responses: [
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse(`\`\`\`node
 process.stdout.write(${JSON.stringify(content)});
 \`\`\`
 \`\`\`TASK
 [{"content":"waiting","status":"waiting"}]
 \`\`\``, 10),
-        makeMockResponse("```READ (node:///1/2/2/node#stdout) <1,-1>```\n```TASK\n[{\"content\":\"Read the full result.\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```READ ($STREAM#stdout) <1,-1>```\n```TASK\n[{\"content\":\"Read the full result.\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {

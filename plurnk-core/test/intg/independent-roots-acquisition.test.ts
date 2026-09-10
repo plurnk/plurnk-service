@@ -1,6 +1,4 @@
-// {§scheme-entry-matrix} — identical textual acquired addresses in independent
-// root Workers are distinct Worker-owned resources: no shared entry, no
-// cross-perspective FIND, no render-time filtering.
+// {§scheme-entry-matrix}: one workspace resource, independent causal workers.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
@@ -16,7 +14,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-test("two independent root Workers acquire the same https address as distinct private resources", async () => {
+test("independent root workers share one acquired https representation in their workspace", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal(process.cwd());
@@ -45,29 +43,29 @@ test("two independent root Workers acquire the same https address as distinct pr
         const dispatch = (root: (typeof roots)[number], statement: PlurnkStatement, sequence: number) =>
             engine.dispatch({ statement, workspaceId, ...root, sequence, origin: "model" });
 
-        for (const [index, root] of roots.entries()) {
+        for (const root of roots) {
             const read = await dispatch(root, parseOne("```READ (https://example.org/feed)```") as ReadStatement, 1);
             assert.equal(read.status, 200);
-            assert.equal(read.content, bodies[index], "each root acquires its own representation");
+            assert.equal(read.content, bodies[0], "each root sees the same workspace representation");
         }
 
-        const owners = await db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({
+        const owners = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({
             scheme: "https", authority: "example.org", pathname: "/feed",
         });
         assert.deepEqual(
-            owners.map(({ owner_id, content }) => ({ owner_id, content })),
-            roots.map(({ workerId }, index) => ({ owner_id: workerId, content: bodies[index] })),
-            "one textual coordinate, two Worker-owned entries, no commons row",
+            owners.map(({ workspace_id, content }) => ({ content })),
+            [{ content: bodies[0] }],
+            "one resource at the workspace coordinate",
         );
 
-        for (const [index, root] of roots.entries()) {
+        for (const root of roots) {
             const found = await dispatch(root, parseOne("```FIND (https://example.org/**)```") as FindStatement, 2);
             assert.equal(found.status, 200);
-            assert.equal(found.matchingPathCount, 1, "a root's FIND sees exactly its own acquisition");
+            assert.equal(found.matchingPathCount, 1, "FIND sees the workspace acquisition");
             const reread = await dispatch(root, parseOne("```READ (https://example.org/feed)```") as ReadStatement, 3);
-            assert.equal(reread.content, bodies[index], "re-reading resolves the root's own entry, never the sibling's");
+            assert.equal(reread.content, bodies[0], "re-reading resolves the same retained entry");
         }
-        assert.equal(served, 2, "no root re-fetched the other's representation");
+        assert.equal(served, 1, "a second worker does not re-fetch a fresh workspace representation");
     } finally {
         globalThis.fetch = originalFetch;
         await schemes.close();

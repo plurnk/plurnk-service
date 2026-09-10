@@ -1,12 +1,10 @@
 import type { FindStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
-import type { Executor } from "../core/ExecutorRegistry.ts";
 import type Exec from "./Exec.ts";
-import { resolveStreamStatement } from "./Exec.ts";
 import EntryFind, { type FindResult } from "./_entry-find.ts";
 import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
-import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
@@ -17,38 +15,24 @@ import type {
     SchemeCtx,
     ProposalApplyRequest,
 } from "@plurnk/plurnk-schemes";
-import Owner from "../core/Owner.ts";
+import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 
-// {§stream-owner-scoped} — a stream 404 discloses nothing about existence; it may still say what
-// the address space IS: loop coordinates, the caller's own streams unqualified, a descendant's by
-// worker name, and a tool's own ids as arguments rather than addresses (#392).
-const streamAddressSpace = (scheme: string): string =>
-    `\`${scheme}:///<loop>/<turn>/<item>/${scheme}\` addresses this runtime's result streams — your own without a qualifier, another worker's as \`${scheme}://<worker>/…\`. A tool's own ids are body arguments; the opening fence names the executor and its target names the tool.`;
-
-// {§executor-scheme-output} An executor is a scheme; its output lives at <tag>://. Each discovered
-// executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
-// read PRIOR output, scoped to the tag's stored entries via the executor's OWN
-// manifest (name = the tag) — fixing the latent mis-scope where the shared `exec`
-// handler read under scheme="exec" while output persists under scheme=<tag>. The
-// face never launches work; SEND and KILL delegate to the one execution owner,
-// while COPY/MOVE source reads remain tag-scoped here.
-// Every tag reads through this one uniform path; an executor is a pure producer
-// whose run() writes channels, never a read/find face.
+// {§runtime-resource-binding} Stored output and live runtime facets use one entry face.
 export default class ExecOutputScheme extends CoreSchemeAdapterBase {
-    #executor: Executor;
+    #manifest: SchemeManifest;
     #exec: Exec;
     #facet: RuntimeSchemeFacet | undefined;
 
-    constructor(executor: Executor, exec: Exec, facet?: RuntimeSchemeFacet) {
+    constructor(manifest: SchemeManifest, exec: Exec, facet?: RuntimeSchemeFacet) {
         super();
-        this.#executor = executor;
+        this.#manifest = manifest;
         this.#exec = exec;
         this.#facet = facet;
     }
 
     get manifest(): SchemeManifest {
-        return { ...this.#executor.manifest, authority: "owner", metadataModifier: true };
+        return { ...this.#manifest, metadataModifier: true };
     }
 
     #claimedPath(statement: FindStatement): boolean {
@@ -56,39 +40,24 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         return target?.kind === "url" && this.#facet?.claims(target.pathname ?? "") === true;
     }
 
-    #facetContext(ctx: CoreSchemeCallContext): SchemeCtx {
+    async #facetContext(ctx: CoreSchemeCallContext): Promise<SchemeCtx> {
         if ("entries" in ctx) return ctx;
         const core = this.coreContext(ctx);
         return new SchemeCtxImpl(
             core,
-            this.#executor.manifest.name,
+            this.#manifest.name,
             this.manifest,
             this.liveSubscriptions(),
-            { ownerId: core.workerId },
+            { },
         );
     }
 
-    async resolveEntryAddress(
-        target: ParsedPath,
-        ctx: CoreSchemeCallContext,
-    ): Promise<EntryAddress | CoreEntryAddress | SchemeResultBase | null> {
-        if (target.kind !== "url") return null;
-        const core = this.coreContext(ctx);
-        const name = this.#executor.manifest.name;
-        const ownerId = await Owner.resolveStreamOwner(target.hostname, core);
-        if (ownerId === null) {
-            return Results.failure(
-                `scheme:${name}`,
-                "stream-not-found",
-                404,
-                "No visible stream exists at the requested address.",
-                {},
-                { target: target.raw, recovery: streamAddressSpace(name), retryable: false },
-            );
-        }
-        // {§entry-address-resolution} Bind the principal, not an exact stored
-        // row: FIND may address a pattern, and READ owns the eventual miss.
-        return { authority: "", pathname: target.pathname, ownerId };
+    claimsLiveResource(target: ParsedPath): boolean {
+        return target.kind === "url" && this.#facet?.claims(target.pathname) === true;
+    }
+
+    resolveEntryAddress(target: ParsedPath): EntryAddress | null {
+        return target.kind === "url" ? entryCoordinateOf(target, "namespace") : null;
     }
 
     async prepareRepresentation(
@@ -100,13 +69,13 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
                 "Stored execution output does not accept READ metadata.", {}, { retryable: false });
             return { status: 200 };
         }
-        return this.#facet.prepareRepresentation?.(request, this.#facetContext(ctx)) ?? { status: 200 };
+        return this.#facet.prepareRepresentation?.(request, await this.#facetContext(ctx)) ?? { status: 200 };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const find = this.#facet?.find;
         if (find !== undefined && this.#claimedPath(statement)) {
-            return await find.call(this.#facet, statement, this.#facetContext(ctx)) as FindResult;
+            return await find.call(this.#facet, statement, await this.#facetContext(ctx)) as FindResult;
         }
         if (statement.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
             "Stored execution output does not accept FIND metadata.", {
@@ -114,32 +83,21 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
                 matchingPathCount: 0, matchLocationCount: 0,
             }, { retryable: false }) as FindResult;
         const core = this.coreContext(ctx);
-        const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) {
-            return Results.failure(`scheme:${this.#executor.manifest.name}`, "stream-not-found", 404, "No visible stream exists at the requested address.", {
-                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
-                matchingPathCount: 0, matchLocationCount: 0,
-            }, { recovery: streamAddressSpace(this.#executor.manifest.name), retryable: false }) as FindResult;
-        }
-        return EntryFind.findWorkspaceEntries(statement, core, this.manifest, {
-            ownerId: owner.ownerId,
-        });
+        return EntryFind.findWorkspaceEntries(statement, core, this.manifest, {});
     }
 
     send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        return this.#exec.sendInput(statement, ctx, this.#executor.manifest.name);
+        return this.#exec.sendInput(statement, ctx, this.#manifest.name);
     }
 
     applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        return this.#exec.applyInput(request, ctx, this.#executor.manifest.name);
+        return this.#exec.applyInput(request, ctx, this.#manifest.name);
     }
 
-    // COPY/MOVE source — read the output entry by pathname, tag-scoped (not via the
-    // shared Exec handler, which would scope to scheme="exec" and 404). Self-owned:
-    // a worker copies from its own streams.
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        return EntryCrud.readEntry({ authority: "", pathname }, core, this.#executor.manifest.name, core.workerId);
+        return "entries" in ctx ? ctx.entries.read(pathname)
+            : EntryCrud.readEntry({ authority: "", pathname }, core, this.#manifest.name);
     }
 
     // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the
@@ -147,6 +105,6 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         // The face names its own tag: the terminal status of a finished stream lives under the
         // runtime scheme (`sh:///…`), so a second KILL answers 410, never a 404 under `exec`.
-        return this.#exec.kill(pathname, scope, ctx, this.#executor.manifest.name);
+        return this.#exec.kill(pathname, scope, ctx, this.#manifest.name);
     }
 }

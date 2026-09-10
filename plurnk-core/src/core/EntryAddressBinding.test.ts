@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeAddressCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
-import { CoreSchemeAdapterBase } from "./CoreSchemeServices.ts";
 import type { Db } from "./Db.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "./scheme-types.ts";
@@ -32,20 +31,12 @@ const context: PlurnkSchemeContext = {
     weigh: () => 0,
 };
 
-const manifest = (entryOwner: "worker" | "resolved"): SchemeManifest & { readonly category: "data" } => ({
-    name: "test",
-    authority: "resource",
-    channels: { body: "text/plain" },
-    defaultChannel: "body",
-    category: "data",
-    entryOwner,
-    inherit: "none",
-    writableBy: ["model"],
-    volatile: false,
-    modelVisible: true,
-});
+const manifest: SchemeManifest = {
+    name: "test", authority: "resource", channels: { body: "text/plain" }, defaultChannel: "body",
+    category: "data", writableBy: ["model"], volatile: false, modelVisible: true,
+};
 
-test("fixed Worker ownership binds the caller and strips channel selection", async () => {
+test("{§entry-address-resolution} canonical coordinates carry no storage principal", async () => {
     let received: ParsedPath | undefined;
     const handler: SchemeHandler = {
         async resolveEntryAddress(address) {
@@ -53,54 +44,27 @@ test("fixed Worker ownership binds the caller and strips channel selection", asy
             return { authority: "canonical.example", pathname: "/canonical" };
         },
     };
-    const resolved = await new EntryAddressBinding({} as Db).resolve({
-        target,
-        routedScheme: "test",
-        handler,
-        manifest: manifest("worker"),
-        ctx: context,
-    });
-
+    const resolved = await new EntryAddressBinding().resolve({ target, routedScheme: "test", handler, manifest, ctx: context });
     assert.equal(received?.kind === "url" ? received.fragment : undefined, null);
     assert.deepEqual(resolved, {
-        address: {
-            ownerId: 22,
-            scheme: "test",
-            authority: "canonical.example",
-            pathname: "/canonical",
-        },
+        address: { scheme: "test", authority: "canonical.example", pathname: "/canonical" },
         result: null,
     });
 });
 
-test("address resolution receives identity but no entry capabilities", async () => {
+test("{§entry-address-resolution} address resolution receives identity but no storage capabilities", async () => {
     let received: SchemeAddressCtx | undefined;
     const handler: SchemeHandler = {
         async resolveEntryAddress(_address, ctx) {
             received = ctx;
-            return { authority: "", pathname: "/item", owner: "worker" };
+            return { authority: "", pathname: "/item" };
         },
     };
-    await new EntryAddressBinding({} as Db).resolve({
-        target,
-        routedScheme: "test",
-        handler,
-        manifest: manifest("resolved"),
-        ctx: context,
-    });
-
-    assert.deepEqual(Object.keys(received ?? {}).toSorted(), [
-        "loopId",
-        "signal",
-        "turnId",
-        "workerId",
-        "workspaceId",
-        "writer",
-    ]);
-    assert.equal("entries" in (received ?? {}), false);
+    await new EntryAddressBinding().resolve({ target, routedScheme: "test", handler, manifest, ctx: context });
+    assert.deepEqual(Object.keys(received ?? {}).toSorted(), ["loopId", "signal", "turnId", "workerId", "workspaceId", "writer"]);
 });
 
-test("{§entry-address-resolution}: write access preserves a scheme's refusal before storage binding", async () => {
+test("{§entry-address-resolution} intrinsic read-only resources reject writes before storage binding", async () => {
     const seen: Array<string | undefined> = [];
     const denied = Results.failure("scheme:test", "read-only", 403, "This address is read-only.");
     const handler: SchemeHandler = {
@@ -109,72 +73,25 @@ test("{§entry-address-resolution}: write access preserves a scheme's refusal be
             return access === "write" ? denied : { authority: "", pathname: "/item" };
         },
     };
-    const binding = new EntryAddressBinding({} as Db);
-    const args = { target, routedScheme: "test", handler, manifest: manifest("worker"), ctx: context };
-    assert.equal((await binding.resolve(args)).address?.ownerId, context.workerId);
+    const binding = new EntryAddressBinding();
+    const args = { target, routedScheme: "test", handler, manifest, ctx: context };
+    assert.deepEqual((await binding.resolve(args)).address, { scheme: "test", authority: "", pathname: "/item" });
     assert.deepEqual(await binding.resolve({ ...args, access: "write" }), { address: null, result: denied });
     assert.deepEqual(seen, ["read", "write"]);
 });
 
-test("fixed ownership cannot be restated by a scheme", async () => {
-    const handler: SchemeHandler = {
-        async resolveEntryAddress() {
-            return { authority: "", pathname: "/item", owner: "worker" };
-        },
-    };
-    await assert.rejects(
-        new EntryAddressBinding({} as Db).resolve({
-            target,
-            routedScheme: "test",
-            handler,
-            manifest: manifest("worker"),
-            ctx: context,
-        }),
-        /restated its manifest-owned entry principal/,
-    );
-});
-
-test("resolved ownership fails hard when the scheme omits its principal", async () => {
-    await assert.rejects(
-        new EntryAddressBinding({} as Db).resolve({
-            target,
-            routedScheme: "test",
-            handler: {},
-            manifest: manifest("resolved"),
-            ctx: context,
-        }),
-        /did not resolve its declared entry owner/,
-    );
-});
-
-test("only a core adapter may return a numeric principal", async () => {
-    const external: SchemeHandler = {
-        async resolveEntryAddress() {
-            return { authority: "", pathname: "/item", ownerId: 99 } as never;
-        },
-    };
-    await assert.rejects(
-        new EntryAddressBinding({} as Db).resolve({
-            target,
-            routedScheme: "test",
-            handler: external,
-            manifest: manifest("resolved"),
-            ctx: context,
-        }),
-        /core-only entry owner id/,
-    );
-
-    class CoreHandler extends CoreSchemeAdapterBase {
-        async resolveEntryAddress() {
-            return { authority: "", pathname: "/item", ownerId: 99 };
-        }
+test("{§entry-address-resolution} default resolution preserves literal authority for every caller", async () => {
+    for (const workerId of [22, 99]) {
+        assert.deepEqual(await new EntryAddressBinding().resolve({
+            target, routedScheme: "test", handler: {}, manifest, ctx: { ...context, workerId },
+        }), { address: { scheme: "test", authority: "origin.example", pathname: "/item" }, result: null });
     }
-    const resolved = await new EntryAddressBinding({} as Db).resolve({
-        target,
-        routedScheme: "test",
-        handler: new CoreHandler(),
-        manifest: manifest("resolved"),
-        ctx: context,
-    });
-    assert.equal(resolved.address?.ownerId, 99);
 });
+
+for (const invalid of [{ authority: "", pathname: "/item", owner: "worker" }, { authority: "", pathname: "/item", extra: 99 }]) {
+    test(`{§entry-address-resolution} rejects non-coordinate fields: ${JSON.stringify(invalid)}`, async () => {
+        await assert.rejects(new EntryAddressBinding().resolve({
+            target, routedScheme: "test", handler: { async resolveEntryAddress() { return invalid; } }, manifest, ctx: context,
+        }), /invalid entry coordinate/);
+    });
+}

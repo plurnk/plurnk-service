@@ -19,13 +19,11 @@ export default class DbNotifyCaps implements NotifyCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #authority: string;
-    readonly #ownerId: number;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string, authority: string, ownerId: number) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, authority: string) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         this.#authority = authority;
-        this.#ownerId = ownerId;
     }
 
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void {
@@ -37,9 +35,9 @@ export default class DbNotifyCaps implements NotifyCaps {
     }
 
     async #emit(notify: StreamEventNotify, pathname: string, channel: string, state: ChannelState, contentLength: number): Promise<void> {
-        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, this.#authority, pathname, this.#ownerId);
+        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entry === null) return;
         const target = renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname });
-        notify(this.#ctx.workspaceId, { entryId: entry.entryId, workerId: entry.workerId, target, channel, state, contentLength });
+        notify(this.#ctx.workspaceId, { entryId: entry.entryId, workerId: this.#ctx.workerId, target, channel, state, contentLength });
     }
 }

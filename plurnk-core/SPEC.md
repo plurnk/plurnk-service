@@ -12,7 +12,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 
 ```mermaid
 flowchart LR
-    W["Workspace<br/>shared world"] --> K["Worker<br/>actor and private history"]
+    W["Workspace<br/>shared world"] --> K["Worker<br/>actor and history"]
     K --> L["Loop<br/>queued-to-terminal work"]
     L --> T["Turn<br/>one admitted scheduling unit"]
     T --> O["Op<br/>one statement / action row"]
@@ -25,7 +25,7 @@ flowchart LR
 |-------------------|-----------------------|---------|
 | **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the reserved `plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
 | **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
-| **worker**        | Core                  | Durable actor and private history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
+| **worker**        | Core                  | Durable actor and history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
 | **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
 | **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, plugin, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
 | **model call**    | Core/provider         | One logical `provider.generate` invocation. Emission attempts and BARE inferences share this durable accounting owner; provider retries remain cardinal physical requests beneath it. Identity: `(turn_id, sequence)`. |
@@ -84,9 +84,8 @@ their ordinary contracts.
 
 | Term | Meaning |
 |---|---|
-| **entry** | The unit of canonical state. Identity: `(owner, scheme, authority, pathname)`; the owner Worker determines the workspace ({§entry-identity-no-null}). Holds one or more `channels` of content plus private `attributes`. |
+| **entry** | The unit of canonical state. Identity: `(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus scheme-private `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
-| **scope** | A scheme-manifest declaration ignored by core; registrations are discovered at boot and are not persisted. Entry sharing and privacy are owner-based; #80 owns retiring this residual axis. |
 | **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
 | **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
@@ -410,7 +409,7 @@ before provider or capability initialization can perform external work. Every
 later startup failure closes resources in reverse ownership order while
 preserving the originating failure: daemon, observability, database, listener.
 
-### §actor-boundary The actor boundary: isolation by worker, two doors, self-hosting
+### §actor-boundary The actor boundary: per-worker attention, two doors, self-hosting
 
 ```mermaid
 flowchart LR
@@ -421,12 +420,11 @@ flowchart LR
     client["User / client"] -->|"loop.inject<br/>voice door"| log
 ```
 
-§actor-boundary-isolation **Isolation is by worker; the model is not
-privileged.** A packet renders exactly one worker's log — the assembling
-worker's — alongside current shared workspace state ({§packet}, {§membership}). A worker cannot
-see another's log: isolation is *structural*, a consequence of "a worker owns
-its log entries" ({§lifecycle-terms}) and "one packet, one worker," never a
-render-time filter.
+§actor-boundary-isolation **Packet membership is by worker; the model is not
+privileged.** A packet renders the assembling worker's log alongside current
+shared workspace state ({§packet}, {§membership}). Other journals are not
+automatically injected. This follows "one packet, one worker," not an access
+filter over workspace resources.
 
 §actor-boundary-origin-not-filter `origin` ({§authority-terms}) is
 **attribution** — the delta's provenance ({§env-delta}) — and is never read to
@@ -450,7 +448,7 @@ file or entry through its ordinary read-authority boundary ({§worker-read-scope
 | Voice       | A directed `loop.inject` or ```` ```SEND (worker://name) ```` message.                                                                               | An active worker folds it into its next turn; an idle one wakes.                              |
 
 §actor-boundary-lineage-attention **Addressability is workspace-wide; attention
-is lineage-scoped.** Project files, registered resources, and permitted worker
+is lineage-scoped.** Project files, registered resources, and named scratch
 entries remain addressable throughout the workspace, but ordinary changes do
 not enter unrelated workers' logs. A child's activity reaches only its direct
 parent. That observer row carries the source occurrence identity and never
@@ -462,7 +460,7 @@ attention surface.** A successful mutation whose landed effects touch the
 commons emits one occurrence to every worker that existed when it landed.
 Lineage and commons audiences are a union over that one identity: when a child
 mutates the commons, its parent receives one observer row, never a parent copy
-plus a broadcast duplicate. Ordinary project files, private worker entries,
+plus a broadcast duplicate. Runtime maintenance turns produce no broadcast ({§actor-boundary-doc-injection}). Ordinary project files, named scratch entries,
 and remote resources do not acquire ambient attention merely because they are
 workspace-addressable.
 
@@ -476,17 +474,11 @@ never wake; they queue until another cause produces a turn ({§env-delta}). The
 obligation edge is continuation control, not a third door through which
 arbitrary workspace state can enter.
 
-§actor-boundary-self-hosting **Use the actor path when the work has an
-operation; retain irreducible rails in the kernel.** The workspace has one
-reserved `plurnk` worker. It is durable; `DispatchAsPlurnk` opens a fresh
-administrative loop and turn for each ordinary operation batch. Other workers
-cannot read its private log or entries. Generated references are instead
-materialized directly in the addressed worker's private space; only direct
-lineage activity and explicit commons mutations cross the environment door.
+§actor-boundary-self-hosting **Use the actor path when the work has an operation; retain irreducible rails in the kernel.** The workspace has one reserved `plurnk` Worker. `DispatchAsPlurnk` opens ordinary administrative loops and turns for its work. Generated references are shared entries; the runtime actor has no privileged scratch access.
 
 | Work                                    | Owning path                                                         | Why                                                                                 |
 | --------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Worker reference documents              | Addressed worker; `_plurnk` EDIT through engine dispatch.           | Creating or replacing a private entry is already an operation.                      |
+| Workspace reference documents | Runtime actor; `_plurnk` EDIT through engine dispatch. | Maintaining generated workspace scratch is an ordinary operation. |
 | Git membership and disk materialization | Kernel `GitMembership` / entry CRUD.                                | Ingesting existing disk state is not a model-authored EDIT.                         |
 | Disk-divergence narration               | Kernel writes an EDIT-shaped `source=file` row to the `plurnk` log. | It reports an environment event honestly; no operation is fabricated as having run. |
 | Search derivation and catalog render    | Kernel.                                                             | They are indexes and read-only projections, not entry operations.                   |
@@ -496,24 +488,16 @@ Git membership is the repository's tracked files and nothing else ({§membership
 Plurnk never stages a file or runs `git add`.
 
 §turn0-agents-stunt **The project AGENTS.md is a turn-0 stunt.** When
-`<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the current worker's private
-`worker://~/_plurnk/agents.md` entry and the engine foists one READ of it into
+`<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the workspace's shared
+`worker:///_plurnk/agents.md` entry and the engine foists one READ of it into
 that model worker's first turn — visible, logged, line-addressable. Absent
 file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
 remains system-prompt policy ({§policy-sections}); the stunt carries only
 local repo guidance.
 
-§actor-boundary-doc-injection **Generated documents use the actor path.** The
-project's `AGENTS.md` and generated Functionality references are materialized in
-the addressed worker's `_plurnk/` subtree ({§worker-generated-subtree}) through
-ordinary `_plurnk` operation turns. Their exact
-EDIT and SEND programs remain durable in that worker's log; generated state is
-neither a hidden database write nor a kernel-owned mirror.
-Maintenance-only loops are not work-lifecycle observations
-({§application-worker-observation}, {§application-loop-observation}). One
-`work_loops` SQL view excludes loops whose turns are all maintenance; empty
-queued loops and loops containing any other turn purpose remain work.
-It changes neither scheduler state nor forensic history.
+§actor-boundary-doc-injection **Generated documents use the actor path.** Workspace references and projected project instructions are materialized in `worker:///_plurnk/` through the reserved actor's ordinary maintenance turns. Their exact programs and operation evidence remain durable in that actor's log; generation is not a hidden database write.
+
+Maintenance turns create neither lineage nor commons broadcasts. Their loops are not work-lifecycle observations ({§application-worker-observation}, {§application-loop-observation}); `work_loops` excludes loops whose turns are all maintenance, but retains empty queued loops and loops containing any other purpose. Scheduling and forensic history remain intact.
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
@@ -524,13 +508,13 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Surface | FIND target | Scope / annotation |
 | --- | --- | --- |
 | Agent Skills | `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
-| Plurnk references: executors, schemes, family managers | `worker://~/_plurnk/plurnk/*.md` | `<1,-1>` |
-| Enabled tools | `worker://~/_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
-| Enabled agents | `worker://~/_plurnk/agents/*.md` | `<1,-1>`; {§a2a-agents-catalog} |
-| Enabled members | `worker://~/_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
+| Plurnk references: executors, schemes, family managers | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
+| Enabled tools | `worker:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
+| Enabled agents | `worker:///_plurnk/agents/*.md` | `<1,-1>`; {§a2a-agents-catalog} |
+| Enabled members | `worker:///_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
 | Project filesystem | `*` | File cap below; `project filesystem` |
 | Workspace entries | `worker:///*` | Markerless; `workspace entries` |
-| Private Worker entries | `worker://~/*` | Markerless; `private worker entries` |
+| Named scratch entries | `worker://<worker>/*` | Markerless; `worker scratch` |
 
 Only the three namespace surveys carry annotations; the other targets name
 their surface. The word `skills` names Agent Skills and nothing else.
@@ -550,12 +534,11 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one visible exact `turnOps` item and dispatches the same source into one archiving COPY, orienting READ/FIND, and final TASK (in {§op-execution-order}). Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt:///<loop>/1)` onto `worker://~/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing the private space as scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one visible exact `turnOps` item and dispatches the same source into one archiving COPY, orienting READ/FIND, and final TASK (in {§op-execution-order}). Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt://<worker>/<loop>/1)` onto `worker://<worker>/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing named scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
-A workspace owns the shared world; a worker owns one history and one private
-entry space on that world.
+A workspace owns every entry; a worker owns its history and active work.
 
 ```mermaid
 flowchart TB
@@ -563,12 +546,14 @@ flowchart TB
     workspace --> commons["Shared worker entries<br/>worker:///..."]
     workspace --> overlay["One membership overlay"]
     workspace --> parent["Worker A"]
-    parent --> parentLog["Private log"]
-    parent --> parentEntries["Private worker entries<br/>worker://~/..."]
+    parent --> parentLog["Worker A log"]
+    workspace --> parentEntries["Named scratch<br/>worker://a/..."]
     parent --> parentWork["Loops, turns, cancellation scope"]
     parent -->|FORK| child["Worker B"]
-    parentLog -.->|"copy rows, tags, visibility state"| childLog["Private log copy"]
-    parentEntries -.->|"copy; remap owner"| childEntries["Private worker entries copy"]
+    parentLog -.->|"copy rows, tags, visibility state"| childLog["Worker B log"]
+    parentEntries -.->|"snapshot under new name"| childEntries["Named scratch<br/>worker://b/..."]
+    workspace --> childEntries
+    child --> childLog
     files -->|"shared live"| child
     commons -->|"shared live"| child
     overlay -->|"shared policy"| child
@@ -588,16 +573,14 @@ terminal history.**
 | Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
 | Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Durable events, curation effects, tags, current active/body-suppression projection, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
 | §machine-processes-fork-cost **Provider evidence and accounting** | Worker | Turns and their model-facing log history are copied, but turn-attached inference calls, their specializations, admission rows, and physical provider requests are not: one issued call or request has one causal branch. Parent and fork accounting therefore includes only work issued in that branch, while workspace accounting never double-counts copied history. |
-| §machine-processes-entry-inheritance **Worker-owned entries** | Worker | The scheme's mandatory `{§manifest-entry-inheritance}` decides: `snapshot` copies only entries whose channels are all quiescent and remaps ownership; `rederive` copies no bytes and lets the child materializer rebuild them from workspace Functionality; `none` carries nothing. Within a `snapshot` scheme the Worker scheme's generated subtree is always rederived ({§worker-generated-subtree}). Parent and child then diverge. |
+| §machine-processes-entry-inheritance **Named scratch and evidence** | Workspace | FORK snapshots quiescent `worker`, `prompt`, and `reasoning` entries whose authority is the source Worker name into the child name. Bytes, attributes, and channel results remain exact; embedded addresses are not rewritten. Other resources, including `worker:///_plurnk/**`, stay shared. |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
 
 §machine-processes-worker-is-its-log **A worker's conversational memory of
 the shared world is its log, with no hidden per-worker snapshot beside it.**
 A scoped KILL suppresses canonical body intervals on that worker's rows ({§log-kill-scope});
 lineage activity and explicit commons broadcasts arrive as attributed log
-entries ({§env-delta}). Worker-owned entries include deliberate scratch and
-other private resources; their manifest declares whether a FORK snapshots,
-rederives, or omits each class. They are not an invisible mirror of shared state. Workspace
+entries ({§env-delta}). Named scratch and evidence follow {§machine-processes-entry-inheritance}. They are not an invisible mirror of shared state. Workspace
 addressability does not imply packet membership or ambient notification
 ({§actor-boundary-lineage-attention}).
 
@@ -609,9 +592,9 @@ the parent after that boundary is sibling activity, not fork history. Global
 commons broadcasts remain live after the fork because the branch is then an
 existing workspace worker in its own right.
 
-§machine-processes-model-worker-readable **A worker's log is private to packets, not to the workspace.** Isolation ({§actor-boundary}) governs what an *actor* sees — its own worker, never a sibling's. It does not wall off the client interface: `readLog({ workspaceId, workerId })` may read any ownership-verified worker in that workspace, and `listWorkers` enumerates them. A client-interface module chooses the default worker from its own conversation binding. The read is observation, never packet membership — no actor sees it.
+§machine-processes-model-worker-readable **Packet membership is per-worker, not an access policy.** A packet contains its worker's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, workerId })` may inspect any worker belonging to that workspace, and `listWorkers` enumerates them. A client-interface module chooses its conversation binding. Inspection does not inject another log into a model's packet.
 
-§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by a fork. `listWorkers` returns it, so a client interface identifies actor class without parsing the name, which is set at instantiation and immutable (a worker is permanent history, {§machine-processes-worker-is-its-log}).
+§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by WORK/FORK from the parent. A turn's producer is independent: a plugin-produced program in a model worker still delegates model workers. `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
 
 §worker-provider-identity **A worker owns a durable provider identity distinct
 from its database id.** Creation mints a globally unique, opaque 128-bit value;
@@ -623,8 +606,8 @@ than either worker value.
 
 §worker-primary **The primary worker is the lineage root.** The PRIMARY worker of a turn's lineage is the no-parent root reached by walking `parent_worker_id` up; a no-parent worker is its own primary. Core supplies it on the first-party metadata channel alongside `Worker-Id` (same gate, computed per turn), stamped on EVERY turn including the primary's own (where it equals `Worker-Id`) — absent-with-a-Worker-Id is a contract violation, never a silent "assume primary." An unresolvable root (a corrupt/cyclic parent chain the `parent != id` CHECK forbids) fails hard. Providers emits it as `Plurnk-Worker-Primary`; a consumer routes primary-vs-spawned by equality (`Worker-Primary == Worker-Id` ⇒ the primary; `!=` ⇒ any-depth spawn, no depth math) and groups the worker tree by the shared root.
 
-§machine-processes-fork-shares-the-world **A fork copies worker-owned history
-and scratch while sharing workspace-owned state.** It is a new worker in the
+§machine-processes-fork-shares-the-world **A fork copies history and named
+scratch while sharing the workspace.** It is a new worker in the
 same workspace (`workers.parent_worker_id`, {§lifecycle-terms}); project files,
 shared entries, and membership remain live and uncopied.
 
@@ -635,7 +618,7 @@ or membership overlay requires a new workspace.
 
 ### §worker-scheme The worker:// scheme — the knowledgebase (commons, own space, named spaces) and worker control (spawn, irc, fork, terminate, cap, collect)
 
-§worker-authority-carving **The authority names the OWNER:** `worker:///notes.md` is in the COMMONS — a shared blackboard; `worker://~/draft.md` is the calling worker's own private space; `worker://<name>/result.md` is a named worker's space. Storage keys the owner on the entries.owner_id column ({§entry-owner}) — the pathname is always the bare entry path, and a FIND's result paths re-apply the queried authority so the model sees the address it typed. `~` is the sole current-worker sigil and cannot be minted; `commons` and `plurnk` are internal worker names unavailable for minting. Every other mintable authority, including `self`, is a literal worker name ({§worker-name}).
+§worker-authority-carving **Authority is a literal namespace, not a principal.** `worker:///notes.md` is shared scratch; `worker://alice/draft.md` is named scratch. Both belong directly to the workspace ({§entry-owner}). Entry addresses require no namesake Worker row and survive its deletion; only pathless worker controls resolve an actor. The caller never alters an address, and `~` has no alias semantics.
 
 §worker-name-minting **URI ingestion is permissive; worker minting is not.**
 Every model/client worker-creation door applies the contracts-owned
@@ -645,17 +628,17 @@ continues to decompose other authorities without treating them as mintable.
 | Candidate                                      | Minting result                                                        |
 | ---------------------------------------------- | --------------------------------------------------------------------- |
 | `WORKER_NAME` match, not reserved              | Admitted as the exact literal worker name.                            |
-| `commons`, `plurnk`, or `~` (any case variant) | Refused as reserved before lookup or insertion.                       |
+| `plurnk` (any case variant) | Refused as reserved before lookup or insertion.                       |
 | Any other spelling                             | Refused as `name-invalid` before lookup, insertion, or child startup. |
 | Automatic name                                 | Generated, then admitted through the same predicate.                  |
 
-§worker-read-scope **Named spaces are workspace-wide reads**: any worker of the workspace reads `worker://<name>/…` for any other — a parent its child's `result`, a child its parent's, a sibling its sister's. The parent designs the topology by what it names to whom; the engine imposes none (operator ruling 2026-08-26, #394). An unknown name resolves 404. Reserved runtime workers obey the same rule; there is no unnamed world-readable space, and writability is untouched ({§worker-write-scoping}).
+§worker-read-scope **Scratch is workspace-readable.** Any actor reads and searches any named or shared scratch address. Parentage and writer identity do not change resolution. Scratch namespaces do not require a namesake Worker. A pathless actor address requires a named Worker; an unknown actor returns 404.
 
-§worker-write-scoping **Writes are own-space-and-commons only**: a model writes `worker://~/` and `worker:///`. Named authorities are read-only (403); an unknown name remains 404 under {§worker-read-scope}. `owner_id` is engine-stamped from the dispatch context, never model-set. COPY reads named worker sources under ordinary READ authority; its destination needs ordinary write authority. MOVE also requires source-deletion authority before any destination effect. Naming oneself is still read-only; `~` is the writable self-reference. The generated subtree below remains read-only within an otherwise writable space.
+§worker-write-scoping **Scratch is workspace-writable.** All workspace actors may EDIT, COPY, MOVE, or KILL entries in any named or shared scratch namespace, including generated documents. There is no creator-only, self-only, ancestor-only, or runtime-only grant. Workspace admission remains uniform. Intrinsically immutable evidence in other schemes retains its own contract ({§scheme-entry-matrix}); operation provenance and delegation lifecycle do not grant or restrict scratch access.
 
-§worker-generated-subtree **`_plurnk/` is Plurnk's generated subtree in every worker space.** Generated documents live under `worker://~/_plurnk/`: project instructions (`agents.md`, with nested AGENTS.md files under `instructions/**` preserving their subtree scope), scheme/runtime references (`plurnk/**`), executable tool details (`tools/**`), and family catalogs. Agent Skills retain their own resource trees at `skill://<name>/` ({§skills-resources}), not rewritten copies under this subtree.
+§worker-generated-subtree **Generated documents share `worker:///_plurnk/`.** Project instructions (`agents.md` and subtree-scoped `instructions/**`), scheme/runtime references (`plurnk/**`), tool details (`tools/**`), and family catalogs are workspace resources. Agent Skills retain their own trees at `skill://<name>/` ({§skills-resources}).
 
-The subtree is readable like the rest of the space ({§worker-read-scope}) and writable only by `_plurnk`: model, client, or plugin mutations under `/_plurnk/` are refused as 403 `worker-generated-read-only`, in the commons as well as own and named spaces. Runtime-authored mutations of this owned state do not demand the recipient worker's external capabilities ({§capability-admission}); reads and effects outside the subtree still do. Ordinary scheme write scoping remains enforced. Documents are materialized through ordinary `_plurnk` maintenance turns ({§actor-boundary-doc-injection}). Their successful rows do not render in model packets; failures remain visible, and READ over `log:///` recovers the durable operations. FORK rederives the subtree from workspace Functionality rather than copying its bytes ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No separate kernel authority exists.
+The subtree has ordinary scratch access, not an ACL. Runtime maintenance reconciles it from workspace Functionality through the reserved actor's ordinary turns ({§actor-boundary-doc-injection}); reconciliation may replace manual edits. There are no per-Worker copies or fork rederivation. A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}).
 
 §worker-control-addressing **Explicit worker control addresses are authority-only.**
 WORK and FORK may omit their address to allocate one ({§worker-auto-name}).
@@ -672,20 +655,18 @@ interpret and never silently normalizes one away.
 | Query or fragment | Absent, including an empty delimiter                                          |
 | Request metadata  | Absent                                                                         |
 
-After structural admission, `~` means the calling worker only where the
-operation admits current-worker control, while every mintable authority is a
-literal `workers.name` value.
+Every admitted authority is a literal `workers.name`; self-addressing uses the caller's actual name.
 
 | Operation | Accepted pathless authority | Effect                                  |
 |-----------|-----------------------------|-----------------------------------------|
 | `WORK`    | new literal name, or omitted | Spawn a fresh worker.                   |
 | `FORK`    | new literal name, or omitted | Branch the caller into a new worker.    |
-| `SEND`    | existing literal name, `~`  | Message the named worker or caller.     |
+| `SEND`    | existing literal name  | Message the named worker or caller.     |
 | `READ`    | existing literal name       | Collect the named worker's deliverable. |
-| `KILL`    | existing literal name, `~`  | Terminate the named worker or caller.   |
+| `KILL`    | existing literal name  | Terminate the named worker or caller.   |
 
-- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** ({§machine-processes-worker-origin}): an explicit name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error.
-- §worker-scheme-irc **irc** — ```` ```SEND (worker://<name>) ```` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. ```` ```SEND (worker://~) ```` targets the caller; a literal name with no worker in the workspace is 404.
+- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. An existing name returns 409; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
+- §worker-scheme-irc **irc** — ```` ```SEND (worker://<name>) ```` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. The caller addresses itself by its literal name; a literal name with no worker in the workspace is 404.
 - §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>)? ```` with a task body branches the
   current worker into a **named** sister: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
@@ -698,10 +679,7 @@ literal `workers.name` value.
   copied as **terminal history** (a non-terminal status is clamped): a fork's
   own work is a fresh loop, so an inherited mid-flight loop never makes the
   branch look forever-live to the {§send-premature-terminate} gate.
-- §worker-scheme-fork-scratch **Forked scratch.** A fork also inherits the
-  parent's private entries — its own space deep-copied with the owner
-  remapped (source → branch) — so the branch opens with the parent's notes and
-  diverges on its own edits: *fork = everything-in-common-but-name*.
+- §worker-scheme-fork-scratch **Forked scratch.** Named scratch and evidence are copied under the new name through {§machine-processes-entry-inheritance}. Parent and branch can edit either scratch namespace; their copies diverge independently.
 - §worker-spawn-no-branch **WORK and FORK take a worker path and a prompt, nothing else.** Branch
 delegation was removed outright (#396). A model manages git branches through ordinary
 EXEC git — never engine machinery.
@@ -1216,13 +1194,11 @@ Author-facing contract: [`@plurnk/plurnk-schemes`](../plurnk-schemes/SPEC.md). B
 
 When an op carries a target, RFC 3986 supplies the component model and WHATWG
 URL supplies canonical decomposition; an entry key is
-`(owner, scheme, authority, pathname)`; the owner Worker determines the
-workspace ({§entry-identity-no-null}).
+`(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}).
 The registered manifest's {§manifest-authority} disposition determines the one
 meaning of an authored URI authority before any entry capability is exposed:
 
 - §scheme-address-namespace-fold A **namespace scheme** mechanically folds its authored authority into the canonical storage pathname and persists the empty entry authority. For an entry tree, the authored authority is therefore a leading path segment rather than a separate resource coordinate.
-- An **owner scheme** consumes its authored authority while resolving `entries.owner_id` and persists the empty entry authority. `worker` uses this disposition ({§worker-authority-carving}).
 - A **resource scheme** preserves its canonical authority as the durable entry-authority coordinate. Every capability and exact query is bound to that authority; it cannot collide with or observe the same pathname at another authority.
 - §scheme-address-network A **network resource** uses the shared schemes-layer
   normalization contract {§network-address}:
@@ -1239,38 +1215,20 @@ meaning of an authored URI authority before any entry capability is exposed:
   folder/glob expansion belongs to entry namespaces, never an HTTP origin.
 - The **`file` class is the workspace filesystem** — a mount namespace with its own resolution and naming law, specified below.
 
-§client-entry-address A client entry read carries the observing `workerId` and
-passes its selector through the registered data scheme's
-{§entry-address-resolution} before querying storage. The scheme returns its
-canonical authority, pathname, and semantic owner; core alone resolves that
-owner to `entries.owner_id` and queries the complete `(owner, scheme,
-authority, pathname)` identity. Worker and capability-stream authorities reuse their
-ancestry checks, so unknown or unauthorized owners return the same 404 and
-cannot select an arbitrary colliding row. The result is the contracts-owned
-{§entry-read-result}; persistence columns never cross the seam.
+§client-entry-address A client entry read resolves through the registered scheme's {§entry-address-resolution} and queries the complete `(workspace, scheme, authority, pathname)` identity. Its observing Worker does not change the address or grant. Unknown Workers and absent resources return 404. The result is the contracts-owned {§entry-read-result}; storage columns do not cross the seam.
 
-§scheme-entry-matrix URI authority, entry principal, access, and fork
-inheritance are independent decisions. The built-in surfaces declare them
-explicitly:
+§scheme-entry-matrix Every entry shares workspace storage and addressability. Intrinsic mutability and fork copying follow the resource's meaning, not an ownership ACL.
 
-| Surface | URI authority | Entry principal | Cross-Worker read | FORK entry disposition |
-|---|---|---|---|---|
-| Project file | Filesystem name | `commons` | Workspace-shared | Shared live; no copy |
-| `worker:///...` | Empty selects commons | `resolved` commons | Workspace-shared | Shared live; no copy |
-| `worker://~/...` | `~` selects caller | `resolved` Worker | Self; any workspace worker through the literal name | Quiescent snapshot; `_plurnk/**` rederived |
-| `worker://<name>/...` | Literal Worker selector | `resolved` Worker | Any workspace worker | Scheme disposition only when the selected owner is the fork source; otherwise no copy |
-| `prompt:///...` | Loop-relative coordinate | Calling Worker | Self-only | Quiescent snapshot |
-| `skill://<name>/...` | Installed skill directory | Calling Worker's projection | Effective Functionality | Re-derived from installation |
-| `http(s)://...` | Remote resource identity | Calling Worker | Self-only | Quiescent snapshot; an active stream is omitted |
-| `wss://...` | Remote resource identity | Calling Worker | Self-only | None |
-| Executor/MCP output | Optional named actor selector | `resolved` Worker | Any workspace worker | None |
-| `a2a://...` outbound resource | Remote-agent identity | Calling Worker | Self-only | None |
+| Resource | Authority | Writes | FORK |
+|---|---|---|---|
+| Project files | Filesystem namespace | Workspace policy | Shared live |
+| `worker:///...` | Empty, shared scratch | Any workspace actor | Shared live |
+| `worker://alice/...` | Named scratch | Any workspace actor | Snapshot source namespace into new name |
+| `prompt://alice/...`, `reasoning://alice/...` | Named evidence | Intrinsic scheme contract; model-read-only | Snapshot source history into new name |
+| `skill://recipe/...` | Installed skill name | Skill resource contract | Shared installation |
+| HTTP, WebSocket, executor/MCP, A2A resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
 
-A resolved-owner scheme resolves the actor selector before returning its
-principal; a numeric Worker id is never extension input. `worker` ownership has
-no cross-actor form. Thus identical HTTP, WSS, A2A, prompt, Skill, or unqualified
-executor addresses in independent root Workers are distinct resources without
-render-time filtering.
+Copied bodies and log references remain verbatim. Explicit source addresses continue to name the source; only copied scratch/evidence resources' own authority becomes the child's name ({§machine-processes-entry-inheritance}).
 
 §fs-namespace **The workspace is a mount namespace; `project_root` is the model's `/`.** Chroot semantics: host paths do not exist inside the jail, and no engine surface folds a host-absolute spelling onto a member. The root is **fixed immutably at workspace creation** (headless is forever); the namespace's mount table changes only through the declared membership overlay ({§membership}), never by re-rooting. At `project_root = /` the jail is the whole filesystem and every rule below degenerates to identity — the design's proof case, and the common benchmark topology.
 
@@ -1348,8 +1306,12 @@ invalid range, read-only authority, and occupied hidden state without guessing.
 Entry-bearing schemes expose direct storage through their manifest-bound
 `ctx.entries` capability (`read`, `write`, and `delete`). The engine uses that
 same public capability for COPY/MOVE/KILL orchestration when a scheme does not
-own a more specific operation. Each capability call owns its local atomicity.
-There is no fictional cross-scheme SQL transaction.
+own a more specific operation. A stored-entry publication atomically upserts
+one workspace identity, metadata, and its complete channel set. Concurrent
+publications expose one complete result, never a mix of channels; a failed
+publication leaves the prior entry unchanged. Omitted attributes preserve the
+existing bag. Reads observe metadata and channels in one snapshot. There is no
+cross-scheme SQL transaction.
 
 ### §op-methods Op methods
 
@@ -1878,7 +1840,7 @@ resource or process semantics; this projection contract is specific to
 | Surface | Contract |
 |---|---|
 | Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a working resource; missing reasoning creates no substitute. |
-| Resource | `reasoning:///<loop>/<turn>/<call>` is worker-owned text/plain history; the final coordinate is the producing inference call's sequence. Like `prompt:///`, only client and `_plurnk` writers may modify it under {§scheme-surface-writableby-403}. Models may READ, FIND, search and COPY from it, but cannot EDIT, KILL, COPY into or MOVE it. |
+| Resource | `reasoning://<worker>/<loop>/<turn>/<call>` is workspace-stored text/plain history; the final coordinate is the producing inference call's sequence. Like `prompt://<worker>/`, only client and `_plurnk` writers may modify it under {§scheme-surface-writableby-403}. Models may READ, FIND, search and COPY from it, but cannot EDIT, KILL, COPY into or MOVE it. |
 | Delivery | The next packet observes the latest model turn's reasoning through actual `_plurnk` READ dispatch under {§reasoning-initial-read}. Initial and explicit READs produce ordinary `log:///.../READ` receipts with numeric line scopes and range metadata, without line anchors: the source is not model-editable. |
 | Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. Client or harness source changes do not rewrite earlier READ receipts; subsequent READs observe current text. |
 | Lifecycle | Restart retains entries and delivery history. FORK snapshots resources and receipts independently; branch edits cannot change parent sources. A durable initial READ prevents automatic redelivery even after log KILL. Ambient observations of another worker's READ do not count as reading one's own source. |
@@ -2077,11 +2039,11 @@ AST operands: `{ op: "MOVE", source: ResourceSelection, destination: ResourceSel
   retires the source through the source scheme's own KILL: an entry scheme
   deletes the entry or edits the region out, and the **log** curates — a scoped
   MOVE from a log region (`### MOVE_ (log:///1/5/3/READ) <123,456>
-  (worker://~/notes/Q4-insights.md)`) copies the readable lines and trims them
+  (worker://analyst/notes/Q4-insights.md)`) copies the readable lines and trims them
   from the projection like the same scoped KILL; an unscoped MOVE retires the
   row like an unscoped KILL. The recorded evidence is never written or erased
   ({§log-readable-projection}), so relocating reasoning or results into a
-  private note is a first-class curation move, not a refused write. A stream's
+  scratch note is a first-class curation move, not a refused write. A stream's
   KILL is process control, not content curation, and is not a MOVE source
   removal; the log is never a MOVE or COPY destination.
 - §move-canonical-whole-source The canonical whole-content source scope
@@ -2291,13 +2253,13 @@ violations follow the current admission and strike contracts
 
 An execution's existing runtime address is also its optional input recipient
 ({§executor-live-input}). SEND never edits stored output or creates another
-invocation. Like stream KILL, input control is self-only; another Worker's output
-may be read, but its execution is controlled through that Worker's lifecycle.
+invocation. Like stream KILL, input addresses the workspace execution regardless
+of which Worker launched it ({§execution-output-identity}).
 
 | Boundary | Behavior |
 | --- | --- |
 | Admission | Require SEND control and the original invocation's runtime/tool capabilities. Preserve its classified effect: host input proposes; pure/read input uses the same effect policy as launch. |
-| Acceptance | Recheck both capabilities, owner, and the exact live subscription. Stale approval cannot reach a replacement invocation. |
+| Acceptance | Recheck both capabilities, workspace, and the exact live subscription. Stale approval cannot reach a replacement invocation. |
 | Queued or starting without a receiver | `409 input-unavailable`, immediately; never wait for an execution slot while blocking another input-dependent execution. |
 | Unknown address | `404 stream-not-found`. A terminal execution or retired input returns `410 input-closed`. |
 | Delivery | Serialize accepted inputs per invocation. Preserve authored body and receiver-owned metadata. Receiver success means delivery only, not completion. |
@@ -2472,40 +2434,40 @@ TASK poll interval overrides this aggregation ({§worker-wait-timing}):
 Child-only joins never use this timer: child settlement is their durable wake
 edge. Stream closure remains a wake edge under every poll policy.
 
-§exec-host-proposes **Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose** (lifecycle {§proposal}): the worker waits for a human gate, then spawns and writes stdout/stderr to channels of a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag is the URI scheme, {§exec}; the coordinate matches the op's log-row coordinate, e.g. `sh:///1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive what the model sees at subsequent turn boundaries ({§channel-state}).
+§exec-host-proposes **Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) proposes under {§proposal}. Once accepted, it spawns and writes channels at its workspace execution address ({§execution-output-identity}), returning `102 Processing`. Channel state transitions (`active` → `closed`/`errored`) drive subsequent observations ({§channel-state}).
 
-§entry-owner **Every entry has one structurally bound principal.**
-`entries.owner_id` is a real Worker row and part of the identity key: the
-workspace's reserved `commons` Worker for deliberately shared content, the
-effective Worker for private resources, or the exact authorized Worker selected
-by a resolved-owner scheme. It is never nullable or supplied by a plugin call.
-Core binds it once through {§entry-address-resolution} before exposing any
-entry, channel, notification, subscription, mutation, proposal, client-read, or
-cancellation capability. URI authority remains a separate coordinate; a scheme
-may use a semantic Worker name there, but the private numeric id never appears
-in a URI or packet. `plurnk` and `commons` are reserved Workers, and `~` is the
-current-Worker sigil; none can be minted by a spawn or client.
+§entry-owner **Every entry belongs directly to one workspace.** Its immutable identity is `(workspace_id, scheme, authority, pathname)`. The workspace foreign key supplies lifetime; URI authority supplies the literal resource namespace. There is no entry-owner Worker, synthetic commons actor, caller-relative alias, or per-Worker access grant. Core binds one canonical coordinate through {§entry-address-resolution} for every operation and consumer. Producer and subscriber Worker ids describe causal activity, not ownership.
 
-§stream-owner-scoped **Capability streams are owner-scoped.** Concurrent workers' stream coordinates are loop-relative and IDENTICAL (every worker's first loop is sequence 1), so the entry identity keys on the owner and identical coordinates across workers are distinct rows. The address's authority names the owner: **empty = the calling worker** — your own streams need no qualifier, so a fan-out sibling's output can never surface under your READ — and a **named authority** reaches that worker's streams for any worker of the workspace (the parent designs the topology by what it names to whom; the engine imposes none, #394; an unknown name resolves 404). A child is told its parent's name in its packet (`parent-worker`). KILL stays self-only — a parent controls a child through the worker lifecycle, never by reaching into its streams. The storage pathname stays the bare loop coordinate; the owner rides the column, so nothing model-facing carries a worker id. A stream 404 never discloses existence, but it names the address space: the coordinate shape, the unqualified self, the descendant-by-name form, and that a tool's own ids are arguments, not addresses.
+§execution-output-identity **Execution output belongs to the workspace.**
+Each invocation claims a collision-checked eight-character lowercase hexadecimal
+path in its runtime scheme, e.g. `sh:///ab3d5678`. The claim and entry identity
+are one database write. Its log receipt records that address; worker, loop,
+turn, and operation coordinates remain provenance, not resource identity.
+Output entries and published child resources use the workspace commons.
+Deleting a producer Worker does not delete its retained output.
 
-§runtime-resource-binding A qualified runtime resource binds both its stored
-entry and its attachment to the named Worker within the caller's workspace.
-READ, FIND, and resource-source consumers use this same binding; an absent
-owner or attachment never falls back to the caller's same-named runtime.
-Non-runtime schemes retain their own authority semantics.
+§runtime-resource-binding Resource access binds the workspace resource, not
+the initiating Worker or client. READ, FIND, COPY, BARE, and executable resource
+sources share the ordinary entry pipeline. Stored execution output retains its
+default channel and actual channel representations independently of the live
+executor. Reading it never activates a disabled or removed attachment. The stored default
+channel selects fragmentless READ/FIND; the stored `output` discriminator identifies
+retained invocation resources, including when the runtime is unregistered.
+A live resource acquisition uses the workspace's enabled attachment.
 
 | Responsibility | Owner |
 |---|---|
-| Qualified runtime handler, manifest, connection, and stored resource | Addressed Worker |
-| Operation admission and policy | Caller and its attached Functionality |
-| Journal, cancellation, and client interaction | Calling operation |
-| Connection activation and cooling | Existing workspace Functionality residency; no model inference |
+| Resource identity, representations, retained output | Workspace |
+| Admission and observation restrictions | Service ceilings and workspace policy |
+| Input and cancellation by resource address | Workspace live execution; no creator-only grant |
+| Journal, client interaction, causal cancellation, polling, wake | Initiating operation and its Worker |
+| Connection activation and cooling | Workspace Functionality residency |
 
-The selected attachment remains leased throughout resource acquisition.
-Resource reads do not grant execution or stream-control authority over the
-owner. Catalog and content links preserve the selected owner. Capability
-activation failure unwinds its unpublished state without waiting for the
-workspace turn that requested activation.
+Input requires the original live receiver and current workspace admission.
+KILL cancels the addressed live stream; closed/missing streams retain their
+ordinary terminal/not-found outcomes. Cross-worker control does not transfer
+causal ownership: conclusion still wakes the initiating Worker, and its normal
+lifecycle teardown still reaps its work. No new delegation semantics follow.
 
 §worker-auto-name **Automatic names are eight random lowercase hexadecimal
 characters**, e.g. `worker://ab3d5678`; a colliding draw is retried. All unnamed
@@ -2538,7 +2500,7 @@ two states and no others:
 | state | what the model receives |
 |---|---|
 | active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
-| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/<runtime>` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
+| terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/<runtime>` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
 `PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;
@@ -2581,7 +2543,7 @@ its selected result complete. A stream that closes before a same-turn wait
 remains pending until every selected channel's terminal READ crosses the next
 packet boundary. The EXEC row separately records the authored invocation.
 
-```` ```KILL (<runtime>:///<loop>/<turn>/<seq>/<runtime>) ```` cancels an active subprocess via
+```` ```KILL (<runtime>:///<eight-hex-id>) ```` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable:
 499 returns 410 (already killed), every other terminal status returns an RFC
 9457 409 Problem carrying `terminalStatus`, and an unknown address returns 404.
@@ -2595,7 +2557,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 
   | Input / effect | Consumer behavior |
   | --- | --- |
-  | Absolute URL | Resolve its registered scheme and entry owner. |
+  | Absolute URL | Resolve its registered scheme and workspace coordinate. |
   | Null path + supplied content | Publish beneath the invocation's `resources/` using {§resource-publication-names}, owned by the calling Worker. |
   | Supplied bytes | Retain the original bytes and declared mimetype in an ordinary channel ({§binary-parity}). |
   | Supplied text | Preserve text resources; HTTP/HTML materialization retains source and derived channels under {§html-materialization}. |
@@ -2694,6 +2656,16 @@ settles it as interruption (`500`) and errors active channels before evaluating 
 loops ({§worker-lifecycle-restart-recovery}); it never reports cancellation (`499`) or
 pretends to reconstruct an opaque plugin connection.
 
+§subscriptions-causal-resource A subscription's causal Worker belongs to the
+entry's workspace. The active entry has
+one subscription. Its initiating Worker remains the polling, cancellation, and
+wake recipient. Removing a Worker requires its live work to be settled first;
+closed subscriptions and channel outcomes remain with the resource, with no
+dangling Worker reference. Subscription identity and its optional causal log
+`source` are immutable after opening. Stream observations use that recorded
+source and the resource's stored default channel, never URI arithmetic or a
+live executor's current declaration.
+
 §subscriptions-fold-keeps-subscription A scoped KILL changes a log row's readable projection ({§log-kill-scope}), never the subscription registry. Curation of a streaming entry's log body leaves the live stream and its source running; it is not cancellation.
 
 ### §chunk-accumulation Chunk accumulation
@@ -2713,7 +2685,7 @@ Model sees lifecycle events in the `log` section per turn.
 ### §stream-control Stream control and writes
 
 - **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Kill:** ```` ```KILL (sh:///1/2/3/sh) ```` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
+- **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. An already-killed stream answers 410; another terminal stream answers 409 with its recorded status ({§runtime-resource-binding}). A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
 - **WebSocket write:** ```` ```EDIT (wss://feed/x) ```` or ```` ```SEND (wss://feed/x) ```` with a body sends one whole text frame through the active owner. Either write can follow the opening READ in the same turn under {§op-execution-order}.
 - **Other stream write:** ```` ```SEND (…) ```` remains scheme-defined, including exec stdin.
 
@@ -2749,7 +2721,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 
 - **Schema-alignment test**: loads `@plurnk/plurnk-contracts/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Contract drift fails CI.
 - DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
-- §entry-identity-no-null **Identity components are never NULL.** The entries identity tuple — `(owner, scheme, authority, pathname)` — admits no NULL component because SQLite treats NULLs as distinct under a UNIQUE index, allowing duplicate logical identities. `owner_id` references one Worker, which is the sole workspace coordinate; `entries` stores no redundant `workspace_id` that could contradict it. `authority` defaults to the canonical empty string for namespace and owner schemes; resource schemes persist their canonical authority there. File members persist under the reserved **`file`** scheme (`storedScheme: "file"`; they still render as bare paths); `entries.scheme` and `entries.authority` are `NOT NULL`; a manifest declaring `storedScheme: null` is refused at registration.
+- §entry-identity-no-null **Identity components are never NULL.** `(workspace_id, scheme, authority, pathname)` is a unique key. `workspace_id` references the workspace directly with cascading deletion. Namespace schemes use empty authority; resource schemes retain their canonical authority. File members use nonempty `scheme="file"` and render as bare paths. Registration refuses `storedScheme: null`.
 
 ### §sql-ts-boundary SQL/TS responsibility boundary
 
@@ -2789,7 +2761,7 @@ package name. Core's bundled names are reserved claims. A daemon module's
 runtime registration names its module owner and makes one composite executor
 claim: its ordinary output scheme and optional resource facet do not compete
 with each other. Module runtime registration applies {§executor-policy} before
-claiming either name, for process-wide and worker-scoped registrations alike.
+claiming either name, for process-wide and workspace-scoped registrations alike.
 
 | Existing claim                 | Incoming claim                                          | Outcome |
 |--------------------------------|---------------------------------------------------------|---------|
@@ -3179,7 +3151,7 @@ flowchart LR
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
 
 §workspace-environment-sharing **The workspace owns its shared environment.**
-Workers own their logs and scratchpads; delegation retains its existing lifecycle.
+Workers own their logs; delegation retains its existing lifecycle.
 Creating, attaching, forking, cancelling, or deleting a worker does not create,
 transfer, or remove ownership of workspace tools or shared resources.
 
@@ -3189,7 +3161,8 @@ transfer, or remove ownership of workspace tools or shared resources.
 | Runtime publication, connection residency, and alias configuration | Workspace and the registered provider |
 | Submitted operation, receipt, pending interaction, and cancellation signal | Originating operation in its worker's history |
 | Saved tool output and materialized resource bytes | Workspace; independent of live provider availability |
-| Log and private scratchpad | Worker |
+| Named and commons scratch | Workspace |
+| Log | Worker |
 
 §module-workspace-quiescence **A Functionality snapshot changes between
 workspace operations.** Mutation admission, external installation/removal,
@@ -3341,7 +3314,7 @@ Core's behavior behind them.
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
-| §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty private history: a fresh conversation over the same world, not a fork or the stable default. |
+| §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty history: a fresh conversation over the same world, not a fork or the stable default. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?)` | Returns nonempty loop-seed prompts from the workspace's model-origin root conversations, newest-first. The positive limit defaults to 100; spawned and forked child prompts are excluded. |
@@ -3595,8 +3568,8 @@ active lifecycle behind. LOOK text anchors resolve through the same
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
-| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the entry owner and read perspective; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes from the stated worker perspective. |
-| §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the entry owner; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one, so clients never parse it back out of `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
+| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for conversation routing, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
+| §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 | §notifications-reasoning-event `reasoning/event`             | `{ workerId, loopId, turnId, modelCallId, requestSequence, phase, delta? }` | A main emission call exposes readable reasoning. Each physical request that emits reasoning owns a distinct positive `requestSequence` and balanced start/content/end stream; opening a retry closes the preceding stream before any retry delta. Only content carries a nonempty exact delta. It is transient presentation evidence, never a log row, Notice, packet field, or BARE/child channel. The settled provider response remains the durable authority. |
 
@@ -3670,15 +3643,17 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
-|     4 | user   | `log`                 | Append-mostly model-visible history. |
-|     5 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
-|     6 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
-|     7 | user   | `parent-worker`       | The worker's parent by name; omitted for a root worker. |
-|     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|     9 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    10 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    11 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
-|    12 | user   | `prompt`              | Current prompt-entry pointers. |
+|     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`. |
+|     5 | user   | `log`                 | Append-mostly model-visible history. |
+|     6 | user   | `child-streams`        | Per-turn status; empty content is omitted. |
+|     7 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
+|     8 | user   | `parent-worker`       | The worker's parent by name; omitted for a root worker. |
+|     9 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|    10 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    11 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    12 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
+|    13 | user   | `prompt`              | Current prompt-entry pointers. |
+|    14 | user   | `recap`               | Optional authored operational recap. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly
@@ -3809,8 +3784,8 @@ and never re-fetch a match.
   ({§membership-create-parents}). Admitted by a published standard as projected
   instruction documents — never as members: (3) the project's `AGENTS.md` and nested
   `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
-  and materialized as `worker://~/_plurnk/agents.md` and
-  `worker://~/_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
+  and materialized as `worker:///_plurnk/agents.md` and
+  `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
   only when tracked or added, and the standard never overrides the operator's
   exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
   is not projected. (4) A definition the model proposes through the `members`
@@ -4018,7 +3993,7 @@ identity and never publish another occurrence.
 resource follows lineage.** A successful state-changing `EDIT`, `COPY`, `MOVE`,
 entry-path `KILL` whose landed effects touch `worker:///...` acquires the workspace
 audience and retains the commons address in its observer row. Mutations to
-`worker://~/...`, named worker spaces, project files, and remote resources do
+`worker://<worker>/...`, named worker spaces, project files, and remote resources do
 not broadcast. When authored by a child, their
 ordinary operation evidence still reaches that child's direct parent.
 
@@ -4283,17 +4258,13 @@ remains addressable. This selection is not a second rendering-time cut.
 
 READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. TASK inventory is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Rejected-emission artifacts, SEND/WORK/FORK bodies, EXEC commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
-§prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry — written before any turn of its loop executes, so the initialization COPY ({§worker-initialization-entry}) archives a real source — then published to its first model turn as one actionless lowercase `prompt` log row; that row, not the entry, records publication. No synthetic EDIT or READ operation is invented. The row is born visible and obeys {§body-projection}. The **Active Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable after its log row's body is suppressed or its active projection is retired.
+§prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt://<worker>/<loop>/<N>` as an explicitly addressed text/markdown entry — written before any turn of its loop executes, so the initialization COPY ({§worker-initialization-entry}) archives a real source — then published to its first model turn as one actionless lowercase `prompt` log row; that row, not the entry, records publication. No synthetic EDIT or READ operation is invented. The row is born visible and obeys {§body-projection}. The **Active Prompts** section closes the user-slot status clump as a paths-only list (`* prompt://<worker>/<loop>/<N>`), so every frame remains directly READable after its log row's body is suppressed or its active projection is retired.
 
 §prompt-causal-source **Prompt authorship and delivery are distinct facts.** The harness publishes every prompt row with `origin="_plurnk"`; the row's existing `source` carries the canonical address of a different causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter may supply its own canonical actor address through {§methods-loop-run}. An absent source means the owning worker itself. Attribution persists with the prompt frame through active delivery, parking, orphan recovery, restart, and later log projection; model syntax cannot author it.
 
-§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for visible prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all visible prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` metadata. The canonical `prompt:///` entry remains complete and READ/FIND-addressable; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. When provider input capacity is unknown the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
+§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for visible prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all visible prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` metadata. The canonical `prompt://<worker>/` entry remains complete and READ/FIND-addressable; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. When provider input capacity is unknown the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
 
-§prompt-self-only The frame is self-only and owner-keyed:
-`entries.owner_id` carries worker identity while the address carries only the
-loop coordinate. Concurrent workers therefore hold distinct rows at the same
-address. Cross-worker prompt flow is engine-mediated; the scheme needs no
-authority slot.
+§prompt-address The frame uses its literal Worker name: `prompt://alice/<loop>/<N>`. Any workspace actor can read or search it. The name, loop, and ordinal distinguish concurrent histories without an implicit caller coordinate. Prompt publication still follows the producing Worker's loop, independently of who reads the source.
 
 §prompt-loop-containment A loop contains every prompt that arrives before it
 concludes, ordinal-keyed as `N`; the next turn publishes every entry for which
@@ -4435,7 +4406,7 @@ stored fact, so a live watcher accrues running loop cost per turn (#465).
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
 runtime enabled for the current worker with an admitted invocation materializes one
-family document at `worker://~/_plurnk/plurnk/<runtime>.md`. A general runtime's
+family document at `worker:///_plurnk/plurnk/<runtime>.md`. A general runtime's
 document contains its {§executor-tool-document}; a runtime with an exact
 {§executor-tool-registry} materializes a compact catalog at the same address. The family document summarizes
 the server or runtime, lists every enabled target as a directly copyable
@@ -4466,15 +4437,15 @@ admits no invocation. Reconciliation deletes stale documents
 before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
 enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch. A runtime declaration may carry
-`resourcesPath` — its generated-doc root relative to the worker's generated
+`resourcesPath` — its generated-doc root relative to the workspace's generated
 subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
 `_plurnk/plurnk` namespace; present (attached MCP families: `/tools`),
 the family document materializes at `_plurnk` + that root in the
-worker's private entry space. Turn 0 surveys the families (`FIND
-(worker://~/_plurnk/tools/*.md)`, one row per
+shared scratch. Turn 0 surveys the families (`FIND
+(worker:///_plurnk/tools/*.md)`, one row per
 server carrying its summary) and, for each server named in
 `PLURNK_MCP_EXPANDED`, adds one FIND over its family document matching the
-complete executable blocks (`FIND (worker://~/_plurnk/tools/<server>.md)`
+complete executable blocks (`FIND (worker:///_plurnk/tools/<server>.md)`
 with a multiline regex over matching fences), so turn 0 names every tool with its annotation and
 signature — one row per tool, paged like every survey. Capability attenuation
 restricts that matcher to the admitted exact tools. No document is delivered
@@ -4537,7 +4508,7 @@ the repository ignores ({§membership-model-universe}). The engine's creation re
 overwrites or retires them. Projection happens at the family's publication commit and
 re-resolves membership; workspace cooling changes nothing, because desired state is
 durable. Each enabled definition is one generated document at
-`worker://~/_plurnk/members/<alias>.md` ({§functionality-documents}) — its glob, origin,
+`worker:///_plurnk/members/<alias>.md` ({§functionality-documents}) — its glob, origin,
 provenance, and what it resolved to — surveyed at turn 0 like every family's enabled
 definitions ({§actor-boundary-catalog-preview}), so the model sees why a file is or is
 not a member before it asks. There is no other membership path: the client's `/members`
@@ -4594,7 +4565,7 @@ unknown provenance; malformed or unreadable locks surface their cause.
 
 §skills-resources **A skill is a resource tree, not a rewritten document.**
 The family exposes enabled, available {§agent-skills-tree} sources through
-`skill://<name>/`. The source owns its bytes; Worker-owned entries are demand-loaded
+`skill://<name>/`. The source owns its bytes; commons entries are demand-loaded
 projections, not writable installations. Filesystem skills retain their original
 directories; service-provided trees need no generated filesystem directory.
 
@@ -4652,7 +4623,7 @@ section because they are language extensions rather than executable tools.
 
 ### §schemes Scheme-reference discovery
 
-§schemes-directory Scheme references are ordinary worker-private entries at `worker://~/_plurnk/plurnk/<scheme>.md`. Turn0's FIND survey projects their summaries ({§worker-initialization-entry}); the model READs details on demand. No Resources section or separate example catalog is injected into the system packet.
+§schemes-directory Scheme references are ordinary workspace entries at `worker:///_plurnk/plurnk/<scheme>.md`. Turn0's FIND survey projects their summaries ({§worker-initialization-entry}); the model READs details on demand. No Resources section or separate example catalog is injected into the system packet.
 
 | Reference decision | Owning rule |
 |---|---|
@@ -4668,7 +4639,7 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
+§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker:///_plurnk/agents.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/POLICY.md` ({§teaching-corpus}).
@@ -4689,7 +4660,7 @@ created by that attempt. Unknown legacy members or simultaneous
 legacy/canonical state fail without guessing. No dual read or dual write survives
 the transition.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Every published reference carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies effective capabilities to that shared source. One materializer reconciles each reader's private projection: vanished contributions are deleted before current documents are upserted, so excluded schemes and withdrawn runtimes leave no stale teaching. Concurrent requests for one reader share one reconciliation and its outcome; distinct readers do not serialize behind each other. These ordinary runtime turns maintain {§worker-generated-subtree}, including under read-only workspace policy.
+§schemes-self-doc-materialization **One generated reference tree per workspace.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Each reference carries an H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies workspace capabilities to that source. One workspace materializer deletes vanished contributions and upserts current documents. Concurrent readers share the same reconciliation and outcome; independent workspaces do not serialize together. Ordinary runtime turns maintain {§worker-generated-subtree}, including under read-only workspace policy.
 
 ### §packet-git-status The Git status section — compact repository state
 

@@ -4,33 +4,29 @@
 -- PREP: crud_find_workspace_entry
 -- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
 -- persist under the reserved 'file' scheme), so plain `=` is the honest comparison.
-SELECT e.id, e.attributes
+SELECT e.id, e.attributes, e.default_channel, e.output
 FROM entries e
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
+WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE entry_id = $entry_id;
 
--- PREP: crud_insert_workspace_entry
-INSERT INTO entries (owner_id, scheme, authority, pathname)
-SELECT $owner_id, $scheme, $authority, $pathname
-FROM workers WHERE id = $owner_id AND workspace_id = $workspace_id
-RETURNING id;
+-- PREP: crud_read_entry
+-- {§crud} One read snapshot covers metadata and every channel.
+SELECT e.id, e.attributes, c.name, c.content, c.mimetype, c.state, c.producer_result
+FROM entries e LEFT JOIN entry_channels c ON c.entry_id = e.id
+WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme
+  AND e.authority = $authority AND e.pathname = $pathname;
 
--- PREP: crud_insert_workspace_entry_with_attributes
--- Core-private metadata is present at identity creation, before any channel
--- makes the entry visible to a reader.
-INSERT INTO entries (owner_id, scheme, authority, pathname, attributes)
-SELECT $owner_id, $scheme, $authority, $pathname, $attributes
-FROM workers WHERE id = $owner_id AND workspace_id = $workspace_id
-RETURNING id;
-
--- PREP: crud_set_entry_attributes
--- Core-private entry metadata. Omission at the EntryCrud seam preserves the
--- existing value; an explicit bag replaces it before channels become visible.
-UPDATE entries SET attributes = $attributes WHERE id = $entry_id;
+-- PREP: crud_publish_entry
+INSERT INTO entry_publication (workspace_id, scheme, authority, pathname, attributes, default_channel, output, channels, created)
+SELECT $workspace_id, $scheme, $authority, $pathname, $attributes, $default_channel, $output, $channels,
+       NOT EXISTS (SELECT 1 FROM entries WHERE workspace_id = $workspace_id
+           AND scheme = $scheme AND authority = $authority AND pathname = $pathname)
+RETURNING (SELECT id FROM entries WHERE workspace_id = entry_publication.workspace_id
+    AND scheme = entry_publication.scheme AND authority = entry_publication.authority
+    AND pathname = entry_publication.pathname) AS id, created;
 
 -- PREP: crud_register_workspace_member
 -- Idempotent bare-membership insert (SPEC {§membership} D4 — git ls-files membership).
@@ -39,10 +35,10 @@ UPDATE entries SET attributes = $attributes WHERE id = $entry_id;
 -- Channel-less by design — disk stays the truth (D3). Re-resolution updates
 -- only provenance so an explicit pick can supersede Git (including outside-root
 -- write authority) and removing that pick can return ownership to Git.
-INSERT INTO entries (owner_id, scheme, authority, pathname, membership_origin)
-SELECT $owner_id, $scheme, $authority, $pathname, $membership_origin
-FROM workers WHERE id = $owner_id AND workspace_id = $workspace_id
-ON CONFLICT (owner_id, scheme, authority, pathname)
+INSERT INTO entries (workspace_id, scheme, authority, pathname, membership_origin)
+SELECT $workspace_id, $scheme, $authority, $pathname, $membership_origin
+FROM workspaces WHERE id = $workspace_id
+ON CONFLICT (workspace_id, scheme, authority, pathname)
 DO UPDATE SET membership_origin = excluded.membership_origin
 RETURNING id;
 
@@ -52,8 +48,7 @@ RETURNING id;
 -- before any content read. File members store scheme='file' ({§entry-identity-no-null}).
 SELECT e.id, e.synced_sig, e.membership_origin, e.attributes
 FROM entries e
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
+WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname;
 
 -- PREP: crud_set_synced_sig
@@ -73,11 +68,6 @@ DELETE FROM entry_channels WHERE entry_id = $entry_id;
 -- PREP: crud_delete_channel
 DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = $name
 RETURNING name;
-
--- PREP: crud_write_channel
--- {§tokenomics-content-hash-identity}: every static write stamps stable content identity.
-INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
-VALUES ($entry_id, $name, $content, $mimetype, $weight, $content_hash, $state, $producer_result);
 
 -- PREP: crud_attach_channel_derivation
 -- Attach only while the channel still denotes the exact representation that
@@ -108,8 +98,7 @@ DELETE FROM entries WHERE id = $entry_id;
 -- members.
 SELECT e.id, e.pathname
 FROM entries e
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = ''
+WHERE e.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = ''
   AND e.membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_generated_workspace_constraint

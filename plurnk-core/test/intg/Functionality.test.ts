@@ -45,7 +45,7 @@ const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
         get manifest() {
             return {
                 name: tag, channels: { results: "application/json" }, defaultChannel: "results", category: "data",
-                entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true,
+                writableBy: ["plugin"], volatile: true, modelVisible: true,
             } as never;
         },
         get defaultChannel() { return "results"; },
@@ -123,9 +123,9 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         await daemon.start();
         try {
             const workspaceId = await insertWorkspace(db, `fx-docs-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId, null, "model", "model");
+            await insertWorker(db, workspaceId, null, "model", "model");
             await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId));
-            const doc = (await daemon.engine.referenceEntries(workspaceId, workerId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
+            const doc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
             assert.ok(doc, "the family document is a reference entry");
             assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n````fx ("), true, "the generated header owns the H1 and the summary");
             assert.ok(doc.content.includes("## Tools"), "the generated verb table is present");
@@ -279,12 +279,12 @@ fixture
 
         // Family documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
-        await daemon.look({ workspaceId, workerId: model, statement: parseOne("```READ (worker://~/_plurnk/fx/docy.md)```") });
-        const document = await db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
-        assert.deepEqual(document.map(({ owner_id }) => owner_id).sort(), [model, client].sort(), "both active readers receive the shared family document");
+        await daemon.look({ workspaceId, workerId: model, statement: parseOne("```READ (worker:///_plurnk/fx/docy.md)```") });
+        const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
+        assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared family document");
         for (const { content } of document) assert.match(content, /fixture document/);
         await invoke("remove", { alias: "docy" });
-        assert.deepEqual(await db.test_entries_by_coordinate_owners.all({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" }), [], "removal withdraws the document");
+        assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" }), [], "removal withdraws the document");
 
         // Persistence: a workspace-origin definition and a service enabledness survive restart.
         await invoke("add", { alias: "keep", definition: { kind: "ok" } });
@@ -316,7 +316,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     const daemon = await boot(db, []);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await daemon.look({ workspaceId, workerId, statement: parseOne("```READ (worker://~/_plurnk/plurnk/fx.md) <1,-1>```") });
+    await daemon.look({ workspaceId, workerId, statement: parseOne("```READ (worker:///_plurnk/plurnk/fx.md) <1,-1>```") });
     const materialize = LoopDocs.materialize;
     const cause = new Error("fixture document publication failed");
     let failed = false;
@@ -332,7 +332,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     };
     assert.deepEqual(list.definitions.map(({ alias }) => alias), ["svc"]);
     assert.equal(daemon.schemes.has("docy", workspaceId), false);
-    assert.deepEqual(await db.test_entries_by_coordinate_owners.all({
+    assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({
         scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md",
     }), [], "rollback cannot leave a document from the rejected workspace snapshot");
 });

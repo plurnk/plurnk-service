@@ -19,8 +19,6 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    entryOwner: "commons",
-    inherit: "none",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,
@@ -39,15 +37,6 @@ test("SchemeRegistry.discoverExternal registers the https sibling", async () => 
     await registry.discoverExternal();
 
     assert.equal(registry.has("https"), true, "the external https sibling is discovered + registered");
-});
-
-test("entry inheritance follows the registered handler behind addressed protocol aliases", async () => {
-    const registry = new SchemeRegistry();
-    await registry.discoverExternal();
-
-    assert.equal(registry.entryInheritanceForStoredScheme("https", 1), "snapshot");
-    assert.equal(registry.entryInheritanceForStoredScheme("ws", 1), "none");
-    assert.equal(registry.entryInheritanceForStoredScheme("unknown", 1), "none");
 });
 
 test("discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {

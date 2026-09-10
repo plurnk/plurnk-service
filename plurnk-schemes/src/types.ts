@@ -12,19 +12,8 @@ export type WriterTier = "model" | "client" | "_plurnk" | "plugin";
 
 // URI-authority disposition for an addressed scheme. Namespace is the stable
 // default for ordinary entry trees: an authored authority folds into the
-// pathname. Resource preserves authority as a durable entry coordinate. Owner
-// consumes authority as the entry principal and persists no resource authority.
-export type SchemeAuthority = "namespace" | "resource" | "owner";
-
-// Durable entry-principal disposition. URI authority and entry ownership are
-// independent: a resource authority may identify a remote origin while every
-// materialized representation remains private to the calling worker.
-export type SchemeEntryOwner = "commons" | "worker" | "resolved";
-
-// Fork disposition for Worker-owned entries. It is independent of ownership:
-// commons entries are shared live, while a Worker-owned representation may be
-// copied, regenerated from inherited Functionality, or omitted.
-export type SchemeEntryInheritance = "none" | "snapshot" | "rederive";
+// pathname. Resource preserves authority as a durable entry coordinate.
+export type SchemeAuthority = "namespace" | "resource";
 
 export interface EntryCoordinate {
     readonly authority: string;
@@ -70,16 +59,8 @@ interface SchemeManifestBase {
     readonly storedScheme?: string;
 }
 
-export type SchemeManifest =
-    | SchemeManifestBase & {
-        readonly category: "data";
-        // `commons` and `worker` bind a fixed principal; `resolved` requires
-        // resolveEntryAddress() to select it from the addressed resource.
-        readonly entryOwner: SchemeEntryOwner;
-        readonly inherit: SchemeEntryInheritance;
-    }
-    | SchemeManifestBase & {
-        readonly category: "logging" | "control";
-        readonly entryOwner?: never;
-        readonly inherit?: never;
-    };
+export type SchemeManifest = SchemeManifestBase & (
+    { readonly category: "data" }
+    | { readonly category: "logging" }
+    | { readonly category: "control" }
+);

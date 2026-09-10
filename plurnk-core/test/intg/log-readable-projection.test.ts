@@ -167,7 +167,7 @@ test("{§log-readable-projection}: initially suppressed programs remain readable
         assert.equal(copied.status, 201, JSON.stringify(copied));
     });
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <2>\`\`\``)).status, 200);
-    const branch = await Fork.fork(db, ids.workerId, "branch", () => "none");
+    const branch = await Fork.fork(db, ids.workerId, "branch");
     const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
     assert.equal(forkRead.content, "```TASK\n```");
     const forkRows = await db.fork_get_log_entries.all<{ initial_folded: string; projection_folded: string }>({ worker_id: branch });

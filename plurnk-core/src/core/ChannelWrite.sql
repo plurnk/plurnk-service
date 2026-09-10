@@ -1,10 +1,9 @@
 -- Channel-write SQL for streaming schemes. SPEC {§channel-state} + {§subscriptions} + {§notifications}.
 
 -- PREP: channel_meta
-SELECT owner.workspace_id, e.owner_id AS workerId, e.scheme, e.authority, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
+SELECT e.workspace_id, e.scheme, e.authority, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
 FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
-JOIN workers owner ON owner.id = e.owner_id
 WHERE ec.entry_id = $entry_id AND ec.name = $channel;
 
 -- PREP: append_to_channel
@@ -37,8 +36,8 @@ WHERE entry_id = $entry_id AND name = $channel;
 -- PREP: open_subscription
 -- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is
 -- a normal, non-turn-scoped subscription — the column is NOT NULL, so a missing bind would error.
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, poll_seconds, turn_scoped, published_channel)
-VALUES ($worker_id, $entry_id, $scheme, $handle, $poll_seconds, COALESCE($turn_scoped, 0), $published_channel)
+INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, poll_seconds, turn_scoped, published_channel, source)
+VALUES ($worker_id, $entry_id, $scheme, $handle, $poll_seconds, COALESCE($turn_scoped, 0), $published_channel, $source)
 RETURNING id;
 
 -- PREP: close_subscription
@@ -50,20 +49,19 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $subscription_id AND closed_at IS NULL;
 
 -- PREP: subscription_published_channel_meta
-SELECT e.id AS entryId, owner.workspace_id, e.owner_id AS workerId, e.scheme, e.authority, e.pathname,
+SELECT e.id AS entryId, s.worker_id AS workerId, e.workspace_id, e.scheme, e.authority, e.pathname,
        ec.name AS channel, ec.state, ec.mimetype,
        length(ec.content) AS contentLength
 FROM subscriptions s
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 JOIN entries e ON e.id = s.entry_id
-JOIN workers owner ON owner.id = e.owner_id
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = sp.channel
 WHERE s.id = $subscription_id;
 
 -- PREP: find_active_subscription
 SELECT id, scheme, handle
 FROM subscriptions
-WHERE worker_id = $worker_id AND entry_id = $entry_id AND closed_at IS NULL;
+WHERE entry_id = $entry_id AND closed_at IS NULL;
 
 -- PREP: find_open_subscriptions_for_worker
 -- The worker's still-open subscriptions — the registry-routed reap ({§worker-lifecycle-total-reap}):
@@ -88,8 +86,7 @@ WHERE worker_id = $worker_id AND closed_at IS NULL AND turn_scoped = 1;
 SELECT s.close_status
 FROM entries e
 JOIN subscriptions s ON s.entry_id = e.id
-JOIN workers owner ON owner.id = e.owner_id
-WHERE owner.workspace_id = $workspace_id AND s.worker_id = $worker_id
+WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname
   AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC

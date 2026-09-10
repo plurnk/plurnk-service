@@ -14,7 +14,7 @@ test("foldAuthorityIntoPath folds a namespace authority into the canonical path"
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), "/docs/x.md");
 });
 
-test("entryCoordinateOf distinguishes namespace, resource, and owner authority", () => {
+test("entryCoordinateOf distinguishes namespace and resource authority", () => {
     const notes = parsePath("notes://docs/fact.md");
     const agent = parsePath("a2a://researcher/tasks/t-1");
     const worker = parsePath("worker://ada/task");
@@ -29,8 +29,8 @@ test("entryCoordinateOf distinguishes namespace, resource, and owner authority",
         authority: "researcher",
         pathname: "/tasks/t-1",
     });
-    assert.deepEqual(entryCoordinateOf(worker, "owner"), {
-        authority: "",
+    assert.deepEqual(entryCoordinateOf(worker, "resource"), {
+        authority: "ada",
         pathname: "/task",
     });
 });

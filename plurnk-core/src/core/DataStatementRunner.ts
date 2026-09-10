@@ -20,22 +20,19 @@ export default class DataStatementRunner {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
-    readonly #fixedEntryOwnerId: (manifest: SchemeManifest, ctx: PlurnkSchemeContext) => Promise<number | null>;
     readonly #prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
 
-    constructor({ schemes, liveSubscriptions, resolveDataEntryAddress, fixedEntryOwnerId, prepareDataRepresentation, failure }: {
+    constructor({ schemes, liveSubscriptions, resolveDataEntryAddress, prepareDataRepresentation, failure }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
-        fixedEntryOwnerId: (manifest: SchemeManifest, ctx: PlurnkSchemeContext) => Promise<number | null>;
         prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
     }) {
         this.#schemes = schemes;
         this.#liveSubscriptions = liveSubscriptions;
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
-        this.#fixedEntryOwnerId = fixedEntryOwnerId;
         this.#prepareDataRepresentation = prepareDataRepresentation;
         this.#failure = failure;
     }
@@ -139,7 +136,6 @@ export default class DataStatementRunner {
             this.#liveSubscriptions,
             {
                 authority: operationAddress?.authority ?? authoredCoordinate.authority,
-                ownerId: operationAddress?.ownerId ?? await this.#fixedEntryOwnerId(manifest, ctx),
                 publishedChannel,
             },
         );
@@ -228,7 +224,6 @@ export default class DataStatementRunner {
                 resolved === null
                     ? null
                     : {
-                        ownerId: resolved.ownerId,
                         authority: resolved.authority,
                         pathname: resolved.pathname,
                     },
@@ -308,7 +303,6 @@ export default class DataStatementRunner {
                 ctx,
                 { ...manifest, name: storageScheme, storedScheme: storageScheme },
                 {
-                    ownerId: prepared.address.ownerId,
                     authority: prepared.address.authority,
                     pathname: prepared.address.pathname,
                 },

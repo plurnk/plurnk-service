@@ -60,7 +60,7 @@ export const DEFAULT_LOOP_POLICY: LoopPolicy = Object.freeze({
 export const WORKER_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 // Authority-shaped internal worker names excluded from minting. {§worker-name}
-export const RESERVED_AUTHORITIES = Object.freeze(["commons", "plurnk"] as const);
+export const RESERVED_AUTHORITIES = Object.freeze(["plurnk"] as const);
 
 // Structurally synthesized statements have no parsed source point. {§parser-position}
 export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });

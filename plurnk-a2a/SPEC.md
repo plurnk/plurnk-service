@@ -146,11 +146,11 @@ diagnostic is admitted only through `PLURNK_A2A_ERROR_DETAIL_LIMIT`; the exact
 cause remains attached for daemon diagnostics.
 
 §a2a-agents-catalog **Turn 0 shows enabled agents concisely.** Preparation
-publishes one `worker://~/_plurnk/agents/<alias>.md` document per active
+publishes one `worker:///_plurnk/agents/<alias>.md` document per active
 alias — an H1 alias, an H2 `Summary` whose one line is
 `a2a://<alias> — <card name> v<version>: <description>`, and the invocation
 form — and nothing for disabled or unavailable aliases. Core's seventh turn-0
-survey (```` ```FIND (worker://~/_plurnk/agents/*.md) <1,-1> ````,
+survey (```` ```FIND (worker:///_plurnk/agents/*.md) <1,-1> ````,
 {§actor-boundary-catalog-preview}) therefore presents every effective agent as
 one summary row. The document embeds neither the card nor its skills; both stay
 pullable exactly through `READ a2a://<alias>` ({§a2a-outbound-definition}).
@@ -177,7 +177,8 @@ interfaces remain remote protocol authority.
 | SEND | `a2a://<agent>` | Send a new user Message. A direct Message creates one static `/messages/<id>` resource and returns `200`; a Task creates one live `/tasks/<id>` resource and returns `102`. |
 | SEND | Exact `/tasks/<id>` resource | Continue the same non-terminal Task identity, including an input-required or auth-required Task. |
 | KILL | Live Task resource | Cancel the ordinary local subscription, which requests cancellation of the remote Task. |
-| READ | Exact Task or Artifact resource | Materialize the remote resource's current canonical snapshot. |
+| READ | Exact Task resource | Materialize the remote Task's current canonical snapshot. |
+| READ | Stored Artifact resource | Read the workspace's retained bytes without requiring an active agent connection. |
 
 §a2a-outbound-turn-rhythm SEND delivers a Message; TASK independently declares
 the local Loop's inventory under {§task-inventory-intent}. A Task-backed SEND

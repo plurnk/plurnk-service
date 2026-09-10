@@ -1,7 +1,4 @@
-// {§entry-owner} — every entry is owned by a worker row (never NULL: NULLs are
-// distinct under UNIQUE, so a nullable owner would let the commons fragment into duplicate rows);
-// capability streams are owner-scoped so concurrent workers' identical loop coordinates are
-// distinct rows ({§stream-owner-scoped}).
+// {§entry-owner} {§execution-output-identity}
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -9,10 +6,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
-import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
+import ExecutionOutputs from "../../src/core/ExecutionOutputs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
@@ -27,7 +24,7 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("fan-out: two sisters execute jq at the same coordinate; each READ resolves its own output", async () => {
+test("fan-out: equal causal coordinates create distinct outputs shared by the workspace", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -39,8 +36,6 @@ test("fan-out: two sisters execute jq at the same coordinate; each READ resolves
         assert.ok(schemes.get("jq"));
         const ws = await insertWorkspace(db, `owner-fanout-${crypto.randomUUID()}`);
 
-        // A parent and two sisters it spawned, each on its OWN first loop/turn — both jq outputs land
-        // at the identical model-facing coordinate /1/1/1. jq is pure → inline.
         const parent = await insertWorker(db, ws, null, "parent");
         const parentLoop = await insertLoop(db, parent, 1, "parent");
         const host = await insertWorker(db, ws, parent, "extract-host");
@@ -54,8 +49,9 @@ test("fan-out: two sisters execute jq at the same coordinate; each READ resolves
         await engine.dispatch({ statement: execStmt("jq", "5"), workspaceId: ws, workerId: pool, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
         await exec.idle();
 
-        // {§stream-owner-scoped}: both sisters READ the same loop-relative coordinate. Empty authority
-        // = the CALLING worker, so each resolves its own — never the sibling's.
+        const hostPath = new URL(await executionAddress(db, hTurn)).pathname;
+        const poolPath = new URL(await executionAddress(db, pTurn)).pathname;
+        assert.notEqual(hostPath, poolPath, "independent executions never alias because their causal coordinates match");
         const read = async (
             workerId: number,
             loopId: number,
@@ -65,49 +61,59 @@ test("fan-out: two sisters execute jq at the same coordinate; each READ resolves
             Results.assertReadResult(result);
             return result as EntryReadResult;
         };
-        const hostRead = await read(host, hLoop, streamRead("jq", null, "/1/1/1/jq"));
-        const poolRead = await read(pool, pLoop, streamRead("jq", null, "/1/1/1/jq"));
-        assert.match(hostRead.content ?? "", /db\.internal/, "host READ resolves host's own jq output");
-        assert.doesNotMatch(hostRead.content ?? "", /^5$/m, "host never sees the pool sister's output");
-        assert.match(poolRead.content ?? "", /^5$/m, "pool READ resolves pool's own jq output");
-
-        // Any worker of the workspace reads another's stream BY NAME — the parent its child's…
-        const parentRead = await read(parent, parentLoop, streamRead("jq", "extract-host", "/1/1/1/jq"));
-        assert.match(parentRead.content ?? "", /db\.internal/, "the parent reads its child's stream by name");
-        // …a SIBLING its sister's (#394: topology is the parent's design, the engine imposes none)…
-        const siblingRead = await read(pool, pLoop, streamRead("jq", "extract-host", "/1/1/1/jq"));
-        assert.match(siblingRead.content ?? "", /db\.internal/, "a sibling naming its sister's stream reads it");
-        // …and a CHILD its parent's: the parent's own unqualified coordinate is the parent's stream
-        // when the child names the parent.
-        const childRead = await read(host, hLoop, streamRead("jq", "extract-pool", "/1/1/1/jq"));
-        assert.match(childRead.content ?? "", /^5$/m, "a worker reads any named worker's stream in the workspace");
-        // An unknown name is still 404.
-        const unknownRead = await read(parent, parentLoop, streamRead("jq", "no-such-worker", "/1/1/1/jq"));
-        assert.equal(unknownRead.status, 404, "an unknown authority is 404");
+        for (const [workerId, loopId] of [[host, hLoop], [pool, pLoop], [parent, parentLoop]]) {
+            const hostRead = await read(workerId!, loopId!, streamRead("jq", null, hostPath));
+            const poolRead = await read(workerId!, loopId!, streamRead("jq", null, poolPath));
+            assert.equal(hostRead.status, 200);
+            assert.match(hostRead.content ?? "", /db\.internal/);
+            assert.equal(poolRead.status, 200);
+            assert.match(poolRead.content ?? "", /^5$/m);
+        }
+        await db.test_delete_worker.run({ id: host });
+        assert.match((await read(parent, parentLoop, streamRead("jq", null, hostPath))).content ?? "", /db\.internal/,
+            "deleting the producer leaves its workspace output readable");
+        const foreignWorkspace = await insertWorkspace(db, "foreign-output");
+        const foreignWorker = await insertWorker(db, foreignWorkspace);
+        const foreignLoop = await insertLoop(db, foreignWorker, 1);
+        const foreign = await engine.look({ statement: streamRead("jq", null, hostPath),
+            workspaceId: foreignWorkspace, workerId: foreignWorker, loopId: foreignLoop });
+        assert.equal(foreign.status, 404, "the same address does not cross workspace boundaries");
     } finally { await db.close(); }
 });
 
-test("the commons is a real reserved row — shared-content identity cannot fragment", async () => {
+test("{§execution-output-identity}: simultaneous claims retry collisions instead of reusing an output", async (t) => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "output-collisions");
+        const names = ["a1234567", "a1234567", "b2345678"];
+        t.mock.method(ExecutionOutputs, "short", () => {
+            const name = names.shift();
+            assert.ok(name);
+            return name;
+        });
+        const paths = await Promise.all([
+            ExecutionOutputs.claim(db, workspaceId, "sh"),
+            ExecutionOutputs.claim(db, workspaceId, "sh"),
+        ]);
+        assert.deepEqual(paths.toSorted(), ["/a1234567", "/b2345678"]);
+    } finally { await db.close(); }
+});
+
+test("shared entries require only a workspace, not a synthetic Worker", async () => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-commons-${crypto.randomUUID()}`);
-        const commons = await Owner.commonsId(db, ws);
-        assert.equal(await Owner.commonsId(db, ws), commons, "commonsId is idempotent — one row per workspace");
         const row = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ws, name: "commons" });
-        assert.equal(row?.id, commons, "the commons worker is a real named row");
+        assert.equal(row, undefined, "no synthetic commons Worker is created");
 
         // The identity index holds ON the commons: a second insert at the same key conflicts —
         // the exact fragmentation a NULL owner would have allowed (NULLs are distinct under UNIQUE).
-        await db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1/jq" });
+        await db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "jq", authority: "", pathname: "/1/1/1/jq" });
         await assert.rejects(
-            db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1/jq" }),
+            db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "jq", authority: "", pathname: "/1/1/1/jq" }),
             /UNIQUE/,
             "the same (workspace, owner, scheme, authority, pathname) key conflicts — no silent duplicate",
         );
-        // …while a DIFFERENT owner at the same coordinate is a distinct row ({§stream-owner-scoped}).
-        const worker = await insertWorker(db, ws);
-        const other = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: ws, owner_id: worker, scheme: "jq", authority: "", pathname: "/1/1/1/jq" });
-        assert.ok(other, "another owner's identical coordinate is its own row");
     } finally { await db.close(); }
 });
 
@@ -129,9 +135,9 @@ test("{§worker-auto-name}: unnamed conversations retry occupied names; explicit
         const afterOccupiedLiteral = await Envelope.createModelWorker(db, ws);
         assert.equal(afterOccupiedLiteral.name, "de6a8901", "explicit and generated names share the same namespace");
 
-        await assert.rejects(Envelope.createModelWorker(db, ws, "commons"), /reserved/, "the commons row's name is refused");
+        assert.equal((await Envelope.createModelWorker(db, ws, "commons")).name, "commons");
         await assert.rejects(Envelope.createModelWorker(db, ws, "plurnk"), /reserved/, "the kernel row's name is refused");
-        await assert.rejects(Envelope.createModelWorker(db, ws, "~"), /reserved/, "the current-worker sigil is refused");
+        await assert.rejects(Envelope.createModelWorker(db, ws, "~"), /lowercase DNS-label/, "tilde is not a worker name");
         assert.equal((await Envelope.createModelWorker(db, ws, "self")).name, "self", "self is an ordinary literal worker name");
     } finally { await db.close(); }
 });

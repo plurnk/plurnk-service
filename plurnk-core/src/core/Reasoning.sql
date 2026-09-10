@@ -1,6 +1,7 @@
 -- PREP: reasoning_call_coordinate
-SELECT '/' || l.sequence || '/' || t.sequence || '/' || c.sequence AS pathname
+SELECT w.name AS authority, '/' || l.sequence || '/' || t.sequence || '/' || c.sequence AS pathname
 FROM inference_calls c JOIN turns t ON t.id = c.turn_id JOIN loops l ON l.id = t.loop_id
+JOIN workers w ON w.id = l.worker_id
 WHERE c.id = $model_call_id AND c.turn_id = $turn_id AND c.kind = 'emission';
 
 -- PREP: reasoning_initial_reads
@@ -12,9 +13,10 @@ WITH latest AS (
     WHERE l.worker_id = $worker_id AND t.producer = 'model' AND t.completed_at IS NOT NULL
     ORDER BY l.sequence DESC, t.sequence DESC LIMIT 1
 )
-SELECT e.pathname
+SELECT e.authority, e.pathname
 FROM entries e JOIN latest ON substr(e.pathname, 1, length(latest.prefix)) = latest.prefix
-WHERE e.owner_id = $worker_id AND e.scheme = 'reasoning' AND e.authority = ''
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE w.id = $worker_id AND e.scheme = 'reasoning'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le WHERE le.worker_id = $worker_id
         AND le.op = 'READ' AND le.origin = '_plurnk'

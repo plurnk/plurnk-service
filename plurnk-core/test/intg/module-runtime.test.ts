@@ -14,10 +14,9 @@ import { PlurnkParser, type ReadStatement, type UrlPath } from "@plurnk/plurnk-c
 import type { RuntimeSchemeFacet } from "../../src/server/DaemonModule.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import type Exec from "../../src/schemes/Exec.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { executionAddress, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
-// A stand-in executor - the seam stores the entry + wraps the executor in a lazy scheme face
-// (ExecOutputScheme reads the executor only at dispatch), so registration needs no live runtime.
+// Registration supplies output declarations without starting the runtime.
 const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`, channel = "results"): RegistryEntry => ({
     executor: {
         runtime: tag, glyph: "🔌",
@@ -27,8 +26,6 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`, channel
                 channels: { [channel]: "application/json" },
                 defaultChannel: channel,
                 category: "data",
-                entryOwner: "resolved",
-                inherit: "none",
                 writableBy: ["plugin"],
                 volatile: true,
                 modelVisible: true,
@@ -233,23 +230,23 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the wor
             statement: parse(`\`\`\`READ (${uri}) <1,-1>\`\`\``),
         });
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
-        assert.equal((await read("myserver://bob/resources/item")).content, "shared's resource");
-        assert.equal((await read("myserver:///resources/item")).content, "shared's resource", "a worker qualifier does not select a different attachment");
+        assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
+        assert.equal((await read("myserver:///resources/item")).content, "shared's resource", "repeated reads select the same attachment");
         assert.equal((await read("myserver://absent/resources/item")).status, 404);
         assert.equal((await read("myserver://outsider/resources/item")).status, 404, "resource resolution never crosses workspace identity");
-        assert.equal((await read("myserver://detached/resources/item")).content, "shared's resource", "a worker does not need its own attachment");
+        assert.equal((await read("myserver:///resources/item")).content, "shared's resource", "the caller does not need a personal attachment");
         assert.deepEqual(calls, ["shared", "shared", "shared", "shared"]);
         let sequence = 1;
         const dispatch = (body: string) => engine.dispatch({
             workspaceId, workerId: alice, loopId, turnId, sequence: sequence++, origin: "model",
             statement: parse(body),
         });
-        const found = await dispatch("```FIND (myserver://bob/resources/*) <1,-1>```");
+        const found = await dispatch("```FIND (myserver:///resources/*) <1,-1>```");
         assert.equal(found.status, 200, JSON.stringify(found));
-        assert.match(JSON.stringify(found.results), /myserver:\/\/bob\/resources\/item/);
-        const copied = await dispatch("```COPY (myserver://bob/resources/item) (worker://~/copy.txt)```");
+        assert.match(JSON.stringify(found.results), /myserver:\/\/\/resources\/item/);
+        const copied = await dispatch("```COPY (myserver:///resources/item) (worker:///copy.txt)```");
         assert.equal(copied.status, 201, JSON.stringify(copied));
-        const copy = await read("worker://~/copy.txt");
+        const copy = await read("worker:///copy.txt");
         assert.equal(copy.content, "shared's resource");
 
         const received: string[] = [];
@@ -267,7 +264,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the wor
                 },
             },
         });
-        const executed = await dispatch(PlurnkParser.frame("consumer (myserver://bob/resources/item)", "caller input"));
+        const executed = await dispatch(PlurnkParser.frame("consumer (myserver:///resources/item)", "caller input"));
         assert.equal(executed.status, 200, JSON.stringify(executed));
         await (schemes.get("exec") as Exec).idle();
         assert.deepEqual(received, ["shared's resource"]);
@@ -276,11 +273,57 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the wor
         const result = await engine.runTurn({
             workspaceId, workerId: alice, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
-                PlurnkParser.frame("BARE (myserver://bob/resources/item)", "Analyze this."),
+                PlurnkParser.frame("BARE (myserver:///resources/item)", "Analyze this."),
                 PlurnkParser.frame("TASK", '[{"content":"Inspect the answer.","status":"in_progress"}]'),
             ].join("\n\n"), reasoning: null } }] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["shared's resource\n\nAnalyze this."]]);
+    } finally { await db.close(); }
+});
+
+test("{§runtime-resource-binding}: retained output keeps its actual channel after runtime replacement and removal", async () => {
+    const db = await openMigrated();
+    try {
+        const { engine, schemes } = wire(db);
+        const workspaceId = await insertWorkspace(db, "retained-output");
+        const workerId = await insertWorker(db, workspaceId);
+        const peer = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        const declared = fakeEntry("myserver", "fixture", "results");
+        const install = async (entries: Parameters<Engine["prepareWorkspaceRuntimes"]>[2]) =>
+            (await engine.prepareWorkspaceRuntimes(workspaceId, "fixture", entries))();
+        await install([{ tag: "myserver", entry: {
+            ...declared,
+            executor: {
+                ...declared.executor,
+                async run({ write }) {
+                    write("results", '{"saved":true}', "application/json");
+                    return { status: 200 };
+                },
+            },
+        } }]);
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("myserver", "fixture")).items[0];
+        assert.equal(parsed?.kind, "statement");
+        if (parsed?.kind !== "statement") throw new Error("Expected an operation");
+        const invoked = await engine.dispatch({
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model", statement: parsed.statement,
+        });
+        assert.equal(invoked.status, 200, JSON.stringify(invoked));
+        await (schemes.get("exec") as Exec).idle();
+        const address = await executionAddress(db, turnId);
+        const target = readStatement(new URL(address).pathname);
+        const read = (reader = engine) => reader.look({ workspaceId, workerId: peer, loopId, statement: target });
+        await install([{ tag: "myserver", entry: fakeEntry("myserver", "fixture", "body") }]);
+        const replaced = await read();
+        assert.equal(replaced.status, 200, JSON.stringify(replaced));
+        assert.equal(replaced.content, '{"saved":true}');
+        assert.equal(replaced.mimetype, "application/json");
+        await install([]);
+        assert.equal((await read()).content, '{"saved":true}', "removal retains the exact default representation");
+        const fresh = wire(db);
+        assert.equal(fresh.schemes.has("myserver"), false);
+        assert.equal((await read(fresh.engine)).content, '{"saved":true}', "a fresh registry serves saved output without an executable");
     } finally { await db.close(); }
 });

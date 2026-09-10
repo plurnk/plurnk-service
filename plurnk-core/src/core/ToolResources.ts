@@ -80,7 +80,7 @@ const invocationHeader = (
     const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
     const note = [
         ...(annotation === undefined ? [] : [annotationText(annotation)]),
-        ...(schemaPath === undefined ? [] : [`Schema: worker://~${schemaPath}`]),
+        ...(schemaPath === undefined ? [] : [`Schema: worker://${schemaPath}`]),
     ].join(" ");
     return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
 };

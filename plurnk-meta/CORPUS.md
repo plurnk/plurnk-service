@@ -14,7 +14,7 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | `skills/plurnk/SKILL.md`         | Standard skill entry; Core composes its package-owned and generated resources. |
 
 Core materializes eligible scheme and runtime pull docs at
-`worker://~/_plurnk/plurnk/<name>.md` and exposes them through turn-0 FIND surveys. Merely
+`worker:///_plurnk/plurnk/<name>.md` and exposes them through turn-0 FIND surveys. Merely
 placing a file in `docs/` does not register a scheme or make speculative
 teaching current. Every listed source is a required package member; a missing
 or failed read surfaces at the admission boundary rather than silently reducing

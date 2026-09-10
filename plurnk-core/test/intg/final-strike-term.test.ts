@@ -1,3 +1,4 @@
+import WorkerName from "../../src/core/WorkerName.ts";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -143,7 +144,7 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
                         for (let index = 0; index < 8; index++) {
                             const pathname = `/completed-${index}`;
                             const entryId = await seedEntryWithChannel(db, {
-                                workspaceId, ownerId: workerId, scheme: "worker", pathname,
+                                workspaceId, authority: await WorkerName.forId(db, workerId), scheme: "worker", pathname,
                                 channel: "stdout", content: "Done", mimetype: "text/plain", state: "active",
                             });
                             const subscriptionId = await ChannelWrite.openSubscription(db, {
@@ -153,7 +154,7 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
                         }
                     }
                     const entryId = await seedEntryWithChannel(db, {
-                        workspaceId, ownerId: workerId, scheme: "worker", pathname: "/running",
+                        workspaceId, authority: await WorkerName.forId(db, workerId), scheme: "worker", pathname: "/running",
                         channel: "stdout", content: "Working", mimetype: "text/plain", state: "active",
                     });
                     const subscriptionId = await ChannelWrite.openSubscription(db, {

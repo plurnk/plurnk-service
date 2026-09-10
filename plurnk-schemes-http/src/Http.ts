@@ -200,8 +200,6 @@ export default class Http implements SchemeHandler {
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", html: "text/html" },
         defaultChannel: BODY,
         category: "data",
-        entryOwner: "worker",
-        inherit: "snapshot",
         writableBy: ["model", "client"],
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
@@ -311,7 +309,7 @@ export default class Http implements SchemeHandler {
         }
         const address = Http.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
-        if (this.#live.cancel(LiveAcquisitions.key(ctx.workerId, address.url))) {
+        if (this.#live.cancel(LiveAcquisitions.key(ctx.workspaceId, address.url))) {
             // The owner settles itself as cancelled through its aborted signal.
             return { shape: "passthrough", status: 200 };
         }

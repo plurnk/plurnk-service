@@ -58,11 +58,14 @@ export default class EntryCrud {
             : undefined;
     }
 
-    static async readEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string, ownerId: number): Promise<ReadEntryResult> {
+    static async readEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string): Promise<ReadEntryResult> {
         const { db, workspaceId } = ctx;
         const { authority, pathname } = coordinate;
-        const owner_id = ownerId;
-        const entry = await db.crud_find_workspace_entry.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
+        const rows = await db.crud_read_entry.all<{
+            id: number; attributes: string; name: string | null; content: string;
+            mimetype: string; state: ChannelState; producer_result: string | null;
+        }>({ workspace_id: workspaceId, scheme, authority, pathname });
+        const entry = rows[0];
         if (entry === undefined) {
             const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(
@@ -75,15 +78,9 @@ export default class EntryCrud {
             ) as ReadEntryResult;
         }
 
-        const channelRows = await db.crud_read_channels.all<{
-            name: string;
-            content: string;
-            mimetype: string;
-            state: ChannelState;
-            producer_result: string | null;
-        }>({ entry_id: entry.id });
         const channels: StoredEntryData["channels"] = {};
-        for (const row of channelRows) {
+        for (const row of rows) {
+            if (row.name === null) continue;
             channels[row.name] = {
                 content: row.content,
                 mimetype: row.mimetype,
@@ -113,10 +110,15 @@ export default class EntryCrud {
         };
     }
 
-    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, ownerId: number): Promise<WriteEntryResult> {
+    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, representation: { defaultChannel?: string; output?: boolean } = {}): Promise<WriteEntryResult> {
         const { db, workspaceId, weigh } = ctx;
         const { authority, pathname } = coordinate;
         if (weigh === undefined) throw new Error("writeEntry: ctx.weigh is required for curation-weight accounting");
+        const defaultChannel = representation.defaultChannel ?? ctx.defaultChannelFor?.(scheme) ?? "body";
+        if (defaultChannel.length === 0) {
+            throw new Error(`writeEntry: ${scheme} representation has no default channel ${JSON.stringify(defaultChannel)}`);
+        }
+        const output = representation.output === true ? 1 : 0;
         const channels = await Promise.all(Object.entries(entry.channels).map(async ([name, data]) => ({
             name,
             data,
@@ -126,59 +128,24 @@ export default class EntryCrud {
                     ? Buffer.from(data.bytes).toString("base64")
                     : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data.bytes),
         })));
-        const owner_id = ownerId;
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
-
-        let entryId: number;
-        let created: boolean;
-        if (existing === undefined) {
-            const row = entry.attributes === undefined
-                ? await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname })
-                : await db.crud_insert_workspace_entry_with_attributes.get<{ id: number }>({
-                    workspace_id: workspaceId,
-                    owner_id,
-                    scheme,
-                    authority,
-                    pathname,
-                    attributes: JSON.stringify(entry.attributes),
-                });
-            if (row === undefined) throw new Error("writeEntry: insert returned no row");
-            entryId = row.id;
-            created = true;
-        } else {
-            entryId = existing.id;
-            created = false;
-            if (entry.attributes !== undefined) {
-                await db.crud_set_entry_attributes.run({
-                    entry_id: entryId,
-                    attributes: JSON.stringify(entry.attributes),
-                });
-            }
-            await db.crud_delete_channels.run({ entry_id: entryId });
-        }
-
-        // Writes are VERBATIM — the scheme never transforms what it's handed. Web-page projection
-        // (raw html → decisive markdown body + raw `html` archive) lives at the web-fetch entry point
-        // (the exec sink), NOT here: an authored/workspace html file is DATA whose attributes are the
-        // payload (a `<user email=…>` roster), and a reader-view projection would strip it.
-        // {§scheme-source-bytes} Byte encoding and producer validation complete before replacement.
-        for (const { name: channelName, data: channelData, content: storedContent, producerResult } of channels) {
-            await db.crud_write_channel.run({
-                entry_id: entryId, name: channelName, content: storedContent, mimetype: channelData.mimetype,
-                weight: weigh(storedContent), // stable curation weight ({§tokenomics-agnostic-ruler}, {§tokenomics-weight-stored-at-write})
-                content_hash: contentHash(storedContent),
-                state: channelData.state ?? "static",
-                producer_result: producerResult,
-            });
-        }
-        return { status: created ? 201 : 200, created, entryId };
+        const published = await db.crud_publish_entry.get<{ id: number; created: 0 | 1 }>({
+            workspace_id: workspaceId, scheme, authority, pathname,
+            attributes: entry.attributes === undefined ? null : JSON.stringify(entry.attributes),
+            default_channel: defaultChannel, output,
+            channels: JSON.stringify(Object.fromEntries(channels.map(({ name, data, content, producerResult }) => [name, {
+                content, mimetype: data.mimetype, weight: weigh(content), content_hash: contentHash(content),
+                state: data.state ?? "static", producer_result: producerResult,
+            }]))),
+        });
+        if (published === undefined) throw new Error("writeEntry: publication returned no row");
+        const created = published.created === 1;
+        return { status: created ? 201 : 200, created, entryId: published.id };
     }
 
-    static async deleteEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string, ownerId: number): Promise<DeleteEntryResult> {
+    static async deleteEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string): Promise<DeleteEntryResult> {
         const { db, workspaceId } = ctx;
         const { authority, pathname } = coordinate;
-        const owner_id = ownerId;
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme, authority, pathname });
         if (existing === undefined) {
             const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(
@@ -200,14 +167,12 @@ export default class EntryCrud {
         channel: string,
         ctx: PlurnkSchemeContext,
         scheme: string,
-        ownerId: number,
     ): Promise<DeleteEntryResult> {
         const { db, workspaceId } = ctx;
         const { authority, pathname } = coordinate;
-        const owner_id = ownerId;
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            owner_id,
+
             scheme,
             authority,
             pathname,

@@ -115,7 +115,7 @@ export default class HttpGet {
 
         let fetched: WebFetchResult | null;
         // {§http-kill} — a KILL of the address aborts this acquisition through the tracked controller.
-        const liveKey = LiveAcquisitions.key(ctx.workerId, url);
+        const liveKey = LiveAcquisitions.key(ctx.workspaceId, url);
         const local = new AbortController();
         const release = this.#live.track(liveKey, local);
         try {
@@ -313,7 +313,7 @@ export default class HttpGet {
             },
         };
         // {§http-kill} — the open stream stays cancellable by a KILL of its address until it settles.
-        const releaseStream = this.#live.track(LiveAcquisitions.key(ctx.workerId, address.url), local);
+        const releaseStream = this.#live.track(LiveAcquisitions.key(ctx.workspaceId, address.url), local);
         const written = await ctx.entries.write(address.pathname, this.#seedEntry());
         if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
         const subscription = await ctx.subscriptions.open(address.pathname, handle);

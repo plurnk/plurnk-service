@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS workers (
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
     -- {§methods-model-worker}: durable identity for the workspace's stable
-    -- default conversation; unrelated to its human-facing, reclaimable name.
+    -- default conversation; separate from its literal name.
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
     -- {§worker-causal-admission}: cancellation retires unread arrivals without rewriting history.
     cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),
@@ -83,11 +83,8 @@ CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (p
 CREATE UNIQUE INDEX IF NOT EXISTS workers_provider_identity         ON workers (provider_identity);
 CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_default_conversation
     ON workers (workspace_id) WHERE default_conversation = 1;
--- NOT unique: a name is frozen per worker ({§machine-processes-worker-origin}) but RECLAIMABLE across
--- time — a terminated worker keeps its name in permanent history while a fresh spawn reuses it;
--- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Worker.edit
--- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
-CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
+-- {§worker-scheme-spawn}: a retained name cannot be rebound to another actor.
+CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
 
 CREATE TRIGGER IF NOT EXISTS workers_provider_identity_immutable
 BEFORE UPDATE OF provider_identity ON workers
@@ -868,28 +865,22 @@ CREATE TABLE IF NOT EXISTS derivations (
 ) STRICT;
 
 -- entries
--- The canonical addressable store. (owner, scheme, authority, pathname) is the identity
--- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
--- component voids the identity index. Bare/file paths persist under the reserved `file`
--- scheme; they still render as bare paths. {§entry-identity-no-null}
+-- {§entry-identity-no-null} A resource belongs directly to its workspace.
+-- Actor attribution and subscriptions do not participate in its address.
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     scheme     TEXT    NOT NULL             CHECK (length(scheme) > 0),
-    -- Canonical RFC authority for resource-addressed schemes. Namespace schemes
-    -- fold authored authority into pathname; owner-addressed schemes consume it
-    -- into owner_id. Empty is therefore the canonical no-resource-authority value.
+    -- Canonical resource authority; namespace schemes fold it into pathname.
     authority  TEXT    NOT NULL DEFAULT '',
     pathname   TEXT    NOT NULL,
-    -- {§entry-owner} — every entry is owned by a worker: the spawning worker for capability
-    -- streams, the workspace's reserved 'commons' worker for shared content. A real row, never
-    -- NULL (NULLs are distinct under UNIQUE — a nullable owner would let the commons fragment).
-    -- The id never renders into a URI or packet; the model addresses owners by NAME (authority).
-    owner_id   INTEGER NOT NULL,
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     -- Entry-private metadata. Prompt frames use `openPaths` to carry selected
     -- workspace paths into the exact turn that publishes the frame
     -- ({§methods-loop-run-open-paths}).
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
+    default_channel TEXT NOT NULL DEFAULT 'body' CHECK (length(default_channel) > 0),
+    output INTEGER NOT NULL DEFAULT 0 CHECK (output IN (0, 1)),
     -- SPEC {§membership} — how a file member entered the curated surface. 'git' rows are
     -- reconciled against the repo's members each turn — tracked ls-files PLUS untracked-
     -- but-not-ignored files ({§membership-auto-add}) — registered + un-registered so entries
@@ -906,16 +897,11 @@ CREATE TABLE IF NOT EXISTS entries (
     -- addressable representation change; engine_list_workspace_entries orders the catalog
     -- by it ASC so dormant entries hold the stable prompt-cache prefix. Private derivation
     -- attachment does not make an entry recently touched.
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
--- {§entry-owner} / {§stream-owner-scoped} — owner is the sole visibility and identity axis.
--- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
--- loop is seq 1), so identity keys on the owner and identical coordinates are distinct rows
--- ({§stream-owner-scoped}).
-CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (owner_id, scheme, authority, pathname);
-CREATE UNIQUE INDEX IF NOT EXISTS entries_id_owner ON entries (id, owner_id);
+-- {§entry-owner}, {§execution-output-identity}: one canonical resource key.
+CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, scheme, authority, pathname);
 
 -- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
@@ -966,6 +952,39 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
     FOREIGN KEY (deep_hash) REFERENCES derivations(deep_hash)
 ) STRICT, WITHOUT ROWID;
+
+-- {§crud} A publication is one SQL statement: failure rolls back metadata and
+-- every channel. The view is an input boundary, not a second persisted copy.
+CREATE VIEW IF NOT EXISTS entry_publication AS
+SELECT NULL AS workspace_id, NULL AS scheme, NULL AS authority, NULL AS pathname,
+       NULL AS attributes, NULL AS default_channel, NULL AS output,
+       NULL AS channels, NULL AS created
+WHERE 0;
+
+CREATE TRIGGER IF NOT EXISTS entry_publication_insert
+INSTEAD OF INSERT ON entry_publication
+BEGIN
+    SELECT CASE WHEN json_type(NEW.channels) IS NOT 'object'
+        THEN RAISE(ABORT, 'entry publication requires a channel object') END;
+    INSERT INTO entries (workspace_id, scheme, authority, pathname, attributes, default_channel, output)
+    VALUES (NEW.workspace_id, NEW.scheme, NEW.authority, NEW.pathname,
+            COALESCE(NEW.attributes, '{}'), NEW.default_channel, NEW.output)
+    ON CONFLICT (workspace_id, scheme, authority, pathname) DO UPDATE SET
+        attributes = COALESCE(NEW.attributes, entries.attributes),
+        default_channel = excluded.default_channel,
+        output = MAX(entries.output, excluded.output);
+    DELETE FROM entry_channels WHERE entry_id = (
+        SELECT id FROM entries WHERE workspace_id = NEW.workspace_id
+          AND scheme = NEW.scheme AND authority = NEW.authority AND pathname = NEW.pathname
+    );
+    INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
+    SELECT e.id, c.key, json_extract(c.value, '$.content'), json_extract(c.value, '$.mimetype'),
+           json_extract(c.value, '$.weight'), json_extract(c.value, '$.content_hash'),
+           json_extract(c.value, '$.state'), json_extract(c.value, '$.producer_result')
+    FROM entries e, json_each(NEW.channels) c
+    WHERE e.workspace_id = NEW.workspace_id AND e.scheme = NEW.scheme
+      AND e.authority = NEW.authority AND e.pathname = NEW.pathname;
+END;
 
 -- A changed channel representation cannot retain search evidence derived from
 -- its predecessor. This trigger is the one invalidation owner for every write
@@ -1766,6 +1785,7 @@ FROM (
            END AS target_parent_worker_id,
            CASE
                WHEN le.state = 'resolved'
+                AND NOT (t.producer = '_plurnk' AND t.kind = 'maintenance')
                 AND le.status_rx BETWEEN 200 AND 399
                 AND le.status_rx != 304
                 AND (
@@ -1926,16 +1946,17 @@ CREATE INDEX IF NOT EXISTS client_interactions_worker_id_id
 -- Durable subscription lifecycle per SPEC {§subscriptions}. The row records what
 -- the worker holds and routes cancellation to a separate process-local callable;
 -- it never serializes that callable. Closed rows persist for forensics; partial
--- unique index enforces one active subscription per entry. The composite
--- foreign key makes that entry part of the subscribing Worker's own space.
+-- unique index enforces one active subscription per entry. Causal worker and
+-- resource owner may differ within the same workspace ({§runtime-resource-binding}).
 CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER NOT NULL PRIMARY KEY,
     version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-    worker_id       INTEGER NOT NULL,
+    worker_id       INTEGER,
     entry_id     INTEGER NOT NULL,
     scheme       TEXT    NOT NULL CHECK (length(scheme) > 0),
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
     published_channel TEXT          CHECK (published_channel IS NULL OR length(published_channel) > 0),
+    source       TEXT             CHECK (source IS NULL OR length(source) > 0),
     opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- EXEC `<T,P>` poll policy: NULL = default backoff, 0 = disabled, positive = fixed cadence.
     -- While the owning loop hibernates (202), an armed policy wakes it to inspect the stream ({§exec-poll}).
@@ -1949,9 +1970,29 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     channel_results TEXT          CHECK (channel_results IS NULL OR json_valid(channel_results)),
     CHECK ((closed_at IS NULL AND close_status IS NULL AND close_result IS NULL AND channel_results IS NULL)
         OR (closed_at IS NOT NULL AND close_status IS NOT NULL AND close_result IS NOT NULL AND channel_results IS NOT NULL)),
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
-    FOREIGN KEY (entry_id, worker_id) REFERENCES entries(id, owner_id) ON DELETE CASCADE
+    CHECK (worker_id IS NOT NULL OR closed_at IS NOT NULL),
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS subscriptions_workspace_insert
+BEFORE INSERT ON subscriptions
+WHEN NOT EXISTS (
+    SELECT 1 FROM entries e
+    JOIN workers caller ON caller.id = NEW.worker_id
+    WHERE e.id = NEW.entry_id AND e.workspace_id = caller.workspace_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'subscription and resource must share a workspace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS subscriptions_identity_update
+BEFORE UPDATE OF worker_id, entry_id, scheme, source ON subscriptions
+WHEN NEW.entry_id != OLD.entry_id OR NEW.scheme != OLD.scheme OR NEW.source IS NOT OLD.source
+  OR (NEW.worker_id IS NOT OLD.worker_id AND NOT (NEW.worker_id IS NULL AND NEW.closed_at IS NOT NULL))
+BEGIN
+    SELECT RAISE(ABORT, 'subscription identity is immutable');
+END;
 
 CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
     ON subscriptions (entry_id)

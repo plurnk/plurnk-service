@@ -13,7 +13,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import Results from "../../src/core/results.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
+import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -57,7 +57,7 @@ const wire = async (opts?: {
         executor: {
             runtime: tag,
             glyph: "?",
-            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/plain" } }; },
             effect: () => "pure" as const,
@@ -147,15 +147,15 @@ const wire = async (opts?: {
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
 
-test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overwrite, and remain Worker-owned", async () => {
+test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overwrite, and remain workspace-shared", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ resources: true, tag: "resourcepublisher" });
     try {
         const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.ok(result.status < 400);
         await quiesceExecs(schemes);
-        const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/1/1/1/resourcepublisher", scheme: "resourcepublisher", name: "results" });
+        const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "resourcepublisher", name: "results" });
         const paths = JSON.parse(output!.content) as string[];
-        assert.match(paths[0]!, /^resourcepublisher:\/\/researcher\/.*\/resources\/note\.txt$/u);
+        assert.match(paths[0]!, /^resourcepublisher:\/\/\/[a-f0-9]{8}\/resources\/note\.txt$/u);
         assert.match(paths[1]!, /\/resources\/[a-f0-9]{8}$/u);
         assert.match(paths[2]!, /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
         const contents = [];
@@ -174,10 +174,8 @@ test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overw
         const peerLoopId = await insertLoop(db, peerId, 1, "inspect peer resource");
         const peerTurnId = await insertTurn(db, peerLoopId, 1, 102);
         const peer = { workspaceId, workerId: peerId, loopId: peerLoopId, turnId: peerTurnId, origin: "model" as const };
-        const missing = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`READ (${paths[0]!.replace("://researcher/", ":///")})\`\`\``), sequence: 1 });
-        assert.equal(missing.status, 404, "an unqualified lookup cannot read another Worker's resource");
         const shared = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`READ (${paths[0]})\`\`\``), sequence: 2 });
-        assert.equal(shared.status, 200, "the returned owner-qualified address remains meaningful to another Worker");
+        assert.equal(shared.status, 200, "the same resource address remains meaningful to another Worker");
     } finally {
         await quiesceExecs(schemes);
         await db.close();
@@ -199,7 +197,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         const resultChannel = await db.test_get_channel_by_pathname_scheme.get<{
             content: string;
             mimetype: string;
-        }>({ pathname: "/1/1/1/stubsearch", scheme: "stubsearch", name: "results" });
+        }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "stubsearch", name: "results" });
         assert.equal(resultChannel?.mimetype, "application/json", "the consumer persists the executor's per-write output type");
         assert.deepEqual(JSON.parse(resultChannel?.content ?? "null"), [{
             title: "Turkeys",
@@ -458,7 +456,7 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
         await EntryCrud.writeEntry({ authority: "other.example", pathname: "/cake" }, {
             channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
-        }, ctx, "https", workerId);
+        }, ctx, "https");
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({

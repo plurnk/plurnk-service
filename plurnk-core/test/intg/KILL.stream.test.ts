@@ -59,8 +59,6 @@ test("End-to-end: synthetic streaming scheme — KILL tears down subscription, t
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
                 category: "data" as const,
-                entryOwner: "worker" as const,
-                inherit: "none" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async prepareRepresentation(
@@ -110,7 +108,7 @@ test("End-to-end: synthetic streaming scheme — KILL tears down subscription, t
         });
         if (entry === undefined) throw new Error("stream entry missing");
         const entryId = entry.id;
-        const activeBefore = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
+        const activeBefore = await ChannelWrite.findActiveSubscription(db, { entryId });
         if (activeBefore === null) throw new Error("subscription missing");
         const subId = activeBefore.id;
 
@@ -144,7 +142,7 @@ test("End-to-end: synthetic streaming scheme — KILL tears down subscription, t
         const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "errored", "cancelled content remains readable but is not marked complete");
 
-        const active = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
+        const active = await ChannelWrite.findActiveSubscription(db, { entryId });
         assert.equal(active, null, "no active subscription remaining");
     } finally { await db.close(); }
 });

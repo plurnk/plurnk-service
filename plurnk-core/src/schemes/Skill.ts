@@ -29,17 +29,15 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
         channels: {},
         defaultChannel: "body",
         category: "data",
-        entryOwner: "worker",
-        inherit: "rederive",
         writableBy: ["_plurnk", "plugin"],
         volatile: false,
         folderScopes: true,
         modelVisible: true,
     };
 
-    readonly #trees: (workerId: number) => ReadonlyMap<string, SkillTree>;
+    readonly #trees: (workspaceId: number) => ReadonlyMap<string, SkillTree>;
 
-    constructor(trees: (workerId: number) => ReadonlyMap<string, SkillTree>) {
+    constructor(trees: (workspaceId: number) => ReadonlyMap<string, SkillTree>) {
         super();
         this.#trees = trees;
     }
@@ -103,7 +101,7 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
             const written = await EntryCrud.writeEntry(address, {
                 channels: { body: { content, mimetype: outputMimetype } },
                 attributes,
-            }, core, "skill", core.workerId);
+            }, core, "skill");
             return written.status >= 400 ? written : { status: 200 };
         } catch (cause) {
             return Skill.#refusal(cause, address);
@@ -151,7 +149,7 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
             }
         }
         const cached = await core.db.find_workspace_entry_candidate_ids.all<EntryCoordinate>({
-            workspace_id: core.workspaceId, owner_id: core.workerId, scheme: "skill",
+            workspace_id: core.workspaceId, scheme: "skill",
             authority: null, scope_prefix: null, channel: "body",
         });
         for (const address of cached) {
@@ -159,11 +157,10 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
                 || (pathScopeMatches(authorityScope, address.authority)
                     && inScope(address.pathname)
                     && !available.has(`${address.authority}\0${address.pathname}`))) {
-                await EntryCrud.deleteEntry(address, core, "skill", core.workerId);
+                await EntryCrud.deleteEntry(address, core, "skill");
             }
         }
         return EntryFind.findWorkspaceEntries(statement, core, Skill.manifest, {
-            ownerId: core.workerId,
             bytes: (pathname, authority) => this.byteSource({ authority, pathname }, core),
         });
     }

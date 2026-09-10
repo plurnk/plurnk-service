@@ -16,9 +16,9 @@ address. Without it, initial input ends with EOF as usual.
 process.stdin.on("data", chunk => process.stdout.write(chunk));
 ````
 
-Using the address returned by that invocation (here `node:///1/2/3/node`):
+Using the address returned by that invocation (here `node:///ab3d5678`):
 
-````SEND (node:///1/2/3/node)
+````SEND (node:///ab3d5678)
 hello
 
 ````
@@ -27,11 +27,11 @@ The blank line before the closing fence supplies a newline after `hello`.
 SEND adds no newline of its own. Its receipt acknowledges pipe delivery, not
 program completion. READ that same address to inspect stdout while it runs.
 
-````SEND (node:///1/2/3/node) {eof=true}
+````SEND (node:///ab3d5678) {eof=true}
 ````
 
-EOF closes stdin, not the process. KILL terminates the execution. Input cannot
-be sent to another Worker's execution; message that Worker instead.
+EOF closes stdin, not the process. KILL terminates the execution. Any worker
+in the workspace can send input to the same execution address.
 
 ## Environment
 
@@ -41,7 +41,7 @@ The same scoped environment as `sh`: the daemon's own secrets (`PLURNK_*`, provi
 
 Whatever the snippet writes to stdout streams to `#stdout`; stderr streams to
 `#stderr`. Both are text under the receipt's `stream` address, such as
-`node:///1/2/3/node`. On completion, the harness adds a READ of each channel's
+`node:///ab3d5678`. On completion, the harness adds a READ of each channel's
 first page (up to 16 lines). READ the stream address for additional lines;
 the log READ holds only its recorded page. To return structured data, use
 `console.log(JSON.stringify(value))`. A thrown error exits nonzero (status 500)
