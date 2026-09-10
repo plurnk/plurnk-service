@@ -32,8 +32,9 @@ import LogVisibility from "./LogVisibility.ts";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
 import KillHandler from "./KillHandler.ts";
-import TurnDispositionHandler from "./TurnDispositionHandler.ts";
+import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
 import LogWriter from "./LogWriter.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 import type EditSequence from "./EditSequence.ts";
 
@@ -1150,8 +1151,8 @@ export default class Dispatcher {
     // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,
     // after earlier operations have executed. Every non-SEND/TASK/KILL model operation
     // requires a new packet, independently of its result or log visibility.
-    async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
-        const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
+    async #pendingSet(workerId: number, turnId: number): Promise<CompletionEvidence> {
+        const pending: CompletionEvidence["pending"] = [];
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
         // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
         const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
@@ -1160,28 +1161,28 @@ export default class Dispatcher {
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-        if (boundaries.operations.some((op) => op !== "KILL") || boundaries.streamTerminations.length > 0) pending.push("receipts");
+        const receipts = [...new Set(boundaries.operations
+            .filter(({ op }) => op !== "KILL")
+            .map((row) => LogEntryProjection.leaf(row)))];
+        if (boundaries.streamTerminations.length > 0) receipts.push("stream completion");
+        if (receipts.length > 0) pending.push("receipts");
         // The final-strike escape hatch cannot discard an unobserved failure.
         if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
         if (boundaries.childTerminations) pending.push("worker-results");
-        return pending;
+        return { pending, receipts };
     }
 
     // {§wait-obligation-matrix}: completion and an empty wait use the same execution evidence.
-    async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
-        operations: string[];
-        streamTerminations: Array<{ closeStatus: number }>;
-        childTerminations: boolean;
-    }> {
+    async #nextPacketBoundaries(workerId: number, turnId: number): Promise<PacketBoundaries> {
         const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
-            this.#db.engine_turn_packet_boundaries.all<{ id: number; op: string }>({ turn_id: turnId }),
+            this.#db.engine_turn_packet_boundaries.all<{ op: string; tx: string | null }>({ turn_id: turnId }),
             this.#db.engine_worker_has_undelivered_stream_term
                 .all<{ closeStatus: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            operations: turnBoundaries.map(({ op }) => op),
+            operations: turnBoundaries,
             streamTerminations,
             childTerminations: childTermination !== undefined,
         };

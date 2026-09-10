@@ -8,13 +8,24 @@ import Results from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
+export interface PacketBoundaries {
+    operations: Array<{ op: string; tx: string | null }>;
+    streamTerminations: Array<{ closeStatus: number }>;
+    childTerminations: boolean;
+}
+
+export interface CompletionEvidence {
+    pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">;
+    receipts: string[];
+}
+
 export default class TurnDispositionHandler {
     readonly #db: Db;
     readonly #cancelDescendants: CancelDescendantsNotify | undefined;
     readonly #lifecycle: LoopLifecycle;
-    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ operations: string[]; streamTerminations: Array<{ closeStatus: number }>; childTerminations: boolean; }>;
+    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<PacketBoundaries>;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
-    readonly #pendingSet: (workerId: number, turnId: number) => Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">>;
+    readonly #pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
     readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
     readonly #statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
@@ -24,9 +35,9 @@ export default class TurnDispositionHandler {
         db: Db;
         cancelDescendants: CancelDescendantsNotify | undefined;
         lifecycle: LoopLifecycle;
-        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ operations: string[]; streamTerminations: Array<{ closeStatus: number }>; childTerminations: boolean; }>;
+        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<PacketBoundaries>;
         unobservedFailureCount: (turnId: number) => Promise<number>;
-        pendingSet: (workerId: number, turnId: number) => Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">>;
+        pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
         hasLiveWork: (workerId: number) => Promise<boolean>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
         statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
@@ -119,16 +130,14 @@ export default class TurnDispositionHandler {
                 // pending results and therefore refuse completion.
                 const failCount = await this.#unobservedFailureCount(turnId);
                 if (failCount > 0) return withTimingDetail(this.#unobservedFailures(failCount));
-                const pending = await this.#pendingSet(workerId, turnId);
+                const { pending, receipts } = await this.#pendingSet(workerId, turnId);
                 const receiptsOnly = pending.length > 0 && pending.every((kind) => kind === "receipts");
                 if (pending.length > 0 && !(receiptsOnly && ctx.allowUnobservedRetrievalCompletion)) {
-                    // A receipts-only refusal needs no KILL/park remedy menu: the results simply
-                    // arrive in the next packet. Streams and children retain their remedy steer.
                     if (receiptsOnly) {
                         return withTimingDetail(this.#failure(
                             "retrieval-results-unobserved",
                             409,
-                            "Completion preceded operation results; they enter the next packet.",
+                            `Completion preceded results: ${ErrorDetail.preview(receipts.join(", "))}. Continuing to the next packet.`,
                             {},
                             {
                                 pending: [...pending],

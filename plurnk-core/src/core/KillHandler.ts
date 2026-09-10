@@ -74,9 +74,9 @@ export default class KillHandler {
             return this.#failure(
                 "kill-body-log-only",
                 400,
-                "A KILL body pattern selects log items only; this target takes a `<scope>` or an anchored `<@hash>` line.",
+                "KILL body patterns are supported only for log:/// targets.",
                 {},
-                { retryable: false, recovery: "Restate the KILL without a body, or FIND the lines and KILL each by its `<@hash>` anchor." },
+                { retryable: false },
             );
         }
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");

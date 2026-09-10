@@ -2255,10 +2255,16 @@ violations follow the current admission and strike contracts
   The set is judged at the disposition's own dispatch, after
   earlier operations in the emission. `[200]` over a pending member is refused
   409 and the loop continues, except {§send-final-strike-retrieval}; every refusal
-  strikes uniformly, including a retrieval-only refusal. Its Problem reports only the bounded pending kinds
+  strikes uniformly, including a retrieval-only refusal. Its Problem reports the bounded pending kinds
   `streams`, `workers`, `receipts`, `failed-stream-results`, and
-  `worker-results`; it never embeds commands, stream handles, result bodies, or
-  a presumed recovery. The pending kind changes the factual Problem class, not
+  `worker-results`. A receipts-only refusal also names the distinct blocking
+  operations in execution order using their model-facing log names
+  ({§log-coordinate-hierarchy}), plus `stream completion` for undelivered terminal
+  stream results. It describes the refused completion in the past tense and the
+  following-packet boundary, not a persistent unacknowledged obligation.
+  That list obeys the configured error-detail limit; it never
+  embeds commands, stream handles, result bodies, or a presumed recovery.
+  The pending kind changes the factual Problem class, not
   rail accounting. A nonempty all-`failed` inventory deliberately abandons regardless.
 - §send-final-strike-retrieval **Receipt-only completion at the final strike.**
   If refusing a model's completion TASK would reach the loop's existing
@@ -4915,4 +4921,4 @@ Carried from the contract walk; durable.
 
 A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. Its packet metadata and canonical log body use {§edit-result-receipt-projection}. ```` ```EDIT (path) <scope> ```` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
-A body pattern on an entry KILL is refused (400 `kill-body-log-only`): body patterns select log items ({§log-kill-scope}), and a selector core does not apply is never silently dropped, so a scoped entry KILL can never widen to its whole span.
+A body pattern on an entry KILL is refused (400 `kill-body-log-only`): body patterns select log items ({§log-kill-scope}), and a selector core does not apply is never silently dropped, so a scoped entry KILL can never widen to its whole span. The refusal identifies the unsupported body without requiring a scope or presuming whole-entry deletion.

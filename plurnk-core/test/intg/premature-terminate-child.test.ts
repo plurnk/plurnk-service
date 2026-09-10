@@ -392,8 +392,7 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
 
 
 test("a retrieval-only refusal states the observation boundary, not a live-work remedy menu", async () => {
-    // There is no lever to pull for a same-turn retrieval: the results arrive in the next
-    // packet. The correction says exactly that; streams and children keep their remedy menu.
+    // {§send-premature-terminate}: name the actual observation boundary without a remedy menu.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `steer-ret-${crypto.randomUUID()}`);
@@ -413,7 +412,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
         assert.equal(
             problem?.detail,
-            "Completion preceded operation results; they enter the next packet.",
+            "Completion preceded results: READ. Continuing to the next packet.",
         );
         assert.deepEqual(problem?.pending, ["receipts"]);
         assert.equal(problem?.recovery, undefined);
@@ -508,7 +507,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const inventory = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
         assert.ok(inventory !== undefined, "the refused TASK row renders");
-        assert.equal((inventory.problem as { detail?: string } | undefined)?.detail, "Completion preceded operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
+        assert.equal((inventory.problem as { detail?: string } | undefined)?.detail, "Completion preceded results: READ. Continuing to the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

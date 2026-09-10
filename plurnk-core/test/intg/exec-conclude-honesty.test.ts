@@ -240,6 +240,35 @@ for (const specimen of [
                 102,
                 "closed is not observed: the loop continues so the terminal stream observation can land next packet",
             );
+            const completed = await engine.dispatch({
+                statement: dispositionStmt("completed"),
+                workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
+            });
+            assert.equal(completed.status, 409);
+            assert.deepEqual(completed.problem?.pending, specimen.status === 200
+                ? ["receipts"] : ["receipts", "failed-stream-results"]);
+            if (specimen.status === 200) {
+                assert.equal(completed.problem?.detail, `Completion preceded results: ${tag}, stream completion. Continuing to the next packet.`,
+                    "the executor's public name is used, not the internal EXEC operation");
+            }
         } finally { await db.close(); }
     });
 }
+
+test("{§send-premature-terminate}: an earlier turn's completed stream is identified without inventing a current operation", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => ({ status: 200 }));
+    try {
+        assert.equal((await engine.dispatch({
+            statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        })).status, 200);
+        await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+        const nextTurnId = await insertTurn(db, loopId, 2, 102);
+        const completed = await engine.dispatch({
+            statement: dispositionStmt("completed"),
+            workspaceId, workerId, loopId, turnId: nextTurnId, sequence: 1, origin: "model",
+        });
+        assert.equal(completed.status, 409);
+        assert.equal(completed.problem?.detail, "Completion preceded results: stream completion. Continuing to the next packet.");
+        assert.deepEqual(completed.problem?.pending, ["receipts"]);
+    } finally { await db.close(); }
+});

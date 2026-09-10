@@ -628,12 +628,13 @@ SELECT l.sequence AS loop_seq,
 -- PREP: engine_turn_packet_boundaries
 -- {§send-premature-terminate}: executed operations, independent of log curation.
 -- NULL op identifies actionless evidence, not a dispatched statement.
-SELECT id, op FROM log_entries
+SELECT op, tx FROM log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
   AND source IS NULL
   AND inherited_history = 0
-  AND op NOT IN ('SEND', 'TASK');
+  AND op NOT IN ('SEND', 'TASK')
+ORDER BY sequence, id;
 
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer

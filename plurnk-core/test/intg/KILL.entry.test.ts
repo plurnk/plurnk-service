@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { KillStatement, MatcherBody, SendStatement } from "@plurnk/plurnk-contracts";
+import type { KillStatement, MatcherBody, SendStatement, TextLineMarker } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
@@ -84,18 +84,22 @@ test("a scoped KILL deletes one span of an entry through the EDIT path; the log 
 });
 
 // {§kill-scope-entry} — a body pattern is a log selector; on an entry it is refused, never widened.
-test("a scoped entry KILL carrying a body pattern is refused and the entry is untouched", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-    try {
-        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const matcher: MatcherBody = { dialect: "regex", raw: "/beta/", pattern: "beta", flags: "" };
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [1, 3] }, matcher));
-        assert.equal(r.status, 400, `a body on an entry KILL is refused: ${JSON.stringify(r)}`);
-        assert.match(String(r.problem?.type), /\/kill-body-log-only$/, "the refusal names the rule");
-        const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
-        assert.equal(body?.content, "alpha\nbeta\ngamma", "nothing was deleted");
-    } finally { await db.close(); }
-});
+for (const marker of [null, { marks: [1, 3] }] satisfies Array<TextLineMarker | null>) {
+    test(`a ${marker === null ? "whole" : "scoped"} entry KILL with a body is refused without presuming the intended deletion`, async () => {
+        const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+        try {
+            await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, workerId }));
+            const matcher: MatcherBody = { dialect: "regex", raw: "/beta/", pattern: "beta", flags: "" };
+            const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), marker, matcher));
+            assert.equal(r.status, 400, `a body on an entry KILL is refused: ${JSON.stringify(r)}`);
+            assert.match(String(r.problem?.type), /\/kill-body-log-only$/, "the refusal names the rule");
+            assert.equal(r.problem?.detail, "KILL body patterns are supported only for log:/// targets.");
+            assert.equal(r.problem?.recovery, undefined, "no guessed rewrite can widen the intended deletion");
+            const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
+            assert.equal(body?.content, "alpha\nbeta\ngamma", "nothing was deleted");
+        } finally { await db.close(); }
+    });
+}
 
 test("a recipient SEND to an entry scheme returns 501 (entry schemes carry no messages)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
