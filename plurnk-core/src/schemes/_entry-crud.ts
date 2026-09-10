@@ -52,7 +52,8 @@ export default class EntryCrud {
 
     static async storedByteSource(entry: StoredEntryData, channel: string, mimetypes: Mimetypes | undefined): Promise<ByteSource | undefined> {
         const selected = entry.channels[channel];
-        return selected !== undefined && await MimetypeBinary.isBinaryMimetype(selected.mimetype, mimetypes)
+        // {§binary-parity} A typed empty marker is not a stored byte payload.
+        return selected !== undefined && selected.content !== "" && await MimetypeBinary.isBinaryMimetype(selected.mimetype, mimetypes)
             ? EntryCrud.contentByteSource(selected.content)
             : undefined;
     }

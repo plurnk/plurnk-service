@@ -1853,9 +1853,9 @@ selection or fan-out path.
   **lives in a DB entry** as its bytes base64 in the channel's TEXT content; the same READ, byte range,
   and COPY/MOVE recover them through a byte source synthesized from that content, so a File member and a
   `worker://` entry hold and yield a binary identically. This supersedes the older blanket refusal (#140)
-  for both the file and the entry case. Two projections stay with the materialized File member, drawn from
-  its source-projection facts: the native image/PDF **attachment** ({§packet-attachment-parts}) and its
-  dimensions; a `worker://` entry binary reads as its byte projection. The exceptions are narrow and
+  for both the file and the entry case. Native image/PDF attachment facts come from the configured
+  mimetype handler over original bytes, whether supplied by a file or stored channel
+  ({§packet-attachment-parts}); the hexadecimal view remains available. The exceptions are narrow and
   defined, each a clear receipt rather than a dead end: a binary region addressed by a **textual anchor**
   rather than a numeric byte coordinate has no meaning (416 — bytes are not lines), **authoring** binary
   content from a text EDIT body is impossible (a text emission cannot type bytes), and a scheme that keeps
