@@ -121,7 +121,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
     });
 });
 
-test("{§stream-owner-scoped} a stream 404 names the address space without disclosing existence (#392)", async () => {
+test("{§stream-owner-scoped} binding a stream owner leaves exact misses to READ and does not disclose foreign owners", async () => {
     // The runtime schemes must be registered for a READ on `sh:///…` to reach the stream face.
     const executors = await testExecutors();
     const db = await openMigrated();
@@ -141,8 +141,8 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         assert.equal(own.status, 404);
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
-        assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/sh` addresses this runtime's result streams/, "the recovery names the coordinate space");
-        assert.match(ownText, /A tool's own ids are body arguments; the opening fence names the executor and its target names the tool\./, "the recovery routes ids to the tool");
+        assert.match(ownText, /No entry exists at sh:\/\/\/9\/9\/9\/sh/u, "READ reports the actual missing resource");
+        assert.doesNotMatch(ownText, /tool's own ids/u, "a missing resource does not imply misplaced tool arguments");
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/sh"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);

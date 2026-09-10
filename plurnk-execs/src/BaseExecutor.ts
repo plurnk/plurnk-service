@@ -55,6 +55,11 @@ export default abstract class BaseExecutor implements SchemeHandler {
         return Object.keys(this.channels)[0] ?? "";
     }
 
+    // Select the existing stream-publication contract; null publishes every channel.
+    get publishedChannel(): string | null {
+        return null;
+    }
+
     // Channels this executor writes to. The consuming scheme seeds the exec
     // entry from this declaration ({§executor-channels}): subprocess runtimes
     // declare `{ stdout, stderr }`; the search sibling declares `{ results }`.

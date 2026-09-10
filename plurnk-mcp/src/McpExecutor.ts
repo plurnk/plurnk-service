@@ -18,7 +18,9 @@ import type {
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
-import type { Progress, Tool } from "@modelcontextprotocol/client";
+import type { ContentBlock, Progress, Tool } from "@modelcontextprotocol/client";
+import { resourcePath } from "./McpResources.ts";
+import ResourceContent from "./ResourceContent.ts";
 import type { ToolPolicy } from "./config.ts";
 import { toolRegistry as presentTools } from "./ToolPresentation.ts";
 
@@ -79,25 +81,39 @@ export const runtimeServerSummary = (
 
 // The channel carries the tool's RESULT, never the transport envelope: text parts as text with
 // their own newlines (JSON when they parse as JSON), so a page rule and a scoped READ mean what
-// they say and nothing reaches the model double-escaped. A result with a non-text part keeps the
-// typed JSON rendering of the whole result.
+// they say and nothing reaches the model double-escaped. Non-text parts are ordinary resource
+// links; the exact protocol result has its own non-published channel.
 export type ToolResultShape = {
-    readonly content?: ReadonlyArray<{ readonly type: string; readonly text?: string; readonly [field: string]: unknown }>;
+    readonly content?: readonly ContentBlock[];
     readonly structuredContent?: unknown;
     readonly isError?: boolean;
 };
 
-export const toolResultBody = (result: ToolResultShape): { content: string; mimetype: string } => {
+export const toolResultBody = async (result: ToolResultShape, runtime: string, entry?: ExecArgs["entry"]): Promise<{ content: string; mimetype: string }> => {
     const parts = result.content ?? [];
     if (parts.length === 0 && result.structuredContent !== undefined) {
         return { content: JSON.stringify(result.structuredContent, null, 2), mimetype: "application/json" };
     }
-    if (parts.length === 0 || parts.some((part) => part.type !== "text")) {
-        return { content: JSON.stringify(result, null, 2), mimetype: "application/json" };
+    const rendered: string[] = [];
+    for (const part of parts) {
+        if (part.type === "text") {
+            rendered.push(part.text);
+            continue;
+        }
+        if (part.type === "resource_link") {
+            rendered.push(`<${runtime}://${resourcePath(part.uri)}> — ${part.name}`);
+            continue;
+        }
+        if (entry === undefined) throw new Error("MCP content requires the executor resource publisher.");
+        const name = part.type === "resource" ? ResourceContent.name(part.resource) : undefined;
+        const channel = part.type === "resource" ? ResourceContent.channel(part.resource)
+            : { content: "", bytes: Buffer.from(part.data, "base64"), mimetype: part.mimeType };
+        const uri = await entry(null, channel.bytes ?? channel.content, { mimetype: channel.mimetype, ...(name === undefined ? {} : { name }) });
+        rendered.push(`<${uri}> — ${channel.mimetype}`);
     }
-    const text = parts.map((part) => (part as { text: string }).text).join("\n");
+    const text = rendered.join("\n");
     const formatted = formatJsonDocument(text);
-    return { content: formatted ?? text, mimetype: formatted === undefined ? "text/plain" : "application/json" };
+    return { content: formatted ?? text, mimetype: formatted === undefined ? (parts.some((part) => part.type !== "text") ? "text/markdown" : "text/plain") : "application/json" };
 };
 
 export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean): RuntimeDecl => ({
@@ -166,6 +182,7 @@ export default class McpExecutor extends BaseExecutor {
             [CHANNEL]: {
                 mimetype: "application/json",
             },
+            json: { mimetype: "application/json" },
         };
     }
 
@@ -174,6 +191,10 @@ export default class McpExecutor extends BaseExecutor {
             throw new Error(`MCP effect classification received unregistered target '${target ?? ""}' on '${this.runtime}'.`);
         }
         return this.#read.has(target) ? "read" : "host";
+    }
+
+    override get publishedChannel(): string {
+        return CHANNEL;
     }
 
     #selectTools(tools: readonly Tool[]): readonly Tool[] {
@@ -270,6 +291,7 @@ export default class McpExecutor extends BaseExecutor {
         setState,
         emit,
         interact,
+        entry,
     }: ExecArgs): Promise<ExecResult> {
         const fail = (
             code: string,
@@ -360,7 +382,9 @@ export default class McpExecutor extends BaseExecutor {
                 interact,
                 tool,
             );
-            const body = toolResultBody(result);
+            write("json", JSON.stringify(result, null, 2), "application/json");
+            setState("json", "closed");
+            const body = await toolResultBody(result, runtime, entry);
             write(CHANNEL, body.content, body.mimetype);
             if (result.isError === true) {
                 return fail(

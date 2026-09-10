@@ -236,17 +236,32 @@ the entry and serves every later READ/FIND through uniform entry machinery.
 An executor does not implement a private read face, orientation receipt,
 slicer, or index. Owner-qualified cross-worker addresses and packet projection
 belong to core's {§stream-owner-scoped} and {§exec-stream} contracts.
+Address resolution binds that owner without requiring an exact stored row:
+FIND patterns and descendant resource paths participate in ordinary discovery;
+an exact READ reports its own missing resource ({§entry-address-resolution}).
+
+`publishedChannel` selects one declared channel for automatic stream observations;
+absent/null selects all channels. Non-published channels remain READ-addressable.
+This is the ordinary subscription publication selection, not another delivery path.
 
 ### §executor-entry-sink Optional materialization
 
-`entry(path, content, { tags, mimetype? })` is a consumer-implemented sink, not
-executor access to storage. The consumer materializes or updates an entry,
-uses the tags to classify its ordinary journal announcement, and resolves the
-canonical model-facing address. Tags never become resource metadata.
-`content === null` requests consumer-sourced
-acquisition. Rejection means only that this materialization failed; it does not
-invalidate the executor's upstream result. When the sink is absent, the
-executor preserves its result without inventing a materialization verdict.
+`entry(path, content, { mimetype?, name? })` is a consumer-implemented sink, not
+executor access to storage. It returns the canonical address of an ordinary
+resource; publication alone does not attach media or wake a Worker.
+
+| Input | Meaning |
+| --- | --- |
+| Absolute resource URL | Materialize or update that resource through its scheme owner. |
+| `path: null` | Publish beneath this invocation's output address, in `resources/`. Preserve `name` as one URI-encoded component; otherwise allocate an eight-character hexadecimal identifier. Duplicate names receive a hash suffix, never overwrite another publication. The returned address names the owning Worker explicitly. |
+| String content + mimetype | Supplied text; preserve its source layout. |
+| `Uint8Array` content + mimetype | Supplied bytes, retained as bytes, not a JSON/base64 body. |
+| `content: null` | Consumer-sourced acquisition from an absolute HTTP(S) URL. |
+
+Core owns names, storage, publication evidence, and byte acquisition. Executors
+publish returned addresses in their result. Rejection means materialization
+failed, not that the upstream operation had no effect. An absent sink cannot
+be reported as successful resource publication.
 
 ## §executor-discovery Discovery and registration
 

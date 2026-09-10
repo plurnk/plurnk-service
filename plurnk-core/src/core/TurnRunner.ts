@@ -592,7 +592,11 @@ export default class TurnRunner {
             if (resolved?.result != null) throw new OperationFailureError(resolved.result);
             if (resolved?.address == null) return null;
             const handler = this.#schemes.get(attachment.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
-            const source = handler?.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
+            let source = handler?.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
+            if (source === undefined && handler?.manifest !== undefined) {
+                const stored = await EntryCrud.readEntry(resolved.address, ctx, resolved.address.scheme, resolved.address.ownerId);
+                if (stored.entry !== null) source = await EntryCrud.storedByteSource(stored.entry, handler.manifest.defaultChannel, ctx.mimetypes);
+            }
             if (source === undefined) return null;
             const total = await source.size();
             if (total === null || total === 0) return null;

@@ -36,6 +36,7 @@ export type { SchemeInfo, SchemeDiscoveryResult, DiscoverOptions } from "./Schem
 export { default as Summarize } from "./Summarize.ts";
 export type { OrientIndex } from "./Summarize.ts";
 export { default as OutputScheme } from "./OutputScheme.ts";
+export { default as ResourceNames } from "./ResourceNames.ts";
 export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as Results } from "./Results.ts";
 export { default as PacketSections } from "./PacketSections.ts";

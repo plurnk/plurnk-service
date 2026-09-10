@@ -1,5 +1,6 @@
 import {
     Results,
+    ResourceNames,
     type EntryData,
     type EntryFindResult,
     type EntryStorageReadResult,
@@ -11,8 +12,8 @@ import {
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import { ErrorDetail, ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
-import type { ReadResourceResult } from "@modelcontextprotocol/client";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
+import ResourceContent from "./ResourceContent.ts";
 
 const ROOT = "/";
 const RESOURCES = "/resources";
@@ -50,7 +51,7 @@ const requireEntrySuccess = <T extends EntryStorageReadResult | EntryStorageWrit
     return exact;
 };
 
-const resourcePath = (uri: string): string =>
+export const resourcePath = (uri: string): string =>
     `${RESOURCE_PREFIX}${encodeURIComponent(uri)}`;
 
 const promptPath = (name: string): string =>
@@ -122,23 +123,6 @@ const findEntryFailure = (
     matchingPathCount: 0,
     matchLocationCount: 0,
 });
-
-const resourceBody = (result: ReadResourceResult): {
-    content: string;
-    mimetype: string;
-} => {
-    if (result.contents.length === 1 && "text" in result.contents[0]!) {
-        const value = result.contents[0]!;
-        return {
-            content: value.text,
-            mimetype: value.mimeType ?? "text/plain",
-        };
-    }
-    return {
-        content: JSON.stringify(result, null, 2),
-        mimetype: "application/json",
-    };
-};
 
 const catalogEntry = (content: string, kind: string): EntryData => ({
     channels: {
@@ -271,8 +255,8 @@ export default class McpResources {
     }
 
     async #materializeResource(pathname: string, ctx: SchemeCtx): Promise<void> {
-        const encoded = pathname.slice(RESOURCE_PREFIX.length);
-        if (encoded.length === 0 || encoded.includes("/")) {
+        const [encoded, folder, leaf, ...tail] = pathname.slice(RESOURCE_PREFIX.length).split("/");
+        if (!encoded || (folder !== undefined && (folder !== "resources" || !leaf || tail.length !== 0))) {
             throw new ResourceAddressError(`Invalid MCP resource address '${pathname}'.`);
         }
         let uri: string;
@@ -281,20 +265,36 @@ export default class McpResources {
         } catch (cause) {
             throw new ResourceAddressError(`Invalid encoded MCP resource address '${pathname}'.`, { cause });
         }
-        const body = resourceBody(await this.#connection.readResource(
+        const result = await this.#connection.readResource(
             uri,
             ctx.signal,
             (interaction) => ctx.interactions.request(interaction),
-        ));
-        requireEntrySuccess(await ctx.entries.write(pathname, {
+        );
+        const root = `${RESOURCE_PREFIX}${encoded}`;
+        const names = new ResourceNames();
+        const paths: string[] = [];
+        if (result.contents.length !== 1) {
+            for (const resource of result.contents) {
+                const child = `${root}/resources/${names.allocate(ResourceContent.name(resource), resource.uri)}`;
+                requireEntrySuccess(await ctx.entries.write(child, {
+                    channels: { body: ResourceContent.channel(resource) },
+                    attributes: { kind: RESOURCE_KIND },
+                }));
+                paths.push(child);
+            }
+        }
+        const body = result.contents.length === 1 ? ResourceContent.channel(result.contents[0]!)
+            : { content: paths.map((path) => `<${this.#server}://${path}>`).join("\n"), mimetype: "text/markdown" };
+        requireEntrySuccess(await ctx.entries.write(root, {
             channels: {
-                body: {
-                    content: body.content,
-                    mimetype: body.mimetype,
-                },
+                body,
+                json: { content: JSON.stringify(result, null, 2), mimetype: "application/json" },
             },
             attributes: { kind: RESOURCE_KIND },
         }));
+        if (pathname !== root && !paths.includes(pathname)) {
+            throw new EntryOperationFailure(Results.failure("scheme:mcp", "resource-part-not-found", 404, "The resource response does not contain this part.", {}, { target: `${this.#server}://${pathname}` }));
+        }
     }
 
     async prepareRepresentation(

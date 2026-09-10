@@ -37,6 +37,7 @@ const wire = async (opts?: {
     tag?: string;
     encodedPath?: boolean;
     entryFailure?: boolean;
+    resources?: boolean;
 }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
     // {§executor-runtime-declaration}: one canonical runtime tag has one owner.
@@ -62,6 +63,16 @@ const wire = async (opts?: {
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
+                if (opts?.resources) {
+                    assert.ok(args.entry);
+                    const paths = await Promise.all([
+                        args.entry(null, "first", { mimetype: "text/plain", name: "note.txt" }),
+                        args.entry(null, new Uint8Array([1, 2, 255]), { mimetype: "application/octet-stream" }),
+                        args.entry(null, "second", { mimetype: "text/plain", name: "note.txt" }),
+                    ]);
+                    args.write("results", JSON.stringify(paths), "application/json");
+                    return { status: 200 };
+                }
                 if (opts?.entryFailure) {
                     let pruned = false;
                     try {
@@ -135,6 +146,43 @@ const wire = async (opts?: {
     const turnId = await insertTurn(db, loopId, 1, 102);
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
+
+test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overwrite, and remain Worker-owned", async () => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ resources: true, tag: "resourcepublisher" });
+    try {
+        const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.ok(result.status < 400);
+        await quiesceExecs(schemes);
+        const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/1/1/1/resourcepublisher", scheme: "resourcepublisher", name: "results" });
+        const paths = JSON.parse(output!.content) as string[];
+        assert.match(paths[0]!, /^resourcepublisher:\/\/researcher\/.*\/resources\/note\.txt$/u);
+        assert.match(paths[1]!, /\/resources\/[a-f0-9]{8}$/u);
+        assert.match(paths[2]!, /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
+        const contents = [];
+        for (const path of paths) {
+            const read = await engine.dispatch({ statement: parseOne(`\`\`\`READ (${path}) <1,-1>\`\`\``), workspaceId, workerId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
+            assert.equal(read.status, 200);
+            contents.push(Results.assertReadResult(read).content);
+        }
+        assert.deepEqual(contents, ["first", "01\n02\nff", "second"]);
+        const directory = paths[0]!.slice(0, paths[0]!.lastIndexOf("/") + 1);
+        const found = await engine.dispatch({ statement: parseOne(`\`\`\`FIND (${directory}*)\`\`\``), workspaceId, workerId, loopId, turnId, sequence: 5, origin: "model" });
+        assert.equal(found.status, 200, JSON.stringify(found));
+        assert.ok("results" in found && Array.isArray(found.results));
+        assert.equal(found.results.length, 3, "the published resources participate in ordinary pattern discovery");
+        const peerId = await insertWorker(db, workspaceId, null, "peer");
+        const peerLoopId = await insertLoop(db, peerId, 1, "inspect peer resource");
+        const peerTurnId = await insertTurn(db, peerLoopId, 1, 102);
+        const peer = { workspaceId, workerId: peerId, loopId: peerLoopId, turnId: peerTurnId, origin: "model" as const };
+        const missing = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`READ (${paths[0]!.replace("://researcher/", ":///")})\`\`\``), sequence: 1 });
+        assert.equal(missing.status, 404, "an unqualified lookup cannot read another Worker's resource");
+        const shared = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`READ (${paths[0]})\`\`\``), sequence: 2 });
+        assert.equal(shared.status, 200, "the returned owner-qualified address remains meaningful to another Worker");
+    } finally {
+        await quiesceExecs(schemes);
+        await db.close();
+    }
+});
 
 test("entry() materializes an https resource as plurnk narration rows", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();

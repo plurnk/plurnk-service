@@ -161,9 +161,9 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         advertised: "never",
         interactive: false,
         disposition: "partial",
-        composed: false,
-        evidence: ["{§mcp-result-content}", "{§json-result-rendering}", "plurnk-mcp McpExecutor '{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence'"],
-        note: "Lossless JSON preservation into the evidence channel; first-class non-text client rendering is not claimed.",
+        composed: true,
+        evidence: ["{§mcp-result-content}", "{§packet-attachment-parts}", "plurnk-mcp McpExecutor '{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence'", "plurnk-core test/intg/mcp-media-composition.test.ts"],
+        note: "Typed resource publication, lossless #json evidence, and native image READ compose through a real MCP endpoint. Native audio and client media rendering are not claimed.",
     },
     {
         id: "mrtr",

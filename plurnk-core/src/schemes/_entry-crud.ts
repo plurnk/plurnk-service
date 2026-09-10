@@ -9,6 +9,8 @@ import type { ChannelProducerResult, ChannelState, EntryCoordinate, EntryData, S
 export type { EntryData } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import MimetypeBinary from "../content/mimetype-binary.ts";
 
 
 export interface ReadEntryResult extends SchemeResultBase {
@@ -46,6 +48,13 @@ export default class EntryCrud {
             size: async () => bytes.byteLength,
             read: async (start, end) => bytes.subarray(start - 1, end),
         };
+    }
+
+    static async storedByteSource(entry: StoredEntryData, channel: string, mimetypes: Mimetypes | undefined): Promise<ByteSource | undefined> {
+        const selected = entry.channels[channel];
+        return selected !== undefined && await MimetypeBinary.isBinaryMimetype(selected.mimetype, mimetypes)
+            ? EntryCrud.contentByteSource(selected.content)
+            : undefined;
     }
 
     static async readEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string, ownerId: number): Promise<ReadEntryResult> {
@@ -107,6 +116,15 @@ export default class EntryCrud {
         const { db, workspaceId, weigh } = ctx;
         const { authority, pathname } = coordinate;
         if (weigh === undefined) throw new Error("writeEntry: ctx.weigh is required for curation-weight accounting");
+        const channels = await Promise.all(Object.entries(entry.channels).map(async ([name, data]) => ({
+            name,
+            data,
+            producerResult: data.producerResult === undefined ? null : JSON.stringify(Results.assertChannelProducerResult(data.producerResult)),
+            content: data.bytes === undefined ? data.content
+                : await MimetypeBinary.isBinaryMimetype(data.mimetype, ctx.mimetypes)
+                    ? Buffer.from(data.bytes).toString("base64")
+                    : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data.bytes),
+        })));
         const owner_id = ownerId;
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
 
@@ -142,15 +160,8 @@ export default class EntryCrud {
         // (raw html → decisive markdown body + raw `html` archive) lives at the web-fetch entry point
         // (the exec sink), NOT here: an authored/workspace html file is DATA whose attributes are the
         // payload (a `<user email=…>` roster), and a reader-view projection would strip it.
-        for (const [channelName, channelData] of Object.entries(entry.channels)) {
-            const producerResult = channelData.producerResult === undefined
-                ? null
-                : JSON.stringify(Results.assertChannelProducerResult(channelData.producerResult));
-            // {§binary-parity} — a binary channel arrives as bytes; a DB entry keeps them base64 in its
-            // TEXT content, and READ/COPY recover them through EntryCrud.contentByteSource.
-            const storedContent = channelData.bytes === undefined
-                ? channelData.content
-                : Buffer.from(channelData.bytes).toString("base64");
+        // {§scheme-source-bytes} Byte encoding and producer validation complete before replacement.
+        for (const { name: channelName, data: channelData, content: storedContent, producerResult } of channels) {
             await db.crud_write_channel.run({
                 entry_id: entryId, name: channelName, content: storedContent, mimetype: channelData.mimetype,
                 weight: weigh(storedContent), // stable curation weight ({§tokenomics-agnostic-ruler}, {§tokenomics-weight-stored-at-write})

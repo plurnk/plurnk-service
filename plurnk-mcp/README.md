@@ -170,10 +170,16 @@ Portable timeouts and complete examples live in [`.env.defaults`](./.env.default
 | Prompt catalog | `server:///prompts` |
 | Prompt retrieval | `server:///prompts/<encoded-name>?argument=value` through ordinary `READ` |
 | Completion | Client-owned `worker.mcp.complete` action |
+| Tool image/audio or embedded resource | A named resource beneath the invocation's `resources/`; eight hexadecimal characters when unnamed |
+| Exact tool-result evidence | The invocation's `#json` channel, retrieved on demand |
 
 Tool results, resource bodies, prompt messages, and failures become ordinary
 Plurnk entries and channels. Disabled tools appear in neither teaching nor
 admission. There is no MCP-specific model discovery grammar.
+
+Results link to media rather than dumping base64. An ordinary `READ` delivers
+supported images natively; other content and unsupported models retain the
+text/byte view. Listing the resource alone does not attach it.
 
 Current pagination, cache hints, unified subscriptions, progress,
 cancellation, multi-round-trip input, elicitation, and negotiated Tasks remain

@@ -80,7 +80,7 @@ export interface ExecArgs {
     // owns acquisition, storage, tags, announcement, and the returned canonical
     // model-facing address. `content === null` requests consumer-sourced bytes.
     // Rejection means only that materialization failed.
-    entry?: (path: string, content: string | null, opts: { mimetype?: string }) => Promise<string>;
+    entry?: (path: string | null, content: string | Uint8Array | null, opts: { mimetype?: string; name?: string }) => Promise<string>;
 }
 
 export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "metadata" | "cwd" | "target">;

@@ -167,7 +167,7 @@ export default class ResourceSelector {
         const sourceMimetype = typeof sourceProjection?.mimetype === "string" ? sourceProjection.mimetype : selected.mimetype;
         if (await MimetypeBinary.isBinaryMimetype(sourceMimetype, ctx.mimetypes)) {
             const byteSource = (storageAddress === undefined ? undefined : handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx)))
-                ?? (selected.content !== "" ? EntryCrud.contentByteSource(selected.content) : undefined);
+                ?? await EntryCrud.storedByteSource(representation, selection.channel, ctx.mimetypes);
             if (byteSource === undefined) {
                 return MutationEffects.failure(
                     "binary-source-unsupported", 415,

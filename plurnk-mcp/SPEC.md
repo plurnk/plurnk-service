@@ -479,21 +479,34 @@ effect occurred.
 
 ## §mcp-result-content Passive result content
 
-The EXEC channel carries the tool's RESULT, never the transport envelope
-(`_meta`, `content`): text parts are written as text with their own newlines
+The default output channel carries the tool's result, not its transport envelope:
+text parts are written as text with their own newlines
 — whitespace-formatted `application/json` when the text is a complete JSON document,
 else unchanged `text/plain` ({§json-document-presentation});
 several text parts join with newlines; an empty content with
 `structuredContent` writes it pretty-printed — so the page rule and a scoped
-READ mean what they say and nothing reaches the model double-escaped. A result
-holding any non-text variant — image, audio, resource links, embedded
-text/blob resources — is preserved losslessly as one JSON value of the whole
-result with two-space indentation, the durable evidence path. Generated catalogs
-and prompt documents use the same indentation; individual text resources preserve
-their source layout. Plurnk does not claim
-first-class client rendering of non-text variants and adds no MCP-only media
-envelopes: presentation is a client concern over ordinary typed
-entries/resources, and a text-only client degrades by rendering the JSON. A
+READ mean what they say and nothing reaches the model double-escaped. The
+complete result, including metadata and annotations, remains available in
+`#json` as protocol evidence. The default body preserves content order:
+
+| Content | Model-facing projection |
+| --- | --- |
+| Text | Its text. |
+| Inline image/audio | Link to an invocation-owned typed byte resource, published through {§executor-entry-sink}. |
+| Embedded text/blob resource | Link to a typed resource snapshot; use the supplied URI's filename when present. |
+| Resource link | Link to the existing MCP resource address; acquisition occurs on READ, not on listing. |
+
+Unnamed resources receive eight-character hexadecimal identifiers, not ordinal
+labels. No binary base64 is copied into the default result body. Listing a
+resource creates no native model attachment; READ uses {§packet-attachment-parts},
+including scoped byte reads, supported modalities, and single-request delivery.
+Resource publication is passive; completion of the originating execution retains
+its ordinary wake semantics. A single `resources/read` content item becomes the
+resource's typed body; multiple items become named children under its `resources/`
+folder and a directory of links. Each response retains its complete `#json` evidence;
+reconstructing the same collection preserves child paths ({§resource-publication-names}).
+Generated catalogs and prompt documents use two-space
+JSON indentation; individual text resources preserve their source layout. A
 standalone `blob` content block is not a modern `tools/call` content member
 (blobs ride inside embedded blob resources) and is rejected as
 protocol-invalid. Size limits and MIME trust remain ordinary channel and

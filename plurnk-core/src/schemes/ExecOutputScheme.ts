@@ -17,7 +17,6 @@ import type {
     SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
-import { renderAddress } from "../core/plurnk-uri.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 
 // {§stream-owner-scoped} — a stream 404 discloses nothing about existence; it may still say what
@@ -90,21 +89,8 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
                 { target: target.raw, recovery: streamAddressSpace(name), retryable: false },
             );
         }
-        const scheme = EntryCrud.identityScheme(this.#executor.manifest);
-        const existing = await core.db.crud_find_workspace_entry.get<{ id: number }>({
-            workspace_id: core.workspaceId, owner_id: ownerId, scheme, authority: "", pathname: target.pathname,
-        });
-        if (existing === undefined) {
-            const address = renderAddress({ scheme: name, authority: target.hostname ?? "", pathname: target.pathname });
-            return Results.failure(
-                `scheme:${name}`,
-                "entry-not-found",
-                404,
-                `No entry exists at ${address}.`,
-                {},
-                { target: address, recovery: streamAddressSpace(name), retryable: false },
-            );
-        }
+        // {§entry-address-resolution} Bind the principal, not an exact stored
+        // row: FIND may address a pattern, and READ owns the eventual miss.
         return { authority: "", pathname: target.pathname, ownerId };
     }
 

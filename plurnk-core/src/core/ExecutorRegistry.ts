@@ -29,6 +29,7 @@ export interface Executor {
     get manifest(): SchemeManifest;
     get defaultChannel(): string;
     get channels(): Readonly<Record<string, ChannelDecl>>;
+    readonly publishedChannel?: string | null;
     prepare?(input: ExecInput): Promise<ExecPreparation>;
     run(args: ExecArgs): Promise<ExecResult>;
     // The host aborts on resolve or timeout so probe work is reaped immediately
@@ -84,7 +85,7 @@ export default class ExecutorRegistry {
     readonly #toolRegistries = new WeakMap<Executor, RuntimeToolRegistry | null>();
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, packageAttributions: PackageAttributions = new Map()) {
-        for (const [tag, entry] of byTag) ExecutorRegistry.#assertSummarySource(tag, entry);
+        for (const [tag, entry] of byTag) ExecutorRegistry.#assertDeclaration(tag, entry);
         this.#byTag = new Map(byTag);
         this.#packageAttributions = new Map(packageAttributions);
     }
@@ -104,7 +105,7 @@ export default class ExecutorRegistry {
     prepareRegistrations(registrations: readonly RuntimeRegistryRegistration[]): () => void {
         const tags = new Set<string>();
         for (const { tag, entry } of registrations) {
-            ExecutorRegistry.#assertSummarySource(tag, entry);
+            ExecutorRegistry.#assertDeclaration(tag, entry);
             if (tags.has(tag)) {
                 throw new Error(`executor tag '${tag}' occurs more than once in one registration batch`);
             }
@@ -137,7 +138,7 @@ export default class ExecutorRegistry {
         const byOwner = this.#workerByOwner.get(workerId);
         const tags = new Set<string>();
         for (const { tag, entry } of registrations) {
-            ExecutorRegistry.#assertSummarySource(tag, entry);
+            ExecutorRegistry.#assertDeclaration(tag, entry);
             if (tags.has(tag)) {
                 throw new Error(`executor tag '${tag}' occurs more than once in one worker snapshot`);
             }
@@ -203,11 +204,15 @@ export default class ExecutorRegistry {
             : `daemon module runtime '${owner.name}'`;
     }
 
-    static #assertSummarySource(tag: string, entry: RegistryEntry): void {
+    static #assertDeclaration(tag: string, entry: RegistryEntry): void {
         if (typeof entry.summary !== "string" && entry.executor.toolRegistry === undefined) {
             throw new Error(
                 `executor tag '${tag}' derives its summary from tools but exposes no exact tool registry`,
             );
+        }
+        const published = entry.executor.publishedChannel;
+        if (published != null && !Object.hasOwn(entry.executor.channels, published)) {
+            throw new Error(`executor tag '${tag}' publishes undeclared channel '${published}'`);
         }
     }
 

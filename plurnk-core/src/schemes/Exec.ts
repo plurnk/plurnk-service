@@ -31,6 +31,7 @@ import Results, { OperationFailureError, type SchemeResult, type SchemeResultBas
 import {
     InvalidOperationResultError,
     NetworkAddress,
+    ResourceNames,
     type EntryAddress,
     type ProposalApplyRequest,
 } from "@plurnk/plurnk-schemes";
@@ -649,6 +650,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // {§exec-poll} — hibernation wake cadence
             turnScoped: attrs.turnScoped === true, // {§exec-poll} — `<0>` reaped at the next pre-turn
+            publishedChannel: resolved.executor.publishedChannel,
         });
 
         const controller = new AbortController();
@@ -800,14 +802,22 @@ export default class Exec extends CoreSchemeAdapterBase {
         let narrationResult: SchemeResult = { status: 200 };
         let entryChainFailed = false;
         let callerSource: string | undefined;
+        let callerName: string | undefined;
         const resolveCallerSource = async (): Promise<string> => {
             if (callerSource !== undefined) return callerSource;
             const caller = await db.worker_name_by_id.get<{ name: string }>({ worker_id: ctx.workerId });
             if (caller === undefined) throw new Error(`entry(): calling worker ${ctx.workerId} does not exist`);
+            callerName = caller.name;
             callerSource = WorkerControlAddress.render(caller.name);
             return callerSource;
         };
-        const entrySink = (path: string, content: string | null, opts: { mimetype?: string }): Promise<string> => {
+        const publishedNames = new ResourceNames();
+        const entrySink = (requestedPath: string | null, content: string | Uint8Array | null, opts: { mimetype?: string; name?: string }): Promise<string> => {
+            let path = requestedPath;
+            if (path === null) {
+                if (content === null) return Promise.reject(new Error("entry(): an invocation resource requires supplied content"));
+                path = renderAddress({ scheme: runtime, authority: "", pathname: `${pathname}/resources/${publishedNames.allocate(opts.name)}` });
+            }
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
             if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
@@ -816,15 +826,17 @@ export default class Exec extends CoreSchemeAdapterBase {
             const fetchAddress = address !== null && (address.scheme === "http" || address.scheme === "https")
                 ? address
                 : null;
-            const binding = this.bindEntryAddress(parsed, ctx);
+            const binding = requestedPath === null
+                ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname, ownerId: ctx.workerId }, result: null })
+                : this.bindEntryAddress(parsed, ctx);
             // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
             // acquisition before the write chain so fetches run in parallel;
             // only durable entry writes serialize. A null result rejects the sink.
-            let materialized: Promise<WebFetchResult | null>;
+            let materialized: Promise<WebFetchResult | null> | undefined;
             if (content === null) {
                 if (fetchAddress === null) return Promise.reject(new Error("entry(): content:null requires an http(s):// URL"));
                 materialized = this.#fetchWeb(fetchAddress.url, { signal });
-            } else {
+            } else if (typeof content === "string" && requestedPath !== null) {
                 materialized = Promise.resolve({
                     url: fetchAddress?.url ?? "http://localhost",
                     body: content,
@@ -843,34 +855,39 @@ export default class Exec extends CoreSchemeAdapterBase {
                 }
                 const { authority, pathname, scheme, ownerId } = resolved.address;
                 const coordinate = { authority, pathname };
-                const fetched = await materialized;
-                if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
-                let web: WebMaterializedResult | null;
-                try {
-                    web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
-                } catch (error) {
-                    if (!signal.aborted && error instanceof WebMaterializationError) {
-                        console.error("entry() web materialization failed", { path, error });
+                let channels: EntryData["channels"];
+                let decisive: string;
+                let source: string;
+                if (materialized === undefined) {
+                    if (content === null) throw new Error("entry(): missing supplied content");
+                    const body = typeof content === "string" ? { content, mimetype: opts.mimetype! }
+                        : { content: "", bytes: content, mimetype: opts.mimetype! };
+                    const channel = requestedPath === null ? executor.defaultChannel : ctx.defaultChannelFor?.(scheme);
+                    if (channel === undefined) throw new Error(`entry(): no default channel for '${scheme}'`);
+                    channels = { [channel]: body };
+                    decisive = typeof content === "string" ? content : `${opts.mimetype}; ${content.byteLength} bytes`;
+                    source = decisive;
+                } else {
+                    const fetched = await materialized;
+                    if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
+                    let web: WebMaterializedResult | null;
+                    try {
+                        web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
+                    } catch (error) {
+                        if (!signal.aborted && error instanceof WebMaterializationError) {
+                            console.error("entry() web materialization failed", { path, error });
+                        }
+                        throw error;
                     }
-                    throw error;
-                }
-                if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable projection`);
-                if (web.body === undefined) {
-                    throw new Error(
-                        web.bodyOutcome.failure?.detail
-                        ?? `entry(): '${path.slice(0, 80)}' produced no readable body`,
+                    if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable projection`);
+                    if (web.body === undefined) throw new Error(web.bodyOutcome.failure?.detail ?? `entry(): '${path.slice(0, 80)}' produced no readable body`);
+                    channels = WebFetcher.materializedChannels(
+                        web,
+                        content === null && fetchAddress !== null ? { url: fetchAddress.url, method: "GET" } : undefined,
                     );
+                    decisive = web.body.content;
+                    source = web.html?.content ?? decisive;
                 }
-                // {§exec-entry-sink}/{§html-materialization} The shared
-                // materializer owns the decisive projection and its provenance.
-                const channels: EntryData["channels"] = WebFetcher.materializedChannels(
-                    web,
-                    content === null && fetchAddress !== null
-                        ? { url: fetchAddress.url, method: "GET" }
-                        : undefined,
-                );
-                const decisive = web.body.content;
-                const source = web.html?.content ?? decisive;
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(
                     await EntryCrud.writeEntry(coordinate, { channels }, ctx, scheme, ownerId),
@@ -949,7 +966,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
-                return renderAddress({ scheme, authority, pathname });
+                return renderAddress({ scheme, authority: requestedPath === null ? callerName! : authority, pathname });
             };
             const run = entryChain.then(op, op);
             entryChain = run.then(

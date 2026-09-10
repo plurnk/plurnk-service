@@ -89,13 +89,22 @@ the loop's proposal disposition resolves it, with timeout as a lifecycle bound.
 
 ## §2 Interface
 
+§resource-publication-names **Published resources have names, not invented ordinals.**
+`ResourceNames` allocates one URI-encoded component per resource: a supplied name
+is preserved; no name produces eight hexadecimal characters. A repeated name
+gets an eight-character hash suffix, never overwrites a sibling. Passing stable
+identities in collection order reconstructs the same names. Allocation neither
+creates entries nor changes their ownership or publication policy.
+
 §scheme-source-bytes **Original bytes retain the full resource identity.**
 `byteSource({authority, pathname}, ctx)` supplies a `ByteSource`: `size()` returns
 the byte count or `null` for an absent source; `read(first, last)` returns the
 one-based inclusive byte window. The context carries the invoking actor and
 its Functionality Worker. READ, FIND, transfers, and native model attachments
 use this same source contract. Public `EntryData` also accepts `bytes` beside
-an empty `content`; the consumer owns its storage encoding.
+an empty `content`; the consumer owns its storage encoding. Binary channels retain
+those bytes exactly. Textual channels accept exact UTF-8 (including BOM and line
+endings); invalid text bytes fail before replacing the stored resource.
 
 An optional `nativePath()` identifies the original regular file, or `null` when
 absent. It never creates a copy. The resource owner resolves it under the same

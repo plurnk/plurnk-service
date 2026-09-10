@@ -51,6 +51,15 @@ export interface AnchoredReadResult extends EntryReadResult {
 // selection, binary admission, text coordinates, line-anchor projection, and
 // composition of the selected producer's durable result.
 export default class ReadProjector {
+    static async *#chunks(source: ByteSource): AsyncIterable<Uint8Array> {
+        const size = await source.size();
+        if (size === null) return;
+        const chunkSize = 64 * 1024;
+        for (let start = 1; start <= size; start += chunkSize) {
+            yield await source.read(start, Math.min(size, start + chunkSize - 1));
+        }
+    }
+
     // {§read-bytes} — one hexadecimal octet per line under the text coordinate algebra: the
     // markerless default is the same `<1,16>`, `<a,b>` selects bytes, `<1,-1>` is everything.
     // The source is sized, then only the window is read; the source mimetype is never relabelled.
@@ -118,8 +127,16 @@ export default class ReadProjector {
         const channel = selected === "" ? null : selected;
         const availableChannels = [...new Set([manifest.defaultChannel, ...Object.keys(manifest.channels)])].filter((candidate) =>
             candidate.length > 0 && Object.hasOwn(representation.channels, candidate));
-        const image = imageOf(representation.attributes);
-        const document = documentOf(representation.attributes);
+        const defaultRepresentation = representation.channels[manifest.defaultChannel];
+        const binary = mimetypes !== undefined && defaultRepresentation !== undefined
+            && await MimetypeBinary.isBinaryMimetype(defaultRepresentation.mimetype, mimetypes);
+        const projection = binary && bytes !== undefined && (selected === manifest.defaultChannel || selected === ByteView.CHANNEL)
+            ? await mimetypes!.projectReadableStream(ReadProjector.#chunks(bytes), defaultRepresentation.mimetype)
+            : null;
+        const attributes = projection === null ? representation.attributes
+            : { sourceProjection: { mimetype: projection.sourceMimetype, facts: projection.facts } };
+        const image = imageOf(attributes);
+        const document = documentOf(attributes);
         const withAttachmentFacts = (result: AnchoredReadResult): AnchoredReadResult => ({
             ...result,
             ...(image === null ? {} : { image }),

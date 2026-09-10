@@ -194,6 +194,26 @@ const readStmt = (pathname: string): ReadStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
+test("{§scheme-source-bytes} bytes declared as text retain exact UTF-8 rather than exposing base64", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "text-bytes");
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ownerId = await Owner.commonsId(db, workspaceId);
+        const coordinate = { authority: "", pathname: "/note.txt" };
+        const text = "\ufeffcafé\r\nexact text\n";
+        const entry = { channels: { body: { content: "", bytes: Buffer.from(text), mimetype: "text/plain" } } };
+        assert.equal((await EntryCrud.writeEntry(coordinate, entry, ctx, "worker", ownerId)).status, 201);
+        const stored = await EntryCrud.readEntry(coordinate, ctx, "worker", ownerId);
+        assert.equal(stored.entry!.channels.body!.content, text);
+        await assert.rejects(EntryCrud.writeEntry(coordinate, {
+            channels: { body: { ...entry.channels.body, bytes: new Uint8Array([0xff]) } },
+        }, ctx, "worker", ownerId), /encoded data was not valid/u);
+        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker", ownerId)).entry!.channels.body!.content, text, "invalid text bytes do not destroy the existing resource");
+    } finally { await db.close(); }
+});
+
 test("{§binary-parity} a binary entry stores its bytes base64 and READs back as the hex byte view", async () => {
     const db = await openMigrated();
     try {

@@ -60,6 +60,18 @@ test("{§executor-runtime-declaration} rejects a tool-derived summary without an
     );
 });
 
+test("{§executor-channels} an executor cannot publish an undeclared channel", () => {
+    const entry = workspaceEntry("publication", "fixture");
+    assert.throws(() => new ExecutorRegistry(new Map([["publication", {
+        ...entry,
+        executor: { ...entry.executor, publishedChannel: "missing" },
+    }]])), /publishes undeclared channel 'missing'/u);
+    assert.doesNotThrow(() => new ExecutorRegistry(new Map([["publication", {
+        ...entry,
+        executor: { ...entry.executor, publishedChannel: "body" },
+    }]])));
+});
+
 test("{§executor-tool-registry} validates and caches one snapshot for every consumer", () => {
     let reads = 0;
     const manifest: SchemeManifest = {

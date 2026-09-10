@@ -49,14 +49,17 @@ const harness = (
     writes: string[];
     states: string[];
     notices: Notice[];
+    channels: Map<string, string>;
 } => {
     const writes: string[] = [];
     const states: string[] = [];
     const notices: Notice[] = [];
+    const channels = new Map<string, string>();
     return {
         writes,
         states,
         notices,
+        channels,
         args: {
             metadata: null,
             runtime: "echo",
@@ -64,8 +67,11 @@ const harness = (
             cwd: null,
             target: null,
             signal: new AbortController().signal,
-            write: (_channel, chunk) => writes.push(chunk),
-            setState: (_channel, state) => states.push(state),
+            write: (channel, chunk) => {
+                channels.set(channel, (channels.get(channel) ?? "") + chunk);
+                if (channel === "body") writes.push(chunk);
+            },
+            setState: (channel, state) => { if (channel === "body") states.push(state); },
             emit: (notice) => notices.push(notice),
             interact: async () => ({ status: "cancelled" }),
             ...overrides,
@@ -294,11 +300,16 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
     );
     try {
         await executor.requireAvailable();
-        const h = harness({ runtime: "rich", target: "rich" });
+        const publications: Array<{ name?: string; content: string | Uint8Array | null; mimetype?: string }> = [];
+        const h = harness({ runtime: "rich", target: "rich", entry: async (path, content, options) => {
+            assert.equal(path, null, "resources belong to the invocation, not an invented global address");
+            publications.push({ content, ...options });
+            return `rich:///1/1/1/rich/resources/${options.name ?? "ab12cd34"}`;
+        } });
         const result = await executor.run(h.args);
         assert.equal(result.status, 200);
         assert.deepEqual(
-            (JSON.parse(h.writes[0] ?? "{}") as { content: unknown }).content,
+            (JSON.parse(h.channels.get("json") ?? "{}") as { content: unknown }).content,
             [
                     { type: "text", text: "prose" },
                     { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
@@ -326,6 +337,11 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
                     },
                 ],
         );
+        assert.equal(publications.length, 4);
+        assert.deepEqual(publications.map(({ content }) => typeof content === "string" ? content : Buffer.from(content!).toString()), ["image", "audio", "embedded text", "blob"]);
+        assert.ok(h.writes[0]?.startsWith("prose\n<rich:///"), "the body preserves text and resource ordering");
+        assert.match(h.writes[0]!, /rich:\/\/\/resources\/fixture%3A%2F%2Fdocument/u, "resource links use the ordinary MCP resource tree");
+        assert.doesNotMatch(h.writes[0]!, /aW1hZ2U=|YXVkaW8=|YmxvYg==/u);
     } finally {
         await connection.close();
     }
@@ -456,17 +472,15 @@ test("invalid tool arguments carry the one-object recovery", async () => {
     }
 });
 
-test("{§mcp-result-content} the channel carries the result, never the envelope", () => {
+test("{§mcp-result-content} the channel carries the result, never the envelope", async () => {
     const pretty = '[\n  {\n    "id": "PART-001"\n  }\n]';
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: pretty }] }), { content: pretty, mimetype: "application/json" });
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '[{"id":"PART-001"}]' }] }), { content: pretty, mimetype: "application/json" });
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '{"id":9007199254740993}' }] }), { content: '{\n  "id": 9007199254740993\n}', mimetype: "application/json" });
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '{"partial":' }] }), { content: '{"partial":', mimetype: "text/plain" });
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: '{"a":1}\n{"b":2}' }] }), { content: '{"a":1}\n{"b":2}', mimetype: "text/plain" });
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: "plain words" }] }), { content: "plain words", mimetype: "text/plain" });
-    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: "one" }, { type: "text", text: "two" }] }), { content: "one\ntwo", mimetype: "text/plain" });
-    assert.deepEqual(toolResultBody({ content: [], structuredContent: { a: 1 } }), { content: '{\n  "a": 1\n}', mimetype: "application/json" });
-    const mixed = toolResultBody({ content: [{ type: "text", text: "see image" }, { type: "image", data: "AA==", mimeType: "image/png" }] });
-    assert.equal(mixed.mimetype, "application/json");
-    assert.match(mixed.content, /"type": "image"/, "a non-text part keeps the typed rendering of the whole result");
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: pretty }] }, "fixture"), { content: pretty, mimetype: "application/json" });
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: '[{"id":"PART-001"}]' }] }, "fixture"), { content: pretty, mimetype: "application/json" });
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: '{"id":9007199254740993}' }] }, "fixture"), { content: '{\n  "id": 9007199254740993\n}', mimetype: "application/json" });
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: '{"partial":' }] }, "fixture"), { content: '{"partial":', mimetype: "text/plain" });
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: '{"a":1}\n{"b":2}' }] }, "fixture"), { content: '{"a":1}\n{"b":2}', mimetype: "text/plain" });
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: "plain words" }] }, "fixture"), { content: "plain words", mimetype: "text/plain" });
+    assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: "one" }, { type: "text", text: "two" }] }, "fixture"), { content: "one\ntwo", mimetype: "text/plain" });
+    assert.deepEqual(await toolResultBody({ content: [], structuredContent: { a: 1 } }, "fixture"), { content: '{\n  "a": 1\n}', mimetype: "application/json" });
+    await assert.rejects(toolResultBody({ content: [{ type: "image", data: "AA==", mimeType: "image/png" }] }, "fixture"), /resource publisher/u);
 });
