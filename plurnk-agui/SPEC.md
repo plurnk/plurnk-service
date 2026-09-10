@@ -149,7 +149,7 @@ state paths that could be mistaken for standard AG-UI fields.
 |:--------------------------------------------|:-----------------------------------------|:--------|
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
 | `snapshot.plurnk.status.model`               | `ApplicationPort.readWorkerModel`          | The bound Worker's durable resolved model route, including its alias when selected. |
-| `snapshot.plurnk.status.loopId`              | latest `ApplicationLoopProjection.id`      | Latest durable Loop for the bound Worker, or `null` before one exists. |
+| `snapshot.plurnk.status.loopId`              | latest `ApplicationLoopProjection.id`      | Latest durable work Loop for the bound Worker, or `null` before one exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
 | `snapshot.plurnk.status.{scheduledAt,intervalMinutes,recurrenceId}` | {§application-loop-observation} | Scheduled-task timing, initialized to `null` when absent. Packet deltas refresh it and clear an ordinary task's absent timing. |
@@ -222,6 +222,9 @@ host owns; decoration and layout are not cross-client protocol facts.
 One installed-platform journey exercises all three public entry paths against
 the same packed daemon release. It asserts semantic outcomes rather than exact
 glyphs or pixels and names any permitted divergence by its owning host.
+Unexpected Problems fail a successful journey, including asynchronous startup
+failures. A deterministic rejected-provider journey asserts the exact cause,
+one provider request, and failed status after subsequent management reads.
 
 ## §agui-proposal-resolve Client-owned stop-the-world interactions
 

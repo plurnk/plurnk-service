@@ -2186,3 +2186,10 @@ CREATE TABLE IF NOT EXISTS workspace_constraints (
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+-- INIT: work_loop_observation
+-- {§actor-boundary-doc-injection}: derived observation only; no durable row is rewritten.
+CREATE VIEW IF NOT EXISTS work_loops AS
+SELECT l.* FROM loops l
+WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind = 'maintenance')
+   OR EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind <> 'maintenance');

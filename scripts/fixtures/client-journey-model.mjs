@@ -29,6 +29,12 @@ const journeys = Object.freeze({
             content: "```SEND\nThe installed interactive journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         }],
     },
+    rejected: {
+        marker: "Exercise the rejected provider request.",
+        programs: [{
+            rejection: "The requested model is unavailable; select an available model.",
+        }],
+    },
     nvim: {
         marker: "Create a reviewed acceptance marker.",
         programs: [
@@ -154,6 +160,11 @@ export const startClientJourneyModel = async () => {
                 return;
             }
             counts.set(journey, index + 1);
+            if (program.rejection !== undefined) {
+                response.writeHead(400, { "content-type": "application/json" });
+                response.end(JSON.stringify({ error: { message: program.rejection } }));
+                return;
+            }
             await streamProgram(response, journey, program, index);
         } catch (error) {
             response.writeHead(500, { "content-type": "application/json" });

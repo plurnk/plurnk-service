@@ -146,6 +146,7 @@ export const classifyProviderError = (
         if (status === 422 && wire.type === "grammar_invalid") {
             return { kind: "grammar_invalid", message };
         }
+        if (status >= 400 && status < 500) return { kind: "request_rejected", message };
         return { kind: "invalid_response", message };
     }
     const wire = err as { message?: unknown; type?: unknown };

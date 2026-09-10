@@ -340,12 +340,35 @@ try {
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
     await tui.waitFor(/⏹️ completed · 3 turns · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜0 · installed-tui ·[\s\S]{0,220}?worker:\/\/tui-worker\//);
     const tuiOutput = tui.output();
+    if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI PLAN");
     assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI DONE");
     await tui.exit();
     tui = undefined;
     process.stdout.write("installed interactive TUI journey GREEN: Functionality + reasoning + PLAN + DONE + status\n");
+
+    tui = spawnInstalledTui(clientBin, [
+        "--workspace", "installed-rejected",
+        "--worker", "rejected-worker",
+        "--project-root", "",
+        "--model", "journey",
+    ], clientEnv);
+    await tui.waitFor(/workspace: installed-rejected/);
+    tui.write("Exercise the rejected provider request.\r");
+    await tui.waitFor(/The requested model is unavailable; select an available model\./);
+    await tui.waitFor(/failed · 2 turns/);
+    tui.write("/workers\r");
+    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌ failed · 2 turns/);
+    if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️ completed")) {
+        throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
+    }
+    await tui.exit();
+    tui = undefined;
+    if (fixture.requests.filter(({ journey }) => journey === "rejected").length !== 1) {
+        throw new Error("a rejected provider request consumed more than one inference attempt");
+    }
+    process.stdout.write("installed rejected-request journey GREEN: one attempt + exact cause + failed status after inspection\n");
 
     const nvim = await run("nvim", [
         "--headless", "-u", "NONE", "-l", join(nvimRoot, "tests/installed-journey.lua"),
@@ -487,7 +510,7 @@ vim.cmd("qa!")
     if (afterRestartMcp.definitions.some((definition) => definition.alias === "client-only")) {
         throw new Error("a discovered client candidate survived daemon reconstruction as durable state");
     }
-    process.stdout.write("cross-client composition GREEN: one packed platform, three installed journeys, shared durable state\n");
+    process.stdout.write("cross-client composition GREEN: one packed platform, three client surfaces, success and failure journeys, shared durable state\n");
     passed = true;
 } catch (cause) {
     throw new Error(

@@ -401,13 +401,16 @@ export default class Module {
         }
         const admitted = Validator.validateJsonSchemaInstance(action.inputSchema, a.params);
         if (!admitted.valid) {
+            const details = admitted.errors
+                .filter((error) => !admitted.errors.some((other) => other.keywordLocation.startsWith(`${error.keywordLocation}/`)))
+                .map(({ instanceLocation, error }) => `${instanceLocation}: ${error}`)
+                .join(" ");
             return actionFailure(
                 "invalid-action-parameters",
-                `Action '${a.kind}' received parameters outside its advertised input schema.`,
+                `Action '${a.kind}' rejected parameters. ${details}`,
                 400,
                 {
                     issues: admitted.errors,
-                    recovery: "Conform the action parameters to discover.actions[<name>].inputSchema.",
                 },
             );
         }

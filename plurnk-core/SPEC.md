@@ -185,7 +185,8 @@ and never strikes: exploration misses (404, 416) and unsupported capability
 steer's alone); EXEC outcomes and `executor/*` problem rows are world evidence;
 provider weather (rate limit, network failure, deadline, interruption) recovers
 ({§provider-recovery}); provider capacity has its own packet recovery and
-terminal ({§provider-capacity-failure}); authorization and quota failures
+terminal ({§provider-capacity-failure}); request rejection
+({§provider-request-rejection}), authorization and quota failures
 terminate immediately (configuration, not behavior); rejected private emission
 attempts are forensic evidence beneath their turn ({§emission-admission}) —
 only their exhaustion surfaces, as one frame-contract violation. The
@@ -515,6 +516,11 @@ the addressed worker's `_plurnk/` subtree ({§worker-generated-subtree}) through
 ordinary `_plurnk` operation turns. Their exact
 EDIT and SEND programs remain durable in that worker's log; generated state is
 neither a hidden database write nor a kernel-owned mirror.
+Maintenance-only loops are not work-lifecycle observations
+({§application-worker-observation}, {§application-loop-observation}). One
+`work_loops` SQL view excludes loops whose turns are all maintenance; empty
+queued loops and loops containing any other turn purpose remain work.
+It changes neither scheduler state nor forensic history.
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
@@ -3340,7 +3346,7 @@ Core's behavior behind them.
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?)` | Returns nonempty loop-seed prompts from the workspace's model-origin root conversations, newest-first. The positive limit defaults to 100; spawned and forked child prompts are excluded. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. |
-| §methods-worker-list Worker topology              | `listWorkers(workspaceId, query?)` | Returns the workspace's durable Worker projections under {§application-worker-observation}. The origin filter is exact; an explicitly present `parentWorkerId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position. Each projection carries `kind` (`conversation`, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the latest loop's status through {§loop-lifecycle-vocabulary} (`idle` with no loop), so a directory row shows the same lifecycle glyph the bound worker's own status gauge shows; clients infer neither (#523). |
+| §methods-worker-list Worker topology              | `listWorkers(workspaceId, query?)` | Returns the workspace's durable Worker projections under {§application-worker-observation}. The origin filter is exact; an explicitly present `parentWorkerId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position. Each projection carries `kind` (`conversation`, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the latest work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound worker's own status gauge shows; clients infer neither (#523). |
 | §methods-worker-loops Loop lifecycle              | `listWorkerLoops({ workspaceId, workerId })` | Ownership-checks the Worker and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists. It performs no scheduling or event replay. |
 | Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope, inputSchema, outputSchema }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
 

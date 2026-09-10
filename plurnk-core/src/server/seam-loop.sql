@@ -10,6 +10,6 @@ SELECT id, worker_id AS workerId, sequence, status, prompt,
           FROM turns
          WHERE turns.loop_id = loops.id
            AND turns.packet IS NOT NULL) AS packetCount
-FROM loops
+FROM work_loops AS loops
 WHERE worker_id = $worker_id
 ORDER BY sequence;

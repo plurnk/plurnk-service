@@ -7,6 +7,7 @@ export type ProviderErrorKind =
     | "network_failure"
     | "deadline_exceeded"
     | "model_refused"
+    | "request_rejected"
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
@@ -16,6 +17,7 @@ export type ProviderErrorKind =
 
 const defaultStatus = (kind: ProviderErrorKind): number => {
     switch (kind) {
+        case "request_rejected": return 400;
         case "unauthorized": return 401;
         case "quota_exceeded": return 402;
         case "capacity_exceeded": return 413;
@@ -36,6 +38,7 @@ const retryable = (kind: ProviderErrorKind): boolean => {
             return true;
         case "deadline_exceeded":
         case "invalid_response":
+        case "request_rejected":
         case "grammar_invalid":
         case "capacity_exceeded":
         case "resource_interrupted":
@@ -60,6 +63,7 @@ const buildProblem = (
         deadline_exceeded: "deadline-exceeded",
         model_refused: "model-refused",
         invalid_response: "invalid-response",
+        request_rejected: "request-rejected",
         unauthorized: "unauthorized",
         quota_exceeded: "quota-exceeded",
         grammar_invalid: "grammar-invalid",

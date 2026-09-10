@@ -15,6 +15,22 @@ const apiError = (statusCode: number, responseBody = "body") => new APICallError
 
 const SOURCE_PATTERN = /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
 
+test("HTTP request rejection preserves its cause without becoming a response-contract strike", () => {
+    for (const status of [400, 404, 405, 422]) {
+        const message = "The requested model is not available on this endpoint.";
+        const cause = apiError(status, JSON.stringify({ error: { message } }));
+        Object.defineProperty(cause, "message", { value: message });
+        const failure = toProviderError(cause, "provider:example");
+        assert.equal(failure.kind, "request_rejected");
+        assert.equal(failure.status, status);
+        assert.equal(failure.message, message);
+        assert.equal(failure.problem.detail, message);
+        assert.equal(failure.problem.retryable, false);
+        assert.equal(failure.cause, cause);
+    }
+    assert.equal(classifyProviderError(apiError(200)).kind, "invalid_response", "a malformed successful response still violates the response contract");
+});
+
 test("providerSource produces a schema-valid colon-namespaced source", () => {
     assert.equal(providerSource("openai"), "provider:openai");
     assert.match(providerSource("openrouter"), SOURCE_PATTERN);
@@ -34,8 +50,8 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(500), "network_failure");
     assert.equal(k(503), "network_failure");
     assert.equal(k(413), "capacity_exceeded");
-    assert.equal(k(400), "invalid_response");
-    assert.equal(k(404), "invalid_response");
+    assert.equal(k(400), "request_rejected");
+    assert.equal(k(404), "request_rejected");
 });
 
 test("capacity normalization prefers structured provider codes and keeps generic 400s distinct", () => {
@@ -53,7 +69,7 @@ test("capacity normalization prefers structured provider codes and keeps generic
     assert.equal(normalized.problem.providerStatus, 400);
     assert.equal(classifyProviderError(apiError(400, JSON.stringify({
         error: { type: "invalid_request_error", code: "bad_temperature", message: "bad temperature" },
-    }))).kind, "invalid_response");
+    }))).kind, "request_rejected");
 });
 
 test("provider retry directives survive HTTP failure normalization", () => {
@@ -69,11 +85,11 @@ test("provider retry directives survive HTTP failure normalization", () => {
     assert.equal(error.problem.retryable, false);
 });
 
-test("classifyProviderError: a 422 flagged grammar_invalid is distinct; other 422s are invalid responses", () => {
+test("classifyProviderError: a 422 flagged grammar_invalid is distinct from other request rejections", () => {
     const rejected = apiError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }));
     assert.equal(classifyProviderError(rejected).kind, "grammar_invalid");
-    assert.equal(classifyProviderError(apiError(422, JSON.stringify({ error: { type: "invalid_request_error" } }))).kind, "invalid_response");
-    assert.equal(classifyProviderError(apiError(422, "<html>Bad</html>")).kind, "invalid_response");
+    assert.equal(classifyProviderError(apiError(422, JSON.stringify({ error: { type: "invalid_request_error" } }))).kind, "request_rejected");
+    assert.equal(classifyProviderError(apiError(422, "<html>Bad</html>")).kind, "request_rejected");
 });
 
 test("classifyProviderError treats non-HTTP errors as network_failure", () => {

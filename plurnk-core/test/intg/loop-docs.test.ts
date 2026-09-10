@@ -5,6 +5,8 @@ import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import Results from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { dispositionStmt } from "./_dsl.ts";
@@ -17,6 +19,45 @@ class FixtureEngine extends Engine {
         return this.documents;
     }
 }
+
+test("{§application-worker-observation} maintenance preserves work lifecycle and scheduler history", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({ db });
+    try {
+        const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const workspaceId = await insertWorkspace(db, "maintenance-status");
+        for (const [status, lifecycle] of [[null, "idle"], [100, "queued"], [102, "running"], [202, "parked"], [200, "completed"], [500, "failed"]] as const) {
+            const workerId = await insertWorker(db, workspaceId, null, `worker-${lifecycle}`, "model");
+            const loopId = status === null ? null : await insertLoop(db, workerId, 1, "do the work");
+            if (loopId !== null) {
+                await db.test_set_loop_status.run({
+                    id: loopId,
+                    status,
+                    terminal_result: status === 500 ? JSON.stringify(Results.attachInstance(
+                        Results.failure("engine:fixture", "failed", 500, "Work failed."), `worker://worker-${lifecycle}`,
+                    ))
+                        : status === 200 ? JSON.stringify({ status: 200 }) : null,
+                });
+            }
+            engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady." }];
+            await LoopDocs.materialize(engine, db, workspaceId, workerId);
+            const worker = await daemon.readWorker({ workspaceId, identity: { id: workerId } });
+            assert.equal(worker?.lifecycle, lifecycle, "housekeeping does not replace work status");
+            assert.equal((await daemon.listWorkers(workspaceId)).find(({ id }) => id === workerId)?.lifecycle, lifecycle);
+            assert.deepEqual((await daemon.listWorkerLoops({ workspaceId, workerId })).map(({ id }) => id), loopId === null ? [] : [loopId],
+                "status snapshots see work, not administrative housekeeping loops");
+            const loops = await db.test_loop_queue_by_worker.all<{ id: number }>({ worker_id: workerId });
+            assert.equal(loops.length, loopId === null ? 1 : 2);
+            const maintenance = loops.find(({ id }) => id !== loopId);
+            assert.ok(maintenance && maintenance.id !== loopId);
+            const turns = await db.test_list_turns_in_loop.all<{ kind: string }>({ loop_id: maintenance.id });
+            assert.deepEqual(turns.map(({ kind }) => kind), ["maintenance"], "maintenance remains ordinary durable history");
+        }
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
 
 test("{§env-delta-child-termination} generated child documentation is durable without publishing a task conclusion", async () => {
     const db = await openMigrated();

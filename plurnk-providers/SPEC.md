@@ -697,6 +697,13 @@ ordinary 5xx surface on the first failure as consumer-recoverable kinds; one
 retry authority — the consumer's own provider-recovery machinery — owns
 re-issue, backoff, and park above the transport.
 
+§provider-request-rejection An HTTP 4xx rejection not classified as authorization,
+quota, capacity, grammar, rate limit, or transient transport failure is
+`request_rejected`: preserve the upstream status and detail, with `retryable: false`.
+It is not an `invalid_response`; that kind describes a malformed successful
+response. Consumers terminate a rejected request with its exact Problem rather
+than retrying unchanged input or assigning response-contract strikes.
+
 ### §provider-interrupted-attempt Provider-declared interruption
 
 A successful transport response can still declare that inference did not

@@ -23,6 +23,7 @@ const MODULE_INPUT_SCHEMA = Object.freeze({
     type: "object",
     additionalProperties: true,
 });
+
 const MODULE_OUTPUT_SCHEMA = Object.freeze({
     type: "object",
     additionalProperties: true,
@@ -907,6 +908,24 @@ test("module actions are advertised and invoked without AG-UI importing their ow
     } finally {
         await mod.close();
     }
+});
+
+test("{§agui-action-schema-enforcement} human-readable input failures retain the field and constraint", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "invalid-workspace-id",
+            forwardedProps: { plurnk: { workspace: "agui-t", action: { kind: "workspace.workers", id: 0 } } },
+        });
+        const failure = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value: { ok: boolean; problem: { detail: string; issues: unknown[] } };
+        };
+        assert.equal(failure.value.ok, false);
+        assert.equal(failure.value.problem.detail, "Action 'workspace.workers' rejected parameters. #/id: 0 is less than 1.");
+        assert.ok(failure.value.problem.issues.length > 0, "structured validation evidence also survives");
+    } finally { await mod.close(); }
 });
 
 // {§agui-action-schema-enforcement}

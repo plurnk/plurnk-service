@@ -41,7 +41,7 @@ SELECT id, name, workspace_id, created_at, origin,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'conversation' END AS kind,
-       (SELECT l.status FROM loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
+       (SELECT l.status FROM work_loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
 FROM workers
 WHERE id = $id;
 
@@ -51,7 +51,7 @@ SELECT id, name, workspace_id, created_at, origin,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'conversation' END AS kind,
-       (SELECT l.status FROM loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
+       (SELECT l.status FROM work_loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
 FROM workers
 WHERE workspace_id = $workspace_id AND name = $name;
 
@@ -60,7 +60,7 @@ SELECT id, name, created_at, origin, parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'conversation' END AS kind,
-       (SELECT l.status FROM loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
+       (SELECT l.status FROM work_loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
 FROM workers
 WHERE workspace_id = $workspace_id
   AND ($origin IS NULL OR origin = $origin)

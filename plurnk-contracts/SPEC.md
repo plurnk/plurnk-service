@@ -46,6 +46,10 @@ not satisfy the advertised `inputSchema`, rejects an owner's successful output
 when it does not satisfy `outputSchema`, and validates a known notification
 before projecting it to AG-UI. Schemas are discovery values owned by their
 registrants; validation must not annotate or otherwise mutate them.
+Input Problems retain the structured validation `issues` and name the failing
+instance locations and constraints in `detail`. Parent aggregate errors are
+omitted from that prose when their specific child errors are available; input
+objects are never echoed wholesale or interpreted as intent.
 
 §agui-client-conformance `AguiClientConformance` is a language-neutral JSON
 document accounting for every action and notification in one
@@ -1172,8 +1176,9 @@ it; Core validates and records it through the same prompt admission path.
 §application-worker-observation Worker observation exposes durable identity,
 origin, immediate parent identity, minted `kind` (`conversation`; `fork` for a
 child carrying a fork boundary; `work` for any other child), and `lifecycle`,
-the worker's latest loop projected through {§loop-lifecycle-vocabulary} (`idle`
-when it has none). `readWorker` resolves exactly one id or name and returns
+the worker's latest work loop projected through {§loop-lifecycle-vocabulary} (`idle`
+when it has none). Maintenance-only loops do not change this projection;
+their ordinary turns and results remain durable history. `readWorker` resolves exactly one id or name and returns
 `null` when absent. `listWorkers` filters collections by origin or lineage
 position; an omitted parent filter means every position and an explicit `null`
 means roots. Singular and plural cardinalities are distinct contracts.
@@ -1188,7 +1193,7 @@ directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; 200
 in `@plurnk/plurnk-contracts` is that projection's one owner.
 
 §application-loop-observation Loop observation exposes the durable scheduler
-state, exact terminal `OperationResult`, and exact count of packet-bearing
+state of work loops (excluding maintenance-only administrative loops), exact terminal `OperationResult`, and exact count of packet-bearing
 Turns for one owned Worker. Packetless producer Turns and physical provider
 retries do not contribute to `packetCount`. Scheduled tasks expose `scheduledAt`
 (ISO date), optional `intervalMinutes`, and `recurrenceId` (the original task id).
