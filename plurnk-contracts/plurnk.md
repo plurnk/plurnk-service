@@ -63,7 +63,7 @@ body?
 With a running node script, SEND passes this message to stdin.
 ````
 
-```` <!-- without a path, SEND or an unnamed fence responds to Active Prompts -->
+````SEND <!-- SEND without a (path) responds to Active Prompts -->
 YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
 ````
 
