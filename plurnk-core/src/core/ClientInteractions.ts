@@ -26,6 +26,7 @@ interface Settlement {
 }
 
 interface InteractionWaiter {
+    readonly request: ClientInteractionRequest;
     settle(settlement: Settlement): Promise<unknown | null>;
 }
 
@@ -86,6 +87,7 @@ export default class ClientInteractions {
             });
         };
         const waiter: InteractionWaiter = {
+            request: exact,
             settle: async (settlement): Promise<unknown | null> => {
                 if (settled) return pendingFailure(interactionId);
                 settled = true;
@@ -136,6 +138,16 @@ export default class ClientInteractions {
         const waiter = this.#pending.get(interactionId);
         if (waiter === undefined) throw pendingFailure(interactionId);
         const exact = structuredClone(Validator.assertClientInteractionResolution(resolution));
+        if (exact.status === "resolved") {
+            const validation = Validator.validateJsonSchemaInstance(waiter.request.responseSchema, exact.payload);
+            if (!validation.valid) {
+                throw new OperationFailureError(Results.failure(
+                    "interaction:resolution", "interaction-response-invalid", 400,
+                    "Response does not satisfy the pending interaction's schema.", {},
+                    { interactionId, issues: validation.errors, retryable: false },
+                ));
+            }
+        }
         const failure = await waiter.settle({ resolution: exact });
         if (failure !== null) throw failure;
     }

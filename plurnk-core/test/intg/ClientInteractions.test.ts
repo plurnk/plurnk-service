@@ -4,6 +4,7 @@ import type {
     ClientInteractionPendingEvent,
 } from "../../src/core/ClientInteractions.ts";
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
 const request = {
@@ -73,6 +74,61 @@ test("{§client-interactions}: owner cancellation removes the durable request an
 
     await assert.rejects(awaiting, (error: unknown) => error === reason);
     assert.deepEqual(await interactions.list(ids.workspaceId), []);
+});
+
+test("{§client-interactions}: invalid response content leaves the same interaction answerable", async () => {
+    const db = await openMigrated();
+    const ids = await seedEnvelope(db, "interaction-invalid-response");
+    const interactions = new ClientInteractions(db);
+    const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
+    interactions.onPending(observed.resolve);
+    const awaiting = interactions.request(request, ids);
+    const pending = await observed.promise;
+    try {
+        await assert.rejects(interactions.resolve(pending.interactionId, {
+            status: "resolved", payload: { repository: 42 },
+        }), (cause: unknown) => {
+            assert.ok(cause instanceof OperationFailureError);
+            assert.equal(cause.result.status, 400);
+            assert.match(cause.result.problem!.type, /\/interaction-response-invalid$/u);
+            return true;
+        });
+        assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, pending.interactionId);
+        await interactions.resolve(pending.interactionId, {
+            status: "resolved", payload: { repository: "plurnk-service" },
+        });
+        assert.deepEqual(await awaiting, { status: "resolved", payload: { repository: "plurnk-service" } });
+    } finally {
+        if ((await interactions.list(ids.workspaceId)).length) {
+            await interactions.resolve(pending.interactionId, { status: "cancelled" });
+        }
+        await awaiting;
+        await db.close();
+    }
+});
+
+test("{§client-interactions}: a retired interrupt identity never addresses a subsequent input request", async () => {
+    const db = await openMigrated();
+    const ids = await seedEnvelope(db, "interaction-identities");
+    const interactions = new ClientInteractions(db);
+    let observed = Promise.withResolvers<ClientInteractionPendingEvent>();
+    interactions.onPending((event) => observed.resolve(event));
+    const first = interactions.request(request, ids);
+    const firstId = (await observed.promise).interactionId;
+    await interactions.resolve(firstId, { status: "cancelled" });
+    await first;
+    observed = Promise.withResolvers<ClientInteractionPendingEvent>();
+    const second = interactions.request(request, ids);
+    const secondId = (await observed.promise).interactionId;
+    try {
+        assert.notEqual(secondId, firstId);
+        await assert.rejects(interactions.resolve(firstId, { status: "cancelled" }), /is not pending/u);
+        assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, secondId);
+    } finally {
+        await interactions.resolve(secondId, { status: "cancelled" });
+        await second;
+        await db.close();
+    }
 });
 
 test("{§client-interactions}: insertion requires one exact workspace/worker/loop/turn ownership chain", async (t) => {

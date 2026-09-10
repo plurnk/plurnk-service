@@ -2641,9 +2641,13 @@ discovery. The projection contains no workspace id or private upstream
 continuation state; those remain respectively in the event envelope and the
 awaiting operation owner.
 
-Only the live process-local waiter can make a durable row resolvable. Resolution
-validates one `ClientInteractionResolution`, deletes the pending row, then
-releases the owner exactly once. Owner abort deletes the row and rejects the
+Only the live process-local waiter can make a durable row resolvable. Interaction
+identities are never reused after settlement or owner loss. Resolution validates
+one `ClientInteractionResolution` and its resolved payload against the pending
+request's `responseSchema` before deleting the row and releasing the owner exactly
+once. An invalid payload returns `400 interaction-response-invalid` with validation
+issues; the same request remains pending and answerable. Cancellation requires no
+payload. Owner abort deletes the row and rejects the
 waiter with that owner's cancellation reason. An executor's waiter follows its
 execution signal, including KILL and deadline, not just its enclosing loop.
 Reconnect discovery intersects durable rows with live waiters; restart
@@ -3463,9 +3467,11 @@ form-elicitation shape verbatim — `{ message, requestedSchema }`. An
 optional literal target is a descriptive label only: it neither routes the
 question nor changes the body or recipient. The
 `results` channel carries the standard `ElicitResult`
-(`{ action: "accept", content }` or `{ action: "cancel" }`); nothing bespoke
-crosses the wire. The executor maps the body onto the contracts-owned
-`ClientInteractionRequest` (toolName `question`) and awaits the shared
+(`{ action: "accept", content }` or `{ action: "cancel" }`). The executor maps
+`requestedSchema` to the contracts-owned `ClientInteractionRequest.responseSchema`
+(toolName `question`); the client returns that exact answer object, and the
+executor constructs the `ElicitResult`. Answer fields are data, including fields
+named `action` or `content`. The executor awaits the shared
 client-interaction lifecycle — durable pause, reconnect discovery,
 cancellation, and the answer-as-resolution all come from
 {§client-interactions}; there is no loopback MCP and no proposal masquerade.

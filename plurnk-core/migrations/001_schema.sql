@@ -1932,7 +1932,7 @@ END;
 -- row, so client response payloads and owner-private continuation state are
 -- never copied into persistence.
 CREATE TABLE IF NOT EXISTS client_interactions (
-    id           INTEGER NOT NULL PRIMARY KEY,
+    id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     worker_id    INTEGER NOT NULL,
     loop_id      INTEGER NOT NULL,
     turn_id      INTEGER NOT NULL,

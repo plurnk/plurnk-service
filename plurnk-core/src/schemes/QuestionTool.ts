@@ -79,8 +79,7 @@ export default class QuestionTool extends BaseExecutor {
             );
         }
         signal.throwIfAborted();
-        // The contracts-owned wire is the exact shape MCP2 MRTR elicitation
-        // already produces; the executor owns only the mapping from the body.
+        // The interaction schema describes the answer, not this executor's output.
         const request = Validator.assertClientInteractionRequest({
             toolName: "question",
             arguments: { message: r.message, requestedSchema: r.requestedSchema },
@@ -88,17 +87,9 @@ export default class QuestionTool extends BaseExecutor {
             responseSchema: r.requestedSchema as Record<string, unknown>,
         });
         const resolution = await interact(request);
-        // The resolution payload IS the standard ElicitResult — return it
-        // verbatim when well-formed; otherwise wrap it as the accepted content.
-        const payload = resolution.status === "resolved" ? resolution.payload : undefined;
-        const result = payload !== null && typeof payload === "object"
-            && ((payload as { action?: unknown }).action === "accept"
-                || (payload as { action?: unknown }).action === "decline"
-                || (payload as { action?: unknown }).action === "cancel")
-            ? payload as { action: "accept" | "decline" | "cancel"; content?: unknown }
-            : resolution.status === "cancelled"
-                ? { action: "cancel" as const }
-                : { action: "accept" as const, content: payload ?? {} };
+        const result = resolution.status === "cancelled"
+            ? { action: "cancel" as const }
+            : { action: "accept" as const, content: resolution.payload };
         write("results", `${JSON.stringify(result, null, 2)}\n`, "application/json");
         setState("results", "closed");
         return { status: 200, attrs: { action: result.action } };

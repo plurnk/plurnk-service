@@ -69,7 +69,7 @@ for (const target of [null, "question", "user"]) test(`{§question-tool}: dispat
 
         await engine.resolveClientInteraction(pending.interactionId, {
             status: "resolved",
-            payload: { action: "accept", content: { branch: "main" } },
+            payload: { branch: "main" },
         });
         const result = await dispatched;
         await exec.idle();
@@ -119,7 +119,7 @@ ${body}
                         (row) => row?.status === 202,
                     );
                     await daemon.resolveClientInteraction(pending[0]!.interactionId, action === "accept"
-                        ? { status: "resolved", payload: { action, content: { branch: "main" } } }
+                        ? { status: "resolved", payload: { branch: "main" } }
                         : { status: "cancelled" });
                     await waitForDb(
                         () => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }),
@@ -133,6 +133,14 @@ ${body}
                     const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: run.loopId });
                     const answer = rows.find((row) => row.op === "READ" && JSON.parse(row.rx).content?.includes(`"${action}"`));
                     assert.ok(answer, "the answer or cancellation is materialized in the resumed loop");
+                    const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
+                        scheme: "question", pathname: "/1/2/2/question",
+                    });
+                    assert.ok(entry);
+                    const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "results" });
+                    assert.deepEqual(JSON.parse(channel?.content ?? "null"), action === "accept"
+                        ? { action: "accept", content: { branch: "main" } }
+                        : { action: "cancel" });
                 });
             } finally {
                 if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;

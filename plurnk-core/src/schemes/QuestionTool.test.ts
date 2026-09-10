@@ -46,12 +46,27 @@ test("{§question-tool}: an answered question writes the standard ElicitResult",
                 requestedSchema: { type: "object", properties: { branch: { type: "string", enum: ["main"] } }, required: ["branch"] },
             });
             assert.deepEqual(request.responseSchema, request.arguments.requestedSchema);
-            return { status: "resolved", payload: { action: "accept", content: { branch: "main" } } };
+            return { status: "resolved", payload: { branch: "main" } };
         },
     }));
     assert.equal(result.status, 200);
     assert.deepEqual(JSON.parse(writes[0]![1]), { action: "accept", content: { branch: "main" } });
     assert.deepEqual(states, ["results:closed"]);
+});
+
+test("{§question-tool}: answer fields named action or content remain answer data", async () => {
+    const writes: string[] = [];
+    const tool = new QuestionTool({ runtime: "question", glyph: "❓" });
+    const answer = { action: "cancel", content: "literal answer" };
+    const result = await tool.run(args({
+        body: JSON.stringify({ message: "Describe the action.", requestedSchema: {
+            type: "object", properties: { action: { type: "string" }, content: { type: "string" } },
+        } }),
+        write: (_channel, chunk) => writes.push(chunk),
+        interact: async () => ({ status: "resolved", payload: answer }),
+    }));
+    assert.equal(result.status, 200);
+    assert.deepEqual(JSON.parse(writes.join("")), { action: "accept", content: answer });
 });
 
 test("{§question-tool}: a cancelled interaction returns the standard cancel action", async () => {
