@@ -602,7 +602,7 @@ test("{§rail-heading-boundaries}: GBNF content bodies leave internal fences opa
     assert.equal(PlurnkParser.parseStatements(quoted).items.some((item) => item.kind === "error"), false);
 });
 
-test("{§whitespace-contract}: SEND ends at its matching fence and subsequent prose is ignored", () => {
+test("{§unlabeled-fence-send}: matching fences end bodies and the next unlabeled block is a SEND", () => {
     const content = turn([
         mid("KILL", " (log:///1/3/1/READ)"),
         mid("SEND", "", "The matching note is:\n\n```\nworker:///notes/alpha.md\n```\n\nFound by full-text lookup."),
@@ -613,11 +613,14 @@ test("{§whitespace-contract}: SEND ends at its matching fence and subsequent pr
     const parsed = PlurnkParser.parse(content);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "SEND", "KILL", "TASK"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "SEND", "SEND", "KILL", "TASK"]);
     const send = statements[1];
     assert.ok(send.op === "SEND");
     assert.equal(send.body?.raw, "The matching note is:\n");
-    const task = statements[3];
+    const implicit = statements[2];
+    assert.ok(implicit.op === "SEND");
+    assert.equal(implicit.body?.raw, "\nFound by full-text lookup.");
+    const task = statements[4];
     assert.ok(task.op === "TASK");
     assert.deepEqual(task.body, [{ content: "Report the matching path.", status: "completed" }]);
 });

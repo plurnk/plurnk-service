@@ -24,10 +24,18 @@ test("SEND messages do not conclude a turn and omitted disposition recovers empt
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
 });
 
-test("{§whitespace-contract}: a stray outside closing fence is ignored", () => {
+test("{§unlabeled-fence-send}: a bare fence after a closed operation opens a message, not an inferred disposition", () => {
     const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```TASK\n[{\"content\":\"Inspect the note.\",\"status\":\"in_progress\"}]\n```");
-    assert.deepEqual(result.items.map((item) => item.kind), ["statement", "statement"]);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["READ", "SEND", "TASK"]);
+    const send = statements[1];
+    assert.ok(send.op === "SEND");
+    assert.equal(send.body?.raw, "```TASK\n[{\"content\":\"Inspect the note.\",\"status\":\"in_progress\"}]");
+    const task = statements[2];
+    assert.ok(task.op === "TASK");
+    assert.deepEqual(task.body, []);
+    assert.deepEqual(task.position, { line: 0, column: 0 });
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.code] : []), [PlurnkParser.MISSING_DISPOSITION]);
 });
 
 test("TASK admits timing independent of intent but never a resource operand", () => {

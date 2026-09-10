@@ -32,10 +32,10 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     LOOK: plurnkLexer.OPEN_LOOK, BUFF: plurnkLexer.OPEN_BUFF,
 };
 
-private open(): void {
+private open(implicitName?: string): void {
     this.fenceLength = 0;
     while (this.text.charCodeAt(this.fenceLength) === 0x60) this.fenceLength++;
-    const name = this.text.slice(this.fenceLength);
+    const name = implicitName ?? this.text.slice(this.fenceLength);
     const native = Object.hasOwn(plurnkLexer.OPERATIONS, name) ? plurnkLexer.OPERATIONS[name] : undefined;
     this.openOp = native === undefined ? "EXEC" : name;
     this.type = native ?? plurnkLexer.OPEN_EXEC;
@@ -117,6 +117,10 @@ fragment EOL : '\r'? '\n' ;
 // {§fence-boundary} — only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
 OPEN : { this.column === 0 || !this.started }? FENCE NAME { this.open(); } -> mode(SLOTS) ;
+// {§unlabeled-fence-send} — select SEND at the boundary; its body is never rescanned.
+UNLABELED_OPEN : { this.column === 0 || !this.started }? FENCE [ \t]*
+    { this.inputStream.LA(1) <= 0 || this.offsetAfterEol(1) !== null }?
+    { this.open("SEND"); } -> mode(SLOTS) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} — outside text has no AST or execution semantics.
 THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;

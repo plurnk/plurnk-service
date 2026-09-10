@@ -304,10 +304,19 @@ operation suffixes or heading levels.
 §fence-boundary A matching fence on its own line closes a multiline body;
 a different-length fence or a fence carrying text is literal body content.
 A bodyless statement may close on its header line after its modifiers.
-At top level, a header names a reserved Plurnk operation or an executor.
+At top level, a nonempty header names a reserved Plurnk operation or an executor;
+an unlabeled fence follows {§unlabeled-fence-send}.
 Inside an open body, no header is executable. An unfinished block establishes
 {§unparsed-tail-boundary}; earlier complete operations remain independently
 admissible.
+
+§unlabeled-fence-send A top-level opening fence followed only by horizontal
+whitespace and a line ending or EOF selects an unaddressed SEND, without a
+warning. Its body and required closing fence follow the ordinary SEND rules.
+No body text is promoted into a header or recursively parsed as operations.
+This applies in every parser tier and preserves the opening fence's source
+position and exact authored `/ops`. It neither supplies a TASK inventory nor
+changes disposition handling. Named malformed blocks retain their diagnostics.
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. TASK normalizes an empty body to `[]`

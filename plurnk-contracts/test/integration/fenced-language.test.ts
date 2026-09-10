@@ -51,7 +51,6 @@ test("a quoted turn remains one exact literal body", () => {
 test("{§whitespace-contract}: exact closing fences bound bodies before ignored outside text", () => {
     for (const newline of ["\n", "\r\n"]) {
         for (const { source, names, bodies } of [
-            { source: "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```", names: ["SEND"], bodies: ["Code:\n```ts\nconst value = 42;"] },
             { source: "```READ (note.md)```\nOutside.", names: ["READ"], bodies: [null] },
             { source: "```READ (first.md)```\n````sh\necho 42\n````\n\nOutside.", names: ["READ", "EXEC"], bodies: [null, "echo 42"] },
             { source: "```````READ (note.md)\n```````\nOutside.", names: ["READ"], bodies: [null] },
@@ -62,6 +61,22 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
             assert.deepEqual(ops(parsed).map(({ op }) => op), [...names, "TASK"]);
             assert.deepEqual(ops(parsed).slice(0, -1).map((op) => op.op === "EXEC" ? op.body : op.op === "SEND" ? op.body?.raw : null), bodies.map((body) => body?.replaceAll("\n", newline) ?? null));
         }
+    }
+});
+
+test("{§unlabeled-fence-send}: a dangling bare fence after a SEND establishes an unfinished message boundary", () => {
+    for (const newline of ["\n", "\r\n"]) {
+        const source = "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```";
+        const parsed = PlurnkParser.parse((source + "\n" + task("Done.", "completed")).replaceAll("\n", newline));
+        assert.deepEqual(parsed.unparsedTail, {
+            from: { line: 7, column: 0 },
+            reason: "SEND block opened at line 7 but was not closed with 3 backticks",
+        });
+        assert.deepEqual(errors(parsed), []);
+        const statements = ops(parsed);
+        assert.deepEqual(statements.map(({ op }) => op), ["SEND"]);
+        assert.equal(statements[0].op === "SEND" ? statements[0].body?.raw : null,
+            ["Code:", "```ts", "const value = 42;"].join(newline));
     }
 });
 
