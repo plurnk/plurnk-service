@@ -104,6 +104,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     const localAbort = new AbortController();
 
     const entries: EntryCaps = {
+        async address() { throw new Error("entry addressing is outside the HTTP specimen"); },
         operations: {
             async editBatch() { return { status: 501, entryId: null, channel: null }; },
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0, matchingPathCount: 0, matchLocationCount: 0 }; },

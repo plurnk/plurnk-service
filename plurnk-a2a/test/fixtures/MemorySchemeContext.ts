@@ -29,6 +29,7 @@ export default class MemorySchemeContext {
 
     constructor() {
         const entries: EntryCaps = {
+            async address() { throw new Error("entry addressing is outside the A2A specimen"); },
             operations: {
                 async editBatch() { throw new Error("editBatch is outside the A2A specimen"); },
                 async find() { throw new Error("find is outside the A2A specimen"); },
