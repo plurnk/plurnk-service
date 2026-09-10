@@ -22,7 +22,7 @@ body?
 * EDIT: create a file or entry; use scope to replace existing text
 * COPY: copy files, entries, streams, or text regions
 * MOVE: move files, entries, streams, or text regions
-* SEND: respond to prompt or message workers or endpoints
+* SEND: respond to Active Prompts or message workers or endpoints
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)
 * BARE: deploy an isolated inference query (no log or tools)
@@ -59,8 +59,12 @@ body?
 
 ## Messaging
 
-````SEND <!-- SEND without a (path) responds to the Active Prompts -->
-YOU SHOULD format SEND responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
+````SEND (node:///3/6/9/node) <!-- SEND with a (path) sends the message to the path -->
+With a running node script, SEND passes this message to stdin.
+````
+
+```` <!-- without a path, SEND or an unnamed fence responds to Active Prompts -->
+YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
 ````
 
 ## Delegation
