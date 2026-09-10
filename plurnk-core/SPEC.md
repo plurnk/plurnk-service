@@ -3168,6 +3168,7 @@ transfer, or remove ownership of workspace tools or shared resources.
 workspace operations.** Mutation admission, external installation/removal,
 preparation, and publication hold the same exclusive gate. Explicit client
 mutations use `try` and fail 409 before effects while the workspace is held.
+Refused mutations reserve no queue position; a client retry is a new admission.
 An accepted model mutation uses `wait`, proceeding after its originating turn. Activation and turn-admission refresh use `none` inside
 their already-held demand boundary. Providers reject replacement while active
 requests, input exchanges, or Tasks depend on the old snapshot; infrastructure

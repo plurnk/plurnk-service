@@ -421,16 +421,19 @@ ${JSON.stringify({ alias: family.addable.alias })}
         assert.equal(await live(family.addable, child), true, "the same child sees re-enablement without re-instantiation");
         assert.equal(await stateOf(family.addable.alias), "active");
         // 12. Concurrent mutations serialize to one consistent outcome.
-        await Promise.all([
-            invoke("disable", { alias: family.addable.alias }),
-            invoke("enable", { alias: family.addable.alias }),
-            invoke("disable", { alias: family.addable.alias }),
-            invoke("enable", { alias: family.addable.alias }),
-        ]);
+        const completedMutations: string[] = [];
+        await Promise.all(["disable", "enable", "disable", "enable"].map(async (verb) => {
+            const expected = verb === "enable" ? "active" : "disabled";
+            const result = await invoke<{ definition: { state: string } }>(verb, { alias: family.addable.alias });
+            assert.equal(result.definition.state, expected, "each successful mutation reports its published state");
+            completedMutations.push(expected);
+        }));
+        assert.equal(completedMutations.length, 4);
         const settled = await stateOf(family.addable.alias);
-        assert.equal(settled, "active", "the last serialized mutation wins");
-        assert.equal(await live(family.addable), true, "liveness agrees with the listed state");
+        assert.equal(settled, completedMutations.at(-1), "the last completed mutation wins, including client retries");
+        assert.equal(await live(family.addable), settled === "active", "liveness agrees with the listed state");
         // 13. Restart reconstructs one shared workspace environment.
+        assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
         unsubscribe();
         await daemon.stop();
         provider = mockProvider();
