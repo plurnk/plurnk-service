@@ -1,7 +1,7 @@
 import type { ExecInputReceiver } from "@plurnk/plurnk-execs";
 import Results, { type SchemeResult } from "../core/results.ts";
 
-// {§exec-input} This belongs to one existing execution, not a second session registry.
+// {§exec-input} Input belongs to the existing invocation.
 export default class ExecutionInput {
     static configuredTimeout(): number {
         const timeout = Number(process.env.PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS);

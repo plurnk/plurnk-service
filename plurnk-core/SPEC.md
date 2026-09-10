@@ -2298,7 +2298,7 @@ violations follow the current admission and strike contracts
 
 An execution's existing runtime address is also its optional input recipient
 ({§executor-live-input}). SEND never edits stored output or creates another
-session. Like stream KILL, input control is self-only; another Worker's output
+invocation. Like stream KILL, input control is self-only; another Worker's output
 may be read, but its execution is controlled through that Worker's lifecycle.
 
 | Boundary | Behavior |
