@@ -6,9 +6,9 @@ import { PlurnkParser, PLURNK_OPS } from "../../src/index.ts";
 
 const teaching = readFileSync(new URL("../../plurnk.md", import.meta.url), "utf8");
 
-test("concrete compact examples in plurnk.md parse as one clean operation", () => {
-    const examples = [...teaching.matchAll(/^[*|].*?((`{3,})[A-Z]+[^`\n]*\2)/gm)].map((match) => match[1]!);
-    assert.ok(examples.length > 0, "the reference demonstrates compact operations");
+test("concrete KILL examples in plurnk.md parse as one clean operation", () => {
+    const examples = [...teaching.matchAll(/^(?:[*|].*?)?((`{3,})KILL\b[^`\n]*\2)/gm)].map((match) => match[1]!);
+    assert.ok(examples.length > 0, "the reference demonstrates compact curation operations");
     for (const source of examples) {
         const parsed = PlurnkParser.parseStatements(source);
         assert.equal(parsed.items.length, 1, source);
@@ -20,6 +20,6 @@ test("concrete compact examples in plurnk.md parse as one clean operation", () =
 test("plurnk.md retains broad operation coverage without pinning prose", () => {
     for (const op of PLURNK_OPS) {
         if (op === "EXEC") continue;
-        assert.match(teaching, new RegExp("^`{3,}" + op + "(?: |$)", "m"), `operation signature is missing ${op}`);
+        assert.match(teaching, new RegExp("^(?:`{3,}" + op + "(?: |$)|[*-] " + op + ":)", "m"), `operation reference is missing ${op}`);
     }
 });

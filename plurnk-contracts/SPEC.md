@@ -314,9 +314,10 @@ normalize optional bodies to null. TASK normalizes an empty body to `[]`
 under {§plan-value}. Closing fences are required even for bodyless operations.
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
-EXEC executors from the shared AST. It chooses at least four backticks and
-more than any run within the body, preserving body bytes on reparse. Fence
-length is syntax, not AST or persistence state. Core-authored programs use
+EXEC executors from the shared AST, with one blank line between operations.
+It chooses at least four backticks and more than any run within the body,
+preserving body bytes on reparse. Fence length is syntax, not AST or
+persistence state. Core-authored programs use
 this serializer and the ordinary admission parser.
 
 | Element | Contract |

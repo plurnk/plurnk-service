@@ -18,6 +18,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
         "````FIND (*) <1,-1> {trace: one} {shape: {nested}} <!-- workspace files -->````",
+        "",
         "````TASK",
         "[{\"content\":\"Address the prompt.\",\"status\":\"in_progress\"}]",
         "````",

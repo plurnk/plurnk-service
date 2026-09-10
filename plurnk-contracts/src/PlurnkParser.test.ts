@@ -10,6 +10,24 @@ test("{§statement-rendering}: canonical executable frames use four ticks and pr
     assert.equal(PlurnkParser.frame("EDIT (example.md)", nested), "`````EDIT (example.md)\n" + nested + "\n`````");
 });
 
+test("{§statement-rendering}: programs separate fenced operations without changing body whitespace", () => {
+    const body = "# Example\n\n```sh\necho 42\n```\n";
+    const blocks = [
+        PlurnkParser.frame("READ (note.md)", null),
+        PlurnkParser.frame("EDIT (example.md)", body),
+        PlurnkParser.frame("TASK", '[{"content":"Verify the edit.","status":"in_progress"}]'),
+    ];
+    const parsed = PlurnkParser.parse(blocks.join("\n"));
+    assert.ok(parsed.items.every((item) => item.kind === "statement"));
+    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    const source = PlurnkParser.stringify(statements);
+    assert.equal(source, blocks.join("\n\n"));
+    const reparsed = PlurnkParser.parse(source);
+    assert.deepEqual(reparsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
+    const edit = reparsed.items[1];
+    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, body);
+});
+
 test("framing a large body does not spread its backtick runs into function arguments", () => {
     const body = "`quoted` ".repeat(100_000);
     assert.equal(PlurnkParser.frame("EDIT (large.md)", body), "````EDIT (large.md)\n" + body + "\n````");

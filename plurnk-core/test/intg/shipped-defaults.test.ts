@@ -50,7 +50,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
 
-test("under the shipped policy wiring, the shipped policy renders in the packet exactly once", async () => {
+test("under the shipped policy wiring, the shipped policy has one packet owner", async () => {
     // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
     // POLICY.md to the XDG configuration AGENTS.md).
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
@@ -65,8 +65,9 @@ test("under the shipped policy wiring, the shipped policy renders in the packet 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const policy = (await readFile(Paths.policy, "utf8")).trim();
-        const carriers = packet.sections.filter((section) => section.content === policy).map((section) => section.name);
-        assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
+        assert.equal(packet.sections.filter((section) => section.name === "system-policy").length, 1);
+        const carriers = packet.sections.filter((section) => section.content !== "" && section.content === policy).map((section) => section.name);
+        assert.deepEqual(carriers, policy === "" ? [] : ["system-policy"], "nonempty policy content appears only in its owned section");
         assert.equal(packetSection(packet, "system-policy"), policy, "the section carries the exact authored policy");
         assert.doesNotMatch(
             packetSection(packet, "system-policy"),

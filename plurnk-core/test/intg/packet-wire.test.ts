@@ -1262,6 +1262,36 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
     assert.match(out, /1:\n2:```TASK\n3:\[{"content":"Initialized","status":"in_progress"}\]\n4:```/, "the entire source, including the initial blank line, remains line-addressable");
 });
 
+test("{§body-projection}: visible programs bypass previews, not curation or output withholding", () => {
+    const source = [
+        ...Array.from({ length: 20 }, (_, index) => `\`\`\`\`READ (file-${index}.md) <!-- ${"orientation ".repeat(20)}-->\`\`\`\``),
+        '````TASK\n[{"content":"Address the prompt.","status":"in_progress"}]\n````',
+    ].join("\n\n");
+    const lines = source.split("\n");
+    const numbered = lines.map((line, index) => `${String(index + 1).padStart(String(lines.length).length)}:${line}`);
+    for (const origin of ["_plurnk", "model", "client", "plugin"]) {
+        const entry = {
+            coordinate: "1/1/1", origin, op: null, status: 200,
+            attrs: { kind: "turnOps" }, rx: { content: source, mimetype: "text/vnd.plurnk" },
+        };
+        const complete = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
+        assert.equal(complete.body, `${numbered.join("\n")}\n`, `${origin} source exceeds both preview bounds without clipping`);
+        assert.equal(complete.chunk, undefined);
+        assert.equal(complete.tokensBody, tok(numbered.join("\n")), "accounting includes the complete rendered program");
+
+        const trimmed = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[3, 4]] }], tok))[0]!;
+        assert.equal(trimmed.body, `${numbered.filter((_, index) => index !== 2 && index !== 3).join("\n")}\n`,
+            "deliberate curation still removes source lines without renumbering the survivors");
+        const suppressed = parseLogRecords(PacketWire.renderLog([{ ...entry, initial_folded: [[1, -1]] }], tok))[0]!;
+        assert.equal(suppressed.body, undefined);
+        assert.equal(suppressed.chunk, undefined);
+        assert.equal(suppressed.tokensBody, complete.tokensBody, "suppression prices the same recoverable program");
+        const withheld = parseLogRecords(PacketWire.renderLog([{ ...entry, output_withheld: true }], tok))[0]!;
+        assert.equal(withheld.body, undefined);
+        assert.equal(withheld.overflow, `${lines.length} output lines not shown; tokensActiveTotal exceeds tokensActiveMax`);
+    }
+});
+
 test("initialization renders its visible turnOps and its real kernel-authored operation outcomes", () => {
     const out = PacketWire.renderLog([
         {
@@ -1444,7 +1474,7 @@ test("every ordinary bounded body producer uses the same addressable preview", (
     const long = Array.from({ length: 30 }, (_, i) => `producer line ${i + 1}`).join("\n");
     const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");
     const entries = [
-        { op: null, origin: "model", target: null, attrs: { kind: "turnOps" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
+        { op: null, origin: "model", target: null, attrs: { kind: "emissionAttempt" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
         { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
         { op: "FORK", origin: "model", target: null, tx: { body: long } },

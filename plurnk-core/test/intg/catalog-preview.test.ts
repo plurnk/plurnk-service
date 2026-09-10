@@ -8,7 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
+import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -168,7 +168,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each ordinary first page at turn 0
-        await withDaemon(mock(), async (db, _daemon, addr) => {
+        const provider = mock();
+        await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar" });
@@ -203,6 +204,14 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 ]);
                 const program = JSON.parse(initializationRows.find(({ op }) => op === null)!.rx) as { content: string };
                 assert.match(program.content, /\n````TASK\n\[/, "initialization ends with an ordinary continuation inventory");
+                assert.deepEqual(
+                    program.content.split("\n\n").map((block) => /^````([A-Z]+)/.exec(block)?.[1]),
+                    initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
+                    "{§statement-rendering}: every initialization operation is separated by a blank line",
+                );
+                const packet = provider.received[0].filter(({ role }) => role === "user").map(chatMessageText).join("\n");
+                assert.ok(packet.replace(/^ *\d+:/gm, "").includes(program.content),
+                    "the first model packet preserves the complete spaced initialization program");
             } finally { ws.close(); }
         });
     } finally {

@@ -77,7 +77,7 @@ export default class PlurnkParser {
                 : typeof statement.body === "string" ? statement.body : statement.body.raw;
             const header = `${name}${modifiers.length === 0 ? "" : ` ${modifiers.join(" ")}`}`;
             return PlurnkParser.frame(header, body);
-        }).join("\n");
+        }).join("\n\n");
     }
 
     // Parse one model turn. A source operation lets ingestion recover an omitted disposition.

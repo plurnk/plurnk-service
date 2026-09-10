@@ -115,7 +115,7 @@ ${tail}`),
 });
 
 test("internal turn programs end at the disposition like model turns", () => {
-    const source = "````KILL (log:///1/1/*)````\n````TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n````";
+    const source = "````KILL (log:///1/1/*)````\n\n````TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n````";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "TASK"]);
     assert.equal(TurnOps.renderInternal(statements), source);
