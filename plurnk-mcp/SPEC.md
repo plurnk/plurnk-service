@@ -427,7 +427,7 @@ reactivation.
 Add and enable prepare the candidate while the old snapshot remains
 authoritative, then commit only at {§module-worker-quiescence}. Disable and
 remove commit the complete reduced snapshot at the same boundary. The
-old connection rejects replacement while it owns an active protocol request,
+old connection rejects replacement with `409 server-busy` while it owns an active protocol request,
 MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
 with the old connection after the new snapshot commits. A failed candidate or
 commit leaves the durable definition, connection, Registry, docs, and resource
@@ -538,6 +538,12 @@ even then the capability would be per-client-advertised, never daemon-wide.
 | Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |
 | Prompts | `<server>:///prompts` and encoded prompt-name descendants |
+
+Qualified `<server>://<worker>/…` resources, prompts, and catalogs follow
+{§runtime-resource-binding}: the named Worker's attachment supplies the
+resource, while the requesting operation owns policy and client interactions.
+Returned Plurnk resource links retain that qualifier; MCP protocol URIs remain
+unchanged on the wire.
 
 §mcp-tool-presentation One canonical enabled-tool snapshot owns every
 model-facing and executable consequence. Each enabled remote tool becomes one

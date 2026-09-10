@@ -622,7 +622,12 @@ export default class Module {
         for (const [name, attachment] of previous) {
             const nextDefinition = enabled.get(name) as McpServerDefinition | undefined;
             if (nextDefinition === undefined || force === name || !sameDefinition(attachment.definition, nextDefinition)) {
-                attachmentConnection(attachment)?.assertReplaceable();
+                const activeRequests = attachmentConnection(attachment)?.activeRequests ?? 0;
+                if (activeRequests > 0) throw actionError(
+                    "server-busy", 409,
+                    `MCP server '${name}' has ${activeRequests} active request(s).`,
+                    { server: name, activeRequests, retryable: true },
+                );
             }
         }
         const next = new Map<string, Attachment>();

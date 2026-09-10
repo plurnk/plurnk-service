@@ -519,14 +519,18 @@ its implementation.
 
 `SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`functionalityWorkerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
 
-§scheme-ctx-functionality-worker `functionalityWorkerId` names the Worker whose Functionality — executable families, runtime scheme facets, tool admission — applies to the call. It equals `workerId` for model and runtime dispatches; a client operation carries its attached conversation Worker while journaling in its own worker. Entry principals bind through `workerId`; a handler that keys process-local state by Worker (a live connection, a worker-scoped facet) keys it by `functionalityWorkerId` only when that state belongs to the Functionality rather than to the entry.
+§scheme-ctx-functionality-worker `functionalityWorkerId` names the caller's Functionality and admission policy. It equals `workerId` for model and runtime dispatches; a client operation carries its attached conversation Worker while journaling in its own worker. Core selects the addressed resource handler and binds its entry principal before supplying this context. A qualified resource's backend may belong to another Worker; handlers must not reselect it from caller identity ({§runtime-resource-binding}).
 
 - `entries` — direct storage over the scheme and authority already bound by core
-  (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
+  (`address`/`read`/`write`/`delete`) plus `operations`, the standard PLURNK
   `EDIT`/`FIND`/`SEND` implementations for entry-bearing schemes. READ selection
   and model-facing projection belong to the consumer's universal dispatch
   ({§universal-read-composition}); `entries.read` returns stored channels, not
   a projected READ receipt.
+  `address(pathname)` returns the bound resource's URI without fetching or
+  creating it. Owner-authority schemes qualify links with the bound Worker's
+  name; other schemes preserve their resource authority. Plugins never infer
+  resource ownership from the caller when generating links.
   A write may omit channel state to select the `static` default; a successful
   storage read always returns each channel's persisted lifecycle state.
   Optional `attributes` are scheme-private durable metadata. They are scoped to

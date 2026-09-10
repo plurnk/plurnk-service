@@ -48,7 +48,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     }
 
     get manifest(): SchemeManifest {
-        return { ...this.#executor.manifest, metadataModifier: true };
+        return { ...this.#executor.manifest, authority: "owner", metadataModifier: true };
     }
 
     #claimedPath(statement: FindStatement): boolean {
@@ -62,7 +62,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         return new SchemeCtxImpl(
             core,
             this.#executor.manifest.name,
-            this.#executor.manifest,
+            this.manifest,
             this.liveSubscriptions(),
             { ownerId: core.workerId },
         );
@@ -73,9 +73,6 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         ctx: CoreSchemeCallContext,
     ): Promise<EntryAddress | CoreEntryAddress | SchemeResultBase | null> {
         if (target.kind !== "url") return null;
-        if (this.#facet?.claims(target.pathname) === true) {
-            return { authority: "", pathname: target.pathname, owner: "worker" };
-        }
         const core = this.coreContext(ctx);
         const name = this.#executor.manifest.name;
         const ownerId = await Owner.resolveStreamOwner(target.hostname, core);
@@ -124,7 +121,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
                 matchingPathCount: 0, matchLocationCount: 0,
             }, { recovery: streamAddressSpace(this.#executor.manifest.name), retryable: false }) as FindResult;
         }
-        return EntryFind.findWorkspaceEntries(owner.statement, core, this.#executor.manifest, {
+        return EntryFind.findWorkspaceEntries(statement, core, this.manifest, {
             ownerId: owner.ownerId,
         });
     }

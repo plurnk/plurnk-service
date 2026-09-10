@@ -72,10 +72,10 @@ const context = (): {
             request: async () => ({ status: "cancelled" as const }),
         },
         entries: {
-            read: async (pathname: string) => ({
-                status: 200,
-                entry: entries.get(pathname) ?? null,
-            }),
+            address: async (pathname: string) => `echo://owner${pathname}`,
+            read: async (pathname: string) => entries.has(pathname)
+                ? { status: 200, entry: entries.get(pathname)! }
+                : Results.failure("scheme:echo", "entry-not-found", 404, "No entry exists at this path.", { entry: null }),
             write: async (pathname: string, entry: EntryData) => {
                 entries.set(pathname, entry);
                 return {

@@ -5,6 +5,7 @@
 import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
+import type ResourceBindings from "./ResourceBindings.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type {
@@ -35,6 +36,7 @@ export interface PlurnkSchemeContext {
     // Equals workerId for model and _plurnk dispatches; a client operation carries
     // its attached conversation Worker while journaling in its own worker.
     readonly functionalityWorkerId: number;
+    readonly resourceBindings?: ResourceBindings;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;

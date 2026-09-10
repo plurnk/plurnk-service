@@ -154,14 +154,14 @@ export default class McpResources {
     }
 
     async #materializeCatalog(ctx: SchemeCtx): Promise<void> {
-        const resources = this.#catalog.resources.map((resource) => ({
+        const resources = await Promise.all(this.#catalog.resources.map(async (resource) => ({
             ...resource,
-            address: `${this.#server}://${resourcePath(resource.uri)}`,
-        }));
-        const prompts = this.#catalog.prompts.map((prompt) => ({
+            address: await ctx.entries.address(resourcePath(resource.uri)),
+        })));
+        const prompts = await Promise.all(this.#catalog.prompts.map(async (prompt) => ({
             ...prompt,
-            address: `${this.#server}://${promptPath(prompt.name)}`,
-        }));
+            address: await ctx.entries.address(promptPath(prompt.name)),
+        })));
         requireEntrySuccess(await ctx.entries.write(
             ROOT,
             catalogEntry(JSON.stringify({
@@ -183,14 +183,15 @@ export default class McpResources {
         ));
         await Promise.all(this.#catalog.resources.map(async (resource) => {
             const pathname = resourcePath(resource.uri);
-            const existing = requireEntrySuccess(await ctx.entries.read(pathname));
+            const existing = await ctx.entries.read(pathname);
+            if (existing.status !== 404) requireEntrySuccess(existing);
             if (existing.entry?.attributes?.kind === RESOURCE_KIND) return;
             requireEntrySuccess(await ctx.entries.write(
                 pathname,
                 catalogEntry(
                     JSON.stringify({
                         ...resource,
-                        address: `${this.#server}://${pathname}`,
+                        address: await ctx.entries.address(pathname),
                     }, null, 2),
                     CATALOG_KIND,
                 ),
@@ -198,14 +199,15 @@ export default class McpResources {
         }));
         await Promise.all(this.#catalog.prompts.map(async (prompt) => {
             const pathname = promptPath(prompt.name);
-            const existing = requireEntrySuccess(await ctx.entries.read(pathname));
+            const existing = await ctx.entries.read(pathname);
+            if (existing.status !== 404) requireEntrySuccess(existing);
             if (existing.entry?.attributes?.kind === PROMPT_KIND) return;
             requireEntrySuccess(await ctx.entries.write(
                 pathname,
                 catalogEntry(
                     JSON.stringify({
                         ...prompt,
-                        address: `${this.#server}://${pathname}`,
+                        address: await ctx.entries.address(pathname),
                     }, null, 2),
                     "mcp-prompt-catalog",
                 ),
@@ -284,7 +286,7 @@ export default class McpResources {
             }
         }
         const body = result.contents.length === 1 ? ResourceContent.channel(result.contents[0]!)
-            : { content: paths.map((path) => `<${this.#server}://${path}>`).join("\n"), mimetype: "text/markdown" };
+            : { content: (await Promise.all(paths.map(async (path) => `<${await ctx.entries.address(path)}>`))).join("\n"), mimetype: "text/markdown" };
         requireEntrySuccess(await ctx.entries.write(root, {
             channels: {
                 body,
@@ -293,7 +295,7 @@ export default class McpResources {
             attributes: { kind: RESOURCE_KIND },
         }));
         if (pathname !== root && !paths.includes(pathname)) {
-            throw new EntryOperationFailure(Results.failure("scheme:mcp", "resource-part-not-found", 404, "The resource response does not contain this part.", {}, { target: `${this.#server}://${pathname}` }));
+            throw new EntryOperationFailure(Results.failure("scheme:mcp", "resource-part-not-found", 404, "The resource response does not contain this part.", {}, { target: await ctx.entries.address(pathname) }));
         }
     }
 

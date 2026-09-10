@@ -22,6 +22,7 @@ import EntryFind from "../../schemes/_entry-find.ts";
 import EntryOps from "../../schemes/_entry-ops.ts";
 import EntrySend from "../../schemes/_entry-send.ts";
 import type { LineAnchorPrecondition } from "../../content/index.ts";
+import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbEntryCaps implements EntryCaps {
     readonly #ctx: PlurnkSchemeContext;
@@ -87,6 +88,16 @@ export default class DbEntryCaps implements EntryCaps {
 
     async read(pathname: string): Promise<EntryStorageReadResult> {
         return EntryCrud.readEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId);
+    }
+
+    async address(pathname: string): Promise<string> {
+        let authority = this.#authority;
+        if (this.#manifest.authority === "owner") {
+            const owner = await this.#ctx.db.envelope_get_worker_by_id.get<{ name: string }>({ id: this.#ownerId });
+            if (owner === undefined) throw new Error("Bound entry owner no longer exists.");
+            authority = owner.name;
+        }
+        return renderAddress({ scheme: this.#scheme, authority, pathname });
     }
 
     async write(pathname: string, entry: EntryData): Promise<EntryStorageWriteResult> {

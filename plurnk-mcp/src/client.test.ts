@@ -64,7 +64,7 @@ test("client pins the current MCP revision and exercises tools and resources", a
     }
 });
 
-test("an active user request prevents connection replacement until it settles", async () => {
+test("active request accounting retires a cancelled request", async () => {
     const connection = new ServerConnection({
         name: "echo",
         transport: "stdio",
@@ -77,14 +77,9 @@ test("an active user request prevents connection replacement until it settles", 
         await connection.catalog();
         const pending = connection.callTool("wait", {}, controller.signal);
         assert.equal(connection.activeRequests, 1);
-        assert.throws(
-            () => connection.assertReplaceable(),
-            /has 1 active user request/,
-        );
         controller.abort(new Error("test request settled"));
-        await assert.rejects(pending);
+        await assert.rejects(pending, /test request settled/);
         assert.equal(connection.activeRequests, 0);
-        assert.doesNotThrow(() => connection.assertReplaceable());
     } finally {
         await connection.close();
     }

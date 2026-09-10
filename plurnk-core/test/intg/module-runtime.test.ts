@@ -4,24 +4,28 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor, RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
-import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
+import type { RuntimeSchemeFacet } from "../../src/server/DaemonModule.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import type Exec from "../../src/schemes/Exec.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 // A stand-in executor - the seam stores the entry + wraps the executor in a lazy scheme face
 // (ExecOutputScheme reads the executor only at dispatch), so registration needs no live runtime.
-const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): RegistryEntry => ({
+const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`, channel = "results"): RegistryEntry => ({
     executor: {
         runtime: tag, glyph: "🔌",
         get manifest() {
             return {
                 name: tag,
-                channels: { results: "application/json" },
-                defaultChannel: "results",
+                channels: { [channel]: "application/json" },
+                defaultChannel: channel,
                 category: "data",
                 entryOwner: "resolved",
                 inherit: "none",
@@ -30,8 +34,8 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
                 modelVisible: true,
             } as never;
         },
-        get defaultChannel() { return "results"; },
-        get channels() { return { results: { mimetype: "application/json" } }; },
+        get defaultChannel() { return channel; },
+        get channels() { return { [channel]: { mimetype: "application/json" } }; },
         run: async () => ({ status: 200 }),
         probe: async () => ({ available: true, detail: "fake" }),
         effect: () => "read",
@@ -183,4 +187,100 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
     } finally {
         await db.close();
     }
+});
+
+test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the named attachment, channel, and storage", async () => {
+    const db = await openMigrated();
+    try {
+        const { engine, schemes } = wire(db);
+        const workspaceId = await insertWorkspace(db, "resource-owners");
+        const alice = await insertWorker(db, workspaceId, null, "alice");
+        const bob = await insertWorker(db, workspaceId, null, "bob");
+        await insertWorker(db, workspaceId, null, "detached");
+        const otherWorkspace = await insertWorkspace(db, "unrelated-resources");
+        await insertWorker(db, otherWorkspace, null, "outsider");
+        const loopId = await insertLoop(db, alice, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        const calls: string[] = [];
+        for (const [owner, name] of [[alice, "alice"], [bob, "bob"]] as const) {
+            const channel = name === "alice" ? "results" : "body";
+            const facet: RuntimeSchemeFacet = {
+                claims: (pathname) => pathname.startsWith("/resources"),
+                prepareRepresentation: async (request, ctx) => {
+                    calls.push(name);
+                    assert.equal(ctx.workerId, alice, "the caller still owns the operation");
+                    const result = await ctx.entries.write(request.pathname, {
+                        channels: { [channel]: { content: `${name}'s resource`, mimetype: "text/plain" } },
+                    });
+                    assert.ok(result.status === 200 || result.status === 201);
+                    return { status: 200 };
+                },
+                find: async (statement, ctx) => ctx.entries.operations.find(statement),
+            };
+            (await engine.prepareWorkerRuntimes(owner, "fixture", [{ tag: "myserver", entry: fakeEntry("myserver", "fixture", channel), scheme: facet }]))();
+        }
+        const parse = (body: string) => {
+            const parsed = PlurnkParser.parseStatements(body);
+            assert.equal(parsed.unparsedTail, undefined);
+            assert.equal(parsed.items.length, 1);
+            const item = parsed.items[0];
+            assert.equal(item?.kind, "statement");
+            if (item?.kind !== "statement") throw new Error("Expected an operation");
+            return item.statement;
+        };
+        const read = (uri: string) => engine.look({
+            workspaceId, workerId: alice, loopId,
+            statement: parse(`\`\`\`READ (${uri}) <1,-1>\`\`\``),
+        });
+        assert.equal((await read("myserver:///resources/item")).content, "alice's resource");
+        assert.equal((await read("myserver://bob/resources/item")).content, "bob's resource");
+        assert.equal((await read("myserver:///resources/item")).content, "alice's resource", "the cross-worker read never overwrites Alice's copy");
+        assert.equal((await read("myserver://absent/resources/item")).status, 404);
+        assert.equal((await read("myserver://outsider/resources/item")).status, 404, "resource resolution never crosses workspace identity");
+        assert.equal((await read("myserver://detached/resources/item")).status, 501, "no fallback to Alice's attachment");
+        assert.deepEqual(calls, ["alice", "bob", "alice"]);
+        let sequence = 1;
+        const dispatch = (body: string) => engine.dispatch({
+            workspaceId, workerId: alice, loopId, turnId, sequence: sequence++, origin: "model",
+            statement: parse(body),
+        });
+        const found = await dispatch("```FIND (myserver://bob/resources/*) <1,-1>```");
+        assert.equal(found.status, 200, JSON.stringify(found));
+        assert.match(JSON.stringify(found.results), /myserver:\/\/bob\/resources\/item/);
+        const copied = await dispatch("```COPY (myserver://bob/resources/item) (worker://~/copy.txt)```");
+        assert.equal(copied.status, 201, JSON.stringify(copied));
+        const copy = await read("worker://~/copy.txt");
+        assert.equal(copy.content, "bob's resource");
+
+        const received: string[] = [];
+        const consumer = fakeEntry("consumer");
+        engine.registerRuntime("consumer", {
+            ...consumer,
+            invocation: { body: { role: "stdin", required: false }, target: { role: "resource", required: true, kind: "resource" }, example: { target: "worker:///program", body: "input" } },
+            executor: {
+                ...consumer.executor,
+                async run(args) {
+                    assert.notEqual(args.target, null);
+                    received.push(await readFile(args.target!, "utf8"));
+                    assert.equal(args.body, "caller input");
+                    return { status: 200 };
+                },
+            },
+        });
+        const executed = await dispatch(PlurnkParser.frame("consumer (myserver://bob/resources/item)", "caller input"));
+        assert.equal(executed.status, 200, JSON.stringify(executed));
+        await (schemes.get("exec") as Exec).idle();
+        assert.deepEqual(received, ["bob's resource"]);
+
+        const child = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Isolated answer.", reasoning: null } }] });
+        const result = await engine.runTurn({
+            workspaceId, workerId: alice, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
+                PlurnkParser.frame("BARE (myserver://bob/resources/item)", "Analyze this."),
+                PlurnkParser.frame("TASK", '[{"content":"Inspect the answer.","status":"in_progress"}]'),
+            ].join("\n\n"), reasoning: null } }] }),
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["bob's resource\n\nAnalyze this."]]);
+    } finally { await db.close(); }
 });

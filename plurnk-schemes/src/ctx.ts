@@ -136,6 +136,7 @@ export interface EntryStorageWriteResult extends SchemeResult {
 
 export interface EntryCaps {
     readonly operations: EntryOperationCaps;
+    address(pathname: string): Promise<string>;
     read(pathname: string): Promise<EntryStorageReadResult>;
     write(pathname: string, entry: EntryData): Promise<EntryStorageWriteResult>;
     delete(pathname: string, channel?: string): Promise<SchemeResult>;

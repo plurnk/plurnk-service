@@ -116,6 +116,34 @@ test("a failed provider activation deactivates what activated and surfaces the c
     }
 });
 
+test("activation failure unwinds while the requesting workspace turn remains held", async () => {
+    const { db, workspaceId, workerId, residency, workspaceGate } = await harness();
+    const held = workspaceGate.tryExclusive(workspaceId);
+    assert.ok(held);
+    await held.acquired;
+    let deactivated = false;
+    const cause = new Error("resource owner activation refused");
+    residency.registerProvider("broken", {
+        activate: async () => { throw cause; },
+        deactivate: async () => { deactivated = true; },
+    });
+    const failed = assert.rejects(() => residency.acquire(workspaceId, workerId), (error) => error === cause);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        await Promise.race([
+            failed,
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("activation cleanup waited for its requesting turn")), 1000); }),
+        ]);
+        assert.equal(deactivated, true);
+        assert.equal(residency.isActive(workerId), false);
+    } finally {
+        clearTimeout(timer);
+        held.release();
+        await failed;
+        await db.close();
+    }
+});
+
 test("replacement: gate modes, durable state round-trip, owner mismatch, and atomic rollback", async () => {
     const { db, workspaceId, workerId, residency, workspaceGate, calls, rollbacks } = await harness();
     try {

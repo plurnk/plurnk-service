@@ -30,6 +30,7 @@ import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecyc
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
+import type { AcquireWorkerCapabilities } from "./ResourceBindings.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import TurnRunner from "./TurnRunner.ts";
@@ -260,7 +261,7 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
+    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh, acquireWorkerCapabilities }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -273,6 +274,7 @@ export default class Engine {
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
+        acquireWorkerCapabilities?: AcquireWorkerCapabilities;
         workspaceTurnStarting?: WorkspaceTurnStarting;
         noticeNotify?: NoticeNotify;
         weigh?: (text: string) => number;
@@ -322,7 +324,7 @@ export default class Engine {
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
             liveSubscriptions: this.#liveSubscriptions,
-            entryAddresses });
+            entryAddresses, acquireWorkerCapabilities });
         this.#turnRunner = new TurnRunner({
             db,
             schemes,

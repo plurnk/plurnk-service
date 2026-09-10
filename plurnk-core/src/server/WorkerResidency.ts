@@ -164,7 +164,9 @@ export default class WorkerResidency {
         } catch (cause) {
             const cleanupErrors: unknown[] = [];
             try {
-                await this.#deactivate(workerId, true);
+                // No consumer can acquire this activation until it succeeds.
+                // Unwind directly: its requester may hold the workspace turn.
+                await this.#dispose(identity);
             } catch (cleanupCause) {
                 cleanupErrors.push(cleanupCause);
             }
@@ -178,47 +180,36 @@ export default class WorkerResidency {
         }
     }
 
-    async #deactivate(
-        workerId: number,
-        waitForGate = false,
-    ): Promise<boolean> {
+    async #deactivate(workerId: number): Promise<boolean> {
         const identity = await this.identity(workerId);
         const { workspaceId } = identity;
-        const gate = waitForGate
-            ? this.#workspaceGate.requestExclusive(workspaceId)
-            : this.#workspaceGate.tryExclusive(workspaceId);
+        const gate = this.#workspaceGate.tryExclusive(workspaceId);
         if (gate === null) return false;
         await gate.acquired;
         try {
-            const prepared = [];
-            for (const namespaceOwner of this.#providers.keys()) {
-                prepared.push(await this.#engine().prepareWorkerRuntimes(
-                    workerId,
-                    namespaceOwner,
-                    [],
-                ));
-            }
-            const deactivations = await Promise.allSettled(
-                [...this.#providers.values()]
-                    .toReversed()
-                    .map((provider) => Promise.resolve().then(() => provider.deactivate(identity))),
-            );
-            const errors = deactivations
-                .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-                .map(({ reason }) => reason);
-
-            if (errors.length > 0) {
-                throw new AggregateError(
-                    errors,
-                    `Worker ${workerId} Functionality provider deactivation failed`,
-                );
-            }
-            for (const commit of prepared) commit();
-            LoopDocs.evict(this.#db, workerId);
+            await this.#dispose(identity);
             return true;
         } finally {
             gate.release();
         }
+    }
+
+    async #dispose(identity: { workspaceId: number; workerId: number }): Promise<void> {
+        const { workerId } = identity;
+        const prepared = [];
+        for (const namespaceOwner of this.#providers.keys()) {
+            prepared.push(await this.#engine().prepareWorkerRuntimes(workerId, namespaceOwner, []));
+        }
+        const deactivations = await Promise.allSettled(
+            [...this.#providers.values()].toReversed()
+                .map((provider) => Promise.resolve().then(() => provider.deactivate(identity))),
+        );
+        const errors = deactivations
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .map(({ reason }) => reason);
+        if (errors.length > 0) throw new AggregateError(errors, `Worker ${workerId} Functionality provider deactivation failed`);
+        for (const commit of prepared) commit();
+        LoopDocs.evict(this.#db, workerId);
     }
 
     async readModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null> {

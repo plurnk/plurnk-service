@@ -502,14 +502,6 @@ export default class ServerConnection {
         return this.#pendingAuthorization?.authorizationUrl ?? null;
     }
 
-    assertReplaceable(): void {
-        if (this.#activeRequests !== 0) {
-            throw new Error(
-                `MCP server '${this.#definition.name}' has ${this.#activeRequests} active user request(s).`,
-            );
-        }
-    }
-
     async #open(): Promise<OpenClient> {
         if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
         if (this.#pendingAuthorization !== undefined) {

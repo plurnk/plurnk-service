@@ -14,7 +14,7 @@ import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
-import type { SchemeHandler, WriterTier } from "@plurnk/plurnk-schemes";
+import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
 
 type CapabilityScope = "service" | "workspace" | "worker-bound" | "worker" | "loop";
 
@@ -34,13 +34,22 @@ export default class CapabilityResolver {
         this.#executors = executors;
     }
 
-    descriptors(statement: PlurnkStatement, workerId: number, writer: WriterTier = "model"): readonly CapabilityDescriptor[] {
+    descriptors(
+        statement: PlurnkStatement,
+        workerId: number,
+        writer: WriterTier = "model",
+        observeManifest?: (target: ParsedPath) => SchemeManifest | undefined,
+    ): readonly CapabilityDescriptor[] {
         const describe = (
             operation: CapabilityDescriptor["operation"],
             access: CapabilityDescriptor["access"],
             target: ParsedPath | null,
         ): CapabilityDescriptor[] | null => {
             const scheme = schemeNameOf(target);
+            if (access === "observe" && target !== null && scheme !== null && observeManifest !== undefined) {
+                const manifest = observeManifest(target);
+                return manifest === undefined ? null : [{ operation, access, scheme, traits: [...(manifest.traits ?? [])].toSorted() }];
+            }
             if (scheme === null || !this.#schemes.has(scheme, workerId)) return null;
             // {§worker-generated-subtree}: owned-state mutation is intrinsic;
             // observation and unrelated effects retain their independent demands.
@@ -129,10 +138,22 @@ export default class CapabilityResolver {
         workerId: number,
         loopId: number,
         writer: WriterTier = "model",
+        resolveResource?: (target: ParsedPath) => Promise<SchemeManifest | undefined>,
     ): Promise<CapabilityDenial | null> {
+        const manifests = new Map<ParsedPath, SchemeManifest | undefined>();
+        if (resolveResource !== undefined) {
+            // Derive read operands through the same operation-demand mapping;
+            // resolve their backend manifests without borrowing owner policy.
+            this.descriptors(statement, workerId, writer, (target) => {
+                manifests.set(target, undefined);
+                return undefined;
+            });
+            for (const target of manifests.keys()) manifests.set(target, await resolveResource(target));
+        }
         const policy = await LoopPolicyReader.read(this.#db, loopId);
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
-        for (const descriptor of this.descriptors(statement, workerId, writer)) {
+        for (const descriptor of this.descriptors(statement, workerId, writer,
+            resolveResource === undefined ? undefined : (target) => manifests.get(target))) {
             const denied = layers.find((layer) => !CapabilityAdmission.allows(layer.policy, descriptor));
             if (denied !== undefined) return { descriptor, scope: denied.scope };
         }

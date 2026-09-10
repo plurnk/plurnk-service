@@ -2495,6 +2495,25 @@ current-Worker sigil; none can be minted by a spawn or client.
 
 §stream-owner-scoped **Capability streams are owner-scoped.** Concurrent workers' stream coordinates are loop-relative and IDENTICAL (every worker's first loop is sequence 1), so the entry identity keys on the owner and identical coordinates across workers are distinct rows. The address's authority names the owner: **empty = the calling worker** — your own streams need no qualifier, so a fan-out sibling's output can never surface under your READ — and a **named authority** reaches that worker's streams for any worker of the workspace (the parent designs the topology by what it names to whom; the engine imposes none, #394; an unknown name resolves 404). A child is told its parent's name in its packet (`parent-worker`). KILL stays self-only — a parent controls a child through the worker lifecycle, never by reaching into its streams. The storage pathname stays the bare loop coordinate; the owner rides the column, so nothing model-facing carries a worker id. A stream 404 never discloses existence, but it names the address space: the coordinate shape, the unqualified self, the descendant-by-name form, and that a tool's own ids are arguments, not addresses.
 
+§runtime-resource-binding A qualified runtime resource binds both its stored
+entry and its attachment to the named Worker within the caller's workspace.
+READ, FIND, and resource-source consumers use this same binding; an absent
+owner or attachment never falls back to the caller's same-named runtime.
+Non-runtime schemes retain their own authority semantics.
+
+| Responsibility | Owner |
+|---|---|
+| Qualified runtime handler, manifest, connection, and stored resource | Addressed Worker |
+| Operation admission and policy | Caller and its attached Functionality |
+| Journal, cancellation, and client interaction | Calling operation |
+| Connection activation and cooling | Existing Worker Functionality residency; no model inference |
+
+The selected attachment remains leased throughout resource acquisition.
+Resource reads do not grant execution or stream-control authority over the
+owner. Catalog and content links preserve the selected owner. Capability
+activation failure unwinds its unpublished state without waiting for the
+workspace turn that requested activation.
+
 §worker-auto-name **Automatic names are eight random lowercase hexadecimal
 characters**, e.g. `worker://ab3d5678`; a colliding draw is retried. All unnamed
 workers use this allocator, including WORK, FORK, clients, and conversations.

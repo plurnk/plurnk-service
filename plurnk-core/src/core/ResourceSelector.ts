@@ -1,6 +1,7 @@
 import { type LineMarker } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
+import ResourceBindings from "./ResourceBindings.ts";
 import { entryCoordinateOf, schemeNameOf } from "./plurnk-uri.ts";
 import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -44,8 +45,9 @@ export default class ResourceSelector {
                 { retryable: false },
             );
         }
-        const handler = this.#schemes.get(scheme, ctx.functionalityWorkerId);
-        const manifest = this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
+        const binding = access === "read" ? await ResourceBindings.resolve(target, ctx) : undefined;
+        const handler = access === "read" ? binding?.handler : this.#schemes.get(scheme, ctx.functionalityWorkerId);
+        const manifest = access === "read" ? binding?.manifest : this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
         if (handler === undefined || manifest === undefined) {
             return MutationEffects.failure(
                 "scheme-not-found",
@@ -131,7 +133,7 @@ export default class ResourceSelector {
         ctx: PlurnkSchemeContext,
         operation: "COPY" | "MOVE",
     ): Promise<SelectedSource | DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+        const handler = (await ResourceBindings.resolve(selection.target, ctx))?.handler as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,

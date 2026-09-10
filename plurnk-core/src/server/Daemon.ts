@@ -189,6 +189,7 @@ export default class Daemon implements ApplicationPort {
         this.#functionality.register(this.#members);
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
+            acquireWorkerCapabilities: (workspaceId, workerId) => this.#residency.acquire(workspaceId, workerId),
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
             // are workspace-wide across concurrent models, so they remain
             // model-independent. Request-shaped token facts stay provider-owned.

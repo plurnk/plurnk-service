@@ -697,7 +697,7 @@ export default class EntryFind {
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
         const byPath = new Map((await EntryManifest.catalogRowsFor(
-            ctx,
+            { ...ctx, defaultChannelFor: (name) => name === scheme ? manifest.defaultChannel : ctx.defaultChannelFor?.(name) ?? "body" },
             scheme,
             address.ownerId,
             multipleAuthorities ? undefined : authority,
@@ -729,7 +729,13 @@ export default class EntryFind {
             }
         }
         if (match.scope === undefined) throw new Error("FIND selection succeeded without a path scope");
-        const projected = projectFindResult(statement, match.scope, resources, scopes);
+        const owner = manifest.authority === "owner" && statement.target?.kind === "url" ? statement.target.hostname : null;
+        const qualify = (path: string): string => owner && path.startsWith(`${scheme}:///`)
+            ? `${scheme}://${owner}/${path.slice(`${scheme}:///`.length)}` : path;
+        const projected = projectFindResult(statement, match.scope,
+            resources.map(({ item, match }) => ({ item: item.map((row) => ({ ...row, path: qualify(row.path) })) as CatalogMatch, match })),
+            scopes.map((row) => ({ ...row, path: qualify(row.path) })),
+        );
         if (address.pathname === undefined) return projected;
 
         // Exact FIND consumes the same selected canonical producer as exact

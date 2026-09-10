@@ -61,6 +61,7 @@ const makeCtx = () => {
                 return failure("operation-not-implemented", 501, "SEND is not implemented.");
             },
         },
+        async address(pathname) { return `test://owner${pathname}`; },
         async read(pathname) {
             const entry = store.get(pathname) ?? null;
             return entry === null
@@ -198,6 +199,12 @@ const makeCtx = () => {
 
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };
 };
+
+test("ctx: entry addresses do not acquire resources", async () => {
+    const { ctx } = makeCtx();
+    assert.equal(await ctx.entries.address("/x"), "test://owner/x");
+    assert.equal((await ctx.entries.read("/x")).status, 404);
+});
 
 test("ctx: entries cap does real CRUD scoped to the store", async () => {
     const { ctx } = makeCtx();

@@ -1,6 +1,7 @@
 // Data statement execution: resolves the addressed entry and runs the scheme operation, split out of Dispatcher.
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
+import ResourceBindings from "./ResourceBindings.ts";
 import { entryCoordinateOf, renderTarget } from "./plurnk-uri.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -77,8 +78,10 @@ export default class DataStatementRunner {
                 { operation: statement.op, retryable: false },
             );
         }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
-        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
+        const resourceRead = statement.op === "READ" || statement.op === "FIND";
+        const binding = resourceRead ? await ResourceBindings.resolve(statement.target, ctx) : undefined;
+        const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        const handler = (resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.functionalityWorkerId)) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
         if (handler === undefined) {
             return this.#failure(
                 "scheme-not-found",

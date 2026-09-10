@@ -36,6 +36,7 @@ import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries 
 import LogWriter from "./LogWriter.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
+import ResourceBindings, { type AcquireWorkerCapabilities } from "./ResourceBindings.ts";
 import type EditSequence from "./EditSequence.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
@@ -144,8 +145,9 @@ export default class Dispatcher {
     readonly #disposition: TurnDispositionHandler;
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
+    readonly #acquireWorkerCapabilities: AcquireWorkerCapabilities | undefined;
 
-    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, liveSubscriptions, entryAddresses }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, liveSubscriptions, entryAddresses, acquireWorkerCapabilities }: {
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -164,6 +166,7 @@ export default class Dispatcher {
         cancelDescendants?: CancelDescendantsNotify;
         liveSubscriptions: LiveSubscriptions;
         entryAddresses: EntryAddressBinding;
+        acquireWorkerCapabilities?: AcquireWorkerCapabilities;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -182,6 +185,7 @@ export default class Dispatcher {
         this.#cancelDescendants = cancelDescendants;
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
+        this.#acquireWorkerCapabilities = acquireWorkerCapabilities;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#lifecycle = lifecycle;
         this.#resourceMutations = new ResourceMutations({
@@ -435,7 +439,8 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        let result = await this.#dispatchOne(context);
+        let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), this.#acquireWorkerCapabilities,
+            (ctx) => this.#dispatchOne(context, ctx));
         const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
         if (edit !== undefined) {
             // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
@@ -446,7 +451,7 @@ export default class Dispatcher {
         return result;
     }
 
-    async #dispatchOne(context: DispatchContext): Promise<DispatchResult> {
+    async #dispatchOne(context: DispatchContext, schemeCtx: PlurnkSchemeContext): Promise<DispatchResult> {
         const {
             statement,
             workspaceId,
@@ -458,12 +463,10 @@ export default class Dispatcher {
             onDispatch,
             onSettled,
         } = context;
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId, origin });
         const { functionalityWorkerId } = schemeCtx;
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
-        let denial = this.#checkWritable(statement, origin, functionalityWorkerId);
-        if (denial === null) denial = await this.#checkCapabilities(statement, schemeCtx);
+        const denial = this.#checkWritable(statement, origin, functionalityWorkerId);
         if (denial !== null) {
             result = denial;
         } else {
@@ -473,7 +476,10 @@ export default class Dispatcher {
             // skips it. Logging failures (#writeLog throws) are NOT caught —
                 // those are system failures.
             try {
-                if (statement.op === "EDIT") {
+                const capabilityDenial = await this.#checkCapabilities(statement, schemeCtx);
+                if (capabilityDenial !== null) {
+                    result = capabilityDenial;
+                } else if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = { status: 200 };
@@ -651,9 +657,15 @@ export default class Dispatcher {
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId: 0, origin });
-        const denial = await this.#checkCapabilities(statement, schemeCtx);
-        if (denial !== null) return denial;
-        return this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx);
+        return ResourceBindings.using(this.#schemes, schemeCtx, this.#acquireWorkerCapabilities, async (ctx) => {
+            try {
+                const denial = await this.#checkCapabilities(statement, ctx);
+                return denial ?? await this.#dataRun.run(schemeNameOf(statement.target), statement, ctx);
+            } catch (error) {
+                if (error instanceof OperationFailureError) return error.result;
+                throw error;
+            }
+        });
     }
 
     async previewRead(context: DispatchContext) {
@@ -711,10 +723,17 @@ export default class Dispatcher {
     ): Promise<PreparedRepresentation | null> {
         const routedScheme = schemeNameOf(target);
         if (routedScheme === null) return null;
-        const handler = this.#schemes.get(routedScheme, ctx.functionalityWorkerId) as SchemeWithEntryAddress | undefined;
-        const manifest = this.#schemes.manifestFor(routedScheme, ctx.functionalityWorkerId);
-        if (handler === undefined || manifest?.category !== "data") return null;
-        return this.#resolveDataEntryAddress({ target, routedScheme, handler, manifest, ctx });
+        return ResourceBindings.using(this.#schemes, ctx, this.#acquireWorkerCapabilities, async (boundCtx) => {
+            try {
+                const binding = await ResourceBindings.resolve(target, boundCtx);
+                if (binding?.manifest.category !== "data") return null;
+                return this.#resolveDataEntryAddress({ target, routedScheme,
+                    handler: binding.handler as SchemeWithEntryAddress, manifest: binding.manifest, ctx: boundCtx });
+            } catch (error) {
+                if (error instanceof OperationFailureError) return { address: null, result: error.result };
+                throw error;
+            }
+        });
     }
 
     async #resolveDataEntryAddress({
@@ -815,8 +834,14 @@ export default class Dispatcher {
     // An accepted EXEC reads a non-file source through the same registered
     // handler and addressed context as an authored READ. {§exec-target-routing}
     async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
+        return ResourceBindings.using(this.#schemes, ctx, this.#acquireWorkerCapabilities,
+            (boundCtx) => this.#readExecSource(statement, boundCtx));
+    }
+
+    async #readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
         const schemeName = schemeNameOf(statement.target);
-        const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        const binding = await ResourceBindings.resolve(statement.target, ctx);
+        const manifest = binding?.manifest;
         if (manifest !== undefined && manifest.category !== "data") {
             return { nativePath: null, result: Dispatcher.#failure(
                 "exec-source-not-data",
@@ -832,7 +857,7 @@ export default class Dispatcher {
         }
         const result = Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
         const target = statement.target;
-        const handler = schemeName === null ? undefined : this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+        const handler = binding?.handler as SchemeHandler | undefined;
         const selectedChannel = target?.kind === "url" ? target.fragment : null;
         if (result.status !== 200 || target === null || handler === undefined || manifest?.category !== "data"
             || (selectedChannel !== null && selectedChannel !== manifest.defaultChannel)) {
@@ -981,6 +1006,7 @@ export default class Dispatcher {
             ctx.functionalityWorkerId,
             ctx.loopId,
             ctx.writer,
+            async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
         );
         if (denied === null) return null;
         const { descriptor, scope } = denied;
@@ -1004,7 +1030,8 @@ export default class Dispatcher {
     }
 
     capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
-        return this.#checkCapabilities(statement, ctx);
+        return ResourceBindings.using(this.#schemes, ctx, this.#acquireWorkerCapabilities,
+            (boundCtx) => this.#checkCapabilities(statement, boundCtx));
     }
 
     // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body
@@ -1104,8 +1131,17 @@ export default class Dispatcher {
     async prepareBarePrompt(
         context: Pick<DispatchContext, "workspaceId" | "workerId" | "functionalityWorkerId" | "loopId" | "turnId" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
-        const { statement } = context;
-        const ctx = this.#buildSchemeCtx(context);
+        return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), this.#acquireWorkerCapabilities, async (ctx) => {
+            try {
+                return await this.#prepareBarePrompt(context.statement, ctx);
+            } catch (error) {
+                if (error instanceof OperationFailureError) return { result: error.result };
+                throw error;
+            }
+        });
+    }
+
+    async #prepareBarePrompt(statement: BareStatement, ctx: PlurnkSchemeContext): Promise<{ prompt: string } | { result: DispatchResult }> {
         const denial = await this.#checkCapabilities(statement, ctx);
         if (denial !== null) return { result: denial };
         let resource = "";
