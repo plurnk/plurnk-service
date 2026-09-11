@@ -1,4 +1,4 @@
-// {§grammar-configuration-admission} / {§gbnf-requires-reasoning}.
+// {§grammar-configuration-admission} — a configured operator grammar admits only a provider that can carry it (#588).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -31,7 +31,7 @@ test("configured GBNF startup performs no model generation", async () => {
     const env = {
         PLURNK_MODEL: alias.alias,
         PLURNK_MODEL_startupguard: `${alias.provider}/${alias.model}`,
-        PLURNK_PROVIDERS_GBNF_startupguard: "plurnk.gemma.gbnf",
+        PLURNK_PROVIDERS_GBNF_startupguard: "/operator/rails/startup.gbnf",
     };
     const prior = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
     Object.assign(process.env, env);
@@ -47,18 +47,6 @@ test("configured GBNF startup performs no model generation", async () => {
     }
 });
 
-test("GBNF with reasoning explicitly off is an invalid composed PLURNK configuration", () => {
-    const calls: string[] = [];
-    assert.throws(
-        () => ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls), {
-            PLURNK_PROVIDERS_GBNF: "plurnk.gemma.gbnf",
-            PLURNK_PROVIDERS_REASONING: "off",
-        }),
-        /GBNF requires adaptive or fixed reasoning/,
-    );
-    assert.deepEqual(calls, [], "invalid configuration fails without model activity");
-});
-
 test("no grammar requested makes admission a no-op", () => {
     const calls: string[] = [];
     ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {});
@@ -72,7 +60,7 @@ test("configured GBNF requires a provider that advertises local transport", () =
     const calls: string[] = [];
     assert.throws(
         () => ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {
-            PLURNK_PROVIDERS_GBNF: "plurnk.gemma.gbnf",
+            PLURNK_PROVIDERS_GBNF: "/operator/rails/custom.gbnf",
         }),
         /does not advertise GBNF transport/,
     );
@@ -85,7 +73,7 @@ test("per-alias GBNF admission resolves when the bare setting is empty", () => {
         PLURNK_PROVIDERS_GBNF: "",
         PLURNK_MODEL: "rig",
         PLURNK_MODEL_rig: "openai/local",
-        PLURNK_PROVIDERS_GBNF_rig: "plurnk.gemma.gbnf",
+        PLURNK_PROVIDERS_GBNF_rig: "/operator/rails/rig.gbnf",
     });
     assert.deepEqual(calls, []);
 });

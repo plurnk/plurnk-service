@@ -34,15 +34,16 @@ import { generatedPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import PromptFrames from "./PromptFrames.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
-// {§grammar-rail-registration} — bare names are the built-in rail namespace;
-// everything else is an import specifier resolved through the Node chain.
-export const resolveGrammarRailPath = (variant: string): string => variant.startsWith("/") || variant.startsWith(".")
-    || variant.includes("/") || variant.includes(":")
-    ? (variant.startsWith("/") || variant.startsWith(".")
-        ? variant
-        : fileURLToPath(import.meta.resolve(variant)))
-    : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-contracts/${variant}`));
-import { fileURLToPath } from "node:url";
+import { resolve as resolvePath } from "node:path";
+import { homedir } from "node:os";
+// {§operator-grammar} — an operator's own GBNF is a file path: absolute, `~`-relative, or
+// relative to the daemon's working directory. The service ships no grammar profile, so a bare
+// name (no separator) is refused by name rather than resolved against anything.
+export const resolveOperatorGrammarPath = (value: string): string => {
+    if (value === "~" || value.startsWith("~/")) return resolvePath(homedir(), value.slice(2));
+    if (value.startsWith("/") || value.startsWith(".") || value.includes("/")) return resolvePath(value);
+    throw new Error(`PLURNK_PROVIDERS_GBNF=${value} names a bundled grammar profile; the service ships none (#588). Give the path of a grammar file you wrote.`);
+};
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -155,7 +156,6 @@ const readFilesItems = (): number | null => {
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderResponse } from "@plurnk/plurnk-providers";
 import { ProviderError, scopeEnvToAlias } from "@plurnk/plurnk-providers";
-import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
@@ -179,38 +179,9 @@ type SplitProviderResponse = {
     emissionValid: boolean;
 };
 
-type GrammarConstraint = {
-    transport: string;
-    response: string;
-};
-
-type ResolvedGrammarConstraint = GrammarConstraint & {
-    allowWithheld: boolean;
-};
-
 type MaterializedModelRequest = {
     readonly messages: ChatMessage[];
     readonly nativeInputs: readonly string[];
-};
-
-// A generated rail may constrain only the sampled continuation while the chat
-// template contributes a prefix that llama-server preserves in its response.
-// The artifact names the alternate root that composes those bytes for evidence
-// grading; arbitrary grammars without the declaration retain their transport root.
-const grammarConstraint = (grammar: string): GrammarConstraint => {
-    const declarations = [...grammar.matchAll(/^# @plurnk-response-root ([A-Za-z][A-Za-z0-9-]*)$/gm)];
-    if (declarations.length === 0) return { transport: grammar, response: grammar };
-    if (declarations.length !== 1) throw new Error("GBNF constraint declares multiple @plurnk-response-root values");
-    const responseRoot = declarations[0]![1]!;
-    if (!grammar.split("\n").some((line) => line.startsWith(`${responseRoot} ::=`))) {
-        throw new Error(`GBNF constraint declares missing response root ${responseRoot}`);
-    }
-    const roots = [...grammar.matchAll(/^root ::= ([A-Za-z][A-Za-z0-9-]*)$/gm)];
-    if (roots.length !== 1) throw new Error("GBNF constraint must declare exactly one simple root");
-    return {
-        transport: grammar,
-        response: grammar.replace(roots[0]![0], `root ::= ${responseRoot}`),
-    };
 };
 
 type EngineTurnResult = {
@@ -339,7 +310,8 @@ export default class TurnRunner {
         workerId: string;
         primaryWorkerId: string;
     }>;
-    #gbnfCache = new Map<string, GrammarConstraint>();
+    // {§operator-grammar} — one read per path per daemon; the file is the operator's and static.
+    #grammarCache = new Map<string, string>();
     readonly #materialization: TurnMaterialization;
     readonly #bareBatch: BareBatchRunner;
     readonly #admitted: AdmittedTurnExecutor;
@@ -437,64 +409,26 @@ export default class TurnRunner {
         });
     }
 
-    // {§rail-truth-engine-verdict} — the verify GAP (a configured grammar @plurnk/gbnf can't
-    // parse): warn once per message, never per turn; the turn records railsVerdict "unverifiable".
-    static #railGapWarned = new Set<string>();
-    static #warnRailVerdictGapOnce(message: string): void {
-        if (TurnRunner.#railGapWarned.has(message)) return;
-        TurnRunner.#railGapWarned.add(message);
-        process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
-    }
-
-    static #requireGrammarEvidence(response: ProviderResponse, allowWithheld: boolean): GrammarEvidence {
-        const evidence = response.grammarEvidence;
-        if (evidence === undefined) {
-            throw new Error("provider contract violation: configured GBNF response omitted grammar evidence");
-        }
-        const input = [...evidence.input];
-        if (!Number.isInteger(evidence.contentStart)
-            || evidence.contentStart < 0
-            || evidence.contentStart > input.length
-            || typeof evidence.transported !== "boolean"
-            || input.slice(evidence.contentStart).join("") !== response.assistant.content) {
-            throw new Error("provider contract violation: grammar evidence does not map exactly to assistant.content");
-        }
-        if (!allowWithheld && !evidence.transported) {
-            throw new Error("provider contract violation: configured GBNF was not transported outside explicit debug mode");
-        }
-        return evidence;
-    }
-
-
-    async #grammarConstraint(provider: Provider): Promise<ResolvedGrammarConstraint | undefined> {
-        // A real alias scopes its rail; an alias-free direct route uses the
-        // global provider configuration. Unrelated alias settings never apply.
-        // {§grammar-configuration-admission}
+    // {§operator-grammar} — the operator's grammar text for this provider, or undefined when
+    // none is configured. A real alias scopes its knob; an alias-free direct route uses the
+    // global provider configuration. Unrelated alias settings never apply
+    // ({§grammar-configuration-admission}). An unreadable file throws: a configured grammar
+    // never silently degrades.
+    async #operatorGrammar(provider: Provider): Promise<string | undefined> {
         ProviderInstantiate.assertGrammarConfigurationScope(provider);
         const alias = ProviderInstantiate.configurationAliasOf(provider);
         const scoped = alias === undefined
             ? process.env
-            : scopeEnvToAlias(process.env, alias, [
-                "PLURNK_PROVIDERS_GBNF",
-                "PLURNK_PROVIDERS_GBNF_DEBUG",
-            ]);
-        const variant = scoped.PLURNK_PROVIDERS_GBNF;
-        if (variant === undefined || variant === "" || variant === "0") return undefined;
-        const allowWithheld = scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
-            && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
-            && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== "0";
-        const hit = this.#gbnfCache.get(variant);
-        if (hit !== undefined) return { ...hit, allowWithheld };
-        // {§grammar-rail-registration} — a bare name is a built-in rail subpath
-        // under @plurnk/plurnk-contracts; any other form is an import specifier
-        // (an operator file path or a package export subpath), so a third-party
-        // rail package plugs in with no built-in registry change.
-        const path = resolveGrammarRailPath(variant);
-        const text = await readFile(path, "utf8");  // unresolvable/unreadable throws — a configured rail never silently degrades
-        const constraint = grammarConstraint(text);
-        this.#gbnfCache.set(variant, constraint);
-        process.stderr.write(`plurnk-engine: GBNF constraint: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);
-        return { ...constraint, allowWithheld };
+            : scopeEnvToAlias(process.env, alias, ["PLURNK_PROVIDERS_GBNF"]);
+        const configured = scoped.PLURNK_PROVIDERS_GBNF;
+        if (configured === undefined || configured === "" || configured === "0") return undefined;
+        const path = resolveOperatorGrammarPath(configured);
+        const hit = this.#grammarCache.get(path);
+        if (hit !== undefined) return hit;
+        const text = await readFile(path, "utf8");
+        this.#grammarCache.set(path, text);
+        process.stderr.write(`plurnk-engine: operator grammar: ${alias || "(bare)"} → ${path} (${text.length} chars)\n`);
+        return text;
     }
 
     // A lineage's no-parent root; a root worker resolves to itself. Fail hard
@@ -1094,8 +1028,6 @@ export default class TurnRunner {
         let response: ProviderAttempt | undefined;
         let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
-        let railResponseGrammar: string | undefined;
-        let railAllowWithheld = false;
         let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
         let providerCallInFlight = false;
@@ -1152,10 +1084,7 @@ export default class TurnRunner {
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
             if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            const railConstraint = await this.#grammarConstraint(provider);
-            railGrammar = railConstraint?.transport;
-            railResponseGrammar = railConstraint?.response;
-            railAllowWithheld = railConstraint?.allowWithheld ?? false;
+            railGrammar = await this.#operatorGrammar(provider);
             const attemptLimit = readEmissionAttempts();
             const strikeStreak = await this.#strikes.streak(loopId);
             // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
@@ -1379,9 +1308,7 @@ export default class TurnRunner {
                 response = completedResponse;
                 turnWireAccounting.push(...completedResponse.accounting);
                 await currentModelCall.observeResponse(completedResponse, null, nativeInputs);
-                railEvidence = railGrammar === undefined
-                    ? undefined
-                    : TurnRunner.#requireGrammarEvidence(completedResponse, railAllowWithheld);
+                railEvidence = railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
                 splitResponse = this.#splitResponse(completedResponse);
                 await classifyProviderAttempt(
                     attemptRow.id,
@@ -1443,10 +1370,9 @@ export default class TurnRunner {
                 if (!capacityFailure) emissionAttempts = currentEmissionAttempt;
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
-            // Persist its exact RFC 9457 result before propagating it. Grammar evidence
-            // and its engine-owned verdict exist only on completed responses
-            // ({§rail-truth-engine-verdict}). Cancellation is lifecycle truth, not a
-            // provider failure. Close the
+            // Persist its exact RFC 9457 result before propagating it. Grammar transport
+            // evidence exists only on completed responses ({§operator-grammar}).
+            // Cancellation is lifecycle truth, not a provider failure. Close the
             // attempted turn without inventing an assistant response, then let
             // runLoop/Daemon settle the exact 504/499 loop result.
             if (providerSignal?.aborted) {
@@ -1667,39 +1593,12 @@ export default class TurnRunner {
                 level: "warn",
             });
         }
-        // Grade configured local evidence independently. Endpoint-owned
-        // constraints remain provider observations. {§rail-truth-engine-verdict}
-        let railKeys: { railsAttached: "client" | "withheld"; railsVerdict: string } | undefined;
-        if (railGrammar !== undefined) {
-            if (railEvidence === undefined) throw new Error("configured GBNF response has no final grammar evidence");
-            if (railResponseGrammar === undefined) throw new Error("configured GBNF has no response grammar");
-            let verdict: ReturnType<typeof validateGbnf> | null = null;
-            try { verdict = validateGbnf(railResponseGrammar, railEvidence.input); }
-            catch (cause) { TurnRunner.#warnRailVerdictGapOnce((cause as Error).message); }
-            railKeys = {
-                railsAttached: railEvidence.transported ? "client" : "withheld",
-                railsVerdict: verdict?.status ?? "unverifiable",
-            };
-            if (verdict !== null && verdict.status !== "accept" && allowanceCut === null) {
-                const contentPosition = verdict.pos >= railEvidence.contentStart
-                    ? verdict.pos - railEvidence.contentStart
-                    : null;
-                const located = contentPosition === null
-                    ? null
-                    : this.#offsetToLineColumn(packetAssistant.content, contentPosition);
-                this.#notices.push(workspaceId, workerId, loopId, {
-                    source: "engine:rails",
-                    kind: "grammar_unenforced",
-                    message: verdict.status === "reject"
-                        ? `emission rejects the grammar at raw code point ${verdict.pos}`
-                        : `emission is an incomplete grammar sentence (ends at raw code point ${verdict.pos})`,
-                    level: "warn",
-                    ...(located === null
-                        ? {}
-                        : { position: { type: "content-offset" as const, line: located.line, column: located.column } }),
-                });
-            }
-        }
+        // {§operator-grammar} — transport evidence only: the turn records whether the operator's
+        // grammar reached the wire. Nothing grades the response against it; the parser's
+        // admission is the one verdict (#588).
+        const railKeys = railGrammar === undefined
+            ? undefined
+            : { railsAttached: railEvidence?.transported === true ? "client" : "withheld" };
         // Attach the admitted inference evidence. The turn remains open until
         // the producer-neutral admitted-turn executor settles every operation
         // and its exact source artifact.
@@ -1711,8 +1610,8 @@ export default class TurnRunner {
                 usageCurationBudget: this.#packets.curationBudgetFor(requestPacket), // {§tokenomics-client-gauge}
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,
-                // Opaque provider metadata plus engine-authored rail keys.
-                // {§meta-passthrough}, {§rail-truth-engine-verdict}
+                // Opaque provider metadata plus the grammar transport key.
+                // {§meta-passthrough}, {§operator-grammar}
                 meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
             },
         });

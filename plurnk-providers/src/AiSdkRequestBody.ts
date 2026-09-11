@@ -2,7 +2,6 @@
 import type { ProviderCallKind, ReasoningPolicy } from "./types.ts";
 import type { JSONValue } from "ai";
 import { type Reasoning } from "./env.ts";
-import { validateGbnf } from "@plurnk/gbnf";
 import { fixedEffort } from "./reasoning-effort.ts";
 import type { ReasoningStyle, CompatibleReasoningEffort, GrammarStyle, CacheAffinity, AiSdkProviderOptions } from "./AiSdkProvider.ts";
 
@@ -224,7 +223,7 @@ export default class AiSdkRequestBody {
     // bookkeeping so a long-lived daemon never grows the map unboundedly —
     // an evicted-and-returning run simply re-pins, worst case one cold prefill.
 
-    // Optional local llama-server GBNF transport ({§gbnf-response-observation}). Unsupported
+    // Optional local llama-server GBNF transport ({§provider-grammar-transport}). Unsupported
     // backends receive no grammar-related field.
     grammarBody(grammar: string | undefined): Record<string, unknown> {
         if (grammar === undefined) return {};
@@ -401,19 +400,5 @@ export default class AiSdkRequestBody {
     }
 
 
-    // PLURNK_PROVIDERS_GBNF_DEBUG ({§gbnf-response-observation}): validate the supplied GBNF locally and fail
-    // hard if it's malformed, BEFORE any wire call — and the grammar is NOT
-    // transported, so the request runs unconstrained. A debug aid to catch invalid
-    // grammars (e.g. while editing the plurnk grammar) without a model round-trip;
-    // off in production. `validateGbnf(grammar, "")` parses the grammar + resolves
-    // its root, throwing iff the grammar itself is invalid (the empty input's
-    // verdict is irrelevant — we only care that parsing succeeded).
-    assertGrammarValid(grammar: string): void {
-        try {
-            validateGbnf(grammar, "");
-        } catch (cause) {
-            throw new Error(`grammar validation (PLURNK_PROVIDERS_GBNF_DEBUG): invalid GBNF — ${(cause as Error).message}`, { cause });
-        }
-    }
 
 }

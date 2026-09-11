@@ -94,7 +94,7 @@ test("{§worker-model-selection}: an exact provider/model selector persists with
     for (const [key, value] of Object.entries({
         PLURNK_MODEL: bootAlias,
         [`PLURNK_MODEL_${bootAlias}`]: "openai/unrelated-local-model",
-        [`PLURNK_PROVIDERS_GBNF_${bootAlias}`]: "plurnk.qwen.gbnf",
+        [`PLURNK_PROVIDERS_GBNF_${bootAlias}`]: "/operator/rails/boot.gbnf",
     })) {
         declaredProviderEnv.set(key, process.env[key]);
         process.env[key] = value;

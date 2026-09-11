@@ -61,9 +61,9 @@ Where things are, for an agent that has to act before it has read everything:
 
 - `plurnk-core` owns daemon lifecycle, persistence, workspaces, workers, loops,
   packet assembly, and orchestration.
-- `plurnk-contracts` owns the model-facing language, parser and AST, generated
-  GBNF rail, shared types and schemas, runtime-neutral Problems, operation
-  results, Notices, and text coordinates.
+- `plurnk-contracts` owns the model-facing language, parser and AST, shared
+  types and schemas, runtime-neutral Problems, operation results, Notices, and
+  text coordinates.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.

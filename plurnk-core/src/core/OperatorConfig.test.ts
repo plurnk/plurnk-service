@@ -13,7 +13,7 @@ test("{§operator-config-discovery} the seed is one dotenv front door with exact
     assert.match(seed, /PLURNK_MODEL_plurnk="plurnk\/plurnk"/);
     assert.match(seed, /PLURNK_MODEL_openrouter="openrouter\/qwen\/qwen3-coder"/);
     assert.match(seed, /PLURNK_MODEL_local="openai\/qwen"/);
-    assert.match(seed, /PLURNK_PROVIDERS_GBNF_local=plurnk\.qwen\.gbnf/);
+    assert.match(seed, /PLURNK_PROVIDERS_GBNF_local=~\/\.config\/plurnk\/local\.gbnf/);
     assert.match(seed, /PLURNK_MCP_BRAVE=npx/);
     assert.match(seed, /PLURNK_SCHEMES_HTTP_MATERIALIZER=tavily-extract/);
     assert.match(seed, /AGENT SKILLS — project skills live in \.agents\/skills/);

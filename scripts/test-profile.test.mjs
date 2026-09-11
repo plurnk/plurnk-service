@@ -81,9 +81,10 @@ test("live/demo operator bootstrap carries Tavily and Brave from the authoritati
 test("live, demo, and benchlet launch through the operator environment", async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
     const live = await liveInvocation();
-    assert.equal(pkg.scripts["build:rail"], "npm run build:gbnf -w @plurnk/plurnk-contracts");
+    // #588: no generated grammar precedes a live or demo run; an operator's own GBNF is a file path.
+    assert.equal(pkg.scripts["build:rail"], undefined, "no rail build survives the GBNF discard");
     for (const name of ["pretest:live", "pretest:live:specimen", "pretest:demo", "pretest:demo:zeropin"]) {
-        assert.equal(pkg.scripts[name], "npm run build:rail", `${name} regenerates the model rail before use`);
+        assert.equal(pkg.scripts[name], undefined, `${name} has nothing to regenerate`);
     }
     assert.ok(live.args.includes("--env-file-if-exists=.env.test"));
     assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md");

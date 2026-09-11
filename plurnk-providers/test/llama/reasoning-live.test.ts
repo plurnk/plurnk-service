@@ -57,7 +57,7 @@ test("llama-server honors PLURNK's request-scoped reasoning allowance", async ()
     assert.ok((timings!.predicted_n as number) < generationEnvelope, "reasoning ran to the generation envelope");
 });
 
-// {§gbnf-response-observation} — the live adapter must preserve the raw sentence
+// {§provider-grammar-evidence} — the live adapter must preserve the raw sentence
 // before separating reasoning and content itself.
 test("llama-server returns exact pre-projection grammar evidence", async () => {
     const prefix = envelope("verify");

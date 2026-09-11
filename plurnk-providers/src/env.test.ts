@@ -211,6 +211,7 @@ test("every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async (
     const missing = PROVIDERS_KNOBS.filter((k) => !defaults.includes(k));
     assert.deepEqual([...missing], [], "knobs read by code but undeclared in .env.defaults");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
+    assert.equal(defaults.includes("PLURNK_PROVIDERS_GBNF_DEBUG"), false, "the debug knob is gone with the generator (#588)");
 });
 
 // The family word is REASONING (industry standard). Old names fail hard

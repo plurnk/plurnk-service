@@ -28,9 +28,8 @@ const contentResponse = (content: string): MockResponse => ({
 // next packet drains the notices buffer on read.
 const drainTurn = contentResponse("```SEND\ndrained\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 
-// A provider transport anomaly notice. Grammar verdicts are engine-owned under
-// {§rail-truth-engine-verdict}; the provider notice path remains for observations
-// such as a decode escaping into a discarded channel.
+// A provider transport anomaly notice: the provider notice path carries observations
+// such as a decode escaping into a discarded channel ({§operator-grammar} grades nothing).
 // `extraDrains` clean turns follow so the buffer can be observed draining.
 const NOTICE_CONTENT = "\n```SEND\nnoted\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
 const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("```SEND") + 3)).length;

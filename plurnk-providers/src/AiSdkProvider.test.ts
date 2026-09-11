@@ -1566,7 +1566,7 @@ test("sampling passthrough guards contract invariants: n/tools/caps stripped, pl
     assert.equal(body.service_tier, "flex");
 });
 
-test("template reasoning returns the exact pre-projection grammar sentence ({§gbnf-response-observation})", async () => {
+test("template reasoning returns the exact pre-projection grammar sentence ({§provider-grammar-evidence})", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: grammarInput } }] }]);
@@ -1774,7 +1774,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     assert.equal("response_format" in body, false);
 });
 
-// — exact pre-projection grammar evidence ({§gbnf-response-observation}) —
+// — exact pre-projection grammar evidence ({§provider-grammar-evidence}) —
 
 const grammarProvider = () => testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
@@ -1826,39 +1826,24 @@ test("provider evidence does not depend on the local validator understanding the
     assert.equal(res.notices, undefined);
 });
 
-// — PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar, withhold it, and preserve the observation —
+// — {§provider-grammar-transport}: the operator's grammar rides a llama-style route verbatim, never another —
 
-test("gbnfDebug marks an unconstrained observation as not transported", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
-    const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    const body = JSON.parse(calls[0].init.body as string);
-    assert.equal("grammar" in body, false);
-    assert.equal(body.repeat_penalty, 1.15);
-    assert.equal(res.assistant.content, "ok");
-    assert.deepEqual(res.grammarEvidence, { input: "ok", contentStart: 0, transported: false });
-    assert.equal(res.notices, undefined);
-});
-
-test("gbnfDebug preserves conflicting bytes without a provider verdict", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
-    const calls = installFetch([{ choices: [{ delta: { content: "xon-conforming output" }, finish_reason: "stop" }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    assert.equal(res.assistant.content, "xon-conforming output");
-    assert.deepEqual(res.grammarEvidence, { input: "xon-conforming output", contentStart: 0, transported: false });
-    assert.equal(res.notices, undefined);
-    const body = JSON.parse(calls[0].init.body as string);
-    assert.equal("grammar" in body, false);
-});
-
-test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await assert.rejects(
-        () => p.generate({ workerId: "r", messages: [], grammar: 'foo ::= "a"' }), // no `root` rule → invalid GBNF
-        /grammar validation \(PLURNK_PROVIDERS_GBNF_DEBUG\): invalid GBNF/,
-    );
-    assert.equal(calls.length, 0); // fail-hard before the fetch — grammar never transported
+test("an operator grammar reaches the request body verbatim under llama style and is absent under every other style", async () => {
+    const grammar = 'root ::= "ok" | "fine"\n# an operator-written rail\n';
+    const styles = ["none", "llamacpp"] as const;
+    for (const grammarStyle of styles) {
+        const calls = installFetchJson({ ...jsonChoice, choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] });
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, grammarStyle });
+        const res = await p.generate({ workerId: "r", messages: [], grammar });
+        const body = JSON.parse(String(calls[0]!.init.body)) as { grammar?: unknown };
+        if (grammarStyle === "llamacpp") {
+            assert.equal(body.grammar, grammar, "the file's text, byte for byte");
+            assert.deepEqual(res.grammarEvidence, { input: "ok", contentStart: 0, transported: true });
+        } else {
+            assert.equal("grammar" in body, false, "no grammar field on a route without transport");
+            assert.equal(res.grammarEvidence, undefined);
+        }
+    }
 });
 
 // — meta bag: verbatim provider metadata —

@@ -184,12 +184,12 @@ export default class DigestRender {
             ? " cost=unavailable"
             : ` cost=$${accounting.costUsd}`;
         const finishReason = turn.finish_reason ?? "—";
-        // Render only observed constraint metadata; absence makes no claim
-        // about endpoint-owned settings. {§rail-truth-engine-verdict}
-        const tm = DigestRender.parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean | string; railsVerdict?: string } | null;
+        // Render only observed transport metadata; absence makes no claim
+        // about endpoint-owned settings. {§operator-grammar}
+        const tm = DigestRender.parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean | string } | null;
         const attached = tm?.railsAttached;
         const rails = attached === undefined || attached === false ? ""
-            : ` rails=${attached === true ? "client" : attached}:${tm?.railsVerdict ?? "attached"}`;
+            : ` rails=${attached === true ? "client" : attached}`;
         const model = turn.model ?? "—";
         const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
             .filter((le) => le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le)).length;
@@ -529,7 +529,7 @@ export default class DigestRender {
                 attachments: t.packet === null ? null : t.packet.attachments ?? [],
                 packet_failure: t.packetFailure,
                 // Preserve the opaque provider and engine metadata for aggregate
-                // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
+                // tooling. {§meta-passthrough}, {§operator-grammar}
                 meta: DigestRender.parseJson(t.meta ?? "null", null),
             })),
             inference_calls: m.inferenceCalls.map((call) => ({

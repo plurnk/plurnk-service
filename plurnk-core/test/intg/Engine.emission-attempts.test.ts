@@ -625,7 +625,7 @@ test("{§plan-slotless}: a malformed continuation heading preserves siblings wit
     }
 });
 
-test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
+test("a syntactically legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const malformed = "\n```FIND (worker:///x)\n$fC\n```\n\n```TASK\n[{\"content\":\"inspect the results next\",\"status\":\"in_progress\"}]\n```";

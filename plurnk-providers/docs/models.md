@@ -54,8 +54,8 @@ flowchart TD
 PLURNK_MODEL_local=openai/model-name-from-endpoint
 PLURNK_BASEURL_local=http://127.0.0.1:8080/v1
 PLURNK_MODEL=local
-# Optional llama-server rail matching the model's template:
-# PLURNK_PROVIDERS_GBNF_local=plurnk.qwen.gbnf
+# Optional: your own GBNF grammar, carried verbatim to this llama-server route:
+# PLURNK_PROVIDERS_GBNF_local=~/.config/plurnk/local.gbnf
 # Optional explicit generation allowances, in tokens:
 # PLURNK_PROVIDERS_OUTPUT_BUDGET_local=8192
 # PLURNK_PROVIDERS_REASONING_BUDGET_local=4096
@@ -63,10 +63,10 @@ PLURNK_MODEL=local
 
 Endpoint probing supplies served-model capacity and llama-server capabilities.
 Pin `PLURNK_PROVIDERS_LLAMA_SERVER_local=1` only for a known llama-server that
-cannot be fingerprinted reliably. GBNF is optional; parsing always applies.
-The Qwen and Gemma rails follow different reasoning templates, so select the
-matching profile (`plurnk.qwen.gbnf` or `plurnk.gemma.gbnf`), not one based on speed.
-A configured rail requires reasoning to be enabled.
+cannot be fingerprinted reliably. GBNF is optional and yours: the service ships
+no grammar profile and never validates or grades one; the file's text reaches
+the route verbatim, and configuring it on a route without grammar transport is
+an error. Parsing always applies.
 
 Sampling stays at endpoint defaults unless configured. Repetition penalties can
 fight exact source copying and grammar repetition. Measure local tuning; it is

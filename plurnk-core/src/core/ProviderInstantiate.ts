@@ -55,8 +55,7 @@ export default class ProviderInstantiate {
         env: NodeJS.ProcessEnv = process.env,
     ): void {
         if (ProviderInstantiate.hasConfigurationScope(provider, env)) return;
-        const scoped = Object.keys(env).some((key) => key.startsWith("PLURNK_PROVIDERS_GBNF_")
-            && key !== "PLURNK_PROVIDERS_GBNF_DEBUG");
+        const scoped = Object.keys(env).some((key) => key.startsWith("PLURNK_PROVIDERS_GBNF_"));
         if (scoped) {
             throw new Error("GBNF constraint: provider has no registered route and no active model route resolves, while route-scoped PLURNK_PROVIDERS_GBNF_* constraints are configured");
         }
@@ -196,30 +195,21 @@ export default class ProviderInstantiate {
         return provider;
     }
 
-    // A configured GBNF is an explicit local constrained-sampling contract. Admit
-    // only a provider configuration capable of carrying it. Actual enforcement is
-    // proven by each user-authorized generation; startup never generates tokens.
+    // A configured GBNF is an operator's explicit local constrained-sampling contract. Admit
+    // only a provider configuration capable of carrying it; the grammar's content is the
+    // operator's business and is never validated here ({§operator-grammar}, #588).
     static validateGrammarConfiguration(
         provider: Provider,
         env: NodeJS.ProcessEnv = process.env,
-        reasoningPolicy?: ReasoningPolicy,
     ): void {
         // {§grammar-configuration-admission}: resolve through the provider's registered alias,
         // with the active real alias; exact routes remain globally scoped
         // retained only for the boot-global fallback.
         ProviderInstantiate.assertGrammarConfigurationScope(provider, env);
         const alias = ProviderInstantiate.configurationAliasOf(provider, env);
-        const scoped = alias === undefined ? env : scopeEnvToAlias(env, alias, [
-            "PLURNK_PROVIDERS_GBNF",
-            "PLURNK_PROVIDERS_REASONING",
-        ]);
+        const scoped = alias === undefined ? env : scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF"]);
         const gbnf = scoped.PLURNK_PROVIDERS_GBNF;
-        if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
-        if ((reasoningPolicy ?? scoped.PLURNK_PROVIDERS_REASONING) === "off") {
-            throw new Error(
-                `PLURNK_PROVIDERS_GBNF=${gbnf} is invalid with reasoning policy off: the PLURNK GBNF requires adaptive or fixed reasoning ({§gbnf-requires-reasoning}).`,
-            );
-        }
+        if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // no grammar configured — nothing to verify
         if (provider.constrainsOutput !== true) {
             throw new Error(
                 `PLURNK_PROVIDERS_GBNF=${gbnf} configures local constrained sampling, but '${provider.model}' does not advertise GBNF transport. `

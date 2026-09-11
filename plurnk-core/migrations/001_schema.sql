@@ -450,8 +450,8 @@ CREATE TABLE IF NOT EXISTS turns (
     ),
     finish_reason    TEXT,
     model            TEXT                       CHECK (model IS NULL OR length(model) >= 1),
-    -- Opaque provider→client metadata plus engine rail keys; absent outside
-    -- recorded inference evidence. {§meta-passthrough}, {§rail-truth-engine-verdict}
+    -- Opaque provider→client metadata plus the grammar transport key; absent outside
+    -- recorded inference evidence. {§meta-passthrough}, {§operator-grammar}
     meta             TEXT                       CHECK (meta IS NULL OR json_valid(meta)),
     CHECK (completed_at IS NOT NULL OR status = 102),
     CHECK ((producer = 'model') = (kind = 'inference')),

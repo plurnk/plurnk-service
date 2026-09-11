@@ -1143,61 +1143,41 @@ it or reinterpret a malformed tag list.
 §provider-instantiation-alias-resolution Model alias parsing and provider construction live in
 [`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md).
 `src/core/ProviderInstantiate.ts` delegates to that owner and adds only
-service-side caching, per-loop selection, context-cap handling, and local GBNF
-verification. Cataloged providers use Models.dev metadata and official AI SDK
+service-side caching, per-loop selection, context-cap handling, and admission
+of an operator's grammar. Cataloged providers use Models.dev metadata and official AI SDK
 bindings; an operator declaration covers an uncataloged compatible endpoint;
 plugin discovery is the last protocol-extension seam. Cache identity includes
 the alias, wire route, and complete provider-knob projection; a registered
 preconstructed handle occupies that same identity and cannot shadow changed
 tuning.
 
-§grammar-configuration-admission **Optional local GBNF is admitted without model generation.**
+§grammar-configuration-admission **An operator's GBNF is admitted without model generation.**
 The ANTLR grammar always defines and validates the PLURNK language. Separately,
 an operator may configure global `PLURNK_PROVIDERS_GBNF` or
-`PLURNK_PROVIDERS_GBNF_<alias>` for a local
-llama-server. Startup requires the provider to advertise GBNF transport and a
-reasoning-compatible configuration, but daemon lifecycle grants no inference
+`PLURNK_PROVIDERS_GBNF_<alias>` for a local llama-server. Startup requires the
+provider to advertise GBNF transport, but daemon lifecycle grants no inference
 or spending authority and therefore generates no verification tokens. The
 setting is resolved globally for an exact route and per alias for a declared
-alias; it is unset by default. Configuring it on a cloud
-or endpoint-managed provider is an error, not a request for best-effort
-filtering. Every user-authorized constrained generation proves transport through
-its exact pre-projection evidence ({§rail-truth-engine-verdict}). Alias-scoped
-`PLURNK_PROVIDERS_GBNF_DEBUG` is the explicit exception: it deliberately
-withholds transport while retaining local grammar validation and the engine's
-withheld-rail verdict. Runtime injection uses the provider's registered alias,
-falling back only to a real process-active alias; an alias-free route uses the
-global setting and ignores unrelated suffixes. A configured package variant or
-explicit path that cannot be loaded also fails; it never silently becomes
-unconstrained.
+alias; it is unset by default. Configuring it on a cloud or endpoint-managed
+provider is an error, not a request for best-effort filtering. Runtime
+injection uses the provider's registered alias, falling back only to a real
+process-active alias; an alias-free route uses the global setting and ignores
+unrelated suffixes.
 
-§grammar-rail-registration **Rail variants are built-in names or import
-specifiers.** A bare variant (no `/`, no `:`) resolves as a built-in rail
-subpath under `@plurnk/plurnk-contracts`. Any other variant form is an import
-specifier — an absolute or relative operator file path, or a package export
-subpath (e.g. `@acme/plurnk-rails/custom.gbnf`) — resolved through the Node
-resolution chain, so a third-party rail package plugs in with no built-in
-registry. An unresolvable or unreadable rail fails the constrained generation
-loudly; it never silently becomes unconstrained.
-
-§gbnf-requires-reasoning Both shipped PLURNK rails require reasoning. The same alias-scoped configuration
-must resolve reasoning to `adaptive` or a supported fixed effort; `off` with GBNF is rejected before
-the probe or any model generation. Reasoning-off remains valid when no GBNF rail
-is configured.
-
-§rail-truth-engine-verdict **Local constraint truth is independently observed.**
-For a configured local GBNF, the provider returns the pre-projection sentence as
-`grammarEvidence` under `plurnk-providers` {§gbnf-response-observation}. The engine
-requires that evidence, independently validates `grammarEvidence.input` with the
-artifact's declared response root, and requires `transported: true` unless the
-operator explicitly enabled debug mode. It stamps `railsAttached: "client"`
-when transported or `"withheld"` in debug mode plus `railsVerdict`; it never validates projected
-`assistant.content` as though the required reasoning enclosure were still
-present. A non-accept verdict emits one `grammar_unenforced` notice. A raw
-position at or after `contentStart` is translated to a content offset; a failure
-inside the projected reasoning prefix has no false content pointer. With no
-local GBNF, core adds no rail state and makes no claim about endpoint-owned
-settings.
+§operator-grammar **The grammar is the operator's; the service supports it and
+does nothing with it (#588).** `PLURNK_PROVIDERS_GBNF[_<alias>]` is a file
+path — absolute, `~`-relative, or relative to the daemon's working directory —
+whose text is read once per daemon and handed to the provider verbatim
+({§provider-grammar-transport}). The service ships no grammar profile: a bare
+name with no path separator is refused with an error that says so, and an
+unreadable file fails the constrained generation loudly; neither ever silently
+becomes unconstrained. Nothing generates, validates, or grades a grammar, and
+no reasoning policy is implied by one. The turn records transport as evidence:
+`railsAttached: "client"` when the provider reports it sent the grammar, or
+`"withheld"` when it reports it did not ({§provider-grammar-evidence}); there
+is no verdict key and no notice about conformance, because the parser's
+admission is the one verdict a response gets. With no grammar configured, core
+adds no grammar state at all.
 
 ```dotenv
 PLURNK_MODEL_gemma=openai/macher.gguf

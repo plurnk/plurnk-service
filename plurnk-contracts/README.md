@@ -23,12 +23,12 @@ Requires Node.js 26 or newer.
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
-| Optional local-model rails      | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf`  |
 
 JSON Schema owns shared wire shapes, generated TypeScript projects those
-shapes, ANTLR owns accepted model-language syntax, and GBNF is a bounded
-generation aid. See SPEC {§contract-representations} and
-{§gbnf-rail-purpose}.
+shapes, and ANTLR owns accepted model-language syntax. See SPEC
+{§contract-representations}. An operator who wants constrained sampling on a
+llama-server route writes their own GBNF and points `PLURNK_PROVIDERS_GBNF` at
+it; this package ships no grammar profile.
 
 ## Parser
 
@@ -89,23 +89,6 @@ plurnk-contracts --help    show usage
 The CLI prints the parse result as JSON and exits `0` for a clean parse or `1`
 when the result contains an error or unparsed tail.
 
-## Optional GBNF artifact
-
-```ts
-const railUrl = import.meta.resolve(
-    "@plurnk/plurnk-contracts/plurnk.qwen.gbnf",
-);
-```
-
-Choose `gemma` when the model generates its complete
-`<|channel>thought … <channel|>` enclosure, or `qwen` when the chat template
-supplies `<think>\n` before sampled token zero. The latter artifact is named
-`qwen` because that prefill is Qwen's template protocol, not a general property
-of think tags. Both constrain the same PLURNK
-turn after reasoning. They are not second parsers and do not guarantee
-semantically valid output. See SPEC {§gbnf-turn-shape} and
-{§gbnf-reasoning-boundary}.
-
 ## Development
 
 ```sh
@@ -114,9 +97,9 @@ npm test
 npm run test:installation
 ```
 
-Generated parser, schema-type, distribution, and GBNF artifacts are rebuilt by
-`npm run build`. Change their grammar, schema, or generator owner rather than
-editing generated output directly.
+Generated parser, schema-type, and distribution artifacts are rebuilt by
+`npm run build`. Change their grammar or schema owner rather than editing
+generated output directly.
 
 ## License
 

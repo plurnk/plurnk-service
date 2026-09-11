@@ -85,7 +85,6 @@
         "@ai-sdk/togetherai": "^3.0.0",
         "@ai-sdk/xai": "^4.0.0",
         "@openrouter/ai-sdk-provider": "^3.0.0",
-        "@plurnk/gbnf": "1.16.5",
         "@plurnk/plurnk-aliases": "1.16.5",
         "@plurnk/plurnk-contracts": "1.16.5",
         "@plurnk/plurnk-meta": "1.16.5",

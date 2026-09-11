@@ -170,7 +170,7 @@ test("an exact-route handle never inherits the daemon default alias's configurat
     const env = {
         PLURNK_MODEL: "defaultbox",
         PLURNK_MODEL_defaultbox: "openai/local-model",
-        PLURNK_PROVIDERS_GBNF_defaultbox: "plurnk.qwen.gbnf",
+        PLURNK_PROVIDERS_GBNF_defaultbox: "/operator/rails/defaultbox.gbnf",
     };
 
     assert.equal(ProviderInstantiate.aliasOf(provider), undefined);
@@ -185,7 +185,7 @@ test("route-scoped GBNF cannot bind to a provider with no route identity", () =>
     const provider = new Mock({ contextWindow: 32_000, responses: [] });
     assert.throws(
         () => ProviderInstantiate.validateGrammarConfiguration(provider, {
-            PLURNK_PROVIDERS_GBNF_somewhere: "plurnk.qwen.gbnf",
+            PLURNK_PROVIDERS_GBNF_somewhere: "/operator/rails/somewhere.gbnf",
         }),
         /provider has no registered route and no active model route resolves/,
     );

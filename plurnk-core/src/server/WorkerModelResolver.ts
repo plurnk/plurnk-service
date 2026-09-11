@@ -174,11 +174,7 @@ export default class WorkerModelResolver {
                 process.env,
                 reasoningPolicy,
             );
-            ProviderInstantiate.validateGrammarConfiguration(
-                provider,
-                process.env,
-                reasoningPolicy,
-            );
+            ProviderInstantiate.validateGrammarConfiguration(provider, process.env);
             return provider;
         } catch (cause) {
             if (cause instanceof OperationFailureError) throw cause;

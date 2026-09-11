@@ -8,7 +8,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import * as SourceContracts from "../src/index.ts";
-import { buildModel, serializeGbnf } from "./generate-gbnf.ts";
 
 const run = promisify(execFile);
 // npm exports its config as npm_config_* into lifecycle children — when this smoke runs
@@ -60,18 +59,8 @@ try {
     if (Object.hasOwn(installedPackage.exports, "./grammar")) {
         throw new Error("installed package retains a second grammar code entrypoint");
     }
-    const railRoots = { gemma: "root-gemma", qwen: "root-qwen" } as const;
-    for (const [profile, root] of Object.entries(railRoots)) {
-        const artifact = `plurnk.${profile}.gbnf`;
-        if (installedPackage.exports[`./${artifact}`] !== `./dist/${artifact}`) {
-            throw new Error(`installed package does not export its generated ${profile} GBNF artifact`);
-        }
-        const generatedRail = serializeGbnf(buildModel(), root);
-        const localRail = await readFile(join(contractsDir, "dist", artifact), "utf8");
-        const shippedRail = await readFile(join(installedRoot, "dist", artifact), "utf8");
-        if (localRail !== generatedRail) throw new Error(`local dist/${artifact} diverges from its generator`);
-        if (shippedRail !== generatedRail) throw new Error(`shipped dist/${artifact} diverges from its generator`);
-        process.stdout.write(`[smoke] generated dist/${artifact} shipped intact (${shippedRail.length} bytes)\n`);
+    if (Object.keys(installedPackage.exports).some((entry) => entry.endsWith(".gbnf"))) {
+        throw new Error("installed package ships a bundled GBNF profile; grammars are operator files, never package exports");
     }
 
     await writeFile(join(tempDir, "consume.js"), `

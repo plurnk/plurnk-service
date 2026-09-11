@@ -3,7 +3,7 @@
 ## 1. Overview
 
 §contract-authority This package is the single authority for PLURNK's language, schemas, generated
-types, parser, model rail, and runtime-neutral wire envelopes. Its package root
+types, parser, and runtime-neutral wire envelopes. Its package root
 is the single code API for those contracts.
 
 | Surface                                                                         | Canonical export or artifact                        |
@@ -23,12 +23,12 @@ is the single code API for those contracts.
 | AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
-| Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
 | Model language reference                                                        | `plurnk.md` in the package                          |
 
 §contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
 generated from the schemas; ANTLR is authoritative for accepted model-language
-syntax; GBNF remains the bounded generation aid described in §1.2.
+syntax. No generation grammar is generated or shipped; an operator's own GBNF
+is carried verbatim to a llama-server route by the providers package.
 
 §agui-discovery-contract `AguiDiscovery` is the complete installed AG-UI+
 surface at one instant. `schemaVersion` identifies its discovery shape;
@@ -93,19 +93,17 @@ metadata retain their deliberate layouts.
 
 PLURNK uses one contract with deliberately different projections. A tolerant
 ingester accepting a spelling does not make that spelling canonical model
-teaching, and a generation rail admitting a sentence does not make its runtime
-semantics valid.
+teaching, and an operator's sampling grammar admitting a sentence does not
+make its runtime semantics valid.
 
 ```mermaid
 flowchart LR
     canon["Canonical model teaching<br/>plurnk.md"]
-    rail["Optional raw generation rail<br/>Gemma or Qwen template profile"]
     free["Other admitted input"]
     syntax["ANTLR lexer + parser<br/>syntax and document tier"]
     ast["AstBuilder<br/>typed, serializable AST"]
     runtime["Runtime owners<br/>stateful semantics and effects"]
-    canon --> rail
-    rail --> syntax
+    canon --> syntax
     canon --> free
     free --> syntax
     syntax --> ast
@@ -116,7 +114,6 @@ flowchart LR
 |--------------------------|-------------------------------------|---------------------------------------------------------------------------------|
 | Stable current law       | `SPEC.md`                           | Owns invariants and boundaries; forge issues retain history                     |
 | Canonical model teaching | `plurnk.md`                         | Teaches the lean spelling and operational model the model should emit           |
-| Constrained generation   | generated `plurnk.*.gbnf`           | Increases likely ANTLR compliance without reproducing all parser/runtime checks |
 | Accepted syntax          | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, operation fences, slot shape, and section boundaries    |
 | Typed admission          | `AstBuilder`                        | Produces JSON-serializable unions and validates deterministic body/path syntax  |
 | Shared wire data         | `schema/*.json`                     | Defines runtime-neutral data shapes projected into generated TypeScript         |
@@ -250,39 +247,6 @@ under {§whitespace-contract}. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a
 boundary-destroying failure makes later input undefined. Operation status codes
 and parse diagnostics are separate contracts.
-
-## 1.2 GBNF Generation Rail
-
-§gbnf-rail-purpose ANTLR and AstBuilder own accepted syntax and admission.
-Generated `dist/plurnk.{gemma,qwen}.gbnf` are bounded sampling aids, not
-another parser or a semantic guarantee. The complete build generates both;
-they are not source-controlled. Source and differential tests exercise the
-generator, and packed-artifact coverage verifies its exports.
-
-§gbnf-turn-shape Both profiles shape zero or more ordinary operation blocks
-and one TASK block ending the turn. Inventory-only turns are valid.
-The rail uses matching three-, four-, or five-backtick
-fences; ANTLR also admits longer matching fences. There is no
-turn-wide delimiter, heading lane, or outer program wrapper.
-
-§gbnf-reasoning-boundary Sampling constraints begin at token zero. Gemma emits
-a nonempty `<|channel>thought\n … <channel|>` reasoning enclosure. Qwen's
-template supplies `<think>\n`; its sampled root emits nonempty reasoning and
-`</think>`. Each artifact declares an `@plurnk-response-root`, which restores
-any template prefix when checking complete provider evidence. The projected
-content alone is not checked as though it still included reasoning.
-
-§rail-heading-boundaries Content bodies are opaque to the rail, including
-internal backticks, OP names, and Markdown headings. One-line matchers reserve
-their closing fence sequence. Bodyless operations admit inline and empty
-multiline blocks; blank lines may separate blocks. Opaque content can span
-what ANTLR recognizes as multiple blocks: the rail's derivation does not prove
-the accepted fence partition or final TASK position. ANTLR alone enforces
-{§fence-boundary} and {§disposition-ends-turn}.
-
-§gbnf-kill-shaping KILL has a required target, optional numeric or anchored
-text scope, and optional one-line matcher. The rail does not prove that a target
-or selection exists.
 
 ## §canonical-statement 2. Canonical statement form
 
@@ -714,12 +678,9 @@ implementation. A matcher admission error is local to its statement; later
 statements remain recoverable when their boundaries are trustworthy.
 
 - §pattern-body-single-line Every matcher body is one physical line. AstBuilder
-  rejects multiline bodies before dialect classification, while GBNF excludes
-  line terminators. A regex that matches a newline uses the two-character `\n`
-  escape. Non-matcher operation bodies remain multiline.
-- §pattern-body-leading-colon The GBNF rail forbids `:` as the first matcher
-  character. Empty matchers and later colons remain valid; a regex such as
-  `/^:needle/` expresses a pattern beginning with a literal colon.
+  rejects multiline bodies before dialect classification. A regex that matches
+  a newline uses the two-character `\n` escape. Non-matcher operation bodies
+  remain multiline.
 
 ## §scope-slot 7. Scope markers
 
@@ -825,8 +786,7 @@ disposition. The shape rules ARE structural:
   A turn admits at most one TASK, and when present it ends the
   turn ({§disposition-ends-turn}): ordinary operations precede it, and the
   runtime executes it last. A second disposition is a structural
-  error, not a choice between competing outcomes. GBNF shapes this order
-  without enforcing body-internal boundaries ({§rail-heading-boundaries}).
+  error, not a choice between competing outcomes.
 - §disposition-ends-turn The disposition operation and its body end a model turn.
   `PlurnkParser.parse` admits no statement after them: trailing statements are
   recognized as operations, dropped, never executed, and reported as one hard
@@ -841,12 +801,10 @@ disposition. The shape rules ARE structural:
   disposition ({§turn-shape}). Concatenated saved programs use
   the same disposition boundary.
 - SEND is communication: an optional recipient path and an optional body.
-- §terminal-body-nonempty The GBNF rail requires a nonempty sampled TASK body,
-  not a valid or nonempty parsed inventory. ANTLR remains tolerant during ingestion.
 - §park-202-only TASK wait intent applies `<T>` (wait up to T minutes),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
-  (indefinite; the join's own liveness bounds it). See §7 for the
-  GBNF-strict / ANTLR-tolerant split. Other intents leave timing unapplied
+  (indefinite; the join's own liveness bounds it). See §7 for the scope
+  slot's shape. Other intents leave timing unapplied
   with a factual warning; timing does not override the inventory's intent.
 - §inventory-only-turn A TASK-only turn is valid for every inventory intent.
   Actionable work does not require an invented OP and does not imply parking.

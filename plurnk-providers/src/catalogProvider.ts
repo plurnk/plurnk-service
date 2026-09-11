@@ -411,9 +411,6 @@ export const providerFromSdkModel = ({
         estimateCost,
         source: providerSource(name),
         ...(grammarStyle === undefined ? {} : { grammarStyle }),
-        gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
-            && env.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
-            && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "0",
         ...dataCaptureFromEnv(env, name),
     });
 };

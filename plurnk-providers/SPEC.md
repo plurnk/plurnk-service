@@ -509,12 +509,12 @@ A provider plugin:
 §provider-grammar-transport A plugin whose backend accepts a llama.cpp-style
 GBNF grammar may declare `plurnk.grammarStyle: "llamacpp"` beside its kind and
 name; the discovery records it and the adapted Provider carries the capability,
-so an operator-configured rail ({§grammar-rail-registration}) rides the wire
-exactly as on a probed llama-server. Absence or `"none"` keeps the grammar off
-the wire; any other value fails discovery loudly. The declaration is the
-plugin author's fact about their backend — a wrong declaration fails at the
-rail-truth boundary ({§rail-truth-engine-verdict}), never by degrading
-admission.
+so an operator's grammar file ({§operator-grammar}) rides the wire exactly as
+on a probed llama-server. Absence or `"none"` keeps the grammar off the wire;
+any other value fails discovery loudly. The declaration is the plugin author's
+fact about their backend; the transport evidence on each response
+({§provider-grammar-evidence}) is where a wrong declaration shows, never by
+degrading admission.
 
 PLURNK adapts the returned language model. The plugin does not implement the
 PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
@@ -736,37 +736,21 @@ completed exchange.
 ## §10 Grammar
 
 GBNF is a local llama-server capability, not a generic provider expectation.
-The consumer chooses whether to supply a grammar. The provider never creates or
-rewrites one.
+The consumer chooses whether to supply a grammar and reads it from the
+operator's own file; the provider never creates, ships, rewrites, validates, or
+grades one (#588). Transport is `{§provider-grammar-transport}`.
 
-GBNF defines the accepted sampled text; it runs before response reasoning is
-separated from regular content. A generated rail may declare a response root
-that composes a template-provided prefix for independent evidence grading. The shipped PLURNK sentence is owned by
-`plurnk-contracts` {§gbnf-turn-shape} and {§gbnf-reasoning-boundary}; this package does
-not restate or rewrite it.
-
-When a grammar-capable adapter receives a grammar, `ProviderResponse` carries
-`grammarEvidence: { input, contentStart, transported }`. `input` is the exact
-pre-projection sentence represented by the response, `contentStart` is its
-Unicode-code-point offset to `assistant.content`, and `transported` says whether
-the grammar was actually sent. Active llama-server template reasoning requests
-the unprojected sentence, records it, and then separates its leading enclosure;
-an empty body therefore remains observable. An endpoint that projects despite
-that request supplies no independent evidence. For an unsplit response, `input`
-is `content` and `contentStart` is zero.
-
-§gbnf-forced-march A grammar masks end-of-generation until its sentence completes.
-Divergence between the model's intended boundaries and the grammar's state can
-prolong generation until a token or time limit, even after the model has found
-the answer. Compare the same provider inputs with the grammar withheld before
-attributing this to model capability or prescribing more teaching. Constrained
-sampling is optional; its value is measured against unconstrained generation
-with the same accepted-language parser and recovery.
-
-§gbnf-response-observation The provider transports and represents; it does not grade its own enforcement.
-The consumer validates `grammarEvidence.input` outside the enforcer's failure
-domain. `PLURNK_PROVIDERS_GBNF_DEBUG` still validates grammar syntax before the
-call and sets `transported: false` for the unconstrained comparison.
+§provider-grammar-evidence When a grammar-capable adapter receives a grammar,
+`ProviderResponse` carries `grammarEvidence: { input, contentStart, transported }`.
+`input` is the exact pre-projection sentence represented by the response,
+`contentStart` is its Unicode-code-point offset to `assistant.content`, and
+`transported` says whether the grammar was actually sent. Active llama-server
+template reasoning requests the unprojected sentence, records it, and then
+separates its leading enclosure; an empty body therefore remains observable. An
+endpoint that projects despite that request supplies no independent evidence.
+For an unsplit response, `input` is `content` and `contentStart` is zero. This
+is transport evidence so a digest can prove a run was constrained; nothing in
+the service issues a verdict on it.
 
 ## §11 Evidence and metadata
 

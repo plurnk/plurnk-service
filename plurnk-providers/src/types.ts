@@ -187,10 +187,10 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly meanLogprob?: number;
 }
 
+// {§provider-grammar-transport} — transport evidence for an operator's grammar: the exact
+// pre-projection response, where the projected content starts within it, and whether the
+// grammar reached the wire. Evidence only; nothing grades it.
 export interface GrammarEvidence {
-    // Exact pre-projection response represented by the provider. A generated
-    // rail's response root composes any template prefix before @plurnk/gbnf
-    // grades it. Offsets are Unicode code points, matching validator verdicts.
     readonly input: string;
     readonly contentStart: number;
     readonly transported: boolean;
@@ -203,7 +203,7 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // failover that preceded this response. {§provider-request-accounting}
     readonly accounting: readonly ProviderRequestAccounting[];
     readonly capacity: ProviderRequestCapacity;
-    // {§gbnf-response-observation} — evidence only; the consumer owns the verdict.
+    // {§provider-grammar-transport} — transport evidence; present only when a grammar was configured.
     readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
     // response fields passed through verbatim. Monetary values carry their own
@@ -250,12 +250,10 @@ export interface Provider {
     // Optional package-authored folksonomy evaluated by the consumer immediately
     // before a provider emission attempt ({§plugin-attribution}).
     attributions?(context: PluginAttributionContext): PluginAttribution;
-    // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-contracts'
-    // plurnk.gemma.gbnf or plurnk.qwen.gbnf, possibly root-substituted by the consumer). Backends that
-    // support grammar-constrained sampling attach it verbatim; all others
-    // ignore it. The provider never chooses or modifies the grammar — whether
-    // to constrain and which root variant to send is consumer policy
-    // ({§gbnf-response-observation}).
+    // `grammar` is an optional GBNF string, the operator's own file read by the consumer.
+    // Backends that support grammar-constrained sampling attach it verbatim; all others
+    // ignore it. The provider never chooses or modifies the grammar
+    // ({§provider-grammar-transport}).
     //
     // `maxOutputTokens` may tighten the provider's configured total output
     // budget for this call. It includes visible output and hidden reasoning;

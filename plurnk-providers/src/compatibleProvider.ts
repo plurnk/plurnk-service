@@ -215,9 +215,6 @@ export const compatibleProviderFromEnv = async (
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
         source: providerSource(provider),
         grammarStyle,
-        gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
-            && env.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
-            && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "0",
         ...dataCaptureFromEnv(env, provider),
         firstPartyMetadata: provider === "plurnk",
         normalizeCost: provider === "plurnk" ? plurnkCostNormalizer : undefined,

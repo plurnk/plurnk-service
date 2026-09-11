@@ -125,7 +125,6 @@ export type AiSdkProviderConfig = {
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request.
     serviceTier?: string;
-    gbnfDebug?: boolean;                        // PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
@@ -296,7 +295,6 @@ export default class AiSdkProvider implements Provider {
     #systemCacheProviderOptions: AiSdkProviderOptions | undefined;
     #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
     #serviceTier: string | undefined;
-    #gbnfDebug: boolean;
     #streaming: boolean;
     #firstPartyMetadata: boolean;
     #supportsSlotPinning: boolean;
@@ -419,7 +417,6 @@ export default class AiSdkProvider implements Provider {
             throw new Error(`${this.#source}: reasoning response options conflict with cache-affinity option ${this.#cacheAffinity.provider}.${this.#cacheAffinity.name}`);
         }
         this.#serviceTier = config.serviceTier;
-        this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
@@ -626,11 +623,10 @@ export default class AiSdkProvider implements Provider {
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
 
-        // Grammar handling ({§gbnf-response-observation}). Debug validates the
-        // supplied grammar before the call but withholds it from the backend.
+        // Grammar transport ({§provider-grammar-transport}): an operator's grammar rides a
+        // llama-style route verbatim and is never sent on any other style.
         const wantGrammar = grammar !== undefined && this.#grammarStyle !== "none";
-        if (wantGrammar && this.#gbnfDebug) this.#requestBody.assertGrammarValid(grammar!);
-        const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
+        const sendGrammar = wantGrammar ? grammar : undefined;
         const preserveGrammarSentence = wantGrammar
             && this.#reasoningStyle === "template";
 

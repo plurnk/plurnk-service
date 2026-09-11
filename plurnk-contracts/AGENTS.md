@@ -5,15 +5,15 @@ language, generated AST and wire types, JSON Schemas, parser, model rail,
 runtime-neutral results/failures/notices, and universal text coordinates.
 
 - ANTLR defines accepted model-language syntax and produces diagnostics.
-- The generated GBNF artifact is a lean stochastic generation aid, not a
-  second parser or a guarantee of semantically valid model output.
+- No grammar profile is generated or shipped; an operator's own GBNF rides
+  `PLURNK_PROVIDERS_GBNF` to a llama-server route as verbatim text.
 - JSON Schemas are authoritative for shared wire shapes; TypeScript types are
   generated from them.
 - The package root is the one code API for parser, AST, schemas/types, and
   runtime-neutral wire contracts.
 - `plurnk.md` is the concise model-facing language reference.
-- Generated parser, type, and GBNF files are artifacts; change their owning
-  grammar, schema, or generator and prove regeneration identity.
+- Generated parser and type files are artifacts; change their owning grammar
+  or schema and prove regeneration identity.
 
 One fact has one owner. Do not recreate a grammar/contracts split through a
 second package, copied schema, compatibility facade, or consumer-local type.

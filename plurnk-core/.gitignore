@@ -154,7 +154,6 @@ test/digest/
 # Live-fire / provider scratch — not source (injected during local-model testing).
 scratch-*
 _fw-*
-*.gbnf
 scratch/
 
 # One-off forensic / analysis scripts — local-only, never a build step.
