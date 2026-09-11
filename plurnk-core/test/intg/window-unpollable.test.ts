@@ -27,7 +27,7 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const budget = packet.sections.find((s) => s.name === "budget");
         assert.ok(budget, "the budget section still ships");
-        assert.doesNotMatch(budget.content, /tokensActiveMax/, "no maximum — the window is unbounded, there is no percent to show");
+        assert.doesNotMatch(budget.content, /logTokensMax/, "no maximum — the window is unbounded, there is no percent to show");
     } finally { await db.close(); }
 });
 

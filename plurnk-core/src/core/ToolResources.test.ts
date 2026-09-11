@@ -172,7 +172,7 @@ test("{§functionality-model-projection} manager summaries advertise effective v
             })) },
         });
         const summary = resource!.content.split("## Summary\n\n")[1]!.split("\n")[0];
-        assert.equal(summary, `\`\`\`\`mcp (${verbs.join("|")}) <!-- Manage MCP servers -->\`\`\`\``);
+        assert.equal(summary, `\`\`\`\`mcp (${verbs.join("|")}) <!-- Manage MCP servers -->\\n\`\`\`\``);
     }
 });
 

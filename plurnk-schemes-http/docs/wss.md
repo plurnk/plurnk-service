@@ -34,7 +34,8 @@ EDIT and directed SEND share the same outbound-frame behavior. Both can follow
 the opening READ in one turn: operations execute in authored order. Only the
 turn's disposition operation is deferred until the other operations have run.
 
-````READ (wss://api.example.com/feed)````
+````READ (wss://api.example.com/feed)
+````
 
 ````EDIT (wss://api.example.com/feed)
 {"type":"subscribe","channel":"updates"}

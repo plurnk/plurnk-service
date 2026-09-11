@@ -13,7 +13,8 @@ words = %w[alpha beta alpha]
 puts JSON.generate(words.tally)
 ````
 
-````ruby (bin/migrate.rb) {args=["--check"]}````
+````ruby (bin/migrate.rb) {args=["--check"]}
+````
 
 `puts` and `print` stream to `#stdout`, `warn` to `#stderr`; an unrescued
 exception or `exit 1` closes with status 500 with the backtrace on stderr.

@@ -108,7 +108,7 @@ test("operations after a disposition are recognized, dropped and diagnosed once"
             const diagnostics = errors(parsed);
             assert.deepEqual(diagnostics.map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
             assert.equal(diagnostics[0].message, "`TASK` ended the turn; 3 operations after its body were not admitted (KILL ×1, READ ×1, SEND ×1). Other operations precede TASK.");
-            assert.equal(diagnostics[0].line, precedingRead ? 5 : 4);
+            assert.equal(diagnostics[0].line, precedingRead ? 6 : 4);
             assert.deepEqual(ops(parsed).map(({ op }) => op), [...(precedingRead ? ["READ"] : []), "TASK"]);
             const send = ops(parsed).at(-1);
             assert.ok(send !== undefined && TurnDisposition.is(send));

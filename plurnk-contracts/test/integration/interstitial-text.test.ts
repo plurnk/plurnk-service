@@ -74,8 +74,8 @@ test("{§turn-shape}: ignored text supplies neither an operation nor a task inve
     assert.equal(statements(empty).length, 0);
     assert.deepEqual(empty.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), [PlurnkParser.NO_VALID_OPERATION]);
     const missing = PlurnkParser.parse("Prelude.\n````READ (note.md)````\nEverything is completed.");
-    assert.deepEqual(statements(missing).map(({ op }) => op), ["READ", "TASK"]);
-    assert.deepEqual(missing.items.flatMap((item) => item.kind === "error" ? [item.error.code] : []), [PlurnkParser.MISSING_DISPOSITION]);
+    assert.deepEqual(statements(missing).map(({ op }) => op), ["READ"]);
+    assert.deepEqual(missing.items.filter((item) => item.kind === "error"), []);
 });
 
 test("{§disposition-ends-turn}: ignored prose cannot reopen the TASK boundary or hide duplicate TASK", () => {

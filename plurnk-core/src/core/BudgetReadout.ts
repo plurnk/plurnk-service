@@ -22,7 +22,7 @@ export default class BudgetReadout {
         // {§provider-flexed-allowance} (#482): the disclosed number stays the
         // configured floor; wire-level overflow tolerance is never advertised.
         const responseField = responseMax === null ? "" : `,"tokensResponseMax":${responseMax}`;
-        return `{"logTokensTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"tokensActiveMax":${ceiling}${responseField}}`;
+        return `{"logTokensTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"logTokensMax":${ceiling}${responseField}}`;
     }
 
     // {§tokenomics-render-weight-budget} — the width only expands, so the final

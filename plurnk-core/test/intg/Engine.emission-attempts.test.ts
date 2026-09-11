@@ -379,7 +379,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
     }
 });
 
-test("a valid operation without TASK is admitted once with one missing-inventory receipt and strike", async () => {
+test("{§turn-shape} a valid operation without TASK is admitted once without an omission receipt", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -396,25 +396,14 @@ test("a valid operation without TASK is admitted once with one missing-inventory
         });
 
         assert.equal(result.status, 102, "the missing inventory cannot imply completion");
-        assert.equal(result.emissionAttempts, 1, "recoverable framing does not spend another inference");
-        assert.equal(
-            result.outcomes.filter(({ status }) => status === 409).length,
-            1,
-            "TASK records the correction once, without an extra parser-error row",
-        );
+        assert.equal(result.emissionAttempts, 1, "valid framing does not spend another inference");
+        assert.deepEqual(result.outcomes, [{ op: "EDIT", status: 201, problemType: null }]);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({
             turn_id: result.turnId,
         });
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]?.accepted, 1);
-        const diagnostics = JSON.parse(attempts[0]?.parse_errors ?? "[]") as Array<{ line: number; column: number; message: string }>;
-        assert.deepEqual(
-            diagnostics.map(({ message }) => message),
-            [
-                "No tasks were supplied. Submit a nonempty TASK inventory.",
-            ],
-        );
-        assert.deepEqual(diagnostics.map(({ line, column }) => ({ line, column })), [{ line: 3, column: 3 }]);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
 
         const rows = await db.test_log_entries_by_turn.all<{
             op: string | null;
@@ -423,10 +412,10 @@ test("a valid operation without TASK is admitted once with one missing-inventory
         }>({ turn_id: result.turnId });
         assert.deepEqual(
             rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op),
-            ["EDIT", "TASK"],
-            "the effective admitted program and the exact framing diagnostic are durable",
+            ["EDIT"],
+            "only the authored operation is recorded",
         );
-        assert.equal(rows.filter(({ op, status_rx }) => op === "TASK" && status_rx === 409).length, 1);
+        assert.equal(rows.filter(({ status_rx }) => status_rx >= 400).length, 0);
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/proof.md",
             scheme: "worker",
@@ -439,7 +428,7 @@ test("a valid operation without TASK is admitted once with one missing-inventory
 });
 
 // {§turn-shape} {§parse-diagnostics}
-test("a literal nested TASK cannot conclude a turn; missing-inventory recovery reaches the next packet", async () => {
+test("a literal nested TASK remains data and the next packet receives only the authored operation's receipt", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = "````EDIT (worker:///example.md)\nExample for later:\n```READ (package.json)```\n```TASK\n[{\"content\":\"inspect\",\"status\":\"in_progress\"}]\n```\n````";
@@ -452,28 +441,23 @@ test("a literal nested TASK cannot conclude a turn; missing-inventory recovery r
             messages: [{ role: "user", content: "inspect" }],
         });
         assert.equal(first.status, 102);
-        assert.equal(first.emissionAttempts, 1, "a diagnostic wording change cannot reject the admitted EDIT");
+        assert.equal(first.emissionAttempts, 1, "literal examples cannot reject the admitted EDIT");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: first.turnId });
         assert.equal(attempts[0]?.accepted, 1);
-        assert.equal(JSON.parse(attempts[0]!.parse_errors)[0].code, "missing-turn-disposition");
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; rx: string }>({ turn_id: first.turnId });
         assert.equal(rows.some(({ op }) => op === "READ"), false, "shorter nested fences remain literal data");
-        const errors = rows.filter(({ op }) => op === "TASK");
-        assert.equal(errors.length, 1);
-        const problem = JSON.parse(errors[0]!.rx).problem;
-        assert.equal(problem.detail, "No tasks were supplied. Submit a nonempty TASK inventory.");
-        assert.equal(problem.type, "https://problems.plurnk.xyz/engine/dispatcher/task-inventory-missing");
-        const diagnostic = JSON.parse(attempts[0]!.parse_errors)[0];
-        assert.deepEqual({ line: diagnostic.line, column: diagnostic.column }, { line: 7, column: 4 });
-        assert.equal(problem.siblingsRetained, undefined, "envelope recovery is classified structurally, not by error wording");
+        assert.equal(rows.some(({ op }) => op === "TASK"), false, "no real TASK was submitted");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);
         const second = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "inspect" }],
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
-        assert.match(log, /TASK/u, "the next model turn receives the applied inventory");
-        assert.match(log, /No tasks were supplied/u, "the recovery receipt explains the empty inventory");
+        assert.match(log, /example\.md/u, "the next model turn receives the EDIT receipt");
+        assert.doesNotMatch(log, /No tasks were supplied/u, "no omission feedback is injected");
     } finally {
         await db.close();
     }
@@ -1171,8 +1155,8 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid(PlurnkParser.frame("SEND", "First report without an inventory.")),
-                invalid(PlurnkParser.frame("SEND", "Second report without an inventory.")),
+                invalid(PlurnkParser.frame("TASK", "[]")),
+                invalid(PlurnkParser.frame("TASK", "[]")),
                 invalid(rejected), invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],

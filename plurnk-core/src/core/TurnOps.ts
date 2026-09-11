@@ -9,8 +9,8 @@ export type InternalTurnStatement = PlurnkStatement;
 // {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
-        if (statements.filter(TurnDisposition.is).length !== 1 || !TurnDisposition.isOp(statements.at(-1)?.op ?? "")) {
-            throw new TypeError("An internal turnOps program must end with exactly one disposition.");
+        if (statements.length === 0 || statements.some((statement, index) => TurnDisposition.is(statement) && index !== statements.length - 1)) {
+            throw new TypeError("An internal turnOps program must contain operations; TASK, when present, must be last.");
         }
         return PlurnkParser.stringify(statements);
     }
@@ -30,9 +30,6 @@ export default class TurnOps {
         if (parsed.unparsedTail !== undefined) failures.push(parsed.unparsedTail.reason);
         if (failures.length > 0) {
             throw new SyntaxError(`Core generated invalid turnOps: ${failures.join("; ")}`);
-        }
-        if (statements.filter(TurnDisposition.is).length !== 1 || !TurnDisposition.isOp(statements.at(-1)?.op ?? "")) {
-            throw new SyntaxError("Core generated turnOps without exactly one final disposition.");
         }
         return statements;
     }

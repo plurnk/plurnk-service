@@ -6,8 +6,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
-const turn = (operation: string, status = "in_progress") => ({
-    assistant: { content: `${operation}
+const turn = (operation: string, status: string | null = "in_progress") => ({
+    assistant: { content: status === null ? operation : `${operation}
 \`\`\`TASK
 [{"content":"Task progress.","status":"${status}"}]
 \`\`\``, reasoning: null },
@@ -58,7 +58,7 @@ class ObservedContent {
 }
 
 for (const changing of [false, true]) {
-    test(`{§engine-cycle-evidence} repeated reads with ${changing ? "changing" : "unchanged"} results`, async () => {
+    for (const status of ["in_progress", null]) test(`{§engine-cycle-evidence} repeated reads with ${changing ? "changing" : "unchanged"} results, TASK=${status ?? "omitted"}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `cycles-${crypto.randomUUID()}`);
@@ -69,7 +69,7 @@ for (const changing of [false, true]) {
             schemes.register("observed-content", source);
             const engine = new Engine({ db, schemes });
             const provider = new Mock({ contextWindow: 100000, responses: [
-                ...Array.from({ length: 6 }, () => turn("```READ (observed-content:///latest)```")),
+                ...Array.from({ length: 6 }, () => turn("```READ (observed-content:///latest)```", status)),
                 turn("", "completed"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });

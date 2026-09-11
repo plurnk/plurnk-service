@@ -38,10 +38,8 @@ test("{§op-shapes} former workflow labels are not native operations or aliases"
     }
     const parsed = PlurnkParser.parse(PlurnkParser.frame("READ (notes.md)", null));
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(statements.map(({ op }) => op), ["READ", "TASK"]);
-    const next = statements.at(-1);
-    assert.ok(next?.op === "TASK");
-    assert.deepEqual(next.body, []);
+    assert.deepEqual(statements.map(({ op }) => op), ["READ"]);
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
 });
 
 test("{§turn-disposition} TASK retains timing and SEND retains a message body", () => {

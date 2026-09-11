@@ -142,7 +142,7 @@ test("{§context-output-admission}: withholding native output does not deliver i
         const users = provider.received.map((messages) => messages.find(({ role }) => role === "user")!);
         assert.equal(typeof users[1]!.content, "string", "the overflow request carries no native part");
         assert.equal(typeof users[2]!.content, "string", "old omission cannot silently reattach the image");
-        assert.match(String(users[1]!.content), /output lines not shown; logTokensTotal exceeds tokensActiveMax/u);
+        assert.match(String(users[1]!.content), /output lines not shown; logTokensTotal exceeds logTokensMax/u);
         assert.match(String(users[1]!.content), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
         const renewed = users[3]!.content;
         assert.ok(Array.isArray(renewed));

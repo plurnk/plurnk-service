@@ -104,10 +104,10 @@ test("context token budget carries a populated active-total/maximum state", asyn
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const state = JSON.parse(budget) as { logTokensTotal: number; tokensActiveMax: number; tokensResponseMax: number };
-        assert.deepEqual(Object.keys(state), ["logTokensTotal", "tokensActiveMax", "tokensResponseMax"], `context token budget carries active total and maximum; got: ${budget}`);
+        const state = JSON.parse(budget) as { logTokensTotal: number; logTokensMax: number; tokensResponseMax: number };
+        assert.deepEqual(Object.keys(state), ["logTokensTotal", "logTokensMax", "tokensResponseMax"], `context token budget carries active total and maximum; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing budget is one JSON line");
-        const usage = state.logTokensTotal; const ceiling = state.tokensActiveMax;
+        const usage = state.logTokensTotal; const ceiling = state.logTokensMax;
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
         assert.ok(usage < ceiling, "the admitted packet stays below the displayed maximum");
@@ -161,10 +161,10 @@ test("context token budget carries active total and maximum without a percent", 
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const state = JSON.parse(budget) as { logTokensTotal: number; tokensActiveMax: number };
+        const state = JSON.parse(budget) as { logTokensTotal: number; logTokensMax: number };
         assert.ok(Number.isSafeInteger(state.logTokensTotal) && state.logTokensTotal > 0, "active total is a populated integer");
-        assert.ok(Number.isSafeInteger(state.tokensActiveMax) && state.tokensActiveMax > 0, "maximum is a populated integer");
-        assert.ok(state.logTokensTotal < state.tokensActiveMax, "the admitted packet stays below the displayed maximum");
+        assert.ok(Number.isSafeInteger(state.logTokensMax) && state.logTokensMax > 0, "maximum is a populated integer");
+        assert.ok(state.logTokensTotal < state.logTokensMax, "the admitted packet stays below the displayed maximum");
         assert.doesNotMatch(budget, /%/u, "the readout carries no percent — total and maximum make it derivable");
     } finally { await db.close(); }
 });
@@ -246,7 +246,7 @@ test("{§tokenomics-calibrated-readout} three reported prompt counts convert the
             const m = packetSection(packet, "budget").match(/"logTokensTotal":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);
             shown.push(Number(m![1]));
-            ceilings.push(Number(packetSection(packet, "budget").match(/"tokensActiveMax":\s*(\d+)/)?.[1]));
+            ceilings.push(Number(packetSection(packet, "budget").match(/"logTokensMax":\s*(\d+)/)?.[1]));
             weights.push(packet.weight);
         }
         assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");

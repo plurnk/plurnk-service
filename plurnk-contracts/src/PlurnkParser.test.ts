@@ -2,12 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import PlurnkParser from "./PlurnkParser.ts";
 
-test("{§statement-rendering}: canonical executable frames use four ticks and preserve ordinary nested code", () => {
-    assert.equal(PlurnkParser.frame("READ (note.md)", null), "````READ (note.md)````");
+test("{§statement-rendering}: canonical frames close on their own line and preserve ordinary nested code", () => {
+    assert.equal(PlurnkParser.frame("READ (note.md)", null), "````READ (note.md)\n````");
     const body = "```json\n{\"ok\":true}\n```";
     assert.equal(PlurnkParser.frame("SEND", body), `\`\`\`\`SEND\n${body}\n\`\`\`\``);
     const nested = "````SEND\n" + body + "\n````";
     assert.equal(PlurnkParser.frame("EDIT (example.md)", nested), "`````EDIT (example.md)\n" + nested + "\n`````");
+});
+
+test("{§statement-rendering}: inline input remains legal but is never the canonical rendering", () => {
+    const parsed = PlurnkParser.parse("````READ (note.md) <1,-1> <!-- inspect note -->````");
+    assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
+    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.equal(statements.length, 1);
+    const rendered = PlurnkParser.stringify(statements);
+    assert.equal(rendered, "````READ (note.md) <1,-1> <!-- inspect note -->\n````");
+    const reparsed = PlurnkParser.parse(rendered);
+    assert.deepEqual(reparsed.items, parsed.items);
 });
 
 test("{§statement-rendering}: programs separate fenced operations without changing body whitespace", () => {

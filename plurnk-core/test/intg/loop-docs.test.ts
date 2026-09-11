@@ -216,8 +216,9 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
             pathname: "/_plurnk/plurnk/sh.md", scheme: "worker", name: "body",
         });
         assert.ok(doc, "the installed shell's documentation reaches the worker");
-        const examples = [...doc.content.matchAll(/^````READ[^\n]*````$/gm)];
-        const reads = examples.flatMap(([source]) => {
+        const examples = Lexer.lex(doc.content).flatMap((token) =>
+            token.type === "code" && token.lang?.startsWith("READ ") ? [token.raw] : []);
+        const reads = examples.flatMap((source) => {
             const parsed = PlurnkParser.parseStatements(source);
             assert.equal(parsed.unparsedTail, undefined, source);
             assert.equal(parsed.items.length, 1, source);

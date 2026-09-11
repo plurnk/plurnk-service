@@ -13,7 +13,8 @@ import json, sys
 print(json.dumps({"python": list(sys.version_info[:2])}))
 ````
 
-````python3 (tools/report.py) {args=["--help"]}````
+````python3 (tools/report.py) {args=["--help"]}
+````
 
 Each argument is a literal string, without shell expansion. `{cwd=<directory>}`
 selects the working directory; otherwise it remains the workspace root. The

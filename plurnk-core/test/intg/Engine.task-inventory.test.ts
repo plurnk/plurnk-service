@@ -18,7 +18,7 @@ for (const [name, first, detail, strikes] of [
     ["inventory-only continuation", task("in_progress"), null, 0],
     ["pending-only inventory", task("pending"), "Pending tasks remain. Review their dependencies.", 0],
     ["empty untimed wait", task("waiting"), "Nothing is in flight and no timed or polled wait is set. Continuing.", 0],
-    ["missing inventory", send("First message."), "No tasks were supplied. Submit a nonempty TASK inventory.", 1],
+    ["missing inventory", send("First message."), null, 0],
     ["empty inventory", "```TASK\n[]\n```", "No tasks were supplied. Submit a nonempty TASK inventory.", 1],
     ["blank inventory", "```TASK```", "No tasks were supplied. Submit a nonempty TASK inventory.", 1],
     ["non-waiting timing", task("in_progress", " <60>"), "Wait timing was not applied because no waiting intent was selected.", 0],
@@ -54,7 +54,8 @@ for (const [name, first, detail, strikes] of [
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
                 "the corrective fact actually reaches the next model packet");
         }
-        assert.equal(rows.filter(({ op }) => op === "TASK").length, 3, "initialization and both model turns retain their TASK rows");
+        assert.equal(rows.filter(({ op }) => op === "TASK").length, name === "missing inventory" ? 2 : 3,
+            "initialization and authored TASKs retain their rows; omission adds none");
     });
 }
 

@@ -56,9 +56,9 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
-    const state = JSON.parse(budget.split("\n\n")[0]!) as { logTokensTotal: number; tokensActiveMax: number };
+    const state = JSON.parse(budget.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };
     const usage = state.logTokensTotal;
-    const ceiling = state.tokensActiveMax;
+    const ceiling = state.logTokensMax;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
 // Two reference measurements on throwaway workers (deterministic FAT body), so the
@@ -146,7 +146,7 @@ test("the model-facing budget is one measured three-field state (#478)", async (
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["logTokensTotal", "tokensActiveMax", "tokensResponseMax"], "the active-total/maximum/response state stays, and only those three");
+        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["logTokensTotal", "logTokensMax", "tokensResponseMax"], "the active-total/maximum/response state stays, and only those three");
         assert.equal(budget.split("\n").length, 1, "one JSON line — no ranking or mandate follows the three fields");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }

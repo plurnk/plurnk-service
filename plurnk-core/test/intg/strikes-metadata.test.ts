@@ -27,8 +27,8 @@ class CapturingMock extends Mock {
 
 test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("```READ (worker:///absent)```", 10),
-        response("\n```FIND (worker:///x)\n$fC\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```", 10),
+        response("```READ (worker:///absent)```\n```TASK\n[]\n```", 10),
+        response("```READ (worker:///absent)```\n```FIND (worker:///x)\n$fC\n```", 10),
         response("\n```EDIT (worker:///note)\nr\n```\n\n```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```", 10),
         response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
@@ -38,7 +38,12 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
             await rpcCall(ws, 1, "workspace.create", { name: "strikes-meta" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 8 });
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
-            assert.deepEqual(mock.seen, [0, 1, 2, 0], "raw admitted turns carry 0 → missing inventory strike → bounded-parse strike → clean reset");
+            assert.deepEqual(mock.seen, [0, 1, 2, 0], "raw admitted turns carry 0 → explicit empty inventory strike → bounded-parse strike → clean reset");
+            const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
+            assert.equal(rows.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length, 1,
+                "the TASK-less turn retains its actual matcher failure");
+            assert.equal(rows.filter(({ op, status_rx }) => op === "TASK" && status_rx === 409).length, 1,
+                "only the explicitly empty inventory gets an inventory failure");
             // The model-facing packets never carry it ({§engine-rails}: no metric to game).
             for (const row of await db.test_all_packets.all<{ packet: string }>({})) {
                 const sections = (JSON.parse(row.packet) as { sections?: object[] }).sections ?? [];
@@ -48,22 +53,22 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
     });
 });
 
-test("an operation-bearing turn with omitted TASK is admitted, struck once, and continued", async () => {
+test("{§turn-shape} consecutive TASK-less turns continue silently and preserve their effects", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("```EDIT (worker:///proof.md)\nlanded\n```", 10),
+        ...Array.from({ length: 5 }, (_, index) => response(`\`\`\`EDIT (worker:///proof.md) <-1>\nlanded ${index + 1}\n\`\`\``, 10)),
         response("```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "recovered-envelope-strike" });
+            await rpcCall(ws, 1, "workspace.create", { name: "silent-continuation" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, {
                 prompt: "go",
-                maxTurns: 4,
+                maxTurns: 8,
                 policy: { proposals: "accept" },
             });
             assert.equal(finalStatus, 200);
-            assert.deepEqual(mock.seen, [0, 1], "missing inventory prices one admitted turn, not a retry");
+            assert.deepEqual(mock.seen, [0, 0, 0, 0, 0, 0], "omission neither strikes nor retries productive work");
             const ops = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             assert.equal(
                 ops.find(({ op }) => op === "EDIT")?.status_rx,
@@ -72,8 +77,16 @@ test("an operation-bearing turn with omitted TASK is admitted, struck once, and 
             );
             assert.equal(
                 ops.filter(({ op, status_rx }) => op === "TASK" && status_rx === 409).length,
-                1, "the missing inventory receives one exact receipt",
+                0, "no missing-inventory receipt is fabricated",
             );
+            assert.equal(ops.filter(({ op }) => op === "TASK").length, 1, "the model submitted only its explicit completion TASK");
+            const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+                pathname: "/proof.md", scheme: "worker", name: "body",
+            });
+            assert.equal(channel?.content.trimEnd(), "landed 1\nlanded 2\nlanded 3\nlanded 4\nlanded 5");
+            for (const row of await db.test_all_packets.all<{ packet: string }>({})) {
+                assert.doesNotMatch(row.packet, /No tasks were supplied|missing-turn-disposition|task-inventory-missing/);
+            }
         } finally { ws.close(); }
     });
 });

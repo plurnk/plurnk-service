@@ -1,6 +1,5 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
@@ -88,13 +87,13 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        // {§turn-shape} — one disposition concludes the admitted program.
+        // {§turn-shape} — continuation is the default; TASK is explicit intent.
         const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions[0];
-        if (dispositions.length !== 1 || finalOp === undefined) {
-            throw new Error("an admitted operation batch must contain exactly one disposition");
+        if (statements.length === 0 || dispositions.length > 1) {
+            throw new Error("an admitted operation batch must contain operations and at most one disposition");
         }
-        const dispositionSignal = TurnDisposition.status(finalOp);
+        const dispositionSignal = finalOp === undefined ? TURN_STATUS_IMPLICIT_CONTINUE : TurnDisposition.status(finalOp);
         let turnStatus: number = dispositionSignal;
         let steerStruck = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
@@ -126,8 +125,6 @@ export default class AdmittedTurnExecutor {
             if (parseErrorsRecorded) return;
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
-                // The synthesized TASK owns the single missing-inventory receipt.
-                if (error.code === PlurnkParser.MISSING_DISPOSITION) continue;
                 const recorded = await this.#problems.record({
                     workerId,
                     loopId,
@@ -157,24 +154,26 @@ export default class AdmittedTurnExecutor {
             }
         };
 
+        const settleTurn = async (): Promise<void> => {
+            await recordRecoverableParseErrors();
+            const execHandler = this.#schemes.get("exec") as {
+                settleTurnSpawns?: (
+                    workerId: number,
+                    turnId: number,
+                    timeoutMs: number,
+                    signal?: AbortSignal,
+                ) => Promise<boolean>;
+            } | undefined;
+            await execHandler?.settleTurnSpawns?.(
+                workerId,
+                turnId,
+                readOptimisticSettlementMs(),
+                signal,
+            );
+        };
+
         for (const [index, statement] of scheduled.entries()) {
-            if (statement === finalOp) {
-                await recordRecoverableParseErrors();
-                const execHandler = this.#schemes.get("exec") as {
-                    settleTurnSpawns?: (
-                        workerId: number,
-                        turnId: number,
-                        timeoutMs: number,
-                        signal?: AbortSignal,
-                    ) => Promise<boolean>;
-                } | undefined;
-                await execHandler?.settleTurnSpawns?.(
-                    workerId,
-                    turnId,
-                    readOptimisticSettlementMs(),
-                    signal,
-                );
-            }
+            if (statement === finalOp) await settleTurn();
             const result = await observed(
                 "op.dispatch",
                 { op: statement.op },
@@ -272,7 +271,7 @@ export default class AdmittedTurnExecutor {
                     ? TURN_STATUS_IMPLICIT_CONTINUE : result.status;
             }
         }
-        await recordRecoverableParseErrors();
+        if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         for (const kind of pendingEngineErrors) {
             const problem = ENGINE_PROBLEMS[kind];

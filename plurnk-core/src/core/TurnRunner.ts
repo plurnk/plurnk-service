@@ -254,7 +254,7 @@ export type AdmittedTurnResult = {
     readonly steerStruck: boolean;
 };
 
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: logTokensTotal exceeds tokensActiveMax; retained context cannot fit.";
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -1849,12 +1849,11 @@ export default class TurnRunner {
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
         const dispositions = ops.filter(TurnDisposition.is);
-        const finalOp = dispositions.length === 1 ? dispositions[0] : undefined;
-        const terminalSend = finalOp;
-        // {§turn-shape} — bounded operation errors before the disposition are recoverable, and
-        // the parser's own {§disposition-ends-turn} diagnostic (what followed the SEND was dropped)
+        const trustworthyBoundary = dispositions.length <= 1 && !hasUnparsedTail;
+        // {§turn-shape} — bounded operation errors are recoverable, and
+        // the parser's own {§disposition-ends-turn} diagnostic (what followed TASK was dropped)
         // rides with them; document-boundary failures still reject the program.
-        const recoverableParseErrors = terminalSend !== undefined && !hasUnparsedTail
+        const recoverableParseErrors = trustworthyBoundary
             ? parseErrors.filter(
                 (error) =>
                     error.code !== "invalid-turn-structure",
@@ -1862,9 +1861,8 @@ export default class TurnRunner {
             : [];
         const emissionValid = preParsedOps !== undefined
             || (
-                terminalSend !== undefined
+                trustworthyBoundary
                 && sourceStatementCount > 0
-                && !hasUnparsedTail
                 && recoverableParseErrors.length === parseErrors.length
             );
         const reasoning = assistant.reasoning ?? null;
@@ -1876,9 +1874,9 @@ export default class TurnRunner {
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             parseNotices,
             // The ANTLR model-turn parser is authoritative. At least one source
-            // operation lets an omitted TASK recover with an empty inventory; the
-            // exact defaults and bounded statement failures become durable
-            // operation results. Boundary loss and an unparsed tail still reject
+            // operation is required; TASK omission continues silently. Bounded
+            // statement failures become durable operation results.
+            // Boundary loss and an unparsed tail still reject
             // wholesale. Pre-parsed ops are Mock's trusted test seam.
             emissionValid,
         };

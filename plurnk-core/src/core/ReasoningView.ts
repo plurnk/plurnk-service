@@ -6,7 +6,7 @@ export default class ReasoningView {
     static initialSource(loopSequence: number, turnSequence: number): string {
         const example = PlurnkParser.frame(`READ (reasoning:///${loopSequence}/${turnSequence + 1}) <1,-1>`, null);
         return "This harness-generated turn surveys the workspace and available capabilities.\n"
-            + `In turn ${turnSequence + 1}, use ${example} to retain your reasoning in subsequent packets.`;
+            + `In turn ${turnSequence + 1}, retain your reasoning in subsequent packets with:\n\n${example}`;
     }
 
     static lines(provider: Provider): number {

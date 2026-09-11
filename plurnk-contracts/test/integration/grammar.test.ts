@@ -371,56 +371,51 @@ test("only a matching closing fence completes a section", () => {
     assert.ok(PlurnkParser.parseStatements("```EDIT (path").unparsedTail);
     assert.ok(PlurnkParser.parseStatements("```EDIT (p)\nbody").unparsedTail);
 });
-test("turn-shape diagnostics name the inventory contract", () => {
-    // {§turn-shape}
-    const planless = PlurnkParser.parse(section("READ", " (x)"));
-    const planlessErrors = planless.items.flatMap((item) => item.kind === "error" ? [item.error.code] : []);
-    assert.deepEqual(planlessErrors, [PlurnkParser.MISSING_DISPOSITION], "only the missing TASK inventory is diagnosed");
-
-    const missingSend = PlurnkParser.parse(section("EDIT", " (notes.md)", "inspect"));
-    const sendError = missingSend.items.find((item) => item.kind === "error");
-    assert.equal(sendError?.kind, "error");
-    if (sendError?.kind === "error") {
-        assert.equal(sendError.error.code, PlurnkParser.MISSING_DISPOSITION);
-    }
-});
-
-test("{§parse-diagnostics}: missing TASK is located at authored EOF and names parser recovery", () => {
-    for (const { source, line, column } of [
-        { source: "```sh\ncat <<'EOF'\nhello\nEOF\n```", line: 5, column: 3 },
-        { source: "\r\n```READ (notes.md)```", line: 2, column: 21 },
-        { source: "```EDIT (notes.md)\n🧪é\n```", line: 3, column: 3 },
-        { source: "```READ (notes.md<1,2>)```", line: 1, column: 26 },
+test("{§turn-shape}: TASK-less programs preserve authored positions without EOF diagnostics", () => {
+    for (const { source, line } of [
+        { source: "```sh\ncat <<'EOF'\nhello\nEOF\n```", line: 1 },
+        { source: "\r\n```READ (notes.md)```", line: 2 },
+        { source: "```EDIT (notes.md)\n🧪é\n```", line: 1 },
+        { source: "```READ (notes.md) <1,2>```", line: 1 },
     ]) {
         const result = PlurnkParser.parse(source);
-        const diagnostics = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []).filter((error) => error.code === PlurnkParser.MISSING_DISPOSITION);
-        assert.equal(diagnostics.length, 1, source);
-        assert.deepEqual({ line: diagnostics[0].line, column: diagnostics[0].column }, { line, column }, source);
-        assert.equal(diagnostics[0].message, "No tasks were supplied. Submit a nonempty TASK inventory.");
-        assert.equal(diagnostics[0].severity, "error");
-        const terminal = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []).at(-1);
-        assert.equal(terminal?.op, "TASK");
+        assert.deepEqual(result.items.map(({ kind }) => kind), ["statement"], source);
+        assert.equal(result.unparsedTail, undefined, source);
+        const statement = result.items[0];
+        assert.ok(statement.kind === "statement");
+        assert.deepEqual(statement.statement.position, { line, column: 0 }, source);
     }
 });
+test("{§turn-shape}: a TASK-less program retains an independent scope recovery warning", () => {
+    const result = PlurnkParser.parse("```READ (notes.md<1,2>)```");
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["READ"]);
+    assert.ok(statements[0].op === "READ");
+    assert.deepEqual(statements[0].lineMarker?.marks, [1, 2]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [{
+        severity: item.error.severity, message: item.error.message,
+    }] : []), [{
+        severity: "warning",
+        message: "The scope was inside the target slot; it was applied as the operation scope.",
+    }]);
+});
 // {§turn-shape} {§fence-boundary}
-test("terminal recovery leaves literal nested programs intact without annotation", () => {
+test("omitted TASK leaves literal nested programs intact", () => {
     const body = "```SEND\nquoted text\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
     const result = PlurnkParser.parse(sections(section("EDIT", " (quoted.md)", body)));
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "TASK"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["EDIT"]);
     assert.equal(statements[0]?.op === "EDIT" ? statements[0].body : null, body);
     const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0].error.code, PlurnkParser.MISSING_DISPOSITION);
-    assert.equal(errors[0].error.message, "No tasks were supplied. Submit a nonempty TASK inventory.");
+    assert.deepEqual(errors, []);
 });
 test("a disposition inside EDIT is data and does not conclude a turn", () => {
     const result = PlurnkParser.parse(section("EDIT", " (example.md)", "```TASK\n[{\"content\":\"inspect\",\"status\":\"in_progress\"}]\n```"));
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EDIT", "TASK"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EDIT"]);
     const errors = result.items.filter((item) => item.kind === "error");
-    assert.deepEqual(errors.map(({ error }) => error.code), [PlurnkParser.MISSING_DISPOSITION]);
+    assert.deepEqual(errors, []);
 });
-test("model turns recover a missing TASK; a turn without SEND stands as written", () => {
+test("model turns without TASK or SEND stand as written", () => {
     const planless = PlurnkParser.parse(sections(
         section("READ", " (worker:///notes.md)"),
         section("TASK", "", inventory("continue")),
@@ -437,16 +432,8 @@ test("model turns recover a missing TASK; a turn without SEND stands as written"
     assert.equal(missingTask.unparsedTail, undefined);
     const missingTaskStatements = missingTask.items.flatMap((item) =>
         item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(missingTaskStatements.map(({ op }) => op), ["READ", "TASK"]);
-    const recoveredTask = missingTaskStatements.at(-1);
-    assert.equal(recoveredTask?.op, "TASK");
-    if (recoveredTask?.op === "TASK") {
-        assert.deepEqual(recoveredTask.body, []);
-    }
-    assert.match(
-        missingTask.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
-        /No tasks were supplied/u,
-    );
+    assert.deepEqual(missingTaskStatements.map(({ op }) => op), ["READ"]);
+    assert.deepEqual(missingTask.items.filter((item) => item.kind === "error"), []);
 });
 
 test("example is an executor name, not a transparent document wrapper", () => {
@@ -931,16 +918,18 @@ test("at-sign matcher text remains in the fallback glob dialect", () => {
     }
 });
 
-test("a body-leading at-sign does not hide an independently missing terminal SEND", () => {
+test("a body-leading at-sign retains FIND coercion in a TASK-less READ", () => {
     const result = PlurnkParser.parse([
         "```READ (data/users.json) <1,-1>",
         "@data/users.json",
         "```",
     ].join("\n"));
     const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0]?.error.source, "parser");
-    assert.equal(errors[0]?.error.code, PlurnkParser.MISSING_DISPOSITION);
+    assert.deepEqual(errors, []);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.equal(statements.length, 1);
+    assert.ok(statements[0].op === "FIND");
+    assert.equal(statements[0].body?.raw, "@data/users.json");
 });
 
 test("regex bodies retain pattern, flags, escaped delimiters, and character classes", () => {

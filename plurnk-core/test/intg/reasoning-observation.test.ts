@@ -24,7 +24,8 @@ test("{§reasoning-initial-read}: the first model input contains initialization'
         assert.ok(initial);
         assert.equal(initial.origin, "_plurnk");
         assert.match(String(initial.body), /This harness-generated turn surveys the workspace and available capabilities\./);
-        assert.match(String(initial.body), /In turn 2, use ````READ \(reasoning:\/\/\/3\/2\) <1,-1>```` to retain your reasoning in subsequent packets\./);
+        assert.match(String(initial.body), /In turn 2, retain your reasoning in subsequent packets with:/);
+        assert.match(String(initial.body), /\d+:````READ \(reasoning:\/\/\/3\/2\) <1,-1>\n[ \t]*\d+:````/);
         assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         assert.equal(reads.length, 1);

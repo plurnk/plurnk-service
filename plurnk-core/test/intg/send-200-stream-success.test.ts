@@ -18,12 +18,13 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 };
 
 for (const command of ["true", "hostname"]) {
-    test(`a successful ${command} cannot complete before the model receives its result`, async () => {
+    for (const hasTask of [false, true]) test(`a successful ${command} settles before the next packet, TASK=${hasTask ? "completed" : "omitted"}`, async () => {
         const answer = command === "hostname" ? hostname() : "The command completed successfully.";
+        const inventory = hasTask ? "\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```" : "";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [
-                makeMockResponse(`\`\`\`sh\n${command}\n\`\`\`\n\`\`\`SEND\nThe hostname is plurnk-sandbox.\n\`\`\`\n\`\`\`TASK\n[{"content":"Address the prompt.","status":"completed"}]\n\`\`\``),
+                makeMockResponse(`\`\`\`sh\n${command}\n\`\`\`\n\`\`\`SEND\nThe hostname is plurnk-sandbox.\n\`\`\`${inventory}`),
                 makeMockResponse(`\`\`\`SEND\n${answer}\n\`\`\`\n\`\`\`TASK\n[{"content":"Address the prompt.","status":"completed"}]\n\`\`\``),
             ],
         });
@@ -41,7 +42,8 @@ for (const command of ["true", "hostname"]) {
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
                 assert.ok(rows.some((r) => r.op === "EXEC"), "the stream ran");
-                assert.equal(rows.filter((r) => r.op === "TASK" && r.status_rx === 409).length, 1, "the blind completion was refused");
+                assert.equal(rows.filter((r) => r.op === "TASK" && r.status_rx === 409).length, hasTask ? 1 : 0,
+                    "an explicit blind completion is refused; omission continues silently");
             } finally {
                 ws.close();
             }

@@ -8,7 +8,6 @@ import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import {
-    UNKNOWN_POSITION,
     PLURNK_OPS,
     type ClientStatement,
     type ParseItem,
@@ -37,14 +36,13 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly MISSING_DISPOSITION = "missing-turn-disposition";
     static readonly OPERATIONS_AFTER_DISPOSITION = "operations-after-disposition";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     static frame(header: string, body: string | null): string {
         const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
         const fence = "`".repeat(Math.max(4, longest + 1));
-        return body === null ? `${fence}${header}${fence}` : `${fence}${header}\n${body}\n${fence}`;
+        return `${fence}${header}\n${body === null ? "" : `${body}\n`}${fence}`;
     }
 
     // {§statement-rendering} — framing is syntax, never persisted AST state.
@@ -80,76 +78,37 @@ export default class PlurnkParser {
         }).join("\n\n");
     }
 
-    // Parse one model turn. A source operation lets ingestion recover an omitted disposition.
+    // Parse one model turn. An omitted disposition is silent continuation.
     // Outside text never becomes a parse item. {§whitespace-contract} {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
         if (result.unparsedTail === undefined) {
-            PlurnkParser.#imperativeTurnShape(result.items, input);
-            PlurnkParser.#recoverTurnEnvelope(result.items);
+            PlurnkParser.#requireSourceOperation(result.items);
             PlurnkParser.#dispositionEndsTurn(result.items);
         }
         return result;
     }
 
-    // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
-
-    // Replace ANTLR's generic structure errors with the exact envelope default when the
-    // operation/disposition shape is cleanly incomplete. The parser admits the useful
-    // operations and core records this hard diagnostic as the turn's strike. {§turn-shape}
-    static #imperativeTurnShape(items: ParseItem<any>[], input: string): void {
-        // {§turn-shape} — only the turn disposition is structural. A
-        // recipient SEND does not satisfy it ({§turn-disposition}).
-        const hasDisposition = items.some(
-            (i: any) => i.kind === "statement" && TurnDisposition.is(i.statement),
-        );
-        if (hasDisposition) return;
+    // {§turn-shape} — no source operation is an admission failure, not missing TASK.
+    static #requireSourceOperation(items: ParseItem<PlurnkStatement>[]): void {
+        if (items.some((item) => item.kind === "statement")) return;
         const isStructErr = (i: ParseItem<any>) => i.kind === "error" && i.error.source === "parser" && i.error.severity === "error";
         const structErrors = items.filter(isStructErr);
-        const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        if (statements.length === 0) {
-            const anchor = (structErrors[0] as { error: PlurnkParseError } | undefined)?.error;
-            // With no operation to retain, the grammar's expected-token cascade is less useful
-            // than the exact admission failure. Lexer and visitor diagnostics remain intact.
-            const kept = items.filter((item) => !isStructErr(item));
-            items.length = 0;
-            items.push(...kept, {
-                kind: "error",
-                error: new PlurnkParseError(
-                    anchor?.line ?? 1,
-                    anchor?.column ?? 0,
-                    "parser",
-                    PlurnkParser.NO_VALID_OPERATION,
-                ),
-            });
-            return;
-        }
-        // {§error-shape}: a failed document boundary leaves later source unparsed,
-        // not absent. Bounded lexer/visitor errors likewise already identify the failure.
-        const hasSpecificError = items.some(
-            (i) => i.kind === "error" && i.error.severity === "error"
-                && (i.error.source !== "parser" || i.error.code === "invalid-turn-structure"),
-        );
-        if (hasSpecificError) return;
-        if (!hasDisposition) {
-            const position = {
-                line: input.split("\n").length,
-                column: [...input.slice(input.lastIndexOf("\n") + 1)].length,
-            };
-            items.push({
-                kind: "error",
-                error: new PlurnkParseError(
-                    position.line,
-                    position.column,
-                    "parser",
-                    "No tasks were supplied. Submit a nonempty TASK inventory.",
-                    "error",
-                    PlurnkParser.MISSING_DISPOSITION,
-                ),
-            });
-        }
+        const anchor = (structErrors[0] as { error: PlurnkParseError } | undefined)?.error;
+        // Lexer and visitor diagnostics remain intact.
+        const kept = items.filter((item) => !isStructErr(item));
+        items.length = 0;
+        items.push(...kept, {
+            kind: "error",
+            error: new PlurnkParseError(
+                anchor?.line ?? 1,
+                anchor?.column ?? 0,
+                "parser",
+                PlurnkParser.NO_VALID_OPERATION,
+            ),
+        });
     }
 
     // {§disposition-ends-turn} — coalesce trailing operations and their bounded diagnostics
@@ -158,8 +117,6 @@ export default class PlurnkParser {
         const at = items.findIndex((item) => item.kind === "statement" && TurnDisposition.is(item.statement));
         if (at === -1) return;
         const disposition = (items[at] as { statement: DispositionStatement }).statement;
-        // A disposition the parser synthesized ({§turn-shape} recovery) closes the source; nothing authored follows it.
-        if (disposition.position.line === UNKNOWN_POSITION.line) return;
         // The cut is the first trailing statement or the first hard bounded diagnostic past the
         // disposition heading (a malformed trailing heading). The disposition's own advisories are
         // spliced right after it and carry its line, so they stay.
@@ -202,30 +159,6 @@ export default class PlurnkParser {
         });
         items.length = 0;
         items.push(...kept);
-    }
-
-    // A model emission with at least one valid operation remains a useful program when it
-    // omits envelope ceremony. Materialize the exact language defaults in the AST; the raw
-    // source remains untouched as forensic turnOps evidence. GBNF and parseLog stay strict.
-    static #recoverTurnEnvelope(items: ParseItem<PlurnkStatement>[]): void {
-        const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        if (sourceStatements.length === 0) return;
-        const hasDisposition = sourceStatements.some(
-            (statement) => TurnDisposition.is(statement),
-        );
-        if (!hasDisposition) {
-            const disposition: DispositionStatement = {
-                op: "TASK",
-                annotation: null,
-                target: null,
-                metadata: null,
-                lineMarker: null,
-                body: [],
-                position: UNKNOWN_POSITION,
-            };
-            const lastStatement = items.findLastIndex((item) => item.kind === "statement");
-            items.splice(lastStatement + 1, 0, { kind: "statement", statement: disposition });
-        }
     }
 
     // Collapse a lexer per-character cascade: the SIGNAL/TARGET modes emit one 'unrecognized

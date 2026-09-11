@@ -62,5 +62,5 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
 
 test("{§reasoning-initial-read}: the authored rationale teaches the next model turn's current-source address", () => {
     assert.equal(ReasoningView.initialSource(3, 1), "This harness-generated turn surveys the workspace and available capabilities.\n"
-        + "In turn 2, use ````READ (reasoning:///3/2) <1,-1>```` to retain your reasoning in subsequent packets.");
+        + "In turn 2, retain your reasoning in subsequent packets with:\n\n````READ (reasoning:///3/2) <1,-1>\n````");
 });

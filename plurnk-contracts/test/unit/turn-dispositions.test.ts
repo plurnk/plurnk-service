@@ -18,10 +18,10 @@ for (const status of ["pending", "in_progress", "waiting", "completed", "failed"
     });
 }
 
-test("SEND messages do not conclude a turn and omitted disposition recovers empty TASK", () => {
+test("SEND messages do not conclude a turn and omitted TASK remains absent", () => {
     const result = PlurnkParser.parse("```SEND (worker://peer)\nhello\n```");
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND", "TASK"]);
-    assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND"]);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
 test("{§unlabeled-fence-send}: a nested TASK's closer cannot finish an unlabeled outer message", () => {

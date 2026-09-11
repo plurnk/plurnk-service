@@ -13,7 +13,8 @@ const file = Bun.file("package.json");
 console.log((await file.json()).name);
 ````
 
-````bun (scripts/build.ts) {args=["--watch=false"]}````
+````bun (scripts/build.ts) {args=["--watch=false"]}
+````
 
 `console.log` streams to `#stdout`, `console.error` to `#stderr`; an uncaught
 error or `process.exit(1)` closes with status 500. Prefer `node` unless the

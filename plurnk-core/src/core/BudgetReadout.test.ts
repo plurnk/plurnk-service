@@ -17,9 +17,9 @@ const resolve = (
 test("BudgetReadout: the block opens as one JSON object whose total is the exact render-weight", () => {
     const { content, usage } = resolve(100_000, 100);
     assert.equal(content.split("\n").length, 1, "neutral telemetry is one JSON line");
-    const parsed = JSON.parse(content) as { logTokensTotal: number; tokensActiveMax: number };
+    const parsed = JSON.parse(content) as { logTokensTotal: number; logTokensMax: number };
     assert.equal(parsed.logTokensTotal, usage);
-    assert.equal(parsed.tokensActiveMax, 100_000);
+    assert.equal(parsed.logTokensMax, 100_000);
 });
 
 test("BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
@@ -34,9 +34,9 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
     for (const specimen of cases) {
         await t.test(specimen.name, () => {
             const { content, usage } = resolve(specimen.ceiling, specimen.baseWeight);
-            const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; tokensActiveMax: number };
+            const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };
             assert.equal(parsed.logTokensTotal, usage, "the displayed total is the exact render-weight");
-            assert.equal(parsed.tokensActiveMax, specimen.ceiling);
+            assert.equal(parsed.logTokensMax, specimen.ceiling);
         });
     }
 });
@@ -44,9 +44,9 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
 test("BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
     const { content, usage } = resolve(9, 62);
     assert.match(content, /\n\n> \[!WARNING\]\n> YOU MUST KILL/u);
-    const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; tokensActiveMax: number };
+    const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };
     assert.equal(parsed.logTokensTotal, usage);
-    assert.equal(parsed.tokensActiveMax, 9);
+    assert.equal(parsed.logTokensMax, 9);
     assert.doesNotMatch(content, /logTokensLargest/u, "no inventory without candidate rows");
 });
 
@@ -67,7 +67,7 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
     const pressured = resolve(1_500, 1_180, items);
     assert.match(
         pressured.content,
-        /^\{"logTokensTotal":\s*\d+,"tokensActiveMax":1500,"logTokensLargest":\[/u,
+        /^\{"logTokensTotal":\s*\d+,"logTokensMax":1500,"logTokensLargest":\[/u,
         "the block opens as one JSON payload with the inventory folded in",
     );
     assert.match(
@@ -114,7 +114,7 @@ test("{§context-output-warning}: actual new omission overrides pressure even be
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
-        () => BudgetReadout.resolve('{"tokensActiveMax":100}', 100, () => 10),
+        () => BudgetReadout.resolve('{"logTokensMax":100}', 100, () => 10),
         /must contain \{\{logTokensTotal\}\} exactly once/,
     );
     assert.throws(
@@ -125,7 +125,7 @@ test("BudgetReadout: malformed templates and measurements fail at their owner", 
 
 test("(#478) tokensResponseMax discloses the output allowance beside the ceiling", () => {
     const drafted = BudgetReadout.draft(1000, 8192);
-    assert.match(drafted, /"tokensActiveMax":1000,"tokensResponseMax":8192/);
+    assert.match(drafted, /"logTokensMax":1000,"tokensResponseMax":8192/);
     assert.doesNotMatch(BudgetReadout.draft(1000, null), /tokensResponseMax/);
     assert.equal(BudgetReadout.draft(null, 8192), "");
     const content = BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length);

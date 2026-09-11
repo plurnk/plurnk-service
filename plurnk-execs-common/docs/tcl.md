@@ -14,7 +14,8 @@ foreach w $words { dict incr count $w }
 puts [dict get $count alpha]
 ````
 
-````tcl (tests/all.tcl) {args=["-verbose","bps"]}````
+````tcl (tests/all.tcl) {args=["-verbose","bps"]}
+````
 
 `puts` streams to `#stdout`, `puts stderr ...` to `#stderr`; an uncaught error
 or `exit 1` closes with status 500 with the Tcl error info on stderr. tclsh

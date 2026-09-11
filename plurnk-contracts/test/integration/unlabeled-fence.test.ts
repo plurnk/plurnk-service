@@ -147,8 +147,8 @@ test("{§unparsed-tail-boundary}: unfinished unlabeled fences do not yield parti
         assert.deepEqual(statements(result).map(({ op }) => op), ["READ"], tail);
         assert.deepEqual(errors(result), [], tail);
         assert.deepEqual(result.unparsedTail, {
-            from: { line: 2, column: 0 },
-            reason: "SEND block opened at line 2 but was not closed with 4 backticks",
+            from: { line: 3, column: 0 },
+            reason: "SEND block opened at line 3 but was not closed with 4 backticks",
         }, tail);
     }
 });
@@ -162,11 +162,8 @@ test("{§unlabeled-fence-send}: named malformed headers are not messages", () =>
 test("{§turn-shape}: an implicit SEND neither supplies TASK nor bypasses its final position", () => {
     const source = unlabeled("TASK\nThis is a literal example.");
     const missing = PlurnkParser.parse(source);
-    assert.deepEqual(statements(missing).map(({ op }) => op), ["SEND", "TASK"]);
-    assert.deepEqual(errors(missing).map(({ code }) => code), [PlurnkParser.MISSING_DISPOSITION]);
-    const disposition = statements(missing)[1];
-    assert.ok(disposition.op === "TASK");
-    assert.deepEqual(disposition.body, []);
+    assert.deepEqual(statements(missing).map(({ op }) => op), ["SEND"]);
+    assert.deepEqual(errors(missing), []);
     const late = PlurnkParser.parse(task + "\n" + source);
     assert.deepEqual(statements(late).map(({ op }) => op), ["TASK"]);
     assert.deepEqual(errors(late).map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);

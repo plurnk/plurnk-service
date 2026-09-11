@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import Paths from "../../src/Paths.ts";
@@ -588,7 +589,7 @@ test("assembled packet: definition tables compact without changing other whitesp
     } finally { await db.close(); }
 });
 
-test("{§definition-table-projection}: canonical inline operation examples survive packet projection", async () => {
+test("{§definition-table-projection}: canonical operation examples survive packet projection", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-grammar-${crypto.randomUUID()}`);
@@ -600,12 +601,11 @@ test("{§definition-table-projection}: canonical inline operation examples survi
 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const inlineGrammar = [...definition.matchAll(/````[A-Za-z]+[^\n`]*````/gu)].map((match) => match[0]);
-
-        assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
-        for (const example of inlineGrammar) {
-            assert.ok(projected.includes(example), `packet projection changed canonical inline grammar ${JSON.stringify(example)}`);
-        }
+        const codeBlocks = (markdown: string) => Lexer.lex(markdown)
+            .flatMap((token) => token.type === "code" ? [token.text] : []);
+        const examples = codeBlocks(definition);
+        assert.ok(examples.length > 0, "canonical definition contains operation examples");
+        assert.deepEqual(codeBlocks(projected), examples, "packet projection preserves every example's fences and body whitespace");
     } finally { await db.close(); }
 });
 

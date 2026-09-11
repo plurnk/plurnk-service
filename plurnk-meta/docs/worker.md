@@ -43,7 +43,8 @@ automatically after initialization's example READ.
 A READ can retain your current turn's reasoning: the source exists when your
 OPs execute. For example, on loop 1, turn 3:
 
-````READ (reasoning:///1/3) <1,-1>````
+````READ (reasoning:///1/3) <1,-1>
+````
 
 The ordinary READ receipt appears in subsequent packets. Missing or future
 sources return a missing-source result; READ never requests inference.
@@ -77,7 +78,8 @@ BARE makes one isolated call to the child model, not a persistent worker.
 It receives no parent history or tools. Give it a prompt resource, an inline
 prompt, or both; resource text precedes an inline body with a blank line between.
 
-````BARE (worker://reviewer/question.md)````
+````BARE (worker://reviewer/question.md)
+````
 ````BARE
 What is the capital of Germany?
 ````

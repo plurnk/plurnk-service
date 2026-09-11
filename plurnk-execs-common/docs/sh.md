@@ -52,7 +52,8 @@ completion, the harness adds one `_plurnk` READ per channel: its first page
 (up to 16 lines), `range` extent, and terminal exit status. READ the `stream`
 address for more; the `log:///…/READ` item holds only its recorded page:
 
-````READ (sh:///ab3d5678#stdout) <17,40>````
+````READ (sh:///ab3d5678#stdout) <17,40>
+````
 
 A nonzero exit closes with status 500; inspect both channels because either
 may carry the useful diagnostic.

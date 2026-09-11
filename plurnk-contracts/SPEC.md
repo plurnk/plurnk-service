@@ -336,6 +336,8 @@ under {§plan-value}. Closing fences are required even for bodyless operations.
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
 EXEC executors from the shared AST, with one blank line between operations.
+Every closing fence occupies its own line, including bodyless operations;
+inline fences remain accepted input, not generated examples.
 It chooses at least four backticks and more than any run within the body,
 preserving body bytes on reparse. Fence length is syntax, not AST or
 persistence state. Core-authored programs use
@@ -432,7 +434,8 @@ of entry order. Actual execution adjudicates intent under {§wait-obligation-mat
 
 | Inventory condition | Intent | Derived lifecycle status |
 |---|---|---|
-| Empty or omitted | Recover missing inventory | 102 |
+| TASK omitted | Continue silently | 102 |
+| Explicit empty inventory | Recover empty inventory | 102 |
 | Any `in_progress` | Continue independent actionable work | 102 |
 | Any `waiting`, no `in_progress` | Await work or an event | 202 |
 | Any `pending`, no actionable or waiting entry | Review blocked dependencies | 102 |
@@ -794,7 +797,8 @@ results, obligations and timing:
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
-| missing, continue, pending | 102 | Continue or recover; missing inventory earns one strike |
+| TASK omitted | 102 | Continue silently, without a receipt or strike for omission |
+| empty, continue, pending | 102 | Continue or recover; an explicit empty inventory earns one strike |
 | wait | 202 | Park when a live obligation or explicit timing exists |
 | complete | 200 | Conclude once execution results permit completion |
 | fail | 499 | End unsuccessfully and cancel unresolved descendant scope |
@@ -802,15 +806,16 @@ results, obligations and timing:
 
 ### §waitpid-dispositions The terminal contract (waitpid)
 
-The model supplies one current inventory per turn; its statuses determine
-one intention. The engine verifies that intention against the loop's actual
+The model may supply one current inventory per turn; its statuses determine
+one intention. Without TASK, an operation-bearing turn continues silently.
+The engine verifies an explicit intention against the loop's actual
 obligations (spawned children, open streams, pending results); the grammar
 polices *shape* only. Asking
 the human is the native `question` EXEC tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation TASK has a reserved token ({§turn-disposition}).
-  A turn admits exactly one TASK, and it ends the
+  A turn admits at most one TASK, and when present it ends the
   turn ({§disposition-ends-turn}): ordinary operations precede it, and the
   runtime executes it last. A second disposition is a structural
   error, not a choice between competing outcomes. GBNF shapes this order
@@ -825,8 +830,8 @@ disposition. The shape rules ARE structural:
   Bounded hard diagnostics positioned after the disposition
   belong to that dropped source and collapse into the same diagnostic as ignored
   malformed headings; the disposition's own advisories and a second-disposition
-  structural error stand as before. A disposition the parser synthesized
-  ({§turn-shape}) closes the source and never has a tail. Saved turns use
+  structural error stand as before. TASK omission does not synthesize a
+  disposition ({§turn-shape}). Concatenated saved programs use
   the same disposition boundary.
 - SEND is communication: an optional recipient path and an optional body.
 - §terminal-body-nonempty The GBNF rail requires a nonempty sampled TASK body,
@@ -895,10 +900,11 @@ types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts one operation-bearing model turn.
-One disposition ends the turn ({§disposition-ends-turn}). If complete valid
-operations omit it, the parser appends TASK with an empty inventory (`[]`),
-`UNKNOWN_POSITION` and one hard `missing-turn-disposition` diagnostic; the raw
-source is unchanged. Unfinished blocks never receive inferred closers.
+An explicit disposition ends the turn ({§disposition-ends-turn}). Omitted TASK
+means silent continuation: no synthesized statement, diagnostic, receipt,
+warning, or strike. The authored operations and source remain unchanged.
+Explicit empty or malformed inventories retain their own handling.
+Unfinished blocks never receive inferred closers.
 Bounded operation errors retain valid siblings. Duplicate dispositions
 and failed document boundaries remain structural failures.
 
@@ -910,7 +916,7 @@ the executable blocks themselves are the program.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One model turn; an omitted TASK recovers to an empty inventory | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn; optional final TASK | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including read-shaped LOOK/BUFF commands      | `ClientStatement`     |
@@ -1223,7 +1229,7 @@ class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
-    readonly code?: "missing-turn-disposition";
+    readonly code?: "invalid-turn-structure" | "operations-after-disposition";
 }
 ```
 
@@ -1261,16 +1267,11 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
-turn-shape diagnostics ({§turn-shape}). A missing
-turn disposition carries the structured `code: "missing-turn-disposition"`; consumers
-use that code, never message wording, to recognize envelope recovery. Operations
+turn-shape diagnostics ({§turn-shape}). Omitted TASK produces no diagnostic. Operations
 after the disposition carry `code: "operations-after-disposition"`
 ({§disposition-ends-turn}). A failed
 document boundary carries `code: "invalid-turn-structure"`, which cannot be
-recovered as an individual failed operation. Missing TASK feedback is
-`No tasks were supplied. Submit a nonempty TASK inventory.`, without inferring intent.
-Its position is the authored emission's EOF, not the last
-operation's heading, using the parser's line/column convention above. Source with no
+recovered as an individual failed operation. Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
@@ -1321,9 +1322,7 @@ expose ANTLR rule or token names. They refer to a slot or
 feature rather than an implementation rule. Generic tutoring, speculative
 intent, coordinate restatement, and multiple repair strategies are forbidden.
 Unexpected top-level text immediately after a closed operation identifies that
-operation's opening line, closing line, and matching backtick count. A document
-boundary failure does not additionally diagnose a missing TASK: subsequent
-source was not parsed.
+operation's opening line, closing line, and matching backtick count.
 
 Examples of canonical hard facts:
 

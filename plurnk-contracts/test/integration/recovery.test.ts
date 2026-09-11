@@ -13,7 +13,7 @@ test("a scope inside a target is applied with one factual warning per selection"
     const r = PlurnkParser.parse(turn(frame("COPY (worker:///src.md<2,3>) (worker:///slice.md<1,-1>)", null), frame("READ (a.ts<4,5>)", null)));
     assert.equal(r.unparsedTail, undefined);
     const errs = errors(r);
-    assert.deepEqual(errs.map((e) => [e.line, e.severity]), [[1, "warning"], [1, "warning"], [2, "warning"]]);
+    assert.deepEqual(errs.map((e) => [e.line, e.severity]), [[1, "warning"], [1, "warning"], [3, "warning"]]);
     assert.equal(errs[0].message, "The scope was inside the target slot; it was applied as the operation scope.");
     assert.equal(errs[0].column, 26);
     const ops = statements(r);
@@ -49,7 +49,7 @@ test("a malformed block never downgrades a conclusion", () => {
     assert.deepEqual(statements(r).map(({ op }) => op), ["READ", "TASK"]);
     const send = statements(r).find((s) => s.op === "TASK");
     assert.equal(send?.op, "TASK");
-    assert.equal(send?.position.line, 3);
+    assert.equal(send?.position.line, 5);
 });
 
 // {§legacy-bracket-slot}

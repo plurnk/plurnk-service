@@ -50,7 +50,7 @@ The parser entry points deliberately accept different document tiers:
 
 | Entry point                    | Accepted input                                        |
 |--------------------------------|-------------------------------------------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; omitted TASK recovers an empty inventory with one strike |
+| `PlurnkParser.parse`           | One operation-bearing model turn; omitted TASK continues silently |
 | `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
 | `PlurnkParser.parseLog`        | Consecutive disposition-ended turns                    |
 | `PlurnkParser.parseClient`     | Protocol statements plus client-only LOOK and BUFF    |

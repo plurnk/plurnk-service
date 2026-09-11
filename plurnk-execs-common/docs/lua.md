@@ -14,7 +14,8 @@ table.sort(t)
 print(table.concat(t, ","))
 ````
 
-````lua (scripts/lint.lua) {args=["src/main.lua"]}````
+````lua (scripts/lint.lua) {args=["src/main.lua"]}
+````
 
 `print` streams to `#stdout`, `io.stderr:write` to `#stderr`; `error(...)`
 or `os.exit(1)` closes with status 500. The standalone interpreter is the

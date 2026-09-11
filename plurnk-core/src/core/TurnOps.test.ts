@@ -3,6 +3,13 @@ import test from "node:test";
 import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type DispositionStatement } from "@plurnk/plurnk-contracts";
 import TurnOps from "./TurnOps.ts";
 
+test("{§op-execution-order} internal programs may omit TASK without inventing one", () => {
+    const source = "````READ (worker:///notes.md)````";
+    const parsed = TurnOps.parseInternal(source);
+    assert.deepEqual(parsed.map(({ op }) => op), ["READ"]);
+    assert.equal(TurnOps.renderInternal(parsed), "````READ (worker:///notes.md)\n````");
+});
+
 test("TurnOps: internal source round-trips through the public parser", () => {
     const statements: [FindStatement, DispositionStatement] = [
         {
@@ -17,7 +24,8 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        "````FIND (*) <1,-1> {trace: one} {shape: {nested}} <!-- workspace files -->````",
+        "````FIND (*) <1,-1> {trace: one} {shape: {nested}} <!-- workspace files -->",
+        "````",
         "",
         "````TASK",
         "[{\"content\":\"Address the prompt.\",\"status\":\"in_progress\"}]",

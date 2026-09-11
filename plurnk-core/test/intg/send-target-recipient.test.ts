@@ -26,7 +26,7 @@ test("a SEND addressed to the prompt is refused 400 with neutral recipient guida
             assert.equal(problem?.recovery, "A targetless SEND answers the active prompt; a directed SEND requires a recipient that implements SEND.");
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
-            assert.deepEqual(rows.filter((r) => r.op === "TASK" && r.origin === "model").map(({ status_rx }) => status_rx), [409, 200], "missing inventory is recoverable; the next completed inventory concludes");
+            assert.deepEqual(rows.filter((r) => r.op === "TASK" && r.origin === "model").map(({ status_rx }) => status_rx), [200], "omission continues silently; the explicit completed inventory concludes");
         } finally { ws.close(); }
     });
 });

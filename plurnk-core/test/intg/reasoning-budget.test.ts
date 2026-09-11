@@ -42,7 +42,7 @@ for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: a
             assert.equal(record.overflow, undefined);
         } else {
             assert.equal(record.body, undefined);
-            assert.equal(record.overflow, "120 output lines not shown; logTokensTotal exceeds tokensActiveMax");
+            assert.equal(record.overflow, "120 output lines not shown; logTokensTotal exceeds logTokensMax");
             const exact = await engine.look({ ...context, statement: statement(PlurnkParser.frame(
                 `READ (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>`, null,
             )) });

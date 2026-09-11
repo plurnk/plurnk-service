@@ -7,8 +7,9 @@ import { PlurnkParser, PLURNK_OPS } from "../../src/index.ts";
 const teaching = readFileSync(new URL("../../plurnk.md", import.meta.url), "utf8");
 
 test("concrete KILL examples in plurnk.md parse as one clean operation", () => {
-    const examples = [...teaching.matchAll(/^(?:[*|].*?)?((`{3,})KILL\b[^`\n]*\2)/gm)].map((match) => match[1]!);
-    assert.ok(examples.length > 0, "the reference demonstrates compact curation operations");
+    const unindented = teaching.replace(/^ {4}/gm, "");
+    const examples = [...unindented.matchAll(/^(?:[*|].*?)?((`{3,})KILL\b[^\n]*?(?:\2[ \t]*$|\n[\s\S]*?^\2[ \t]*$))/gm)].map((match) => match[1]!);
+    assert.ok(examples.length > 0, "the reference demonstrates curation operations");
     for (const source of examples) {
         const parsed = PlurnkParser.parseStatements(source);
         assert.equal(parsed.items.length, 1, source);

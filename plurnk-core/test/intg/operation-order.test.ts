@@ -110,8 +110,8 @@ ${content}
     });
 });
 
-for (const origin of ["client", "_plurnk"] as const) {
-    for (const failOnOperationError of [false, true]) test(`{§op-execution-order}: ${origin} preserves effects and source with failOnOperationError=${failOnOperationError}`, async () => {
+for (const origin of ["client", "_plurnk"] as const) for (const hasTask of [false, true]) {
+    for (const failOnOperationError of [false, true]) test(`{§op-execution-order}: ${origin} preserves effects and source with failOnOperationError=${failOnOperationError}, TASK=${hasTask}`, async () => {
         const db = await openMigrated();
         try {
             const env = await seedEnvelope(db, `ordered-${origin}`, { producer: origin });
@@ -126,10 +126,10 @@ invalid
 \`\`\`
 \`\`\`EDIT (${target}) <2>
 TWO
-\`\`\`
+\`\`\`${hasTask ? `
 \`\`\`TASK
 [{"content":"Continue the task.","status":"in_progress"}]
-\`\`\``;
+\`\`\`` : ""}`;
             const execution = engine.executeAdmittedTurn({
                 ...env, origin, source, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
@@ -138,7 +138,7 @@ TWO
             else assert.equal((await execution).status, 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
-                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", "TASK"]);
+                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", ...(hasTask ? ["TASK"] : [])]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: env.workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === env.turnId && kind === "ops")?.content, source,

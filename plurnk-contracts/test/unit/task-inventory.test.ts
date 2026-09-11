@@ -44,8 +44,8 @@ test("{§turn-disposition} TASK is the only lifecycle operation and retains nati
     for (const former of ["NEXT", "WAIT", "DONE", "FAIL"]) assert.equal(TurnDisposition.isOp(former), false);
 });
 
-test("{§task-inventory-intent} omitted and empty inventories retain useful operations and cannot imply success", () => {
-    for (const ending of ["", PlurnkParser.frame("TASK", null), PlurnkParser.frame("TASK", "[]"), PlurnkParser.frame("TASK", " \t ")]) {
+test("{§task-inventory-intent} explicit empty inventories retain useful operations and cannot imply success", () => {
+    for (const ending of [PlurnkParser.frame("TASK", null), PlurnkParser.frame("TASK", "[]"), PlurnkParser.frame("TASK", " \t ")]) {
         const parsed = PlurnkParser.parse(`${PlurnkParser.frame("READ (answer.txt)", null)}\n${ending}`);
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.deepEqual(statements.map(({ op }) => op), ["READ", "TASK"]);

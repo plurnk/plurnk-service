@@ -103,7 +103,8 @@ channels; it does not mean that the containing URL is missing.
 Request headers are ordered `{Key: value}` metadata blocks after the complete
 target, one header per block:
 
-````READ (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}````
+````READ (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}
+````
 
 ````EDIT (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
 {"done":true}

@@ -248,7 +248,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerWorkerId")), "the wire carries one causal actor identity");
         assert.ok(streamEvents.every((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.ok(firstPacket.includes("````mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->````"),
+        assert.ok(firstPacket.includes("````mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->\\\\n````"),
             "the initial survey teaches the manager's complete lifecycle");
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
         assert.match(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\.md"/);

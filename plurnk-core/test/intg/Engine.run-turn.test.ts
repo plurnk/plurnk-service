@@ -151,10 +151,15 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
         assert.equal(initializationSource?.producer, "_plurnk");
         assert.match(initializationSource!.content, /^````/);
+        assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
+        assert.match(initializationSource!.content, /^````READ \(ops:\/\/\/1\/1\)[^\n]*\n````$/m, "the initialization program demonstrates a bodyless READ with a separate closing line");
         assert.ok(initializationSource!.content.includes("ops:///1/1"));
         assert.ok(!initializationRows.some(({ op }) => op === null));
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its actual program");
         assert.ok(initializationRows.some(({ op }) => op === "TASK"), "source retention does not replace executed results");
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
+        const opsReceipt = logEntries(packet).find(({ target }) => target === "ops:///1/1");
+        assert.match(String(opsReceipt?.body), /\d+:````READ [^\n]+\n[ \t]*\d+:````\n/, "the model sees the same multiline examples through turn0's ordinary READ");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
         const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
@@ -353,17 +358,30 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: the trusted pre-parsed seam cannot fabricate a missing-disposition turn", async () => {
+test("Engine.runTurn: a trusted TASK-less program continues with only its authored operations", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([editStmt("/x", "y")])],
         });
-        await assert.rejects(
-            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
-            /an admitted operation batch must contain exactly one disposition/,
-        );
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        assert.equal(result.status, 102);
+        assert.deepEqual(result.outcomes, [{ op: "EDIT", status: 201, problemType: null }]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["EDIT"]);
+        const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/x", name: "body" });
+        assert.equal(channel?.content, "y");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: an empty trusted batch fails without leaving a producer turn open", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        const provider = new Mock({ contextWindow: 100000, responses: [response([])] });
+        await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
+            message: "an admitted operation batch must contain operations and at most one disposition",
+        });
         const turns = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
         }>({ loop_id: loopId });
@@ -811,7 +829,7 @@ test("Engine.runTurn: a trusted batch with competing dispositions fails before d
             responses: [response([dispositionStmt("in_progress", "first"), dispositionStmt("completed", "last")])],
         });
         await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
-            message: "an admitted operation batch must contain exactly one disposition",
+            message: "an admitted operation batch must contain operations and at most one disposition",
         });
         const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         assert.ok(turn);

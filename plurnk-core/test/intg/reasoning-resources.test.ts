@@ -141,7 +141,7 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
             if (limit === 1) {
                 assert.doesNotMatch(String(record.body), /2:In turn/);
-                assert.deepEqual(record.range, { unit: "line", total: 2, requested: [1, 1], returned: [1, 1] });
+                assert.deepEqual(record.range, { unit: "line", total: 5, requested: [1, 1], returned: [1, 1] });
             }
         }
     } finally {

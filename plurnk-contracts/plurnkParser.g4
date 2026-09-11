@@ -3,8 +3,8 @@ parser grammar plurnkParser;
 options { tokenVocab = plurnkLexer; }
 
 // One model turn: at least one operation; outside text is hidden by the lexer.
-// Model admission may recover an omitted disposition. Saved logs require one
-// disposition per turn. Authored position does not prescribe execution order. {§turn-shape}
+// Model admission continues silently without TASK. Concatenated saved programs
+// require an explicit disposition per turn. {§turn-shape}
 document
     : modelTurn EOF
     ;
