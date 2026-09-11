@@ -38,29 +38,19 @@ export default class LogWriter {
         this.#isProposal = isProposal;
     }
 
-    async writeLog(context: Parameters<LogWriter["prepareLog"]>[0]): Promise<number> {
-        if (context.statement.op === "EXEC" && context.result.status === 202 && context.result.attrs !== undefined) {
-            const attrs = context.result.attrs as Record<string, unknown>;
-            if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
-            attrs.pathname = await ExecutionOutputs.claim(this.#db, context.workspaceId, execRouteOf(context.statement).runtime);
-        }
-        const draft = await this.prepareLog(context);
-        await this.#canonColumns(draft, context.workspaceId);
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(draft);
-        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
-        return row.id;
-    }
-
-    // {§reasoning-initial-read} — candidate receipt and committed receipt share
-    // this representation. Preparing it neither writes nor publishes a log row.
-    async prepareLog({
+    async writeLog({
         statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
-    }) {
+    }): Promise<number> {
+        if (statement.op === "EXEC" && result.status === 202 && result.attrs !== undefined) {
+            const attrs = result.attrs as Record<string, unknown>;
+            if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
+            attrs.pathname = await ExecutionOutputs.claim(this.#db, workspaceId, execRouteOf(statement).runtime);
+        }
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(primaryTargetOf(durableStatement), workspaceId);
         const lineMarker = primaryLineMarkerOf(durableStatement);
@@ -114,7 +104,7 @@ export default class LogWriter {
         const attrs = JSON.stringify(attrsObj);
         const txJson = JSON.stringify(durableStatement);
         const rxJson = JSON.stringify(result);
-        return {
+        const record = {
             worker_id: workerId,
             loop_id: loopId,
             turn_id: turnId,
@@ -151,8 +141,10 @@ export default class LogWriter {
             attrs,
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         };
+        await this.#canonColumns(record, workspaceId);
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(record);
+        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
+        return row.id;
     }
 
 }
-
-export type LogEntryDraft = Awaited<ReturnType<LogWriter["prepareLog"]>>;

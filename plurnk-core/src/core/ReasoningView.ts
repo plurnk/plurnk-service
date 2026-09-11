@@ -1,9 +1,14 @@
-import { UNKNOWN_POSITION, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, UNKNOWN_POSITION, type ReadStatement } from "@plurnk/plurnk-contracts";
 import { scopeEnvToAlias, type Provider } from "@plurnk/plurnk-providers";
-import type { Db } from "./Db.ts";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 export default class ReasoningView {
+    static initialSource(loopSequence: number, turnSequence: number): string {
+        const example = PlurnkParser.frame(`READ (reasoning:///${loopSequence}/${turnSequence + 1}) <1,-1>`, null);
+        return "This harness-generated turn surveys the workspace and available capabilities.\n"
+            + `In turn ${turnSequence + 1}, use ${example} to retain your reasoning in subsequent packets.`;
+    }
+
     static lines(provider: Provider): number {
         const key = "PLURNK_REASONING_VIEW_LINES";
         const env = scopeEnvToAlias(process.env, ProviderInstantiate.configurationAliasOf(provider) ?? "", [key]);
@@ -15,23 +20,17 @@ export default class ReasoningView {
         return value;
     }
 
-    static async initialReads(db: Db, workerId: number, provider: Provider): Promise<ReadStatement[]> {
+    static initialRead(provider: Provider, loopSequence: number, turnSequence: number): ReadStatement | null {
         const limit = ReasoningView.lines(provider);
-        if (limit === 0) return [];
-        const resources = await db.reasoning_initial_reads.all<{ pathname: string }>({ worker_id: workerId });
-        return resources.map(({ pathname }) => ({
-            op: "READ", annotation: "prior turn reasoning", metadata: null, body: null,
+        if (limit === 0) return null;
+        const pathname = `/${loopSequence}/${turnSequence}`;
+        return {
+            op: "READ", annotation: "inspect this turn's reasoning", metadata: null, body: null,
             target: {
                 kind: "url", scheme: "reasoning", raw: `reasoning://${pathname}`, pathname,
                 username: null, password: null, hostname: null, port: null, query: null, fragment: null,
             },
             lineMarker: { marks: [1, limit] }, position: UNKNOWN_POSITION,
-        }));
-    }
-
-    static bounded(statement: ReadStatement): ReadStatement {
-        const end = statement.lineMarker?.marks[1];
-        if (typeof end !== "number") throw new Error("An initial reasoning READ requires a numeric range.");
-        return { ...statement, lineMarker: { marks: [1, end === -1 ? 16 : Math.min(16, end)] } };
+        };
     }
 }

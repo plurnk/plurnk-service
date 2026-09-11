@@ -178,7 +178,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
 
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
             const initialization = captured
-                .map((event) => (event as { entry: { op: string | null; origin: string } }).entry)
+                .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number } }).entry)
                 .filter((entry) => entry.origin === "_plurnk" && entry.op !== "prompt");
             assert.equal(
                 captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),
@@ -186,7 +186,9 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 "initialization has no synthetic actionless receipt",
             );
             assert.equal(initialization[0]?.op, "COPY", "the real initialization archives the prompt first");
-            assert.equal(initialization.at(-1)?.op, "TASK", "the real initialization SEND streams last");
+            assert.equal(initialization.at(-1)?.op, "TASK", "initialization dispatches its inventory last");
+            assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
+            assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return entry.op === "prompt" || entry.origin === "model";

@@ -833,11 +833,11 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // Locate the frame by source identity, not its log coordinate.
+        // Prompt delivery and initialization's READ share a source, not an operation identity.
         const frame = await db.engine_get_loop_prompt.get<{ prompt_pathname: string }>({ loop_id: loopId });
         assert.match(frame!.prompt_pathname, /^\/1\/[a-f0-9]{8}$/u);
         const promptTarget = `prompt://${await WorkerName.forId(db, workerId)}${frame!.prompt_pathname}`;
-        const prompt = log.find((e) => e.origin === "_plurnk" && e.target === promptTarget);
+        const prompt = log.find((e) => e.origin === "_plurnk" && e.target === promptTarget && String(e.path).endsWith("/prompt"));
         assert.ok(prompt, "first-class prompt row uses the durable source identity");
         assert.equal(prompt.origin, "_plurnk");
         assert.equal(prompt.target, promptTarget);

@@ -211,6 +211,30 @@ test("live provider reasoning projects ordered deltas before SEND without duplic
     assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the matching durable projection is replay authority, not a second live message");
 });
 
+for (const origin of ["model", "_plurnk"] as const) {
+    test(`{§agui-projection}: late ${origin} receipts do not rewind a streaming or resumed turn`, () => {
+        let tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 10 });
+        const prior = entry({ id: 6, turn_id: 6, coordinate: "1/6/1/READ", origin, status_rx: 102 });
+        tr.logEntry(prior);
+        tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
+        const events = tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" });
+        const settled = entry({ ...prior.entry, status_rx: 200, rx: { status: 200, content: "late result" } });
+        const late = tr.logEntry(settled);
+        assert.ok(late.some((event) => event.type === "CUSTOM" && event.name === "plurnk.row"), "the old receipt still reaches clients");
+        assert.ok(!late.some(({ type }) => type.startsWith("STEP_")), "late completion does not change the current execution step");
+        events.push(...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }));
+        const interrupted = tr.interrupt();
+        assert.equal(interrupted.continuation.currentTurn, 7);
+        tr = new Translator({ threadId: "th", runId: "resumed", continuation: interrupted.continuation });
+        assert.deepEqual(tr.runStarted().at(-1), { type: "STEP_STARTED", stepName: "turn-7" });
+        events.push(...tr.logEntry(settled));
+        events.push(...tr.logEntry(entry({ op: "TASK", turn_id: 7, tx: { body: plan("recorded") }, reasoning: "checked the evidence" })));
+        assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 1,
+            "receipt updates preserve delivered reasoning across the interruption");
+        assert.deepEqual(tr.finish(), [{ type: "STEP_FINISHED", stepName: "turn-7" }]);
+    });
+}
+
 for (const streamed of [false, true]) {
     test(`{§agui-readable-reasoning}: SEND and TASK share one reasoning projection across interrupts (streamed=${streamed})`, () => {
         let tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 10 });

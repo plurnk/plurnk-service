@@ -46,7 +46,7 @@ flowchart TD
   Leaving the reasoning budget unset does not disable reasoning.
 - **Context** is derived from the live endpoint or catalog. An operator cap can
   shrink known capacity or declare unknown capacity, never enlarge known limits.
-  Prompt projection and automatic reasoning READ limits are separate Core policy.
+  Prompt projection and initialization reasoning READ limits are separate Core policy.
 
 ## Local OpenAI-compatible endpoints
 

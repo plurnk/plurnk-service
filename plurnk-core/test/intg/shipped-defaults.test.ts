@@ -31,7 +31,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
     // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (HOST/PORT, the
-    // PLUGINS trust gate and automatic reasoning view). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
+    // PLUGINS trust gate and initialization reasoning view). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
     // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
     // here is a boot-crash collision waiting on the next sibling pub.
     const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_PLUGINS_|PLURNK_REASONING_VIEW_LINES$)/;
@@ -46,7 +46,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(previewLines, 16, "the shipped ordinary preview retains sixteen lines");
     assert.equal(previewChars, 2560, "the independent single-line allowance ships at 2560 characters");
     assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the derived curation budget");
-    assert.equal(env.get("PLURNK_REASONING_VIEW_LINES"), "-1", "automatic reasoning feedback requests the complete body by default");
+    assert.equal(env.get("PLURNK_REASONING_VIEW_LINES"), "-1", "initialization reads the complete authored rationale by default");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
 

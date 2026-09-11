@@ -653,15 +653,6 @@ export default class Dispatcher {
         });
     }
 
-    async previewRead(context: DispatchContext) {
-        if (context.statement.op !== "READ") throw new Error("Only READ receipts can be previewed.");
-        const result = await this.look(context);
-        return this.#logWriter.prepareLog({
-            ...context, result,
-            curationPlan: null, modelCallId: null,
-        });
-    }
-
     capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
         return this.#capabilities.projection(workspaceId);
     }

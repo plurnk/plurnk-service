@@ -274,7 +274,6 @@ export class SqlRiteSync {
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	native_content_retain: SqlRiteSyncPreparedStatements;
 	native_content_read: SqlRiteSyncPreparedStatements;
-	reasoning_initial_reads: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
@@ -533,7 +532,6 @@ export default class SqlRite {
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	native_content_retain: SqlRitePreparedStatements;
 	native_content_read: SqlRitePreparedStatements;
-	reasoning_initial_reads: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;

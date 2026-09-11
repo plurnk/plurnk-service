@@ -28,7 +28,12 @@ test("a short prompt lands as one first-class prompt row", async () => {
             assert.ok(prompt, "the first-class prompt row exists");
             assert.equal(prompt!.lineMarker, null, "prompt delivery is not a synthetic scoped retrieval");
             assert.match(prompt!.rx ?? "", /three/, "the complete durable body belongs to the prompt row");
-            assert.equal(rows.some((r) => r.scheme === "prompt" && (r.op === "EDIT" || r.op === "READ")), false, "no synthetic EDIT/READ delivery ritual remains");
+            assert.equal(rows.filter((r) => r.op === "prompt").length, 1, "initialization does not duplicate prompt delivery");
+            const inspection = rows.filter((r) => r.scheme === "prompt" && r.op === "READ");
+            assert.equal(inspection.length, 1, "initialization demonstrates an ordinary prompt READ");
+            assert.equal(inspection[0].status_rx, 200);
+            assert.equal(inspection[0].pathname, prompt.pathname);
+            assert.equal(JSON.parse(inspection[0].rx!).content, "three\nshort\nlines");
         } finally { ws.close(); }
     });
 });

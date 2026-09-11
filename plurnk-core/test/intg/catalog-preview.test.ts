@@ -188,8 +188,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "TASK"],
-                    "initialization reads its exact program through an ordinary operation",
+                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
+                    "initialization reads its authored reasoning, its exact program and the Active Prompt",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
@@ -204,7 +204,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                         status: "in_progress",
                     },
                 ]);
-                const program = JSON.parse(initializationRows.find(({ op }) => op === "READ")!.rx) as { content: string };
+                const program = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops")!.rx) as { content: string };
                 assert.match(program.content, /\n````TASK\n\[/, "initialization ends with an ordinary continuation inventory");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^````([A-Z]+)/.exec(block)?.[1]),
@@ -311,8 +311,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "TASK"],
-                    "initialization contains the prompt archive, eight surveys, source READ and TASK",
+                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
+                    "initialization contains the prompt archive, eight surveys, reasoning/program/prompt READs and TASK",
                 );
                 const turnOps = initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops");
                 assert.equal(turnOps?.origin, "_plurnk");

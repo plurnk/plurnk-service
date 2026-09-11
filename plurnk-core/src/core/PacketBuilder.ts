@@ -31,7 +31,6 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import type { LogEntryDraft } from "./LogWriter.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -123,8 +122,6 @@ export interface CurationOverflow {
     readonly excess: number;
 }
 
-export type PacketLogDraft = LogEntryDraft & { readonly loop_seq: number; readonly turn_seq: number };
-
 // Packet assembly ({§packet-assembly}) and model-facing budget admission
 // ({§context-output-admission}). Deliberate curation stays in scoped KILL.
 export default class PacketBuilder {
@@ -208,7 +205,6 @@ export default class PacketBuilder {
         initialMessages, recap = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
         promptProjection = "automatic",
-        pendingLog = [],
         turnId = null,
     }: {
         initialMessages: ChatMessage[];
@@ -229,7 +225,6 @@ export default class PacketBuilder {
         // Capacity recovery may withhold automatic prompt bodies while keeping
         // their complete prompt://<worker>/ entries addressable.
         promptProjection?: "automatic" | "withheld";
-        pendingLog?: readonly PacketLogDraft[];
         turnId?: number | null;
     }): Promise<RequestPacket> {
         // {§loop-policy-effective-read} Validate active-loop policy before any
@@ -267,7 +262,7 @@ export default class PacketBuilder {
                 ? await readFile(Paths.defaultRecap, "utf8")
                 : await readTeachingSource(Paths.defaultRecapTeachingSource);
         // {§emission-admission}: the definition remains the complete language authority.
-        const log = await this.#buildLog(workerId, transientOpenLogEntryId, pendingLog, turnId);
+        const log = await this.#buildLog(workerId, transientOpenLogEntryId, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
         const inputCapacity = provider.inputCapacity;
@@ -491,7 +486,7 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, pendingLog: readonly PacketLogDraft[], turnId: number | null): Promise<object[]> {
+    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, turnId: number | null): Promise<object[]> {
         // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
@@ -509,7 +504,7 @@ export default class PacketBuilder {
             output_admission_turn_id: number | null; output_withheld: number;
             tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
-        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: "[]", id: null, output_admission_turn_id: null, output_withheld: 0 }))].map((r) => {
+        return rows.map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
             const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
             const rawLineAnchors = LogEntryProjection.op(r) === "READ"

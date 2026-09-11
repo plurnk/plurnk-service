@@ -29,6 +29,25 @@ console.log(greet("world"));
 Control addresses contain only scheme and authority: no trailing slash,
 userinfo, port, query, fragment, or `{metadata}` modifier.
 
+## Turn sources
+
+| Address | Read-only source in your worker's history |
+| --- | --- |
+| `ops:///<loop>/<turn>` | The exact submitted program, including interstitial text. |
+| `reasoning:///<loop>/<turn>` | Original provider reasoning when exposed, or a harness turn's authored rationale. |
+
+READ brings the selected source into your log; KILL of that READ curates only
+its log projection, never the original evidence. No later reasoning is added
+automatically after initialization's example READ.
+
+A READ can retain your current turn's reasoning: the source exists when your
+OPs execute. For example, on loop 1, turn 3:
+
+````READ (reasoning:///1/3) <1,-1>````
+
+The ordinary READ receipt appears in subsequent packets. Missing or future
+sources return a missing-source result; READ never requests inference.
+
 ## Delegation
 
 **WORK to delegate, FORK to branch.** WORK starts a fresh log with your task

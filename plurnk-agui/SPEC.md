@@ -51,7 +51,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | ------------------------------------------ | ------------ |
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `forwardedProps.plurnk.mode = "sync"`      | Durable conversation `MESSAGES_SNAPSHOT`, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-conversation-sync} |
-| `log/entry` turn boundary                  | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
+| `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
 | `log/entry` op=TASK (model)           | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} + `CUSTOM plurnk.send`; no assistant speech |
 | Successful targetless model SEND | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |

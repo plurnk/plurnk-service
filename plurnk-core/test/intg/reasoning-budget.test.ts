@@ -1,121 +1,68 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
-import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
-import { parseLogRecords } from "../LogRecords.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries } from "./_helpers.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 
-for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§reasoning-initial-read}: ${mode} uses ordinary READ selection and overflow`, async (t) => {
+const task = PlurnkParser.frame("TASK", JSON.stringify([{ content: "Review the result.", status: "in_progress" }]));
+
+for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: an explicit ${mode} reasoning READ uses ordinary output admission`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-budget-${mode}`);
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
-        const schemes = new SchemeRegistry();
-        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId, messages: [] };
-        const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "unfit" ? 500 : 16)}`).join("\n");
-        const first = await engine.runTurn({ ...context, provider: providerWithCapacity(999_000, [{ assistant: {
-            content: "```EDIT (worker:///receipt.txt)\nPreserve this result.\n```\n```READ (worker:///receipt.txt) <1,-1>```\n```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```", reasoning,
-        } }]) });
-        const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
-        const target = `reasoning://${resource.pathname}`;
-        const nextSequence = (await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId }))!.next;
-        const baseline = await new PacketBuilder({ db, schemes, executors: () => undefined }).buildRequestPacket({
-            initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: nextSequence,
-            provider: providerWithCapacity(999_000, []), gitStatus: null,
-        });
-        const capacity = mode === "fits" ? 999_000 : baseline.weight + 4000;
-        const provider = providerWithCapacity(capacity, [{ assistant: {
-            content: mode === "explicit"
-                ? `\`\`\`READ (${target}) <1,-1> <!-- inspect selected reasoning -->\`\`\`
-\`\`\`TASK
-[{"content":"Review.","status":"in_progress"}]
-\`\`\``
-                : "```SEND\nRecovered.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null,
-        } }]);
-        const build = PacketBuilder.prototype.buildRequestPacket;
-        let candidate: Awaited<ReturnType<typeof build>> | undefined;
-        t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async function (this: PacketBuilder, input: Parameters<typeof build>[0]) {
-            const result = await build.call(this, input);
-            if (input.pendingLog?.length) candidate = result;
-            return result;
-        });
+        const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "overflow" ? 100 : 2)}`).join("\n");
+        const first = await engine.runTurn({ ...context, provider: providerWithCapacity(999_000, [
+            { assistant: { content: `${PlurnkParser.frame("READ (reasoning:///1/2) <1,-1> <!-- retain reasoning -->", null)}\n\n${task}`, reasoning } },
+        ]) });
+        const initial = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ pathname }) => pathname === "/1/2")!;
+        assert.equal(initial.turn_seq, 2);
+        assert.equal(JSON.parse(initial.rx).content, reasoning);
+        assert.deepEqual(JSON.parse(initial.lineMarker), { marks: [1, -1] }, "an explicit READ never substitutes a smaller scope");
+        const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet;
+        const capacity = mode === "fits" ? 999_000 : 20_000;
+        const provider = providerWithCapacity(capacity, [
+            { assistant: { content: task, reasoning: "This later source is not requested." } },
+            { assistant: { content: task, reasoning: null } },
+        ]);
         const next = await engine.runTurn({ ...context, provider });
-        assert.ok(candidate);
-        const candidateLog = candidate.sections.find(({ name }) => name === "log");
-        assert.ok(candidateLog);
-        assert.equal(parseLogRecords(candidateLog.content).find(({ target: value }) => value === target)?.annotation, "prior turn reasoning");
-        const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
-        const initial = reads[0]!;
-        assert.ok(initial);
-        assert.equal(initial.origin, "_plurnk");
-        assert.deepEqual(JSON.parse(initial.lineMarker), { marks: [1, mode === "fits" ? -1 : 16] });
-        const initialResult = JSON.parse(initial.rx);
-        assert.equal(initialResult.content, mode === "fits" ? reasoning : reasoning.split("\n").slice(0, 16).join("\n"));
-        assert.equal(reads.filter(({ origin }) => origin === "_plurnk").length, 1, "preflight never records the discarded full READ");
-        assert.equal((await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, reasoning);
-        const originalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
-        assert.equal(originalPacket.assistant.reasoning, reasoning);
-        if (mode === "unfit") {
-            assert.equal(next.status, 200, JSON.stringify(next));
-            assert.equal(next.producer, "model");
-            assert.equal(next.kind, "inference");
-            assert.equal(next.createdTurnIds.length, 1);
-            assert.equal(provider.remaining, 0, "the fitted request reaches inference in the same turn");
-            assert.equal(initial.active, 1);
-            assert.equal(initial.folded, "[]", "withholding does not trim the receipt");
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-            const record = parseLogRecords(packet.sections.find(({ name }: { name: string }) => name === "log").content).find(({ target: value }) => value === target)!;
-            assert.equal(record.body, undefined);
-            assert.equal(record.overflow, "16 output lines not shown; logTokensTotal exceeds tokensActiveMax");
-            assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).length, 1, "recovery does not redeliver the same source");
-            const exact = await engine.look({ ...context, statement: statement(`\`\`\`READ (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>\`\`\``) });
-            assert.equal(exact.status, 200, "withheld reasoning remains readable at the log address");
-            assert.ok("content" in exact);
-            assert.equal(exact.content, initialResult.content);
-            const source = await engine.look({ ...context, statement: statement(`\`\`\`READ (${target}) <1,-1>\`\`\``) });
-            assert.equal(source.status, 200);
-            assert.ok("content" in source);
-            assert.equal(source.content, reasoning, "the read-only reasoning source remains independently retrievable");
+        assert.equal(next.status, 102);
+        assert.equal(next.createdTurnIds.length, 1);
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+        const record = logEntries(packet).find(({ target }) => target === "reasoning:///1/2")!;
+        assert.ok(record);
+        assert.equal(record.annotation, "retain reasoning");
+        if (mode === "fits") {
+            assert.match(String(record.body), /120:Finding 120:/);
+            assert.equal(record.overflow, undefined);
         } else {
-            assert.equal(next.producer, "model");
-            assert.equal(provider.remaining, 0);
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-            const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
-            const record = parseLogRecords(log).find(({ target: value }) => value === target);
-            assert.ok(record);
-            assert.equal(record.annotation, "prior turn reasoning");
-            assert.match(String(record.body), /16:Finding 16:/);
-            assert.doesNotMatch(log, /YOU MUST ONLY/);
-            if (mode === "fits") {
-                assert.match(String(record.body), /120:Finding 120:/);
-                assert.deepEqual(packet.sections, candidate.sections, "preflight and the committed READ produce the exact same packet");
-                assert.equal(packet.weight, candidate.weight);
-            }
-            else {
-                assert.doesNotMatch(String(record.body), /17:Finding 17:/);
-                assert.deepEqual(record.range, { unit: "line", total: 120, requested: [1, 16], returned: [1, 16] });
-            }
-            if (mode === "explicit") {
-                assert.equal(reads.length, 2);
-                assert.equal(reads[1]!.origin, "model");
-                assert.deepEqual(JSON.parse(reads[1]!.lineMarker), { marks: [1, -1] });
-                assert.equal(JSON.parse(reads[1]!.rx).content, reasoning, "the model's scope is never replaced by the automatic cap");
-                const rows = await db.test_log_entries_by_loop.all<{ id: number; tx: string }>({ loop_id: loopId });
-                const explicit = rows.find(({ id }) => id === reads[1]!.id);
-                assert.ok(explicit);
-                assert.equal(JSON.parse(explicit.tx).annotation, "inspect selected reasoning", "explicit READs keep their authored annotation");
-                const overflow = await engine.runTurn({ ...context, provider: providerWithCapacity(capacity, [{ assistant: { content: "```TASK\n[{\"content\":\"Review.\",\"status\":\"in_progress\"}]\n```", reasoning: null } }]) });
-                assert.equal(overflow.producer, "model");
-                assert.equal(overflow.status, 102, JSON.stringify(overflow));
-                const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: overflow.turnId }))!.packet);
-                const record = parseLogRecords(packet.sections.find(({ name }: { name: string }) => name === "log").content).find(({ annotation }) => annotation === "inspect selected reasoning")!;
-                assert.equal(record.overflow, "120 output lines not shown; logTokensTotal exceeds tokensActiveMax");
-                assert.equal(record.body, undefined);
-            }
+            assert.equal(record.body, undefined);
+            assert.equal(record.overflow, "120 output lines not shown; logTokensTotal exceeds tokensActiveMax");
+            const exact = await engine.look({ ...context, statement: statement(PlurnkParser.frame(
+                `READ (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>`, null,
+            )) });
+            assert.equal(exact.status, 200);
+            assert.ok("content" in exact);
+            assert.equal(exact.content, reasoning, "ordinary withholding preserves the full receipt");
+            const source = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
+            assert.equal(source.content, reasoning);
         }
+        const later = await engine.runTurn({ ...context, provider });
+        assert.equal(later.status, 102);
+        const laterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: later.turnId }))!.packet);
+        const laterRecord = logEntries(laterPacket).find(({ target }) => target === "reasoning:///1/2")!;
+        assert.equal(laterRecord.body, record.body, "no automatic re-READ or restoration after withholding");
+        const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
+        assert.equal(reads.length, 1);
+        assert.equal(reads[0]!.id, initial.id);
+        assert.equal(reads[0]!.active, 1);
+        assert.equal(reads[0]!.folded, "[]");
+        assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet, firstPacket);
+        assert.equal(provider.received.length, 2);
     } finally { await db.close(); }
 });

@@ -282,7 +282,6 @@ export class SqlRiteSync {
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	native_content_retain: SqlRiteSyncPreparedStatements;
 	native_content_read: SqlRiteSyncPreparedStatements;
-	reasoning_initial_reads: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
@@ -514,7 +513,7 @@ export class SqlRiteSync {
 	test_parser_pathnames: SqlRiteSyncPreparedStatements;
 	test_parser_log_indices: SqlRiteSyncPreparedStatements;
 	test_parser_log_first: SqlRiteSyncPreparedStatements;
-	test_reasoning_resources: SqlRiteSyncPreparedStatements;
+	test_model_reasoning_resources: SqlRiteSyncPreparedStatements;
 	test_reasoning_reads: SqlRiteSyncPreparedStatements;
 	tok_channel_weight: SqlRiteSyncPreparedStatements;
 	tok_log_weight: SqlRiteSyncPreparedStatements;
@@ -808,7 +807,6 @@ export default class SqlRite {
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	native_content_retain: SqlRitePreparedStatements;
 	native_content_read: SqlRitePreparedStatements;
-	reasoning_initial_reads: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
@@ -1040,7 +1038,7 @@ export default class SqlRite {
 	test_parser_pathnames: SqlRitePreparedStatements;
 	test_parser_log_indices: SqlRitePreparedStatements;
 	test_parser_log_first: SqlRitePreparedStatements;
-	test_reasoning_resources: SqlRitePreparedStatements;
+	test_model_reasoning_resources: SqlRitePreparedStatements;
 	test_reasoning_reads: SqlRitePreparedStatements;
 	tok_channel_weight: SqlRitePreparedStatements;
 	tok_log_weight: SqlRitePreparedStatements;

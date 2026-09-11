@@ -48,7 +48,6 @@ import { fileURLToPath } from "node:url";
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 import ReasoningView from "./ReasoningView.ts";
-import type { PacketLogDraft } from "./PacketBuilder.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import Turn, { type InferenceEvidence } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
@@ -899,13 +898,21 @@ export default class TurnRunner {
                 position: UNKNOWN_POSITION,
             };
             const pathname = `/${loopRow!.sequence}/${initializationTurn.sequence}`;
+            await Turn.recordSource(this.#db, initializationTurn.id, "reasoning",
+                ReasoningView.initialSource(loopRow!.sequence, initializationTurn.sequence));
+            const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence);
+            if (reasoningRead !== null) initializationStatements.push(reasoningRead);
             initializationStatements.push({
-                op: "READ", annotation: "initialization program", body: null, metadata: null,
+                op: "READ", annotation: "inspect this turn's emission", body: null, metadata: null,
                 target: {
                     kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
                     username: null, password: null, hostname: null, port: null, query: null, fragment: null,
                 },
                 lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            });
+            if (promptPublication !== null) initializationStatements.push({
+                op: "READ", annotation: "inspect Active Prompt", body: null, metadata: null,
+                target: promptPublication.path, lineMarker: null, position: UNKNOWN_POSITION,
             });
             initializationStatements.push(task);
             const admittedInitializationStatements = initializationStatements.filter(initializationAdmits);
@@ -1040,37 +1047,21 @@ export default class TurnRunner {
         // written (if turn 1) is part of that query result.
         let promptProjection: "automatic" | "withheld" = "automatic";
         const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        const buildPacket = (currentTurnSeq = seq, pendingLog: readonly PacketLogDraft[] = []): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
+        const buildPacket = (): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
             this.#packets.buildRequestPacket({
                 initialMessages: messages,
                 recap,
                 workspaceId,
                 workerId,
                 loopId,
-                currentTurnSeq,
+                currentTurnSeq: seq,
                 provider,
                 gitStatus,
                 notices,
                 transientOpenLogEntryId,
                 promptProjection,
-                pendingLog,
                 turnId,
             });
-        // {§reasoning-initial-read} — preflight the real READ representation,
-        // then dispatch only the selected scope. No speculative history writes.
-        for (const proposed of await ReasoningView.initialReads(this.#db, workerId, provider)) {
-            const context = {
-                statement: proposed, workspaceId, workerId, loopId, turnId,
-                sequence: nextActionIndex, origin: "_plurnk" as const,
-                onDispatch, onSettled,
-            };
-            const draft = await this.#dispatcher.previewRead(context);
-            const candidate = await buildPacket(seq, [{ ...draft, loop_seq: loopSeq, turn_seq: seq }]);
-            const statement = this.#packets.curationOverflow(candidate) === null
-                ? proposed : ReasoningView.bounded(proposed);
-            await this.#dispatch({ ...context, statement });
-            nextActionIndex++;
-        }
         let requestPacket = await buildPacket();
         // {§context-output-admission} — output admission changes no operation
         // outcome, authored inventory, or turn identity.

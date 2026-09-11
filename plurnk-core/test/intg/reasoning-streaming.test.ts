@@ -38,7 +38,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
         const timer = setTimeout(() => ready.reject(new Error("AG-UI reasoning was withheld until completion")), 2000);
         try {
             await ready.promise;
-            assert.deepEqual(await db.test_reasoning_resources.all({ worker_id: workerId }), [], "the live signal cannot originate from a not-yet-created copy");
+            assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), [], "the live signal cannot originate from a not-yet-created copy");
             assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
         } finally {
             clearTimeout(timer);
@@ -49,7 +49,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
         }
         assert.deepEqual(events.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => event.delta), ["Visible now."]);
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_END").length, 1);
-        const rows = await db.test_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
+        const rows = await db.test_model_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
         assert.equal(rows[0]!.content, "Visible now.");
     } finally {
         await db.close();
@@ -138,7 +138,7 @@ ONLY_${name}
             for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");
             }
-            const resources = await db.test_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
+            const resources = await db.test_model_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
             assert.deepEqual(resources.map(({ content }) => content), [`Thinking ${name}.`]);
             const accounting = await db.test_provider_requests.all<{ usage_input: number; usage_output: number }>({ turn_id: turnId });
             assert.deepEqual(accounting.map(({ usage_input, usage_output }) => [usage_input, usage_output]), [[10 + index, 20 + index]]);

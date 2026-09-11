@@ -3,7 +3,6 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import ReasoningView from "./ReasoningView.ts";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
-import { UNKNOWN_POSITION, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 test("{§reasoning-initial-read}: view limits use the selected alias and reject malformed configuration", () => {
     const keys = ["PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_VIEW_LINES_viewtest"];
@@ -41,14 +40,27 @@ test("{§reasoning-initial-read}: view limits use the selected alias and reject 
     }
 });
 
-test("{§reasoning-initial-read}: pressure never widens a configured range", () => {
-    for (const [limit, expected] of [[-1, 16], [1, 1], [8, 8], [16, 16], [32, 16]] as const) {
-        const proposed: ReadStatement = {
-            op: "READ", target: null, annotation: null,
-            metadata: null, body: null, position: UNKNOWN_POSITION,
-            lineMarker: { marks: [1, limit] },
-        };
-        assert.deepEqual(ReasoningView.bounded(proposed).lineMarker, { marks: [1, expected] });
-        assert.deepEqual(proposed.lineMarker, { marks: [1, limit] });
+test("{§reasoning-initial-read}: initialization reads its own source with the configured scope", () => {
+    const before = process.env.PLURNK_REASONING_VIEW_LINES;
+    const provider = new Mock({ contextWindow: 100_000, responses: [] });
+    try {
+        for (const limit of [-1, 0, 1, 8, 32]) {
+            process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
+            const read = ReasoningView.initialRead(provider, 3, 8);
+            if (limit === 0) assert.equal(read, null);
+            else {
+                assert.equal(read?.target?.raw, "reasoning:///3/8");
+                assert.equal(read?.annotation, "inspect this turn's reasoning");
+                assert.deepEqual(read?.lineMarker, { marks: [1, limit] });
+            }
+        }
+    } finally {
+        if (before === undefined) delete process.env.PLURNK_REASONING_VIEW_LINES;
+        else process.env.PLURNK_REASONING_VIEW_LINES = before;
     }
+});
+
+test("{§reasoning-initial-read}: the authored rationale teaches the next model turn's current-source address", () => {
+    assert.equal(ReasoningView.initialSource(3, 1), "This harness-generated turn surveys the workspace and available capabilities.\n"
+        + "In turn 2, use ````READ (reasoning:///3/2) <1,-1>```` to retain your reasoning in subsequent packets.");
 });

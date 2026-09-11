@@ -534,7 +534,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches one archiving COPY, orienting READ/FIND, a full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source, and final TASK (in {§op-execution-order}). That ordinary READ receipt supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt://<worker>/<loop>/<id>)` onto `worker://<worker>/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing named scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches one archiving COPY, orienting READ/FIND, the reasoning/program/prompt READs in {§reasoning-initial-read}, and final TASK (in {§op-execution-order}). The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt://<worker>/<loop>/<id>)` onto `worker://<worker>/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing named scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
@@ -1831,7 +1831,7 @@ selection or fan-out path.
 
 | Layer | Owner | Curation contract |
 |---|---|---|
-| Durable event | `log_entries` | One chronological execution fact. Ordinary Plurnk operations never erase it; its original body and initial folded state remain available to the client journal, digest, and fork forensics. Containing turn, worker, or workspace teardown may cascade the history. |
+| Durable event | `log_entries` | One chronological execution fact. Ordinary Plurnk operations never erase it; its original body and initial visibility remain available to the client journal, digest, and fork forensics. Containing turn, worker, or workspace teardown may cascade the history. |
 | Active projection | `log_entry_projections` | One current worker-facing visibility state per immutable event. A scoped KILL changes body visibility while active. Log-KILL atomically changes active to inactive and cannot be reversed; inactive rows are absent from packet rendering, log READ/FIND, failure pointers, full-text discovery, token accounting, and later curation. |
 
 The successful curation operation and every exact target transition are durable
@@ -1843,32 +1843,24 @@ resource or process semantics; this projection contract is specific to
 
 | Surface | Contract |
 |---|---|
-| Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a working resource; missing reasoning creates no substitute. |
+| Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a model reasoning source; missing provider reasoning creates no substitute. A non-model producer may record its own authored rationale under {§turn-source-resources}. |
 | Resource | `reasoning:///<loop>/<turn>` is immutable text/plain source belonging to the current worker's turn under {§turn-source-resources}. Every actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
-| Delivery | The next packet observes the latest model turn's reasoning through actual `_plurnk` READ dispatch under {§reasoning-initial-read}. Initial and explicit READs produce ordinary `log:///.../READ` receipts with numeric line scopes and range metadata, without line anchors: the source is not model-editable. |
+| Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
 | Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. A mutable working copy requires ordinary COPY into an editable resource. |
-| Lifecycle | Restart retains sources and delivery history. FORK snapshots sources at the same local coordinates and receipts with independent curation. A durable initial READ prevents automatic redelivery even after log KILL. Ambient observations of another worker's READ do not count as reading one's own source. |
+| Lifecycle | Restart retains sources and observations. FORK snapshots sources at the same local coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. Missing and future coordinates return the ordinary missing-source result. |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
 ### §reasoning-initial-read Initial reasoning observation
 
-`PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) controls automatic
-feedback only: `0` disables it, `-1` requests the complete body, and a positive
-integer requests at most that many lines. Source retention, explicit READ scopes,
-and client streaming do not depend on this setting. No disabled-period backlog
-is injected: only the most recent completed model turn is initially observed.
-The automatic READ carries `annotation: "prior turn reasoning"` through ordinary
-receipt metadata; explicit READs retain their authored annotation.
-
-Core resolves the configured READ candidate and projects its ordinary receipt
-through the same packet renderer and calibrated accounting used for the actual
-request. If the complete candidate packet fits, that scope is dispatched;
-otherwise the initial READ selects `<1,16>` or the smaller configured cap.
-Only the chosen READ is recorded. The packet is rebuilt and ordinary
-{§context-output-admission} applies if it still does not fit. No special reasoning
-recovery turn, second token estimator, hidden clipping, or receipt rewriting
-occurs. Candidate construction does not acknowledge stream observations;
-only sending the actual request advances those observation cursors.
+The real initialization turn records a short `_plurnk`-authored rationale before
+executing its program. That program READs its own reasoning, its own persisted
+ops, and the Active Prompt, before TASK. The rationale identifies its harness
+origin and demonstrates a READ of the next model turn's *current* reasoning.
+Each resolves through ordinary READ dispatch.
+`PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's
+scope: `0` omits it, `-1` requests the complete body, and a positive integer
+requests the first N lines. Source retention, deliberate READs, and client
+streaming are independent. No later turn automatically requests reasoning.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 
@@ -1976,7 +1968,7 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 | Surface | Contract |
 |---|---|
 | Identity | `ops:///<loop>/<turn>` and `reasoning:///<loop>/<turn>` resolve against the current worker's durable loop and turn sequences. Authorities are invalid; there is no cross-worker alias or access policy. |
-| Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is the selected original provider `text/plain`. Missing source returns 404 rather than a fabricated body. |
+| Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is `text/plain` containing the selected original provider reasoning or a non-model producer's authored rationale. Producer identity comes from the owning turn; a harness rationale is not provider evidence. Missing source returns 404 rather than a fabricated body. |
 | Retention | One immutable source of each kind per turn. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
 | Operations | Ordinary scoped READ, FIND, content search and COPY from source. READ returns data and never executes it. Sources are read-only for every actor and have no edit hashes. |
 | Index | Source text uses the existing derivation, FTS and graph machinery; only its derivation attachment is replaceable. |
@@ -3953,7 +3945,7 @@ flowchart TD
     prompt -->|no| stop
 ```
 
-§context-output-selection **First presentation, not a turn-number heuristic, owns admission.** Canonical log-body resolution distinguishes authored input from returned output. Before provider I/O, the run boundary records the first admission turn of each newly visible returned body. On measured overflow, that batch's returned bodies and native parts are withheld together. Already-admitted output, authored TASK/program/message bodies, actual statuses and Problems, effects, child state, and immutable evidence remain unchanged. Bodyless and initially suppressed rows require no admission. Packet assembly and speculative reasoning READ measurement are pure. No recovery turn, generated TASK, KILL operation, strike, or extra model attempt is manufactured.
+§context-output-selection **First presentation, not a turn-number heuristic, owns admission.** Canonical log-body resolution distinguishes authored input from returned output. Before provider I/O, the run boundary records the first admission turn of each newly visible returned body. On measured overflow, that batch's returned bodies and native parts are withheld together. Already-admitted output, authored TASK/program/message bodies, actual statuses and Problems, effects, child state, and immutable evidence remain unchanged. Bodyless and initially suppressed rows require no admission. Packet assembly is pure. No recovery turn, generated TASK, KILL operation, strike, or extra model attempt is manufactured.
 
 | Projection fact | Meaning |
 |---|---|

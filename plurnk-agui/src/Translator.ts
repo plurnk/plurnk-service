@@ -10,7 +10,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 //                                 tool call: tx is the args, rx the result, coordinate the id)
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
 //                                 environment speaking; generic UIs skip, rich UIs render)
-//   turn_id changes             → STEP_FINISHED/STEP_STARTED
+//   turn_id advances            → STEP_FINISHED/STEP_STARTED
 //   loop/proposal|interaction   → owned by ProposalHitl (tool call + AG-UI interrupt)
 //   loop/terminated             → STATE_DELTA (budget truth) + RUN_FINISHED or RUN_ERROR
 // Numbers are passed through verbatim, never recomputed — the daemon's gauge is the gauge
@@ -372,6 +372,8 @@ export default class Translator {
     }
 
     #enterTurn(turnId: number): AguiEvent[] {
+        // Late receipt settlement updates history, not the execution cursor ({§agui-projection}).
+        if (this.#currentTurn !== null && turnId < this.#currentTurn) return [];
         if (turnId === this.#currentTurn) {
             if (this.#stepOpen) return [];
             this.#stepOpen = true;

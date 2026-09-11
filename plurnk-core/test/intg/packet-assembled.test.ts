@@ -226,8 +226,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "TASK"],
-            "turn 0 exposes the executed prompt COPY, surveys, source READ and TASK",
+            ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
+            "turn 0 exposes the executed prompt COPY, surveys, reasoning/program/prompt READs and TASK",
         );
         assert.deepEqual(
             initialization.filter(({ target }) => target === "ops:///1/1").map((row) => ({ open: "body" in row, origin: row.origin })),

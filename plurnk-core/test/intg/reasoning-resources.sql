@@ -1,7 +1,7 @@
--- PREP: test_reasoning_resources
+-- PREP: test_model_reasoning_resources
 SELECT '/' || l.sequence || '/' || t.sequence AS pathname, s.content
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id AND s.kind = 'reasoning'
+WHERE l.worker_id = $worker_id AND s.kind = 'reasoning' AND t.producer = 'model'
 ORDER BY l.sequence, t.sequence;
 
 -- PREP: test_reasoning_reads

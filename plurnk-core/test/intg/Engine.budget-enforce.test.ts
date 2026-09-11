@@ -13,7 +13,7 @@ import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
 import { dispositionStmt } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
@@ -45,7 +45,9 @@ class ExactCharCapacityMock extends Mock {
 }
 
 const PROMPT_CAPACITY_SENTINEL = "prompt-capacity-recovery-witness";
+const requestChars = (messages: readonly ChatMessage[]): number => messages.reduce((total, message) => total + chatMessageText(message).length, 0);
 class UpstreamPromptCapacityMock extends Mock {
+    static readonly maxRequestChars = 30_000;
     readonly requests: ChatMessage[][] = [];
 
     override async countPromptTokens(messages: readonly ChatMessage[]) {
@@ -59,7 +61,7 @@ class UpstreamPromptCapacityMock extends Mock {
 
     override async generate(args: Parameters<Mock["generate"]>[0]): ReturnType<Mock["generate"]> {
         this.requests.push(args.messages.map((message) => ({ ...message })));
-        if (args.messages.some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL))) {
+        if (requestChars(args.messages) > UpstreamPromptCapacityMock.maxRequestChars) {
             const capacity = await this.assessRequestCapacity(args.messages, args.maxOutputTokens);
             const accounting = validateProviderRequestAccounting({
                 provider: "provider:mock",
@@ -236,8 +238,9 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.equal(result.emissionAttempts, 1, "only the completed response consumes a grammar-emission attempt");
         assert.equal(provider.remaining, 0, "capacity recovery consumes the one queued model response exactly once");
         assert.equal(provider.requests.length, 2, "one rejected physical request is followed by one changed request");
-        assert.ok(provider.requests[0]?.some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)));
-        assert.ok(provider.requests[1]?.every((message) => !chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the retry withholds only the automatic prompt body");
+        assert.ok(requestChars(provider.requests[0]) > UpstreamPromptCapacityMock.maxRequestChars);
+        assert.ok(requestChars(provider.requests[1]) <= UpstreamPromptCapacityMock.maxRequestChars, "withholding the automatic prompt body makes the request fit");
+        assert.ok(provider.requests[1].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the ordinary prompt READ preview survives automatic-prompt withholding");
 
         const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
@@ -252,6 +255,9 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.deepEqual(requests.map(({ outcome }) => outcome), ["error", "response"], "both physical requests remain cardinal accounting facts");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
+        const entries = logEntries(packet);
+        assert.equal(entries.find(({ path }) => String(path).endsWith("/prompt"))?.body, undefined);
+        assert.match(String(entries.find(({ path, target }) => String(path).endsWith("/READ") && String(target).startsWith("prompt://"))?.body), new RegExp(PROMPT_CAPACITY_SENTINEL));
         assert.match(packetSection(packet, "errors"), /"status":413,"path":"log:\/\/\/[^"]+\/error"/, "the recovered rejection remains visible to the model");
     } finally {
         await db.close();
