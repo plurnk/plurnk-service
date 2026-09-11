@@ -715,7 +715,14 @@ EXEC git — never engine machinery.
   learns about a stream before it closes ({§exec-stream}). It is orienting state, never
   advice: the model sees its live subtree (`* 102 worker://worker-x`, `* active
   sh:///1/2/3/sh`) and reasons for itself — READ/KILL via the path.
-  Empty sections are omitted, like errors.
+- §packet-empty-sections **Emptiness is stated where the model decides on it.**
+  Both child-orientation sections render every turn, `[]` when empty: the
+  model decides whether to wait or complete on exactly these facts, so their
+  emptiness is stated rather than inferred from a missing heading. This is the
+  deliberate exception to the wire rule that empty content is absent; errors,
+  notices, and the rest keep that rule. The parent is not a section: the
+  `## Worker` identity block carries `"parent": "worker://<name>"`, or
+  `"parent": null` at a root, so a worker never infers its rank from silence.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
@@ -3655,17 +3662,16 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
-|     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`. |
+|     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`, and its `parent` address or `null`. |
 |     5 | user   | `log`                 | Append-mostly model-visible history. |
-|     6 | user   | `child-streams`        | Per-turn status; empty content is omitted. |
-|     7 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
-|     8 | user   | `parent-worker`       | The worker's parent by name; omitted for a root worker. |
-|     9 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|    10 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    11 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    12 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
-|    13 | user   | `prompt`              | Current prompt-entry pointers. |
-|    14 | user   | `recap`               | Optional authored operational recap. |
+|     6 | user   | `child-streams`        | Per-turn status; always present, `[]` when empty ({§packet-empty-sections}). |
+|     7 | user   | `child-workers`       | Per-turn status; always present, `[]` when empty ({§packet-empty-sections}). |
+|     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|     9 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    10 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    11 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
+|    12 | user   | `prompt`              | Current prompt-entry pointers. |
+|    13 | user   | `recap`               | Optional authored operational recap. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly

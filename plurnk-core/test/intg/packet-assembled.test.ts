@@ -383,7 +383,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["worker", "log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: worker -> log -> status clump -> active prompt paths -> Recap");
+        assert.deepEqual(slot("user"), ["worker", "log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: worker -> log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active Prompts");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
@@ -534,11 +534,11 @@ test("no live children or streams → the orientation sections are omitted (like
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
-        // model never sees a bare header — same as the errors section when there are no errors.
+        // {§packet-empty-sections} — the two child-orientation sections state emptiness as `[]`: the model
+        // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "child-workers"), "", "no live child workers → child-workers renders nothing");
-        assert.equal(packetSection(packet, "child-streams"), "", "no open streams → child-streams renders nothing");
+        assert.equal(packetSection(packet, "child-workers"), "[]", "no live child workers → child-workers states []");
+        assert.equal(packetSection(packet, "child-streams"), "[]", "no open streams → child-streams states []");
     } finally { await db.close(); }
 });
 

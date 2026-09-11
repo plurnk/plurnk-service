@@ -449,7 +449,7 @@ ORDER BY r.name;
 
 -- PREP: engine_parent_worker
 -- The worker's PARENT, when it has one — its name and the status of its latest loop. Powers the
--- Parent Worker orienting section ({§child-orientation}, #394): a child can only name its parent's
+-- The parent on the Worker identity block ({§child-orientation}, #394): a child can only name its parent's
 -- streams and space if it is told the name. Absent → section omitted.
 SELECT p.name,
        COALESCE((SELECT l.status FROM loops l WHERE l.worker_id = p.id ORDER BY l.id DESC LIMIT 1), 0) AS status

@@ -22,7 +22,8 @@ newlines are removed from each section, and rendered sections are separated by o
 
 Core owns this order at {§packet-cache-monotone}. The diagram projects that contract into the two
 Markdown strings; a trusted plugin may transform the section list before rendering
-{§packet-plugin-transform}. Any node whose content is empty is absent from the wire.
+{§packet-plugin-transform}. Any node whose content is empty is absent from the wire, except the two
+child-orientation sections, which state emptiness as `[]` ({§packet-empty-sections}).
 
 ```mermaid
 flowchart LR
@@ -37,8 +38,7 @@ flowchart LR
         worker["Worker"] --> log["Log"]
         log --> streams["Child Streams"]
         streams --> workers["Active Child Workers"]
-        workers --> parent["Parent Worker"]
-        parent --> errors["Errors"]
+        workers --> errors["Errors"]
         errors --> notices["Notices"]
         notices --> git["Git Status"]
         git --> budget["Context Curation"]
@@ -52,11 +52,10 @@ flowchart LR
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
 | `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
-| `worker`              | user   | JSON `path` with the literal Worker address    | {§packet-cache-monotone}        |
+| `worker`              | user   | JSON `path` with the literal Worker address and `parent` (address or `null`) | {§packet-cache-monotone} |
 | `log`                 | user   | Markdown H3 records with JSON metadata        | {§log-wire-format}              |
-| `child-streams`       | user   | JSON status/path pointers                     | {§child-orientation}            |
-| `child-workers`       | user   | JSON status/path pointers                     | {§child-orientation}            |
-| `parent-worker`       | user   | JSON status/path pointer                      | {§child-orientation}            |
+| `child-streams`       | user   | JSON status/path pointers, `[]` when empty    | {§child-orientation}            |
+| `child-workers`       | user   | JSON status/path pointers, `[]` when empty    | {§child-orientation}            |
 | `errors`              | user   | JSON status/log-path pointers                 | {§operation-results}            |
 | `notices`             | user   | Terse observation bullets                     | {§notice-drain-on-read}         |
 | `git`                 | user   | Working-tree state in a NOTE blockquote       | {§packet-cache-monotone}        |

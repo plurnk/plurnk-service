@@ -295,7 +295,9 @@ export default class PacketBuilder {
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
         // unconcluded child workers — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
-        // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
+        // what it's holding (the premature-terminate trap), never advice on what to do. These two
+        // sections always render, `[]` when empty: the model decides wait-or-complete on them, so
+        // emptiness is stated rather than inferred from a missing heading ({§packet-empty-sections}).
         const openChannels = await this.#db.engine_child_streams_open.all<{
             scheme: string; authority: string; pathname: string; publication_id: number; channel: string;
             lines: number; bytes: number; reported: number;
@@ -320,9 +322,10 @@ export default class PacketBuilder {
             };
         });
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
-        // streams and space ({§worker-read-scope}, #394). Root workers have none → omitted.
+        // streams and space ({§worker-read-scope}, #394). The parent rides the `## Worker` identity
+        // block; a root worker states `"parent": null` rather than omitting it.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
-        const parentWorker = parentRow === undefined ? [] : [{ status: parentRow.status, path: `worker://${parentRow.name}` }];
+        const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
         // {§fs-namespace} — the log renders working directories relative to the model's `/`.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const renderedLog = PacketWire.renderLogWithAccounting(
@@ -341,7 +344,7 @@ export default class PacketBuilder {
             { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}` }) },
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath }) },
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {
                 name: "log",
@@ -352,9 +355,8 @@ export default class PacketBuilder {
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs or KILLs), never advice. {§child-orientation}
-            { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams) },
-            { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers) },
-            { name: "parent-worker", slot: "user", header: "Parent Worker", content: PacketWire.renderChildPointers(parentWorker) },
+            { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams, true) },
+            { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers, true) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },

@@ -210,15 +210,16 @@ export default class PacketWire {
     // The Child Streams / Active Child Workers sections ({§child-orientation}) — the OPPOSITE of advice: terse
     // `{status, path}` JSON pointers (same shape as the errors section) to the live things the worker holds,
     // so the model SEES its active streams + unconcluded workers each turn and reasons for itself (READ /
-    // KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
-    static renderChildPointers(rows: unknown): string {
+    // KILL via the path). Orienting state, never an instruction. "" when none → section omitted,
+    // unless `always`: the child-orientation sections state emptiness as `[]` ({§packet-empty-sections}).
+    static renderChildPointers(rows: unknown, always = false): string {
         const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown; detail?: unknown }>) : [];
         const pointers = items.map((r) => JSON.stringify({
             status: r.status,
             path: r.path,
             ...(typeof r.detail === "string" && r.detail.length > 0 ? { detail: r.detail } : {}),
         }));
-        return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
+        return pointers.length === 0 ? (always ? "[]" : "") : `[${pointers.join(",\n")}]`;
     }
 
     // The git section content: the working-tree summary. "" when absent.

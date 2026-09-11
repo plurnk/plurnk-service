@@ -109,12 +109,12 @@ test("a child's packet names its parent worker; the root's packet does not", asy
             assert.ok(modelWorkerId !== undefined);
             const parent = await db.fork_get_worker.get<{ name: string }>({ id: modelWorkerId });
             assert.ok(parent !== undefined);
-            const pointers = JSON.parse(packetSection(childPacket, "parent-worker"));
-            assert.equal(pointers.length, 1);
-            assert.equal(typeof pointers[0].status, "number");
-            assert.equal(pointers[0].path, `worker://${parent.name}`, "the child is told its actual parent's address");
+            // {§packet-empty-sections} — the parent rides the Worker identity block, never a separate section.
+            const identity = JSON.parse(packetSection(childPacket, "worker"));
+            assert.equal(identity.parent, `worker://${parent.name}`, "the child is told its actual parent's address");
+            assert.equal(packetSection(childPacket, "parent-worker"), "", "no Parent Worker section exists");
             const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1]! }))!.packet);
-            assert.equal(packetSection(rootPacket, "parent-worker"), "", "a root worker has no parent pointer");
+            assert.equal(JSON.parse(packetSection(rootPacket, "worker")).parent, null, "a root worker states parent: null rather than omitting it");
         } finally { ws.close(); }
     });
 });
