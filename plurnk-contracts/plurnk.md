@@ -65,6 +65,13 @@ Plurnk Harness facilitates:
 
 ## File Editing
 
+    ````EDIT (example.md) <@abcde>
+    literal replacement text
+    ````
+
+    ````EDIT (books.xml) [{"pattern":"//book[price > 35.00]"}] <!-- replace with empty to remove -->
+    ````
+
 > [!TIP]
 > The `EDIT` body only accepts literal text.
 
@@ -142,21 +149,19 @@ Plurnk Harness facilitates:
 
 ## Pattern Filtering
 
-* Pattern matchers in the operation's `body` select paths by content:
+* Pattern matchers in the operation's metadata (`[{"pattern":"matcher"}]`) select paths by content:
 
-| prefix | dialect  | form                               | example                 | engine           |
+| prefix | dialect  | form                               | example                 | engine |
 |--------|----------|------------------------------------|-------------------------|------------------|
-| `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
-| `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$.items[?(@.price>500)]` | RFC 9535   |
+| `/`    | regex    | `/pattern/flags`                   | `/\\btimeout\\b/i`        | ECMAScript |
+| `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0 |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$.items[?(@.price>500)]` | RFC 9535 |
 | `~`    | full-text | `~query`                          | `~retry` | SQLite FTS5 |
-| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
-| none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
+| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index |
+| none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal |
 
-    ````FIND (haystack.md)
-    needle
+    ````FIND (haystack.md) [{"pattern":"needle"}] <!-- find lines matching "needle" -->
     ````
 
-    ````FIND (belfry.md)
-    /\bbats?\b/i
+    ````READ (belfry.md) [{"pattern":"/\\bbats?\\b/i"}] <!-- read lines matching "bat" or "bats", case-insensitive -->
     ````
