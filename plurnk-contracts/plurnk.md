@@ -10,7 +10,7 @@ Plurnk Harness facilitates:
 
 ## Harness Operation Syntax
 
-    ````OP (path)? <scope|range>? <!-- aside -->?
+    ````OP (path)? <scope|range>? [metadata]? <!-- aside -->?
     body?
     ````
 
@@ -27,7 +27,7 @@ Plurnk Harness facilitates:
 * EDIT: create a file or entry; use scope to replace existing text
 * COPY: copy files, entries, streams, or text regions
 * MOVE: move files, entries, streams, or text regions
-* SEND: respond to Active Prompts or message workers or endpoints
+* SEND: message workers, message endpoints, final response to Active Prompts
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)
 * BARE: deploy an isolated inference query (no log or tools)
@@ -49,8 +49,11 @@ Plurnk Harness facilitates:
 > [!NOTE]
 > YOU SHOULD conclude every turn with one TASK operation.
 
-> [!WARNING]
-> The final turn contains only a SEND response to Active Prompts and a TASK operation with every task "completed" or "failed".
+> [!NOTE]
+> YOU MAY NOT finish the loop before all tasks, workers, and streams are completed.
+
+> [!IMPORTANT]
+> A turn with only the final response SEND and TASK (with all tasks "completed" or "failed") finishes the loop.
 
 ## Workspace Navigation
 
@@ -127,10 +130,15 @@ Plurnk Harness facilitates:
 > [!TIP]
 > YOU SHOULD use `<@hash>` or `<@start,@end>` to EDIT line coordinates; stale EDIT targets are rejected.
 
+## `[metadata]`
+
+> [!NOTE]
+> Metadata may contain optional, one-line, operation-specific configuration.
+
 ## `<!-- aside -->`
 
 > [!NOTE]
-> Asides are optional, terse, one-liner descriptions of intent beside (not below) an operation declaration.
+> Aside contains an optional, terse, one-liner beside (not below) an operation declaration.
 
 ## Pattern Filtering
 
