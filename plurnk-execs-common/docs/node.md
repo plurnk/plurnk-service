@@ -45,7 +45,8 @@ Whatever the snippet writes to stdout streams to `#stdout`; stderr streams to
 first page (up to 16 lines). READ the stream address for additional lines;
 the log READ holds only its recorded page. To return structured data, use
 `console.log(JSON.stringify(value))`. A thrown error exits nonzero (status 500)
-with its stack on stderr.
+with its stack on stderr. The receipt's own body is the snippet as you sent
+it, never output; a non-200 receipt with no `stream` address ran nothing.
 
 ## Working directory
 

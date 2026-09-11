@@ -58,6 +58,11 @@ address for more; the `log:///…/READ` item holds only its recorded page:
 A nonzero exit closes with status 500; inspect both channels because either
 may carry the useful diagnostic.
 
+The `log:///…/sh` receipt's own body is the program exactly as you sent it,
+never output: output lives on the stream and in the harness READs. A receipt
+with a non-200 status and no `stream` address ran nothing; its body is still
+your program, and its Problem says why it was refused.
+
 ## Deadlines & polling — `<timeout, poll>`
 
 For a long-running command, the `<L>` slot carries `<timeout, poll>` in minutes:
