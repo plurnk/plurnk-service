@@ -101,7 +101,7 @@ for (const [tag, body] of [
 ] as const) {
     test(`{§executor-metadata}: inline ${tag} preserves arguments using native interpreter conventions`, { skip: !present(tag) }, async () => {
         const argv = ["first", "two words", "", "$(touch forbidden)"];
-        const { result, out } = await run(tag, body, { metadata: [`args=${JSON.stringify(argv)}`] });
+        const { result, out } = await run(tag, body, { metadata: [JSON.stringify({ args: argv })] });
         assert.equal(result.status, 200, out.stderr);
         assert.equal(out.stdout, `${argv.join("\n")}\n`);
     });

@@ -26,14 +26,14 @@ for (const [runtime, body, message, expected] of cases) {
         let receiver: ExecInputReceiver | undefined;
         let stdout = "";
         let stderr = "";
-        const completion = executor.run({ runtime, body, metadata: ["stdin=open"], cwd: null, target: null,
+        const completion = executor.run({ runtime, body, metadata: ['{"stdin": "open"}'], cwd: null, target: null,
             signal: controller.signal, registerInput: (input) => { receiver = input; },
             write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; else stderr += chunk; },
             setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
         });
         t.after(async () => { controller.abort({ signal: "SIGKILL" }); await completion; });
         assert.ok(receiver, "open stdin registers an invocation-local receiver");
-        const delivered = await receiver({ body: message, metadata: ["eof=true"], signal: controller.signal });
+        const delivered = await receiver({ body: message, metadata: ['{"eof": true}'], signal: controller.signal });
         assert.equal(delivered.status, 200);
         const result = await completion;
         assert.equal(result.status, 200, stderr);
