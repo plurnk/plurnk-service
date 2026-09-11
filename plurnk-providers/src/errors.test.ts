@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { APICallError, RetryError } from "ai";
+import { APICallError, JSONParseError, RetryError, TypeValidationError } from "ai";
 import { ProviderError, ProviderTimeoutError, classifyProviderError, toProviderError } from "./errors.ts";
 import type { ProviderAttempt } from "./types.ts";
 import { providerSource } from "./notices.ts";
@@ -240,4 +240,39 @@ test("retry exhaustion retains the exact inner deadline phase", () => {
     assert.equal(error.problem.retryExhausted, true);
     assert.equal(error.problem.timeoutPhase, "attempt");
     assert.equal(error.problem.timeoutMs, 10);
+});
+
+// {§provider-failure-cause} — the SDK wraps every processing failure of a 2xx body in one message;
+// the durable Problem keeps a bounded classification of what actually happened underneath.
+const processingFailure = (cause: Error) => new APICallError({
+    message: "Failed to process successful response",
+    url: "https://example.test/v1/chat/completions",
+    requestBodyValues: {},
+    statusCode: 200,
+    responseHeaders: { authorization: "Bearer never-copied", "x-request-id": "req_1" },
+    cause,
+});
+
+test("#593: a terminated body, invalid JSON, a schema-invalid body, and an internal fault are told apart in durable evidence", () => {
+    const terminated = toProviderError(processingFailure(new TypeError("terminated")), "provider:test", 512);
+    assert.equal(terminated.problem.providerKind, "network_failure");
+    assert.deepEqual(terminated.problem.cause, { causeKind: "transport_terminated", causeName: "TypeError", causeMessage: "terminated" });
+
+    const parse = toProviderError(processingFailure(new JSONParseError({ text: "<html>502 Bad Gateway</html>".repeat(40), cause: new SyntaxError("Unexpected token <") })), "provider:test", 512);
+    assert.equal(parse.problem.providerKind, "invalid_response");
+    assert.deepEqual(parse.problem.cause, { causeKind: "invalid_json", causeName: "AI_JSONParseError", causeMessage: "JSON parsing failed (1120 characters)" });
+    assert.doesNotMatch(JSON.stringify(parse.problem), /Bad Gateway/, "the payload never enters the Problem");
+
+    const schema = toProviderError(processingFailure(new TypeValidationError({ value: { choices: "not-an-array", secret: "sk-live" }, cause: new Error("Expected array, received string at choices\nmore lines") })), "provider:test", 512);
+    assert.equal(schema.problem.providerKind, "invalid_response");
+    assert.deepEqual(schema.problem.cause, { causeKind: "schema_invalid", causeName: "AI_TypeValidationError", causeMessage: "Type validation failed: Expected array, received string at choices" });
+    assert.doesNotMatch(JSON.stringify(schema.problem), /sk-live|not-an-array/, "the value never enters the Problem");
+
+    const internal = toProviderError(processingFailure(new RangeError("Invalid array length\n    at Array.push (stack frame)")), "provider:test", 512);
+    assert.deepEqual(internal.problem.cause, { causeKind: "internal", causeName: "RangeError", causeMessage: "Invalid array length" });
+    assert.doesNotMatch(JSON.stringify(internal.problem), /stack frame|authorization|Bearer|req_1/, "no stack, no headers");
+
+    const bounded = toProviderError(processingFailure(new Error("x".repeat(100))), "provider:test", 8);
+    assert.equal((bounded.problem.cause as { causeMessage: string }).causeMessage, "xxxxxxxx...", "the cause message honours the configured detail limit");
+    assert.equal(toProviderError(apiError(502), "provider:test", 512).problem.cause, undefined, "an error without a cause reports none");
 });

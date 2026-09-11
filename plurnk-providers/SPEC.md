@@ -617,6 +617,20 @@ normal value. Retry exhaustion is preserved as `attempts` and
 `retryExhausted`, and the resulting Problem is not marked retryable after the
 provider has consumed its automatic retry budget.
 
+§provider-failure-cause **The wrapper's cause is evidence, bounded.** The SDK
+reports every processing failure of a 2xx body with one message ("Failed to
+process successful response") and keeps what happened as `cause`. A normalized
+Problem carries that cause as a bounded classification — `cause.causeKind` is
+`transport_terminated` (the body ended under a successful status),
+`invalid_json`, `schema_invalid`, `invalid_response_data`, or `internal`, with
+the cause's error name and one bounded line of its message — so forensics can
+tell an interrupted stream from a malformed body without the kind changing:
+classification of the Problem (`providerKind`, retryability, accounting) is
+untouched by this evidence. The SDK's parse and validation messages embed the
+payload, so those two report shape (character count, the validator's issue
+line), never response text; no headers, credentials, stack frames, or body
+dumps enter any Problem. Covered by `errors.test.ts` (#593).
+
 §provider-capacity-failure A proven exact preflight overflow and an upstream
 context rejection normalize to `ProviderError(kind="capacity_exceeded")` and
 an RFC 9457 status 413. `capacityStage` is `preflight` or `upstream`; a

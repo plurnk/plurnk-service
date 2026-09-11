@@ -1,4 +1,4 @@
-import { APICallError, RetryError } from "ai";
+import { APICallError, InvalidResponseDataError, JSONParseError, RetryError, TypeValidationError } from "ai";
 import { ProviderError } from "./providerError.ts";
 import type { ProviderErrorKind } from "./providerError.ts";
 import type { ProviderRequestCapacity } from "./types.ts";
@@ -81,6 +81,34 @@ const preview = (value: unknown, limit: number | undefined): string => {
         : text;
 };
 
+export type ProviderFailureCauseKind = "transport_terminated" | "invalid_json" | "schema_invalid" | "invalid_response_data" | "internal";
+
+export interface ProviderFailureCause {
+    readonly causeKind: ProviderFailureCauseKind;
+    readonly causeName: string;
+    readonly causeMessage: string;
+}
+
+const firstLine = (text: string): string => text.split("\n")[0]?.trim() ?? "";
+
+// {§provider-failure-cause} — what the SDK wrapped. "Failed to process successful response" is
+// the SDK's one message for a body that terminated, a body that was not JSON, a body that failed
+// the response schema, and its own internal faults; the durable Problem keeps a bounded
+// classification of the cause so forensics can tell them apart. The SDK's parse and validation
+// messages embed the payload, so those two report shape, never text.
+const failureCause = (err: APICallError, detailLimit: number | undefined): ProviderFailureCause | null => {
+    const cause = err.cause;
+    if (!(cause instanceof Error)) return null;
+    if (peerTerminated(cause)) return { causeKind: "transport_terminated", causeName: cause.name, causeMessage: preview(firstLine(cause.message), detailLimit) };
+    if (JSONParseError.isInstance(cause)) return { causeKind: "invalid_json", causeName: cause.name, causeMessage: `JSON parsing failed (${cause.text.length} characters)` };
+    if (TypeValidationError.isInstance(cause)) {
+        const inner = cause.cause instanceof Error ? firstLine(cause.cause.message) : "";
+        return { causeKind: "schema_invalid", causeName: cause.name, causeMessage: inner === "" ? "Type validation failed" : `Type validation failed: ${preview(inner, detailLimit)}` };
+    }
+    if (InvalidResponseDataError.isInstance(cause)) return { causeKind: "invalid_response_data", causeName: cause.name, causeMessage: preview(firstLine(cause.message), detailLimit) };
+    return { causeKind: "internal", causeName: cause.name, causeMessage: preview(firstLine(cause.message), detailLimit) };
+};
+
 export const classifyProviderError = (
     err: unknown,
     detailLimit?: number,
@@ -94,6 +122,31 @@ export const classifyProviderError = (
         };
     }
     if (APICallError.isInstance(err)) {
+        const classified = classifyApiCallError(err, detailLimit);
+        const cause = failureCause(err, detailLimit);
+        return cause === null ? classified : { ...classified, extensions: { ...(classified.extensions ?? {}), cause } };
+    }
+    const wire = err as { message?: unknown; type?: unknown };
+    if (wire?.type === "grammar_invalid") {
+        return {
+            kind: "grammar_invalid",
+            message: typeof wire.message === "string"
+                ? preview(wire.message, detailLimit)
+                : "The provider rejected the response grammar.",
+        };
+    }
+    const error = err as { message?: string };
+    return {
+        kind: "network_failure",
+        message: preview(
+            (error?.message ?? String(err)) || "The provider request failed.",
+            detailLimit,
+        ),
+    };
+};
+
+const classifyApiCallError = (err: APICallError, detailLimit: number | undefined): ClassifiedProviderError => {
+    {
         const timeout = providerTimeoutOf(err);
         if (timeout !== null) {
             return {
@@ -149,23 +202,6 @@ export const classifyProviderError = (
         if (status >= 400 && status < 500) return { kind: "request_rejected", message };
         return { kind: "invalid_response", message };
     }
-    const wire = err as { message?: unknown; type?: unknown };
-    if (wire?.type === "grammar_invalid") {
-        return {
-            kind: "grammar_invalid",
-            message: typeof wire.message === "string"
-                ? preview(wire.message, detailLimit)
-                : "The provider rejected the response grammar.",
-        };
-    }
-    const error = err as { message?: string };
-    return {
-        kind: "network_failure",
-        message: preview(
-            (error?.message ?? String(err)) || "The provider request failed.",
-            detailLimit,
-        ),
-    };
 };
 
 export const toProviderError = (
