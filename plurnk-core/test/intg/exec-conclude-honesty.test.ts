@@ -248,7 +248,7 @@ for (const specimen of [
             assert.deepEqual(completed.problem?.pending, specimen.status === 200
                 ? ["receipts"] : ["receipts", "failed-stream-results"]);
             if (specimen.status === 200) {
-                assert.equal(completed.problem?.detail, `Completion preceded results: ${tag}, stream completion. Continuing to the next packet.`,
+                assert.equal(completed.problem?.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet; a TASK now completes.`,
                     "the executor's public name is used, not the internal EXEC operation");
             }
         } finally { await db.close(); }
@@ -268,7 +268,7 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
             workspaceId, workerId, loopId, turnId: nextTurnId, sequence: 1, origin: "model",
         });
         assert.equal(completed.status, 409);
-        assert.equal(completed.problem?.detail, "Completion preceded results: stream completion. Continuing to the next packet.");
+        assert.equal(completed.problem?.detail, "Completion deferred until stream completion reached a packet. It is in this packet; a TASK now completes.");
         assert.deepEqual(completed.problem?.pending, ["receipts"]);
     } finally { await db.close(); }
 });

@@ -133,28 +133,32 @@ export default class TurnDispositionHandler {
                 const { pending, receipts } = await this.#pendingSet(workerId, turnId);
                 const receiptsOnly = pending.length > 0 && pending.every((kind) => kind === "receipts");
                 if (pending.length > 0 && !(receiptsOnly && ctx.allowUnobservedRetrievalCompletion)) {
+                    // {§send-premature-terminate} — the receipt is read one packet later,
+                    // beside the results it names, so it speaks from that moment: what
+                    // deferred completion is now in the packet, and the same TASK is the
+                    // correct next request (retryable), never an action to "observe".
                     if (receiptsOnly) {
                         return withTimingDetail(this.#failure(
                             "retrieval-results-unobserved",
                             409,
-                            `Completion preceded results: ${ErrorDetail.preview(receipts.join(", "))}. Continuing to the next packet.`,
+                            TurnDispositionHandler.deferredReceiptsDetail(receipts),
                             {},
                             {
                                 pending: [...pending],
                                 stage: "completion",
-                                retryable: false,
+                                retryable: true,
                             },
                         ));
                     }
                     return withTimingDetail(this.#failure(
                         "work-remains",
                         409,
-                        "Completion encountered pending work or results.",
+                        TurnDispositionHandler.deferredWorkDetail(pending),
                         {},
                         {
                             pending: [...pending],
                             stage: "completion",
-                            retryable: false,
+                            retryable: true,
                         },
                     ));
                 }
@@ -198,6 +202,31 @@ export default class TurnDispositionHandler {
             return failure;
         }
         return { status };
+    }
+
+    // {§send-premature-terminate} Receipts-only deferral, worded at read time.
+    static deferredReceiptsDetail(receipts: readonly string[]): string {
+        const plural = receipts.length > 1;
+        return `Completion deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet; a TASK now completes.`;
+    }
+
+    // {§send-premature-terminate} Live obligations name the wait; observed-now results name the packet.
+    static deferredWorkDetail(pending: readonly string[]): string {
+        const live: string[] = [];
+        if (pending.includes("workers")) live.push("child workers are still running");
+        if (pending.includes("streams")) live.push("an execution is still running");
+        const landed: string[] = [];
+        if (pending.includes("worker-results")) landed.push("a child worker's result");
+        if (pending.includes("failed-stream-results")) landed.push("a failed execution result");
+        if (pending.includes("receipts")) landed.push("operation receipts");
+        const sentences: string[] = [];
+        if (live.length > 0) {
+            sentences.push(`Completion deferred: ${live.join(" and ")}. A TASK with a pending task waits for ${live.length > 1 || pending.includes("workers") ? "them" : "it"}${pending.includes("streams") ? ", or KILL ends the execution" : ""}.`);
+            if (landed.length > 0) sentences.push(`${landed.join(" and ")} ${landed.length > 1 ? "are" : "is"} in this packet.`);
+        } else {
+            sentences.push(`Completion deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet; a TASK now completes.`);
+        }
+        return sentences.join(" ");
     }
 
 }

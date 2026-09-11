@@ -412,11 +412,11 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
         assert.equal(
             problem?.detail,
-            "Completion preceded results: READ. Continuing to the next packet.",
+            "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.",
         );
         assert.deepEqual(problem?.pending, ["receipts"]);
         assert.equal(problem?.recovery, undefined);
-        assert.equal(problem?.retryable, false);
+        assert.equal(problem?.retryable, true, "the same TASK is the correct next request");
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
 });
@@ -507,7 +507,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const inventory = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
         assert.ok(inventory !== undefined, "the refused TASK row renders");
-        assert.equal((inventory.problem as { detail?: string } | undefined)?.detail, "Completion preceded results: READ. Continuing to the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
+        assert.equal((inventory.problem as { detail?: string } | undefined)?.detail, "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

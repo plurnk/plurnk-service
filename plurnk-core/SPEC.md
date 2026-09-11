@@ -2240,8 +2240,15 @@ violations follow the current admission and strike contracts
   `worker-results`. A receipts-only refusal also names the distinct blocking
   operations in execution order using their model-facing log names
   ({§log-coordinate-hierarchy}), plus `stream completion` for undelivered terminal
-  stream results. It describes the refused completion in the past tense and the
-  following-packet boundary, not a persistent unacknowledged obligation.
+  stream results. The receipt is read one packet later, beside the results it
+  names, and speaks from that moment: a receipts-only or results-only refusal
+  says the deferred results are in the packet being read and that a TASK now
+  completes; a live obligation names the wait (a TASK with a pending task, or
+  KILL for an execution); a same-turn failure says the failure is in the packet
+  and asks for it to be addressed or completed over. Every completion refusal
+  is `retryable: true`, because the same TASK is the correct next request;
+  none of them names an action to observe, and none describes a persistent
+  unacknowledged obligation.
   That list obeys the configured error-detail limit; it never
   embeds commands, stream handles, result bodies, or a presumed recovery.
   The pending kind changes the factual Problem class, not

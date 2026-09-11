@@ -1155,12 +1155,12 @@ export default class Dispatcher {
         return Dispatcher.#failure(
             "unobserved-failures",
             409,
-            `This turn produced ${failCount} failed operation result(s) that have not yet entered a packet.`,
+            `Completion deferred: ${failCount} operation${failCount === 1 ? "" : "s"} failed in the same turn. The failure${failCount === 1 ? " is" : "s are"} in this packet; address ${failCount === 1 ? "it" : "them"} or complete with a TASK now.`,
             {},
             {
                 failures: failCount,
                 stage: "completion",
-                retryable: false,
+                retryable: true,
             },
         );
     }

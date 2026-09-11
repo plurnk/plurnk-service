@@ -30,7 +30,7 @@ for (const specimen of [
                 const tasks = rows.filter((r) => r.op === "TASK" && r.origin === "model");
                 assert.equal(tasks[0]?.status_rx, 409, "the first completion was refused over the unseen receipt");
                 const problem = JSON.parse(tasks[0]?.rx ?? "{}") as { problem?: { detail?: string; pending?: string[]; recovery?: string } };
-                assert.equal(problem.problem?.detail, `Completion preceded results: ${specimen.names}. Continuing to the next packet.`);
+                assert.equal(problem.problem?.detail, `Completion deferred until ${specimen.names} reached a packet. ${specimen.names.includes(",") ? "They are" : "It is"} in this packet; a TASK now completes.`);
                 assert.deepEqual(problem.problem?.pending, ["receipts"]);
                 assert.equal(problem.problem?.recovery, undefined, "the receipt boundary needs no guessed workflow prescription");
                 assert.equal(tasks[1]?.status_rx, 200);

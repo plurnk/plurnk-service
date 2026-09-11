@@ -100,7 +100,8 @@ test("a failed same-turn stream still refuses completion without echoing its com
             const entry = await db.test_get_log_entry_by_id.get<{ rx: string | null }>({ id: refused.id });
             const problem = (JSON.parse(entry?.rx ?? "{}") as { problem?: Record<string, unknown> }).problem;
             assert.deepEqual(problem?.pending, ["receipts", "failed-stream-results"]);
-            assert.equal(problem?.detail, "Completion encountered pending work or results.");
+            assert.equal(problem?.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet; a TASK now completes.");
+            assert.equal(problem?.retryable, true);
             assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the EXEC row");
         } finally {
             ws.close();
