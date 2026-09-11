@@ -21,7 +21,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
             content: "```EDIT (worker:///receipt.txt)\nPreserve this result.\n```\n```READ (worker:///receipt.txt) <1,-1>```\n```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```", reasoning,
         } }]) });
         const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
-        const target = `reasoning://alice${resource.pathname}`;
+        const target = `reasoning://${resource.pathname}`;
         const nextSequence = (await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId }))!.next;
         const baseline = await new PacketBuilder({ db, schemes, executors: () => undefined }).buildRequestPacket({
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: nextSequence,

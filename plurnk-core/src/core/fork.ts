@@ -103,6 +103,7 @@ export default class Fork {
                 loop_id: loopMap.get(loop_id),
             });
             if (nt === undefined) throw new Error("fork: turn insert returned no row");
+            await db.fork_copy_turn_sources.run({ old_turn_id: id, new_turn_id: nt.id });
             turnMap.set(id, nt.id);
         }
 

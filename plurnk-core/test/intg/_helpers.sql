@@ -561,8 +561,15 @@ SELECT hostname, pathname, source, weight, attrs FROM log_entries WHERE worker_i
 SELECT id, turn_id, sequence, op, attrs FROM log_entries
 WHERE worker_id = $worker_id
   AND op IS NULL
-  AND json_extract(attrs, '$.kind') IN ('turnOps', 'emissionAttempt')
+  AND json_extract(attrs, '$.kind') = 'emissionAttempt'
 ORDER BY id;
+
+-- PREP: test_turn_sources
+SELECT s.turn_id, s.kind, s.content, s.model_call_id, s.deep_hash,
+       t.producer, l.sequence AS loop_seq, t.sequence AS turn_seq
+FROM turn_sources s JOIN turns t ON t.id = s.turn_id JOIN loops l ON l.id = t.loop_id
+WHERE l.worker_id = $worker_id
+ORDER BY l.sequence, t.sequence, s.kind;
 
 -- PREP: test_count_entries_by_scheme
 SELECT count(*) AS n FROM entries WHERE scheme = $scheme;

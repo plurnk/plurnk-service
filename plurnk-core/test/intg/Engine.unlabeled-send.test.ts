@@ -42,14 +42,13 @@ const verifyLiteralSends = async (annotation: string | null): Promise<void> => {
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory" || kind === "parse_error"), []);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; tx: string; rx: string; status_rx: number }>({ turn_id: turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "SEND", "SEND", "TASK", null]);
+        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "SEND", "SEND", "TASK"]);
         const sends = modelRows.filter(({ op }) => op === "SEND");
         assert.deepEqual(sends.map(({ tx }) => JSON.parse(tx).annotation), bodies.map(() => annotation));
         assert.deepEqual(sends.map(({ tx, status_rx }) => ({ body: JSON.parse(tx).body.raw, target: JSON.parse(tx).target, status: status_rx })),
             bodies.map((body) => ({ body, target: null, status: 200 })));
-        const ops = modelRows.find(({ op }) => op === null);
-        assert.equal(JSON.parse(ops!.attrs).kind, "turnOps");
-        assert.equal(JSON.parse(ops!.rx).content, source);
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source);
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
         assert.equal(note?.content, "Keep this note.", "the quoted KILL never executes");
         const injected = await db.test_get_channel_by_pathname_scheme.get({ pathname: "/injected.md", scheme: "worker", name: "body" });

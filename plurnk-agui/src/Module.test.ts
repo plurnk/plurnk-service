@@ -1683,9 +1683,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
             { content: "Inspect, repair, and verify.", status: "in_progress" },
         ] } },
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
-        { id: 3, coordinate: "1/1/3", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "turnOps", reasoning: [
-            { id: "provider-detail", subtype: "message", encrypted: [{ data: "OPAQUE", format: "openai-responses-v1" }] },
-        ] } },
+        { id: 3, coordinate: "1/1/3/attempt", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "emissionAttempt" } },
     ];
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
@@ -1705,7 +1703,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
             { id: "workspace/plan", role: "activity", activityType: "PLAN", content: {
                 entries: [{ content: "Inspect, repair, and verify.", priority: "medium", status: "in_progress" }],
             } },
-            { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete", encryptedValue: "OPAQUE" },
+            { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
             { id: "reattach-1/user", role: "user", content: "continue" },
         ]);
     } finally { await mod.close(); }

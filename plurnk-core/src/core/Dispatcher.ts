@@ -24,11 +24,10 @@ import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
-import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
-import LogBody, { type ActionlessLogKind } from "./LogBody.ts";
+import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
@@ -1019,17 +1018,16 @@ export default class Dispatcher {
         return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
     }
 
-    async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
+    // {§rejected-emission-entry} — rejected provider bytes, never an admitted program.
+    async writeEmissionAttempt({ verbatim, workerId, loopId, turnId, sequence, modelCallId }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-        origin: WriterTier; kind: ActionlessLogKind; folded: boolean;
-        modelCallId?: number | null;
-        attrs?: Readonly<Record<string, unknown>>;
+        modelCallId: number;
     }): Promise<number> {
-        const durableAttrs = { ...attrs, kind };
+        const durableAttrs = { kind: "emissionAttempt" };
         const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-            origin, source: null, model_call_id: modelCallId,
+            origin: "model", source: null, model_call_id: modelCallId,
             op: null, signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
@@ -1047,62 +1045,10 @@ export default class Dispatcher {
             }, this.#weighContent),
             state: "resolved", outcome: null,
             attrs: JSON.stringify(durableAttrs),
-            initial_folded: LogVisibility.serialize(folded ? LogVisibility.FOLDED : LogVisibility.OPEN),
+            initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
         });
-        if (row === undefined) throw new Error("Dispatcher.#writeActionlessEntry: insert returned no row");
+        if (row === undefined) throw new Error("Dispatcher.writeEmissionAttempt: insert returned no row");
         return row.id;
-    }
-
-    // {§turn-ops-entry} — preserve exact admitted source beside, never instead
-    // of, the ordinary operation-result rows produced by dispatch.
-    async writeTurnOps({ verbatim, workerId, loopId, turnId, sequence, origin, folded, modelCallId = null, reasoningItems }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-        origin: WriterTier;
-        folded: boolean;
-        modelCallId?: number | null;
-        // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
-        // reasoning items as opaque source-row evidence.
-        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
-    }): Promise<number> {
-        return this.#writeActionlessEntry({
-            verbatim, workerId, loopId, turnId, sequence,
-            origin, kind: "turnOps", folded, modelCallId,
-            attrs: {
-                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
-            },
-        });
-    }
-
-    // {§reasoning-history} — capture through the same entry store as every data scheme.
-    async captureReasoning({ verbatim, workspaceId, workerId, loopId, turnId, modelCallId }: {
-        verbatim: string; workspaceId: number; workerId: number; loopId: number; turnId: number; modelCallId: number;
-    }): Promise<number> {
-        const coordinate = await this.#db.reasoning_call_coordinate.get<{ authority: string; pathname: string }>({ model_call_id: modelCallId, turn_id: turnId });
-        if (coordinate === undefined) throw new Error("Reasoning capture requires its producing model call.");
-        const ctx = await this.#handlerContext("reasoning", this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin: "_plurnk" }), coordinate.authority);
-        if (ctx === null) throw new Error("The reasoning resource scheme is unavailable.");
-        const result = await ctx.entries.write(coordinate.pathname, {
-            channels: { body: { content: verbatim, mimetype: "text/plain" } },
-        });
-        if (result.status >= 400) throw new OperationFailureError(result);
-        if (result.entryId === null) throw new Error("Reasoning capture did not create its resource.");
-        return result.entryId;
-    }
-
-    // {§rejected-emission-entry} — provider bytes that fail admission are an
-    // attempt artifact, never a turn program.
-    async writeEmissionAttempt({ verbatim, workerId, loopId, turnId, sequence, modelCallId, reasoningItems }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-        modelCallId: number;
-        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
-    }): Promise<number> {
-        return this.#writeActionlessEntry({
-            verbatim, workerId, loopId, turnId, sequence,
-            origin: "model", kind: "emissionAttempt", folded: true, modelCallId,
-            attrs: {
-                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
-            },
-        });
     }
 
     // {§bare-inference} Reuse exact READ projection without its log/presentation layer.

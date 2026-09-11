@@ -327,7 +327,7 @@ and one optional final single-line annotation, but no target, scope, or metadata
 Its annotation, body, and required closing fence follow the ordinary SEND rules.
 No body text is promoted into a header or recursively parsed as operations.
 This applies in every parser tier and preserves the opening fence's source
-position and exact authored `/ops`. It neither supplies a TASK inventory nor
+position and exact authored source. It neither supplies a TASK inventory nor
 changes disposition handling. Named malformed blocks retain their diagnostics.
 
 §empty-section Both the compact bodyless form and an empty multiline block
@@ -881,7 +881,7 @@ already ends in one. Interstatement whitespace belongs to no body.
 A header starts at column zero; the first operation may follow provider preamble
 without a separating newline. Text outside operation blocks is ignored in every
 parser tier: before, between, and after operations. It produces no AST item,
-message, receipt, or diagnostic. Exact source remains in `/ops` under
+message, receipt, or diagnostic. Exact source remains in `ops:///` under
 {§turn-ops-log-curation}; body bytes and source positions are unchanged. A matching
 closer still ends its body, and no missing closer is inferred. No generic Markdown
 rendering, indentation stripping or recursive code-block extraction occurs.

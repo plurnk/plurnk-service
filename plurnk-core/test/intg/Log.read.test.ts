@@ -44,7 +44,7 @@ const insertActionless = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
     envelope: { workerId: number; loopId: number; turnId: number },
     sequence: number,
-    kind: "turnOps" | "emissionAttempt",
+    kind: "emissionAttempt",
     content: string,
 ): Promise<void> => {
     await db.engine_insert_log_entry.get({
@@ -107,14 +107,14 @@ test("Log.read: an exact /OP delimiter must agree with the addressed row", async
     } finally { db.close(); }
 });
 
-test("{§log-coordinate-hierarchy}: admitted programs and rejected attempts are exact /ops and /attempt resources", async () => {
+test("{§log-coordinate-hierarchy}: rejected attempts retain exact canonical leaves and shorthand addressing", async () => {
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
-        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```");
+        await insertActionless(db, { workerId, loopId, turnId }, 1, "emissionAttempt", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```");
         await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
-        const ops = await readLog(readStmt(urlPath("log", "/1/1/1/ops")), ctx);
+        const ops = await readLog(readStmt(urlPath("log", "/1/1/1/attempt")), ctx);
         const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
         assert.equal(ops.status, 200);
         assert.match(ops.content ?? "", /```TASK/);
@@ -127,7 +127,7 @@ test("{§log-coordinate-hierarchy}: admitted programs and rejected attempts are 
             "the three-part exact-coordinate shorthand remains accepted",
         );
         assert.equal(
-            (await readLog(readStmt(urlPath("log", "/1/1/1/attempt")), ctx)).status,
+            (await readLog(readStmt(urlPath("log", "/1/1/1/READ")), ctx)).status,
             404,
             "a canonical leaf that disagrees with the durable type cannot address the row",
         );

@@ -49,8 +49,8 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
                 await rpcCall(ws, 1, "workspace.create", { name: "anchors-shift", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
-                    .find(({ op, status_rx }) => op === "READ" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
+                    .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
                 assert.ok(Array.isArray(anchors) && anchors.length === 6, `the READ published one anchor per line; got ${JSON.stringify(anchors)}`);
                 // Two lines land above the document between the READ and the EDIT. Lines 1–2 sat
@@ -67,7 +67,7 @@ FIVE
                 ].join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);
-                const edits = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! }))
+                const edits = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! }))
                     .filter(({ op }) => op === "EDIT");
                 assert.deepEqual(edits.map(({ status_rx }) => status_rx), [200, 200], `both anchored edits applied; got ${edits.map(({ rx }) => rx).join(" | ")}`);
                 assert.equal(await readFile(join(root, "doc.md"), "utf8"), "zero-a\nzero-b\none\ntwo\nTHREE-FOUR\nFIVE\nsix\n", "the edits landed on the moved lines");

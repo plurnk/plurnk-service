@@ -1226,13 +1226,13 @@ test("log render: READ@200 with text/html is line-addressable", () => {
     assert.equal(parseLogRecords(out)[0]?.body, "1:<h1>Hi</h1>\n");
 });
 
-test("a body-suppressed turnOps row renders meta-only without inventing an operation", () => {
+test("a suppressed program READ receipt keeps its address and readable extent", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: null, status: 200, initial_folded: [[1, -1]],
-        attrs: { kind: "turnOps" },
+        coordinate: "1/1/1", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
+        target: { scheme: "ops", pathname: "/1/1" },
         rx: { content: "\n```TASK\n[{\"content\":\"Initialized\",\"status\":\"in_progress\"}]\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/ops\n\{"lines":4/, "the source row has a canonical /ops heading; model origin is the omitted default (#338)");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"target":"ops:\/\/\/1\/1",/, "the READ receipt identifies the immutable source");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
     assert.match(out, /"tokensBody":\d+/, "suppressed state = tokensBody without a body field (#338)");
     assert.equal(parseLogRecords(out)[0]?.body, undefined, "the suppressed body is withheld");
@@ -1250,19 +1250,19 @@ test("a rejected emission renders as an addressable /attempt leaf without duplic
     assert.doesNotMatch(out, /"kind":/);
 });
 
-test("an open turnOps row presents the producer's exact admitted program, line-numbered", () => {
+test("a program READ presents exact source, line-numbered", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
-        attrs: { kind: "turnOps" },
+        coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200, folded: [],
+        target: { scheme: "ops", pathname: "/1/1" },
         rx: { content: "\n```TASK\n[{\"content\":\"Initialized\",\"status\":\"in_progress\"}]\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/ops$/m, "the heading owns the canonical address; lines counts the navigable body");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ$/m, "the heading owns the canonical address; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
     assert.match(out, /1:\n2:```TASK\n3:\[{"content":"Initialized","status":"in_progress"}\]\n4:```/, "the entire source, including the initial blank line, remains line-addressable");
 });
 
-test("{§body-projection}: visible programs bypass previews, not curation or output withholding", () => {
+test("{§body-projection}: scoped program READs bypass previews, not curation or output withholding", () => {
     const source = [
         ...Array.from({ length: 20 }, (_, index) => `\`\`\`\`READ (file-${index}.md) <!-- ${"orientation ".repeat(20)}-->\`\`\`\``),
         '````TASK\n[{"content":"Address the prompt.","status":"in_progress"}]\n````',
@@ -1271,8 +1271,8 @@ test("{§body-projection}: visible programs bypass previews, not curation or out
     const numbered = lines.map((line, index) => `${String(index + 1).padStart(String(lines.length).length)}:${line}`);
     for (const origin of ["_plurnk", "model", "client", "plugin"]) {
         const entry = {
-            coordinate: "1/1/1", origin, op: null, status: 200,
-            attrs: { kind: "turnOps" }, rx: { content: source, mimetype: "text/vnd.plurnk" },
+            coordinate: "1/1/1", origin, op: "READ", status: 200,
+            target: { scheme: "ops", pathname: "/1/1" }, rx: { content: source, mimetype: "text/vnd.plurnk" },
         };
         const complete = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
         assert.equal(complete.body, `${numbered.join("\n")}\n`, `${origin} source exceeds both preview bounds without clipping`);
@@ -1292,7 +1292,7 @@ test("{§body-projection}: visible programs bypass previews, not curation or out
     }
 });
 
-test("initialization renders its visible turnOps and its real kernel-authored operation outcomes", () => {
+test("initialization renders a program READ alongside its other real operation outcomes", () => {
     const out = PacketWire.renderLog([
         {
             coordinate: "1/1/1", origin: "_plurnk", op: "FIND", status: 200, folded: [],
@@ -1303,8 +1303,8 @@ test("initialization renders its visible turnOps and its real kernel-authored op
             tags: ["_plurnk", "init"], tx: { body: planValue("Address the prompt.") },
         },
         {
-            coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
-            tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
+            coordinate: "1/1/3", origin: "_plurnk", op: "READ", status: 200, folded: [],
+            tags: ["_plurnk", "init"], target: { scheme: "ops", pathname: "/1/1" },
             rx: { content: `\`\`\`FIND (*)\`\`\`
 \`\`\`TASK
 ${JSON.stringify(planValue("Address the prompt."))}
@@ -1314,7 +1314,7 @@ ${JSON.stringify(planValue("Address the prompt."))}
     assert.match(out, /^### log:\/\/\/1\/1\/1\/FIND$/m, "the survey has an operation coordinate");
     assert.match(out, /^### log:\/\/\/1\/1\/2\/TASK$/m, "the continuation has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
-    assert.match(out, /^### log:\/\/\/1\/1\/3\/ops$/m, "Turn 0's exact program is a visible peer artifact (coordinate lines present below, #338)");
+    assert.match(out, /^### log:\/\/\/1\/1\/3\/READ$/m, "Turn 0's exact program arrives as an ordinary READ");
     assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
 });
 

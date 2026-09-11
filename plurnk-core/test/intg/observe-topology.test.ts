@@ -90,8 +90,8 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "initialization and inference each dispatch their inventory");
         assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's message has its own dispatch span");
         assert.ok(
-            ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "FIND" || op === "COPY"),
-            `the remaining initialization operations are the prompt-archive COPY and catalog FINDs; got ${ops.join(", ")}`,
+            ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "FIND" || op === "COPY" || op === "READ"),
+            `initialization dispatches the prompt COPY, catalog FINDs and program READ; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {
             assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");

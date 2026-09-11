@@ -18,12 +18,12 @@ export default class ReasoningView {
     static async initialReads(db: Db, workerId: number, provider: Provider): Promise<ReadStatement[]> {
         const limit = ReasoningView.lines(provider);
         if (limit === 0) return [];
-        const resources = await db.reasoning_initial_reads.all<{ authority: string; pathname: string }>({ worker_id: workerId });
-        return resources.map(({ authority, pathname }) => ({
+        const resources = await db.reasoning_initial_reads.all<{ pathname: string }>({ worker_id: workerId });
+        return resources.map(({ pathname }) => ({
             op: "READ", annotation: "prior turn reasoning", metadata: null, body: null,
             target: {
-                kind: "url", scheme: "reasoning", raw: `reasoning://${authority}${pathname}`, pathname,
-                username: null, password: null, hostname: authority, port: null, query: null, fragment: null,
+                kind: "url", scheme: "reasoning", raw: `reasoning://${pathname}`, pathname,
+                username: null, password: null, hostname: null, port: null, query: null, fragment: null,
             },
             lineMarker: { marks: [1, limit] }, position: UNKNOWN_POSITION,
         }));

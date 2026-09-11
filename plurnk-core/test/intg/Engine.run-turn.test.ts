@@ -147,23 +147,20 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
             folded: string;
         }>({ turn_id: turnId });
         const initializationRows = await rowsFor(turns[0]!.id);
-        const initializationSource = initializationRows.find(({ op }) => op === null);
-        assert.equal(initializationSource?.origin, "_plurnk");
-        assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
-        assert.equal(initializationSource?.initial_folded, "[]", "Turn 0 turnOps are initially visible");
-        assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are untrimmed");
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^````/);
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n````TASK\n\[.*"Address the prompt\.".*\]\n````$/s);
-        assert.equal(initializationRows.some(({ op }) => op === "PLAN"), false);
-        assert.ok(initializationRows.some(({ op }) => op === "TASK"), "the raw turn does not replace TASK's result row");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
+        const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
+        assert.equal(initializationSource?.producer, "_plurnk");
+        assert.match(initializationSource!.content, /^````/);
+        assert.ok(initializationSource!.content.includes("ops:///1/1"));
+        assert.ok(!initializationRows.some(({ op }) => op === null));
+        assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its actual program");
+        assert.ok(initializationRows.some(({ op }) => op === "TASK"), "source retention does not replace executed results");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
-        const inferenceSource = inferenceRows.find(({ op }) => op === null);
-        assert.equal(inferenceSource?.origin, "model");
-        assert.equal(JSON.parse(inferenceSource?.attrs ?? "null").kind, "turnOps");
-        assert.equal(inferenceSource?.initial_folded, "[[1,-1]]", "ordinary model turnOps are born body-suppressed");
-        assert.equal(inferenceSource?.folded, "[]", "ordinary model turnOps are still READable");
-        assert.equal(JSON.parse(inferenceSource?.rx ?? "null").content, source, "turnOps preserve exact admitted source");
+        const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
+        assert.equal(inferenceSource?.producer, "model");
+        assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
+        assert.ok(!inferenceRows.some(({ op }) => op === null));
         assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
         assert.ok(inferenceRows.some(({ op }) => op === "TASK"));
     } finally { await db.close(); }

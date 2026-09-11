@@ -23,7 +23,7 @@ for (const executor of [null, "sh", "python3", "brave", "search-api", "tool.v2+j
 
 test("{§log-coordinate-hierarchy}: native operations and actionless identities are unchanged", () => {
     assert.equal(LogEntryProjection.leaf({ op: "READ" }), "READ");
-    assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "turnOps" } }), "ops");
+    assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "emissionAttempt" } }), "attempt");
     assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "emissionAttempt" } }), "attempt");
     assert.equal(LogEntryProjection.leaf({ op: "EDIT", origin: "_plurnk", attrs: { kind: "entry_materialized" } }), "READ");
 });

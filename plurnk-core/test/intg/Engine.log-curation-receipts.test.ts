@@ -52,7 +52,7 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             const recordedKills = history.filter(({ op }) => op === "KILL");
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
-            assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the exact successful result remains stored");
+            assert.equal(JSON.parse(recordedKills[0].rx).matched, 2, "the broad sweep includes initialization's program READ and the file READ");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "worker" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {
@@ -62,7 +62,9 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             assert.ok(receiptRead);
             assert.equal(receiptRead.status_rx, 204, "the suppressed receipt remains addressable with its ordinary empty body, not a missing-entry error");
             assert.equal(JSON.parse(receiptRead.rx).content, "");
-            assert.equal(history.filter(({ op }) => op === null).length, 5, "initialization and every model program remain recorded");
+            assert.equal(history.filter(({ op }) => op === null).length, 0, "source retention does not add log rows");
+            const programs = await db.test_turn_sources.all<{ kind: string }>({ worker_id: result.modelWorkerId! });
+            assert.equal(programs.filter(({ kind }) => kind === "ops").length, 5, "initialization and every model program remain recorded");
         } finally { ws.close(); }
     });
 });

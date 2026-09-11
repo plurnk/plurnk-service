@@ -147,20 +147,20 @@ test("{§log-readable-projection}: a byte-view receipt is readable text, not a s
     assert.deepEqual(JSON.parse(original!.rx), sourceRead, "the source mimetype and original byte receipt remain intact in forensic history");
 });
 
-test("{§log-readable-projection}: initially suppressed programs remain readable until explicitly trimmed, and forks preserve both facts", async (t) => {
+test("{§log-readable-projection}: initially suppressed program READ receipts remain readable until explicitly trimmed, and forks preserve both facts", async (t) => {
     const { db, ids, dispatch, reserve } = await runtime(t);
     const content = "```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
     const sequence = reserve();
     await db.engine_insert_log_entry.get({
         worker_id: ids.workerId, loop_id: ids.loopId, turn_id: ids.turnId, sequence,
-        origin: "model", source: null, model_call_id: null, op: null,
+        origin: "model", source: null, model_call_id: null, op: "READ",
         scheme: null, username: null, password: null, hostname: null, port: null,
         pathname: null, query: null, fragment: null, lineMarker: null,
         tx: "", mimetype_tx: "text/vnd.plurnk", rx: JSON.stringify({ content, mimetype: "text/vnd.plurnk" }),
         mimetype_rx: "application/json", status_rx: 200, weight: contentWeight(content),
-        state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "turnOps" }), initial_folded: "[[1,-1]]",
+        state: "resolved", outcome: null, attrs: "{}", initial_folded: "[[1,-1]]",
     });
-    const target = "log:///1/1/1/ops";
+    const target = "log:///1/1/1/READ";
     assert.equal((await dispatch(`\`\`\`READ (${target}) <1,-1>\`\`\``)).content, content);
     await t.test("COPY of a textual program into plain text remains verbatim", async () => {
         const copied = await dispatch(`\`\`\`COPY (${target}) (worker:///program.txt)\`\`\``);
@@ -168,14 +168,14 @@ test("{§log-readable-projection}: initially suppressed programs remain readable
     });
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <2>\`\`\``)).status, 200);
     const branch = await Fork.fork(db, ids.workerId, "branch");
-    const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
+    const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
     assert.equal(forkRead.content, "```TASK\n```");
     const forkRows = await db.fork_get_log_entries.all<{ initial_folded: string; projection_folded: string }>({ worker_id: branch });
     assert.equal(forkRows[0]?.initial_folded, "[[1,-1]]");
     assert.equal(forkRows[0]?.projection_folded, "[[2,2]]");
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <1,-1>\`\`\``)).status, 200);
     assert.equal((await dispatch(`\`\`\`READ (${target}) <1,-1>\`\`\``)).status, 204);
-    const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/ops")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
+    const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
     assert.equal(stillReadable.content, forkRead.content, "parent curation does not change the branch's projection");
     const original = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence });
     assert.equal(JSON.parse(original!.rx).content, content);

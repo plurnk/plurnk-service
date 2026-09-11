@@ -197,13 +197,12 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 }>({ turn_id: matEdit.turn_id });
                 const adminOps = adminRows.map(({ op }) => op);
                 assert.equal(adminOps[0], "EDIT");
-                assert.ok(adminOps.slice(0, -2).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-2), ["TASK", null], "the exact disposition-ended program remains durable without a redundant self-KILL");
+                assert.ok(adminOps.slice(0, -1).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
+                assert.deepEqual(adminOps.slice(-1), ["TASK"], "the program ends with its actual disposition and no source log row");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
-                const turnOps = adminRows.find(({ op }) => op === null);
-                assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-                assert.equal(turnOps?.initial_folded, "[[1,-1]]", "the exact internal program remains durable but body-suppressed");
-                assert.equal(turnOps?.folded, "[]", "the internal program is not trimmed");
+                const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
+                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("````TASK")),
+                    "maintenance retains its exact source independently of packet visibility");
 
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{
                     op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;

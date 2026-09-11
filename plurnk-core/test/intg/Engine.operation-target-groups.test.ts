@@ -221,8 +221,8 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
             "each successful member owns its exact append-only curation effect",
         );
 
-        const turnOps = rows.find(({ op, attrs }) => op === null && JSON.parse(attrs).kind === "turnOps");
-        assert.equal((JSON.parse(turnOps?.rx ?? "null") as { content?: string }).content, source, "the authored grouped program remains exact and unexpanded");
+        const programs = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        assert.ok(programs.some((row) => row.kind === "ops" && row.content === source), "the authored grouped program remains exact and unexpanded");
     } finally {
         await db.close();
     }

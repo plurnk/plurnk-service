@@ -465,6 +465,30 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
+-- {§turn-source-resources}: immutable source facts belong to their turn, not
+-- its curatable log. Derivation attachments are replaceable, source bytes are not.
+CREATE TABLE IF NOT EXISTS turn_sources (
+    turn_id INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('ops', 'reasoning')),
+    content TEXT NOT NULL,
+    model_call_id INTEGER REFERENCES model_calls(id),
+    deep_hash TEXT REFERENCES derivations(deep_hash),
+    PRIMARY KEY (turn_id, kind)
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS turn_sources_immutable
+BEFORE UPDATE OF turn_id, kind, content, model_call_id ON turn_sources
+BEGIN
+    SELECT RAISE(ABORT, 'turn source evidence is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_sources_delete_with_turn_only
+BEFORE DELETE ON turn_sources
+WHEN EXISTS (SELECT 1 FROM turns WHERE id = OLD.turn_id)
+BEGIN
+    SELECT RAISE(ABORT, 'turn source evidence belongs to its retained turn');
+END;
+
 -- {§loop-wake-identity}: each program observes independently, before its packet
 -- is assembled. A completion during that program remains owed through parking.
 CREATE TRIGGER IF NOT EXISTS turns_capture_wake_revision
@@ -1086,8 +1110,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     inherited_history INTEGER NOT NULL DEFAULT 0 CHECK (inherited_history IN (0, 1)),
     -- Search derivation attached to this durable log result, when available.
     deep_hash       TEXT                       REFERENCES derivations(deep_hash),
-    -- Exact logical provider call represented by a BARE result, admitted
-    -- model turnOps, or rejected emissionAttempt. Other operation and ambient
+    -- Exact logical provider call represented by a BARE result or rejected
+    -- emissionAttempt. Other operation and ambient
     -- rows carry no model-call identity.
     model_call_id   INTEGER                    REFERENCES model_calls(id),
     -- Engine-owned stream publication that produced this observation. The
@@ -1098,8 +1122,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- Exact producer source and rejected-attempt artifacts carry NULL here
-    -- ({§turn-ops-entry}, {§rejected-emission-entry}).
+    -- Rejected-attempt artifacts carry NULL here ({§rejected-emission-entry}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
@@ -1140,7 +1163,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
 
     CHECK (
         (op IS NULL) = COALESCE(
-            json_extract(attrs, '$.kind') IN ('turnOps', 'emissionAttempt'),
+            json_extract(attrs, '$.kind') = 'emissionAttempt',
             0
         )
     ),
@@ -1359,24 +1382,6 @@ BEGIN
     SELECT RAISE(ABORT, 'log entry must match its turn ownership and producer');
 END;
 
--- {§turn-ops-entry} — exact admitted source is authored by the turn producer.
--- `_plurnk` may observe another producer's turn through ordinary operation
--- rows, but it cannot impersonate that producer's source program.
-CREATE TRIGGER IF NOT EXISTS log_entries_turn_ops_producer
-BEFORE INSERT ON log_entries
-WHEN NEW.op IS NULL
- AND json_extract(NEW.attrs, '$.kind') = 'turnOps'
- AND EXISTS (SELECT 1 FROM turns WHERE id = NEW.turn_id)
- AND NOT EXISTS (
-    SELECT 1
-    FROM turns
-    WHERE turns.id = NEW.turn_id
-      AND turns.producer = NEW.origin
- )
-BEGIN
-    SELECT RAISE(ABORT, 'actionless log entry does not match its turn producer');
-END;
-
 -- A folded interval is an inclusive [start,end] pair. Ranges are positive,
 -- sorted, disjoint, and non-adjacent; -1 is the final open-ended endpoint.
 -- Canonical intervals make visibility equality and curation effects exact.
@@ -1465,7 +1470,7 @@ WHEN NEW.model_call_id IS NOT NULL
           OR (
               inference.kind = 'emission'
               AND NEW.op IS NULL
-              AND json_extract(NEW.attrs, '$.kind') IN ('turnOps', 'emissionAttempt')
+              AND json_extract(NEW.attrs, '$.kind') = 'emissionAttempt'
           )
       )
  )

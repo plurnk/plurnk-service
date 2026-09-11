@@ -5,8 +5,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 //   log/entry op=TASK (model) → ACTIVITY_SNAPSHOT (the latest task inventory)
 //   log/entry op=SEND  (model)  → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
 //                                 (assistant speech; the signal rides plurnk.send)
-//   log/entry actionless model source → no conversational event (encrypted reasoning may
-//                                       attach to the turn's assistant message)
+//   log/entry rejected emission → forensic row only, no conversational event
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id)
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
@@ -33,7 +32,6 @@ import { AcpPlanValue, Validator, type AcpPlan, type ApplicationLoopPacket } fro
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
-    readonly assistantMessage: { readonly turnId: number; readonly id: string } | null;
     readonly modelWorkerId: number | null;
     readonly completedReasoning: ReadonlyArray<readonly [number, readonly string[]]>;
 }
@@ -44,7 +42,6 @@ export default class Translator {
     #planMessageId: string;
     #currentTurn: number | null = null;
     #stepOpen = false;
-    #assistantMessage: { turnId: number; id: string } | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
     #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string; content: string }>();
@@ -61,10 +58,6 @@ export default class Translator {
         this.#runId = args.runId;
         this.#planMessageId = `${args.threadId}/plan`;
         this.#currentTurn = args.continuation?.currentTurn ?? null;
-        this.#assistantMessage = args.continuation?.assistantMessage === null
-            || args.continuation?.assistantMessage === undefined
-            ? null
-            : { ...args.continuation.assistantMessage };
         this.#modelWorkerId = args.continuation?.modelWorkerId ?? args.modelWorkerId ?? null;
         this.#completedReasoning = new Map(
             args.continuation?.completedReasoning.map(([turnId, values]) => [turnId, [...values]]) ?? [],
@@ -78,7 +71,6 @@ export default class Translator {
         }
         return {
             currentTurn: this.#currentTurn,
-            assistantMessage: this.#assistantMessage === null ? null : { ...this.#assistantMessage },
             modelWorkerId: this.#modelWorkerId,
             completedReasoning: [...this.#completedReasoning].map(([turnId, values]) => [turnId, [...values]]),
         };
@@ -122,7 +114,6 @@ export default class Translator {
         }
         this.#currentTurn = null;
         this.#stepOpen = false;
-        this.#assistantMessage = null;
         this.#completedReasoning.clear();
         return events;
     }
@@ -171,7 +162,6 @@ export default class Translator {
         const id = e.coordinate ?? String(e.id);
         if (response || planProjection !== null) {
             const text = Translator.#txBody(e.tx);
-            if (planProjection === null && typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
             events.push(...Translator.#readableReasoningEvents(id,
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
             events.push(row);
@@ -195,23 +185,7 @@ export default class Translator {
         if (e.op === null) {
             const kind = Translator.#modelArtifactKind(e.attrs);
             if (kind === null) {
-                throw new TypeError("An actionless model-origin row must carry attrs.kind=turnOps or emissionAttempt.");
-            }
-            const assistant = this.#assistantMessage;
-            this.#assistantMessage = null;
-            const encrypted = Translator.#messageEncryptedValues(e.attrs);
-            if (
-                assistant !== null
-                && typeof e.turn_id === "number"
-                && assistant.turnId === e.turn_id
-                && encrypted.length === 1
-            ) {
-                events.push({
-                    type: EventType.REASONING_ENCRYPTED_VALUE,
-                    subtype: "message",
-                    entityId: assistant.id,
-                    encryptedValue: encrypted[0],
-                });
+                throw new TypeError("An actionless model-origin row must carry attrs.kind=emissionAttempt.");
             }
             return events;
         }
@@ -324,8 +298,6 @@ export default class Translator {
         const messages: Array<ActivityMessage | AssistantMessage | ReasoningMessage | UserMessage> = [];
         let currentPlan: ActivityMessage | null = null;
         let currentPlanPosition = 0;
-        const assistantByTurn = new Map<number, { message: AssistantMessage; sequence: number }>();
-        const encryptedByTurn = new Map<number, string[]>();
         const deliveredReasoning = new Map<number, string[]>();
         const chronological = entries.toSorted((left, right) => {
             const leftId = typeof left.id === "number" ? left.id : Number.MAX_SAFE_INTEGER;
@@ -357,29 +329,12 @@ export default class Translator {
             if (Translator.isResponse(e)) {
                 const message: AssistantMessage = { id, role: "assistant", content: text };
                 messages.push(message);
-                if (typeof e.turn_id === "number") {
-                    const sequence = typeof e.sequence === "number" ? e.sequence : Number.NEGATIVE_INFINITY;
-                    const prior = assistantByTurn.get(e.turn_id);
-                    if (prior === undefined || sequence >= prior.sequence) {
-                        assistantByTurn.set(e.turn_id, { message, sequence });
-                    }
-                }
             }
             if (e.op === null) {
                 if (Translator.#modelArtifactKind(e.attrs) === null) {
-                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=turnOps or emissionAttempt.");
+                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=emissionAttempt.");
                 }
             }
-            if (e.op === null && typeof e.turn_id === "number") {
-                const values = Translator.#messageEncryptedValues(e.attrs);
-                if (values.length > 0) {
-                    encryptedByTurn.set(e.turn_id, [...(encryptedByTurn.get(e.turn_id) ?? []), ...values]);
-                }
-            }
-        }
-        for (const [turnId, values] of encryptedByTurn) {
-            const assistant = assistantByTurn.get(turnId)?.message;
-            if (assistant !== undefined && values.length === 1) assistant.encryptedValue = values[0];
         }
         if (currentPlan !== null) messages.splice(currentPlanPosition, 0, currentPlan);
         if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
@@ -431,7 +386,6 @@ export default class Translator {
         }
         this.#currentTurn = turnId;
         this.#stepOpen = true;
-        this.#assistantMessage = null;
         this.#completedReasoning.clear();
         events.push({ type: EventType.STEP_STARTED, stepName: `turn-${turnId}` });
         return events;
@@ -460,30 +414,13 @@ export default class Translator {
         ];
     }
 
-    // {§agui-encrypted-reasoning} Preserve detail identity/cardinality on the
-    // row; return only nonempty values whose provider classification can target
-    // an assistant message. The caller projects only a singular result.
-    static #messageEncryptedValues(attrs: unknown): string[] {
-        const parsed = typeof attrs === "string" ? (() => { try { return JSON.parse(attrs); } catch { return null; } })() : attrs;
-        const raw = (parsed as { reasoning?: unknown } | null)?.reasoning;
-        const list = Array.isArray(raw) ? raw : [];
-        return list.flatMap((value) => {
-            const item = value as { subtype?: unknown; encrypted?: unknown };
-            if (item.subtype !== "message" || !Array.isArray(item.encrypted)) return [];
-            return item.encrypted.flatMap((blob) => {
-                const data = (blob as { data?: unknown })?.data;
-                return typeof data === "string" && data.length > 0 ? [data] : [];
-            });
-        });
-    }
-
-    static #modelArtifactKind(attrs: unknown): "turnOps" | "emissionAttempt" | null {
+    static #modelArtifactKind(attrs: unknown): "emissionAttempt" | null {
         const parsed = typeof attrs === "string"
             ? (() => { try { return JSON.parse(attrs); } catch { return null; } })()
             : attrs;
         if (parsed === null || typeof parsed !== "object") return null;
         const kind = (parsed as { kind?: unknown }).kind;
-        return kind === "turnOps" || kind === "emissionAttempt" ? kind : null;
+        return kind === "emissionAttempt" ? kind : null;
     }
 
     static #projectPlanTransaction(tx: unknown): { plan: AcpPlan; tx: Record<string, unknown> } {

@@ -37,6 +37,7 @@ export interface TurnRow {
     packetFailure: PacketFailure | null;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§rail-truth-engine-verdict}
+    program: string | null;
 }
 export type StoredTurnRow = Omit<TurnRow, "packet" | "packetFailure"> & { packet: string | null };
 export interface TurnAttemptRow {

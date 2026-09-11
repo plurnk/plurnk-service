@@ -233,6 +233,7 @@ export class SqlRiteSync {
 	fork_set_generation_policy: SqlRiteSyncPreparedStatements;
 	fork_get_loops: SqlRiteSyncPreparedStatements;
 	fork_insert_loop: SqlRiteSyncPreparedStatements;
+	fork_copy_turn_sources: SqlRiteSyncPreparedStatements;
 	fork_reidentify_loop_result: SqlRiteSyncPreparedStatements;
 	fork_get_turns: SqlRiteSyncPreparedStatements;
 	fork_insert_turn: SqlRiteSyncPreparedStatements;
@@ -280,7 +281,6 @@ export class SqlRiteSync {
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
-	reasoning_call_coordinate: SqlRiteSyncPreparedStatements;
 	reasoning_initial_reads: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
@@ -296,6 +296,11 @@ export class SqlRiteSync {
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
 	turn_fail_open: SqlRiteSyncPreparedStatements;
+	turn_source_record: SqlRiteSyncPreparedStatements;
+	turn_source_read: SqlRiteSyncPreparedStatements;
+	turn_source_candidates: SqlRiteSyncPreparedStatements;
+	turn_source_derivations: SqlRiteSyncPreparedStatements;
+	turn_source_attach_derivation: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
@@ -415,6 +420,7 @@ export class SqlRiteSync {
 	test_insert_shared_edit_at: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op: SqlRiteSyncPreparedStatements;
 	test_model_source_rows: SqlRiteSyncPreparedStatements;
+	test_turn_sources: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_scheme: SqlRiteSyncPreparedStatements;
 	test_subscription_published_channel: SqlRiteSyncPreparedStatements;
 	test_subscription_publications: SqlRiteSyncPreparedStatements;
@@ -511,6 +517,8 @@ export class SqlRiteSync {
 	test_reasoning_reads: SqlRiteSyncPreparedStatements;
 	tok_channel_weight: SqlRiteSyncPreparedStatements;
 	tok_log_weight: SqlRiteSyncPreparedStatements;
+	test_turn_source_rewrite: SqlRiteSyncPreparedStatements;
+	test_turn_source_delete: SqlRiteSyncPreparedStatements;
 	test_turns_table_sql: SqlRiteSyncPreparedStatements;
 	test_turns_insert: SqlRiteSyncPreparedStatements;
 	test_turns_insert_with_version: SqlRiteSyncPreparedStatements;
@@ -750,6 +758,7 @@ export default class SqlRite {
 	fork_set_generation_policy: SqlRitePreparedStatements;
 	fork_get_loops: SqlRitePreparedStatements;
 	fork_insert_loop: SqlRitePreparedStatements;
+	fork_copy_turn_sources: SqlRitePreparedStatements;
 	fork_reidentify_loop_result: SqlRitePreparedStatements;
 	fork_get_turns: SqlRitePreparedStatements;
 	fork_insert_turn: SqlRitePreparedStatements;
@@ -797,7 +806,6 @@ export default class SqlRite {
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
-	reasoning_call_coordinate: SqlRitePreparedStatements;
 	reasoning_initial_reads: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
@@ -813,6 +821,11 @@ export default class SqlRite {
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;
 	turn_fail_open: SqlRitePreparedStatements;
+	turn_source_record: SqlRitePreparedStatements;
+	turn_source_read: SqlRitePreparedStatements;
+	turn_source_candidates: SqlRitePreparedStatements;
+	turn_source_derivations: SqlRitePreparedStatements;
+	turn_source_attach_derivation: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;
 	worker_deliverable_by_name: SqlRitePreparedStatements;
@@ -932,6 +945,7 @@ export default class SqlRite {
 	test_insert_shared_edit_at: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op: SqlRitePreparedStatements;
 	test_model_source_rows: SqlRitePreparedStatements;
+	test_turn_sources: SqlRitePreparedStatements;
 	test_count_entries_by_scheme: SqlRitePreparedStatements;
 	test_subscription_published_channel: SqlRitePreparedStatements;
 	test_subscription_publications: SqlRitePreparedStatements;
@@ -1028,6 +1042,8 @@ export default class SqlRite {
 	test_reasoning_reads: SqlRitePreparedStatements;
 	tok_channel_weight: SqlRitePreparedStatements;
 	tok_log_weight: SqlRitePreparedStatements;
+	test_turn_source_rewrite: SqlRitePreparedStatements;
+	test_turn_source_delete: SqlRitePreparedStatements;
 	test_turns_table_sql: SqlRitePreparedStatements;
 	test_turns_insert: SqlRitePreparedStatements;
 	test_turns_insert_with_version: SqlRitePreparedStatements;

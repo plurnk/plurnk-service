@@ -41,8 +41,8 @@ export default class LogEntryProjection {
             return execRouteOf({ executor, target: null }).runtime;
         }
         if (op !== null) return op;
-        const kind = LogBody.actionlessKind({ op, attrs: row.attrs });
-        return kind === "turnOps" ? "ops" : "attempt";
+        LogBody.actionlessKind({ op, attrs: row.attrs });
+        return "attempt";
     }
 
     static base(coordinate: string): string {

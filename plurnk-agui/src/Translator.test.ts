@@ -4,7 +4,6 @@ import {
     ActivitySnapshotEventSchema,
     EventType,
     MessagesSnapshotEventSchema,
-    ReasoningEncryptedValueEventSchema,
     ReasoningEndEventSchema,
     ReasoningMessageContentEventSchema,
     ReasoningMessageEndEventSchema,
@@ -327,24 +326,24 @@ test("readable reasoning identity is turn-specific and absent evidence invents n
     assert.ok(!absent.some((event) => event.type.startsWith("REASONING_")));
 });
 
-test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit nothing", () => {
+test("ambient (origin _plurnk) rows ride plurnk.ambient; rejected attempts emit nothing", () => {
     const tr = t();
     tr.logEntry(entry({ op: "TASK", tx: { body: plan("orient") } }));
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
-    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "turnOps" }, tx: "```PLAN\nx\n```" }));
+    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "emissionAttempt" }, tx: "```PLAN\nx\n```" }));
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
 test("an actionless model row without an artifact discriminator is rejected", () => {
     assert.throws(
         () => t().logEntry(entry({ op: null, attrs: {} })),
-        /attrs\.kind=turnOps or emissionAttempt/,
+        /attrs\.kind=emissionAttempt/,
     );
     assert.throws(
         () => t().replay([{ id: 1, op: null, origin: "model", attrs: {} }]),
-        /attrs\.kind=turnOps or emissionAttempt/,
+        /attrs\.kind=emissionAttempt/,
     );
 });
 
@@ -367,76 +366,17 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     assert.equal(snapshot.messages.filter(({ role }) => role === "assistant").length, 1);
 });
 
-test("a single encrypted value targets the actual same-turn SEND assistant", () => {
+test("{§agui-encrypted-reasoning} unknown opaque fields do not create client reasoning state", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" } }));
-    const events = tr.logEntry(entry({ op: null, coordinate: "1/1/9",
-        attrs: { kind: "turnOps", reasoning: [{ id: "rs_provider_detail", subtype: "message", encrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }] } as never }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_ENCRYPTED_VALUE"]);
-    const encrypted = events[1];
-    assert.deepEqual(encrypted, {
-        type: "REASONING_ENCRYPTED_VALUE",
-        subtype: "message",
-        entityId: "1/1/8/SEND",
-        encryptedValue: "SEALED",
-    });
-    assert.doesNotThrow(() => ReasoningEncryptedValueEventSchema.parse(encrypted));
-});
-
-test("provider detail identity is not required for SEND correlation", () => {
-    const tr = t();
-    tr.logEntry(entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" } }));
-    const events = tr.logEntry(entry({ op: null, attrs: JSON.stringify({ kind: "turnOps", reasoning: [
-        { id: null, subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
-    ] }) }));
-    const encrypted = events.find((event) => event.type === "REASONING_ENCRYPTED_VALUE") as { entityId?: string } | undefined;
-    assert.equal(encrypted?.entityId, "1/1/8/SEND");
-});
-
-test("uncorrelated or cardinality-losing encrypted evidence stays forensic", async (ctx) => {
-    const mirror = (reasoning: unknown, turn_id = 1) => entry({
-        op: null,
-        turn_id,
-        attrs: JSON.stringify({ kind: "turnOps", reasoning }),
-    });
-    await ctx.test("no SEND entity", () => {
-        const events = t().logEntry(mirror([
-            { id: "rs", subtype: "message", encrypted: [{ data: "X" }] },
-        ]));
-        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
-    });
-    await ctx.test("different turn", () => {
-        const tr = t();
-        tr.logEntry(entry({ op: "SEND", turn_id: 1 }));
-        const events = tr.logEntry(mirror([{ id: "rs", subtype: "message", encrypted: [{ data: "X" }] }], 2));
-        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
-    });
-    await ctx.test("non-message classification", () => {
-        const tr = t();
-        tr.logEntry(entry({ op: "SEND" }));
-        const events = tr.logEntry(mirror([{ id: "rs", subtype: "tool-call", encrypted: [{ data: "X" }] }]));
-        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
-    });
-    await ctx.test("multiple message values", () => {
-        const tr = t();
-        tr.logEntry(entry({ op: "SEND" }));
-        const events = tr.logEntry(mirror([
-            { id: "rs_a", subtype: "message", encrypted: [{ data: "A" }] },
-            { id: "rs_b", subtype: "message", encrypted: [{ data: "B" }] },
-        ]));
-        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
-    });
-});
-
-test("malformed and unknown reasoning carriers are ignored", () => {
-    const tr = t();
-    tr.logEntry(entry({ op: "SEND" }));
-    const malformed = tr.logEntry(entry({ op: null,
-        attrs: JSON.stringify({ kind: "turnOps", reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED" }] } }) }));
-    const unknown = tr.logEntry(entry({ op: null,
-        attrs: JSON.stringify({ kind: "turnOps", reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
-    assert.deepEqual(malformed.map((e) => e.type), ["CUSTOM"]);
-    assert.deepEqual(unknown.map((e) => e.type), ["CUSTOM"]);
+    const send = entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" },
+        reasoningEncrypted: [{ data: "SEALED" }],
+    } as never);
+    const events = tr.logEntry(send);
+    assert.ok(events.some(({ type }) => type === "TEXT_MESSAGE_CONTENT"));
+    assert.ok(!events.some(({ type }) => type === "REASONING_ENCRYPTED_VALUE"));
+    const snapshot = tr.replay([send.entry]).find(({ type }) => type === "MESSAGES_SNAPSHOT");
+    assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
+    assert.deepEqual(snapshot.messages, [{ id: "1/1/8/SEND", role: "assistant", content: "answer" }]);
 });
 
 test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
@@ -571,18 +511,13 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
     assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
 
-test("the newest-first workspace log replays user prompts, PLAN, SEND, and singular encrypted evidence chronologically", () => {
+test("the newest-first workspace log replays user prompts, TASK and SEND chronologically without rejected attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "turnOps", reasoning: [
-            { id: "a", subtype: "message", encrypted: [{ data: "A" }] },
-            { id: "b", subtype: "message", encrypted: [{ data: "B" }] },
-        ] } },
+        { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
         { id: 5, op: "SEND", status_rx: 200, origin: "model", coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 4, op: "TASK", origin: "model", coordinate: "1/2/1/TASK", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
-        { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
-            { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
-        ] } },
+        { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "emissionAttempt" } },
         { id: 2, op: "SEND", status_rx: 200, origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 1, op: "TASK", origin: "model", coordinate: "1/1/1/TASK", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
         { id: 0, op: "prompt", origin: "_plurnk", coordinate: "1/1/0/prompt", rx: { content: "What is the answer?", mimetype: "text/markdown" } },
@@ -593,7 +528,7 @@ test("the newest-first workspace log replays user prompts, PLAN, SEND, and singu
     assert.deepEqual(snap.messages, [
         { id: "1/1/0/prompt", role: "user", content: "What is the answer?" },
         { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
-        { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42.", encryptedValue: "SEALED" },
+        { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42." },
         { id: "th/plan", role: "activity", activityType: "PLAN", content: acpPlan("finish") },
         { id: "1/2/2/SEND", role: "assistant", content: "And done." },
         { id: "current-user", role: "user", content: "Continue." },

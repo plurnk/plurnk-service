@@ -149,7 +149,8 @@ test("Daemon composes deterministic scheme and MIME display capabilities for cli
             [
                 { kind: "scheme", scheme: "figma", display: { glyph: "󰕧" } },
                 { kind: "scheme", scheme: "file", display: {} },
-                { kind: "scheme", scheme: "log", display: {} },
+            { kind: "scheme", scheme: "log", display: {} },
+            { kind: "scheme", scheme: "ops", display: {} },
                 { kind: "scheme", scheme: "prompt", display: {} },
                 { kind: "scheme", scheme: "reasoning", display: {} },
                 { kind: "scheme", scheme: "skill", display: {} },

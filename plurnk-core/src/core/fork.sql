@@ -36,6 +36,11 @@ VALUES (
 )
 RETURNING id;
 
+-- PREP: fork_copy_turn_sources
+INSERT INTO turn_sources (turn_id, kind, content, deep_hash)
+SELECT $new_turn_id, kind, content, deep_hash
+FROM turn_sources WHERE turn_id = $old_turn_id;
+
 -- PREP: fork_reidentify_loop_result
 -- A forked loop is a new durable resource. Success results need no instance;
 -- failure results identify the branch loop rather than the source row.
@@ -146,7 +151,7 @@ SELECT e.id, e.scheme, e.authority, e.pathname, e.attributes,
        ) AS active
 FROM entries e
 JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-WHERE w.id = $worker_id AND e.scheme IN ('worker', 'prompt', 'reasoning')
+WHERE w.id = $worker_id AND e.scheme IN ('worker', 'prompt')
 ORDER BY e.id;
 
 -- PREP: fork_insert_scratch_entry

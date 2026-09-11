@@ -273,15 +273,15 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({ accepted, errors: JSON.parse(parse_errors) })), [{ accepted: 1, errors: [] }]);
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND", "TASK", null], "outside text has no independent log or message row");
-        const ops = modelRows.find(({ op }) => op === null);
-        assert.equal(JSON.parse(ops!.attrs).kind, "turnOps");
-        assert.equal(JSON.parse(ops!.rx).content, source, "the complete submitted emission is retained verbatim");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND", "TASK"], "outside text has no independent log or message row");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
+            "the complete submitted emission is retained verbatim");
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "worker", name: "body" });
         assert.equal(landed?.content, "Actual body.");
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: result.turnId });
         const readSource = [
-            PlurnkParser.frame(`READ (log:///1/${turn!.sequence}/${ops!.sequence}/ops) <1,-1>`, null),
+            PlurnkParser.frame(`READ (ops:///1/${turn!.sequence}) <1,-1>`, null),
             PlurnkParser.frame("TASK", '[{"content":"Inspect the original emission.","status":"in_progress"}]'),
         ].join("\n");
         const review = await engine.runTurn({
@@ -361,7 +361,10 @@ test("invalid emissions retry beneath one turn against the identical packet, the
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "turnOps").length, 1, "only the accepted model program is admitted as turnOps");
+        assert.ok(rows.every(({ op }) => op !== null), "accepted programs add no actionless log row");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.deepEqual(sources.filter((row) => row.turn_id === result.turnId && row.kind === "ops").map(({ content }) => content),
+            [packet.assistant?.content], "only the accepted model program becomes an ops resource");
 
         const loopUsage = await engine.loopUsage(loopId);
         assert.equal(loopUsage.accounting.usage?.inputTokens, 60, "aggregate usage includes every request");
@@ -774,10 +777,11 @@ ${renderedRead}
         assert.ok(error);
         const result = JSON.parse(error.rx) as { problem?: { detail?: string } };
         assert.equal(result.problem?.detail, "Matcher body has 3 lines; expected 1.");
-        const turnOps = rows.find(({ op, attrs }) => op === null && JSON.parse(attrs).kind === "turnOps");
-        assert.ok(turnOps, "the admitted source remains durable as the turnOps row");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const turnOps = sources.find((row) => row.turn_id === failed.turnId && row.kind === "ops");
+        assert.ok(turnOps, "the admitted source remains durable independently of result rows");
         assert.match(
-            (JSON.parse(turnOps.rx) as { content: string }).content,
+            turnOps.content,
             /@et6xE/,
             "the durable turnOps row preserves the submitted program exactly",
         );

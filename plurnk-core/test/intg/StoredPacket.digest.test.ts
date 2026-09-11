@@ -24,7 +24,8 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "inspect history");
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
-        for (const [index, kind] of ["reasoning", "unknown", "turnOps"].entries()) {
+        await Turn.recordSource(db, turn.id, "ops", source);
+        for (const [index, kind] of ["reasoning", "unknown", "emissionAttempt"].entries()) {
             await db.engine_insert_log_entry.get({
                 worker_id: workerId, loop_id: loopId, turn_id: turn.id, sequence: index + 1,
                 origin: "model", source: null, model_call_id: null,
@@ -32,9 +33,9 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/vnd.plurnk",
-                rx: JSON.stringify({ content: kind === "turnOps" ? source : "retained evidence", mimetype: "text/vnd.plurnk" }),
+                rx: JSON.stringify({ content: kind, mimetype: "text/vnd.plurnk" }),
                 mimetype_rx: "application/json", status_rx: 200, weight: 1,
-                state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "turnOps" }),
+                state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "emissionAttempt" }),
                 initial_folded: "[]",
             });
         }
@@ -56,14 +57,14 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     }
 });
 
-test("{§log-history-projection}: digest retains KILLed turn programs as chronological artifacts", async () => {
+test("{§log-history-projection}: digest retains programs after all source READ receipts are KILLed", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-killed-turn-artifact-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const sources = [
         "```TASK\n[{\"content\":\"Continue one.\",\"status\":\"in_progress\"}]\n```",
         "```TASK\n[{\"content\":\"Continue two.\",\"status\":\"in_progress\"}]\n```",
-        "```KILL (log:///1/[1-2]/*/ops)```\n```TASK\n[{\"content\":\"Continue three.\",\"status\":\"in_progress\"}]\n```",
+        "```KILL (log:///1/[1-2]/*/READ)```\n```TASK\n[{\"content\":\"Continue three.\",\"status\":\"in_progress\"}]\n```",
     ];
     const db = await openMigrated(dbPath);
     try {
@@ -71,21 +72,19 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "curate history");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const insertTurnOps = async (turnId: number, source: string, initialFolded: string): Promise<number> => {
-            const row = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-                origin: "model", source: null, model_call_id: null,
-                op: null,
-                scheme: null, username: null, password: null, hostname: null, port: null,
-                pathname: null, query: null, fragment: null, lineMarker: null,
-                tx: "", mimetype_tx: "text/vnd.plurnk",
-                rx: JSON.stringify({ content: source, mimetype: "text/vnd.plurnk" }),
-                mimetype_rx: "application/json", status_rx: 200, weight: 1,
-                state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "turnOps" }),
-                initial_folded: initialFolded,
+        const observeProgram = async (turnId: number, source: string): Promise<number> => {
+            await Turn.recordSource(db, turnId, "ops", source);
+            const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: turnId }))!;
+            const result = await engine.dispatch({
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                statement: {
+                    op: "READ", annotation: null, metadata: null, body: null,
+                    target: urlPath("ops", `/1/${turn.sequence}`), lineMarker: { marks: [1, -1] },
+                    position: { line: 1, column: 1 },
+                },
             });
-            if (row === undefined) throw new Error("turnOps insert returned no row");
-            return row.id;
+            assert.equal(result.status, 200);
+            return (await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: turnId }))[0]!.id;
         };
         const retiredIds: number[] = [];
         for (const source of sources.slice(0, 2)) {
@@ -94,7 +93,7 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
                 producer: "model",
                 kind: "inference",
             })).id;
-            retiredIds.push(await insertTurnOps(turnId, source, "[[1,-1]]"));
+            retiredIds.push(await observeProgram(turnId, source));
             await Turn.complete(db, turnId, 200);
         }
 
@@ -103,11 +102,11 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
             producer: "model",
             kind: "inference",
         })).id;
-        await insertTurnOps(curationTurn, sources[2]!, "[[1,-1]]");
+        await Turn.recordSource(db, curationTurn, "ops", sources[2]!);
         const kill: KillStatement = {
             metadata: null,
             op: "KILL", annotation: null,
-            target: urlPath("log", "/1/[1-2]/*/ops"), lineMarker: null, body: null,
+            target: urlPath("log", "/1/[1-2]/*/READ"), lineMarker: null, body: null,
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -115,11 +114,11 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
             workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
-        assert.equal(result.matched, 2, "the real broad KILL retires both prior turn programs");
+        assert.equal(result.matched, 2, "the real broad KILL retires both prior source READ receipts");
         await Turn.complete(db, curationTurn, 200);
 
         const active = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });
-        assert.ok(retiredIds.every((id) => !active.some((row) => row.id === id)), "retired programs leave the current packet projection");
+        assert.ok(retiredIds.every((id) => !active.some((row) => row.id === id)), "retired READ receipts leave the current packet projection");
     } finally {
         await db.close();
     }
@@ -134,9 +133,11 @@ test("{§log-history-projection}: digest retains KILLed turn programs as chronol
             );
         }
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
+            turns: Array<{ program: string | null }>;
             log_entries: Array<{ id: number; projection: { active: boolean } }>;
             log_curation_effects: Array<{ active_before: boolean; active_after: boolean }>;
         };
+        assert.deepEqual(json.turns.map(({ program }) => program), sources, "structured forensic output retains every exact program too");
         assert.equal(
             json.log_entries.filter(({ projection }) => !projection.active).length,
             2,
@@ -199,25 +200,10 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         assert.equal(constrained.remaining, 1, "the rejected candidate performs no provider call");
 
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
-        const initializationRows = await db.test_log_entries_by_turn.all<{
-            op: string | null;
-            attrs: string;
-            rx: string;
-        }>({ turn_id: turns[0]!.id });
-        const sourceRow = initializationRows.find(({ op, attrs }) =>
-            op === null && JSON.parse(attrs).kind === "turnOps");
-        initializationSource = JSON.parse(sourceRow?.rx ?? "null").content;
+        const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
         assert.match(initializationSource, /^````COPY /);
-        const overflowRows = await db.test_log_entries_by_turn.all<{
-            op: string | null;
-            attrs: string;
-            rx: string;
-            folded: string;
-            initial_folded: string;
-        }>({ turn_id: overflow.turnId });
-        const overflowTurnOps = overflowRows.find(({ op, attrs }) =>
-            op === null && JSON.parse(attrs).kind === "turnOps");
-        assert.equal(overflowTurnOps, undefined, "no recovery program was executed or fabricated");
+        assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
     } finally {
         await db.close();
     }

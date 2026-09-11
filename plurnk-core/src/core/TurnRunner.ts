@@ -922,6 +922,15 @@ export default class TurnRunner {
                 body: [{ content: "Address the prompt.", status: "in_progress" }],
                 position: UNKNOWN_POSITION,
             };
+            const pathname = `/${loopRow!.sequence}/${initializationTurn.sequence}`;
+            initializationStatements.push({
+                op: "READ", annotation: "initialization program", body: null, metadata: null,
+                target: {
+                    kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
+                    username: null, password: null, hostname: null, port: null, query: null, fragment: null,
+                },
+                lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            });
             initializationStatements.push(task);
             const admittedInitializationStatements = initializationStatements.filter(initializationAdmits);
             const source = TurnOps.renderInternal(admittedInitializationStatements);
@@ -929,7 +938,6 @@ export default class TurnRunner {
             const result = await this.executeAdmittedTurn({
                 statements: admitted,
                 source,
-                sourceFolded: false,
                 origin: "_plurnk",
                 workspaceId,
                 workerId,
@@ -1584,10 +1592,7 @@ export default class TurnRunner {
         }
         const emissionModelCallId = providerModelCall.id;
         if (splitResponse.packetAssistant.reasoning?.length) {
-            await this.#dispatcher.captureReasoning({
-                verbatim: splitResponse.packetAssistant.reasoning,
-                workspaceId, workerId, loopId, turnId, modelCallId: emissionModelCallId,
-            });
+            await Turn.recordSource(this.#db, turnId, "reasoning", splitResponse.packetAssistant.reasoning, { modelCallId: emissionModelCallId });
         }
         if (!splitResponse.emissionValid) {
             // {§invalid-emission-attempts} Every exhaustion publishes the raw final
@@ -1602,9 +1607,6 @@ export default class TurnRunner {
                     turnId,
                     sequence: nextActionIndex,
                     modelCallId: emissionModelCallId,
-                    ...(response.assistant.reasoningEncrypted?.length
-                        ? { reasoningItems: response.assistant.reasoningEncrypted }
-                        : {}),
                 });
                 // {§invalid-emission-attempts} — the informed turn carries the parser's own
                 // diagnostic and position: the model sees WHY, not only that it was refused.
@@ -1674,7 +1676,7 @@ export default class TurnRunner {
 
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
-        // the model resolves it against its own emission — READ the body-suppressed turnOps row at the
+        // the model resolves it against its own emission — READ ops:///<loop>/<turn> at the
         // cited lines ({§turn-ops-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
@@ -1753,15 +1755,10 @@ export default class TurnRunner {
         // narrows the operator ceiling before the admitted program reaches the
         // shared executor.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
-        const reasoningItems = response.assistant.reasoningEncrypted?.length
-            ? response.assistant.reasoningEncrypted
-            : undefined;
         const executed = await this.executeAdmittedTurn({
             statements: packetAssistant.ops,
             source: splitResponse.sourceBacked ? packetAssistant.content : null,
-            sourceFolded: true,
             sourceModelCallId: emissionModelCallId,
-            ...(reasoningItems !== undefined ? { sourceReasoningItems: reasoningItems } : {}),
             origin: "model",
             workspaceId,
             workerId,

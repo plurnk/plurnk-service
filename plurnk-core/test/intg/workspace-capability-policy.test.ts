@@ -201,7 +201,7 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         const items = JSON.parse(result.content) as Array<Array<{ path: string; summary?: string }>>;
         const reference = items.flat().find(({ path }) => path.endsWith("/worker.md"));
         assert.ok(reference?.summary, `worker orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
-        const read = rows.find(({ op }) => op === "READ");
+        const read = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/worker.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
         assert.ok(JSON.parse(read!.rx).content.includes("## Lifecycle"));
     } finally { await db.close(); }

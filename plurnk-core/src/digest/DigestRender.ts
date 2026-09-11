@@ -3,7 +3,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import PacketWire from "../core/packet-wire.ts";
-import LogBody from "../core/LogBody.ts";
 import StoredPacket from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
@@ -118,9 +117,7 @@ export default class DigestRender {
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"
             ? "emission attempt"
-            : actionlessKind === "turnOps"
-                ? "turnOps"
-                : row.op ?? `unrecognized actionless row (kind=${JSON.stringify(actionlessKind) ?? "absent"})`;
+            : row.op ?? `unrecognized actionless row (kind=${JSON.stringify(actionlessKind) ?? "absent"})`;
         return DigestRender.#renderOpLine(row, materialized ? "materialized entry" : label);
     }
 
@@ -417,34 +414,12 @@ export default class DigestRender {
         return lines.join("\n");
     }
 
-    static #turnOpsSource(m: DigestModel, turn: TurnRow): string | null {
-        const rows = (m.logEntriesByTurn.get(turn.id) ?? []).filter((row) =>
-            row.op === null
-            && (DigestRender.parseJson(row.attrs, {}) as { kind?: unknown }).kind === "turnOps");
-        if (rows.length > 1) {
-            throw new TypeError(`digest: turn ${turn.id} has ${rows.length} turnOps rows; expected at most one`);
-        }
-        const row = rows[0];
-        if (row === undefined) return null;
-        const body = LogBody.resolve({
-            op: row.op,
-            attrs: row.attrs,
-            tx: null,
-            rx: row.rx,
-            mimetypeRx: row.mimetype_rx,
-        });
-        if (body.mimetype !== "text/vnd.plurnk") {
-            throw new TypeError(`digest: turn ${turn.id} turnOps has mimetype ${JSON.stringify(body.mimetype)}; expected text/vnd.plurnk`);
-        }
-        return body.content;
-    }
-
     // Per-turn forensic files. turnOps is the source authority; PacketWire
     // reproduces provider request slots, and assistantRaw preserves provider bytes.
     static packetFiles(m: DigestModel): string[] {
         const written: string[] = [];
         m.turns
-            .map((turn) => ({ turn, source: DigestRender.#turnOpsSource(m, turn) }))
+            .map((turn) => ({ turn, source: turn.program }))
             .filter(({ turn, source }) => turn.packet !== null || turn.packetFailure !== null || source !== null)
             .toSorted((a, b) => a.turn.id - b.turn.id)
             .forEach(({ turn, source }, ordinal) => {
@@ -546,6 +521,7 @@ export default class DigestRender {
             turns: m.turns.map((t) => ({
                 id: t.id, loop_id: t.loop_id, sequence: t.sequence,
                 producer: t.producer, kind: t.kind,
+                program: t.program,
                 status: t.status, completed_at: t.completed_at,
                 accounting: DigestRender.#accounting(m.requestsByTurn.get(t.id) ?? []),
                 finish_reason: t.finish_reason, model: t.model,

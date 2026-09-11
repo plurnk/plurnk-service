@@ -1,7 +1,7 @@
 import Log from "../schemes/Log.ts";
 import Exec, { type WebFetch } from "../schemes/Exec.ts";
 import Prompt from "../schemes/Prompt.ts";
-import Reasoning from "../schemes/Reasoning.ts";
+import TurnSource from "../schemes/TurnSource.ts";
 import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
 import {
@@ -76,7 +76,8 @@ export default class SchemeRegistry {
         // is worker:// (commons/~/name/plurnk), and task frames are prompt://.
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb));
         this.#registerBuiltIn("prompt", new Prompt());
-        this.#registerBuiltIn("reasoning", new Reasoning());
+        this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
+        this.#registerBuiltIn("ops", new TurnSource("ops"));
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("worker", new Worker());
     }

@@ -23,7 +23,7 @@ const seeded = async (root: string): Promise<void> => {
     await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 };
 
-type Row = { op: string; status_rx: number; rx: string };
+type Row = { op: string; origin: string; status_rx: number; rx: string };
 const editRows = (rows: Row[]): Array<{ status: number; rx: Record<string, unknown> }> =>
     rows.filter(({ op }) => op === "EDIT").map(({ status_rx, rx }) => ({ status: status_rx, rx: JSON.parse(rx) }));
 
@@ -84,7 +84,7 @@ ${pending.fake}
                 await rpcCall(ws, 1, "workspace.create", { name: "paste", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, status_rx }) => op === "READ" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 assert.equal(anchors.length, 7);
                 // Lines 1-2 pasted back exactly as rendered (anchor, right-aligned ordinal, colon, text);
@@ -132,7 +132,7 @@ ${pending.body}
                 await rpcCall(ws, 1, "workspace.create", { name: "stale-paste", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, status_rx }) => op === "READ" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 // Line 4 changes out-of-band after the READ: line 2's neighbourhood now differs, so the
                 // pasted prefixes no longer verify against the current anchors - only against the READ's.

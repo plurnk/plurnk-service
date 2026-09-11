@@ -17,7 +17,7 @@ const manifest = (name: string): SchemeManifest => ({
 
 test("SchemeRegistry: constructor registers the engine-owned scheme roster", () => {
     const r = new SchemeRegistry();
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "prompt", "reasoning", "worker"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "ops", "prompt", "reasoning", "worker"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
 });
 
 test("SchemeRegistry: get(name) returns the registered handler instance", () => {
@@ -63,7 +63,7 @@ test("SchemeRegistry: list() is sorted and exhaustive", () => {
     class FakeHttps { static manifest = manifest("https"); }
     r.register("wss", new FakeWs());
     r.register("https", new FakeHttps());
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "prompt", "reasoning", "worker", "wss"], "the core roster plus two registered externals");
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "ops", "prompt", "reasoning", "worker", "wss"], "the core roster plus two registered externals");
 });
 
 test("SchemeRegistry: two independent registries don't share state", () => {

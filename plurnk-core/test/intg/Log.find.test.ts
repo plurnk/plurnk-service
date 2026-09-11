@@ -82,7 +82,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         for (const [sequence, kind, content] of [
-            [4, "turnOps", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```"],
+            [4, "emissionAttempt", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({
@@ -117,12 +117,12 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
         const log = new Log();
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
         const turn = await log.find({ ...findStmt(urlPath("log", "/1/1")), lineMarker: { marks: [1, -1] } }, ctx);
-        assert.ok(paths(turn).includes("log:///1/1/4/ops"));
+        assert.ok(paths(turn).includes("log:///1/1/4/attempt"));
         assert.ok(paths(turn).includes("log:///1/1/5/attempt"));
 
-        const ops = await log.find(findStmt(urlPath("log", "/**/ops")), ctx);
-        assert.deepEqual(paths(ops), ["log:///1/1/4/ops"]);
-        const wrong = await log.find(findStmt(urlPath("log", "/1/1/4/attempt")), ctx);
+        const ops = await log.find(findStmt(urlPath("log", "/**/attempt")), ctx);
+        assert.deepEqual(paths(ops), ["log:///1/1/4/attempt", "log:///1/1/5/attempt"]);
+        const wrong = await log.find(findStmt(urlPath("log", "/1/1/4/READ")), ctx);
         assert.equal(wrong.status, 404);
     } finally {
         await db.close();

@@ -38,6 +38,7 @@ type DerivationRow = {
 } & (
     | { attachment: "entry-channel"; scheme: string; authority: string; channel: string }
     | { attachment: "log"; folded: string }
+    | { attachment: "turn-source"; kind: "ops" | "reasoning" }
 );
 type PendingDerivation = {
     r: DerivationRow;
@@ -88,8 +89,10 @@ export default class SearchIndex {
                     mimetype: r.mimetype,
                     deep_hash: hash,
                 });
-            } else {
+            } else if (r.attachment === "log") {
                 await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash, folded: r.folded });
+            } else {
+                await db.turn_source_attach_derivation.run({ turn_id: r.id, kind: r.kind, deep_hash: hash });
             }
         };
         let artifact = await db.derivation_get.get<DerivationArtifact>({ deep_hash: hash });
@@ -307,6 +310,21 @@ export default class SearchIndex {
                 hash,
                 searchExcluded: undefined,
                 binary,
+            });
+        }
+        const sources = await db.turn_source_derivations.all<{
+            turn_id: number; kind: "ops" | "reasoning"; pathname: string; content: string; deep_hash: string | null;
+        }>({ workspace_id: workspaceId });
+        for (const source of sources) {
+            const mimetype = source.kind === "ops" ? "text/vnd.plurnk" : "text/plain";
+            const projectionIdentity = await projectionIdentityFor(mimetype, source.content, false, undefined);
+            const hash = derivationHash({ content: source.content, mimetype, binary: false, projectionIdentity, dispositionIdentity: "included" });
+            if (hash !== source.deep_hash) pending.push({
+                r: {
+                    id: source.turn_id, attachment: "turn-source", kind: source.kind,
+                    pathname: source.pathname, content: source.content, mimetype,
+                },
+                hash, searchExcluded: undefined, binary: false,
             });
         }
         // {§derivation-dedup-parallel} — warm smaller projections before an

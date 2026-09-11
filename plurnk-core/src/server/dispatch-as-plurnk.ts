@@ -60,8 +60,6 @@ export default class DispatchAsPlurnk {
             await engine.executeAdmittedTurn({
                 statements: admitted,
                 source,
-                sourceFolded: true,
-                sourceReasoningItems: [],
                 origin: "_plurnk",
                 workspaceId,
                 workerId,

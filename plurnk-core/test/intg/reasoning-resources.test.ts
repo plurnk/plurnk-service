@@ -26,8 +26,8 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         const first = await engine.runTurn({ ...context, provider: provider(original), messages: [] });
         const resources = await db.test_reasoning_resources.all<Resource>({ worker_id: workerId });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
-        assert.deepEqual(resources, [{ pathname: `/1/${turn!.sequence}/1`, content: original }]);
-        const target = `reasoning://alice${resources[0]!.pathname}`;
+        assert.deepEqual(resources, [{ pathname: `/1/${turn!.sequence}`, content: original }]);
+        const target = `reasoning://${resources[0]!.pathname}`;
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         assert.equal(reads.length, 1);
@@ -54,7 +54,7 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
             `\`\`\`EDIT (${target}) <1>
 Revised determination.
 \`\`\``,
-            "```EDIT (reasoning://alice/9/9/9)\nInvented history.\n```",
+            "```EDIT (reasoning:///9/9)\nInvented history.\n```",
             `\`\`\`KILL (${target})\`\`\``,
             `\`\`\`KILL (${target}) <2>\`\`\``,
             `\`\`\`COPY (${copy}) (${target}) <1,-1>\`\`\``,
@@ -118,7 +118,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
         if (limit === 0) {
             const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
             const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
-                statement: statement(`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\``),
+                statement: statement(`\`\`\`READ (reasoning://${resource.pathname}) <17,30>\`\`\``),
             });
             assert.equal(explicit.status, 200);
             assert.ok("content" in explicit);
@@ -129,8 +129,8 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
             assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
-            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/alice\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
-            const record = parseLogRecords(log).find(({ path }) => typeof path === "string" && path.endsWith(`/${reads[0]!.sequence}/READ`));
+            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
+            const record = parseLogRecords(log).find(({ path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
             assert.ok(record);
             assert.equal(record.annotation, "prior turn reasoning");
             assert.match(String(record.body), /^\s*1:Finding 1:/m);
@@ -147,7 +147,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
     }
 });
 
-test("{§reasoning-history}: client source changes, search, FORK snapshots, restart, and forensic replay remain independent", async () => {
+test("{§reasoning-history}: immutable sources support search, FORK, restart, and independent receipt curation", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-reasoning-resources-"));
     const dbPath = join(dir, "plurnk.db");
     let db = await openMigrated(dbPath);
@@ -161,7 +161,7 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
         const context = { workspaceId, workerId, loopId };
         const producing = await engine.runTurn({ ...context, provider: provider(original), messages: [] });
         const resource = (await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
-        const target = `reasoning://alice${resource.pathname}`;
+        const target = `reasoning://${resource.pathname}`;
         let sequence = 20;
         const dispatch = (source: string) => engine.dispatch({ ...context,
             statement: statement(source), turnId: producing.turnId, sequence: sequence++, origin: "model",
@@ -172,12 +172,13 @@ test("{§reasoning-history}: client source changes, search, FORK snapshots, rest
             await Turn.complete(db, turn.id, result.status);
             return result;
         };
-        assert.equal((await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`READ (${target})\`\`\``) })).status, 200);
+        assert.equal((await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`READ (${target})\`\`\``) })).status, 404,
+            "a local coordinate does not invent history for another worker");
         assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
 Retained determination.
-\`\`\``)).status, 200);
+\`\`\``)).status, 403);
         const found = await dispatch(`\`\`\`FIND (${target})
-~Retained
+~"Finding 2"
 \`\`\``);
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
@@ -189,27 +190,17 @@ Retained determination.
         await engine.runTurn({ ...forkContext, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkId })).length, 1,
             "a pending source is observed by the fork without cloning provider accounting");
-        assert.equal((await clientDispatch(`\`\`\`EDIT (reasoning://reasoning-branch${resource.pathname}) <1>
-Branch-only decision.
-\`\`\``, forkContext)).status, 200);
-        assert.match((await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, /^Retained determination\./);
         assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
-Revised conclusion.
-\`\`\``)).status, 200);
-        const outdated = await dispatch(`\`\`\`FIND (${target})
-~Retained
-\`\`\``);
-        assert.equal(outdated.status, 204, JSON.stringify(outdated));
-        assert.ok("matchLocationCount" in outdated);
-        assert.equal(outdated.matchLocationCount, 0, "FTS reflects the current source, not its former content");
-        assert.equal((await dispatch(`\`\`\`FIND (${target})
-~Revised
-\`\`\``)).status, 200);
+Branch-only decision.
+\`\`\``, forkContext)).status, 403);
+        assert.equal((await db.test_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, original);
+        const stillFound = await dispatch(`\`\`\`FIND (${target})\n~"Finding 2"\n\`\`\``);
+        assert.equal(stillFound.status, 200, "denied writes leave indexed source unchanged");
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const observations = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         const read = observations.find(({ ambient_event_id }) => ambient_event_id === null);
         assert.ok(read, "a child's ambient READ must not stand in for observing the parent's independent reasoning source");
-        assert.match(JSON.parse(read.rx).content, /^Revised conclusion\./);
+        assert.equal(JSON.parse(read.rx).content, original);
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
             statement: statement(`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\``),
         })).status, 200);
@@ -217,13 +208,13 @@ Revised conclusion.
         await db.close();
         db = await openMigrated(dbPath);
         engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        assert.match((await db.test_reasoning_resources.all<Resource>({ worker_id: forkId }))[0]!.content, /^Branch-only decision\./);
+        assert.equal((await db.test_reasoning_resources.all<Resource>({ worker_id: forkId }))[0]!.content, original);
         const secondForkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: forkAfterRead });
         assert.ok(secondForkLoop);
         await engine.runTurn({ workspaceId, workerId: forkAfterRead, loopId: secondForkLoop.id, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkAfterRead })).filter(({ ambient_event_id }) => ambient_event_id === null).length, 1,
             "fork and restart preserve once-only delivery even when the old receipt is KILLed");
-        assert.equal((await clientDispatch(`\`\`\`KILL (${target})\`\`\``)).status, 200);
+        assert.equal((await clientDispatch(`\`\`\`KILL (${target})\`\`\``)).status, 403);
         const ids = await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: producing.turnId });
         const journal = await Promise.all(ids.map(({ id }) => LogEntry.fetchLogEntry(db, id)));
         const snapshot = new Translator({ threadId: "history", runId: "reattach" }).replay(journal)
@@ -234,14 +225,14 @@ Revised conclusion.
         Digest.run({ dbPath, digestDir, workerId });
         const evidence = await readFile(join(digestDir, "reasoning.md"), "utf8");
         assert.ok(evidence.includes(original));
-        assert.ok(!evidence.includes("Revised conclusion."), "a client-modified source never substitutes for forensic reasoning");
+        assert.ok(!evidence.includes("Revised conclusion."), "denied source edits cannot alter forensic reasoning");
     } finally {
         await db.close();
         await rm(dir, { recursive: true, force: true });
     }
 });
 
-test("{§reasoning-history}: only exposed final reasoning becomes a resource, with its actual call coordinate", async () => {
+test("{§reasoning-history}: only exposed final reasoning becomes a resource at its producing turn", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-admission");
@@ -265,8 +256,10 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource, wi
         assert.equal(failed.emissionExhausted, true);
         const rows = await db.test_reasoning_resources.all<Resource>({ worker_id: workerId });
         assert.deepEqual(rows.map(({ content }) => content), ["Admitted reasoning.", "Final rejected reasoning."]);
-        assert.ok(rows[0]!.pathname.endsWith("/2"));
-        assert.ok(rows[1]!.pathname.endsWith("/3"));
+        const admittedTurn = await db.test_get_turn.get<{ sequence: number }>({ id: admitted.turnId });
+        const failedTurn = await db.test_get_turn.get<{ sequence: number }>({ id: failed.turnId });
+        assert.equal(rows[0]!.pathname, `/1/${admittedTurn!.sequence}`);
+        assert.equal(rows[1]!.pathname, `/1/${failedTurn!.sequence}`);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: failed.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
     } finally { await db.close(); }

@@ -56,8 +56,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | Successful targetless model SEND | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
-| `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
-| `log/entry` READ of `reasoning://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
+| `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
+| `log/entry` READ of `reasoning:///…` or `ops:///…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
@@ -107,24 +107,10 @@ sequence.
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
   core vocabulary can't hold (curation metadata, tags, coordinates) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
-- §agui-encrypted-reasoning **Encrypted reasoning projects only onto an entity
-  AG-UI actually created.** Core supplies the exact normalized provider-detail
-  list on an actionless model source row's `attrs.reasoning`.
-  No synthetic operation is introduced. The provider detail `id` is
-  forensic identity, not an AG-UI entity ID ({§provider-encrypted-reasoning}).
-
-  | Condition                                   | Projection |
-  | ------------------------------------------- | ---------- |
-  | Same-turn SEND + one nonempty message value | One `REASONING_ENCRYPTED_VALUE` with `subtype: "message"` and `entityId` equal to that SEND message's coordinate. |
-  | Null or absent provider detail `id`         | No effect on correlation; the actual SEND identity owns the client relation. |
-  | No SEND or not exactly one message value    | No standard encrypted event. Nothing is selected, joined, or overwritten. |
-  | Provider-only and unprojected evidence      | Detail `id`, `format`, ordering, and every value remain lossless on the `plurnk.row` mirror evidence. |
-  | Reattach                                    | The same singular value occupies `encryptedValue` on the corresponding SEND `AssistantMessage` in `MESSAGES_SNAPSHOT`. |
-
-  AG-UI's single message slot cannot represent multiple provider details without
-  losing cardinality. The translator therefore emits neither invented reasoning
-  spans nor repeated events whose last value would silently overwrite its
-  siblings.
+- §agui-encrypted-reasoning **Opaque provider state is not a client conversation.**
+  AG-UI emits no encrypted-reasoning events or message values. Original provider
+  evidence retains those fields under {§encrypted-reasoning-carrier}; readable
+  reasoning streams and conversation replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
   `plurnk.notice`, `plurnk.stream`, `plurnk.branch_batch`, `plurnk.terminated` — the full loop

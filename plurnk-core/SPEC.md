@@ -50,7 +50,7 @@ their absence never makes a client, plugin, or `_plurnk` turn exceptional.
 | `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
 | `status`, `completed_at` | A new turn is open at status 102 with `completed_at=NULL`. Completion records the exact turn disposition/operation disposition and timestamp; a completed 102 is therefore distinct from an open 102. |
 | Operations | Ordered by `(turn_id, sequence)` on one exact worker/loop/turn chain. Each row's `origin` is the turn producer or `_plurnk` making a system observation; the observation does not impersonate the producer. |
-| `turnOps` | Every admitted source-backed turn preserves its exact disposition-ended program as one actionless `/ops` log item under {§turn-ops-entry}. The item supplements rather than replaces the executed operation rows. |
+| Program source | Every admitted source-backed turn preserves its exact program before dispatch in `turn_sources`, independently of log receipts, under {§turn-ops-entry}. |
 | Inference evidence | Model calls, `packet`, model, finish reason, and provider metadata belong only to model/inference turns. Turn fields are nullable until recorded and remain NULL for every other kind. |
 
 One lifecycle owner opens, optionally records inference evidence, and completes
@@ -64,7 +64,7 @@ recovery completes any turn whose producer vanished.
 A provider response, deterministic `_plurnk` program, or future client/plugin
 program crosses one admission boundary into the same executor. That executor
 parses once, dispatches the admitted statements in order, records their ordinary
-outcomes and the exact `turnOps`, and completes the turn from its TASK ruling.
+outcomes, and completes the turn from its TASK ruling. Exact source is retained before dispatch.
 Provider attempts, grammar recovery, reasoning, and accounting end before this
 shared seam. A programmatic operation batch that supplied no Plurnk source does
 not fabricate verbatim source.
@@ -74,8 +74,8 @@ Immediately before statement dispatch, the shared executor captures that worker'
 append-only log high-water mark. Every log-targeted KILL in the program resolves
 row membership at or below that same boundary, while prior curation effects still
 compose normally. Prompt and other pre-program rows already present in the turn
-remain selectable; preceding operation rows, later operation rows, and the
-terminal `turnOps` cannot be captured by their own program. A directly dispatched
+remain selectable; preceding and later operation rows cannot be captured by
+their own program. A directly dispatched
 single operation captures the equivalent boundary before dispatch. This limits
 only log-row selection: operation phasing and same-turn resource effects retain
 their ordinary contracts.
@@ -534,7 +534,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one visible exact `turnOps` item and dispatches the same source into one archiving COPY, orienting READ/FIND, and final TASK (in {§op-execution-order}). Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt://<worker>/<loop>/1)` onto `worker://<worker>/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing named scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches one archiving COPY, orienting READ/FIND, a full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source, and final TASK (in {§op-execution-order}). That ordinary READ receipt supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt://<worker>/<loop>/1)` onto `worker://<worker>/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing named scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
@@ -1023,7 +1023,7 @@ Author-facing contract: [`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md
 
 Three current entry points:
 
-- §provider-surface-generate `provider.generate(args)` — once per logical model call. An emission attempt supplies the complete packet messages, worker/turn coordinates, generation envelope, optional local grammar, first-party metadata, and `callKind: "emission"`. A BARE inference supplies only one user message containing its resolved prompt plus non-prompt call identity and accounting metadata, including `callKind: "bare"` ({§bare-inference} {§provider-call-kind}). Both receive a durable physical-request observer; provider-owned retry and failover may issue several ordered requests beneath either call. A successful `ProviderResponse` reaches its call-specific consumer; a `ProviderError.attempt` remains failed response evidence under {§provider-interrupted-attempt}. Core persists normalized response evidence separately from physical accounting and relays encrypted reasoning only from an admitted emission ({§encrypted-reasoning-carrier}).
+- §provider-surface-generate `provider.generate(args)` — once per logical model call. An emission attempt supplies the complete packet messages, worker/turn coordinates, generation envelope, optional local grammar, first-party metadata, and `callKind: "emission"`. A BARE inference supplies only one user message containing its resolved prompt plus non-prompt call identity and accounting metadata, including `callKind: "bare"` ({§bare-inference} {§provider-call-kind}). Both receive a durable physical-request observer; provider-owned retry and failover may issue several ordered requests beneath either call. A successful `ProviderResponse` reaches its call-specific consumer; a `ProviderError.attempt` remains failed response evidence under {§provider-interrupted-attempt}. Core persists normalized response evidence separately from physical accounting and retains opaque reasoning only as provider evidence ({§encrypted-reasoning-carrier}).
 - §provider-surface-capacity `provider.assessRequestCapacity(messages, maxOutputTokens?, signal?)` — provider-owned intersection of request-shaped token evidence and every known physical input limit. It admits, rejects only a proven exact overflow, or defers ambiguity to upstream ({§tokenomics-context-envelope-admission}). `generate` performs this assessment for its exact request and preserves the evidence on success and capacity failure.
 - §provider-surface-prompt-measurement `provider.countPromptTokens(messages, signal)` — the cancellable complete-request measurement primitive used by provider capacity assessment, with `exact`, `upper_bound`, `estimate`, or `unavailable` provenance. Core never substitutes this physical fact for its curation ruler.
 
@@ -1054,7 +1054,7 @@ Core retries a rejected emission against the exact same packet beneath the same 
 When the loop continues after exhaustion under {§invalid-emission-attempts}, the next ordinary turn's packet projects the latest rejected response visibly from a durably body-suppressed emission-attempt item under {§rejected-emission-entry} and carries one transient `invalid_emission` Notice: `Response rejected before dispatch; no operations were performed.` followed by `Parser: <the latest attempt's first diagnostic>` with its `content-offset` position — the model sees why, at which line, against its own projected text. The Notice states only observed admission facts; it does not classify the response as unrecoverable, infer why generation ended, or prescribe intent beyond the parser-owned diagnostic. Attempt count and rail state never become model-facing. The recovery turn has its own honestly stored packet and its configured private same-packet attempts. The packet-local projection never changes the row's curation state, so no later packet repeats that malformed body unless the model explicitly READs its exact address. Admission clears the recovery projection; another exhaustion replaces it with the latest rejected response if the loop continues.
 
 Outside-block text has no execution, message, or receipt semantics under
-{§whitespace-contract}. The source-backed `/ops` retains it verbatim under
+{§whitespace-contract}. The `ops:///` source retains it verbatim under
 {§turn-ops-log-curation}; execution never reconstructs source from the AST.
 
 An admitted program may contain bounded malformed statements or recovered
@@ -1217,14 +1217,15 @@ meaning of an authored URI authority before any entry capability is exposed:
 
 §client-entry-address A client entry read resolves through the registered scheme's {§entry-address-resolution} and queries the complete `(workspace, scheme, authority, pathname)` identity. Its observing Worker does not change the address or grant. Unknown Workers and absent resources return 404. The result is the contracts-owned {§entry-read-result}; storage columns do not cross the seam.
 
-§scheme-entry-matrix Every entry shares workspace storage and addressability. Intrinsic mutability and fork copying follow the resource's meaning, not an ownership ACL.
+§scheme-entry-matrix Resource addressability, intrinsic mutability and fork copying follow the resource's meaning, not an ownership ACL.
 
 | Resource | Authority | Writes | FORK |
 |---|---|---|---|
 | Project files | Filesystem namespace | Workspace policy | Shared live |
 | `worker:///...` | Empty, shared scratch | Any workspace actor | Shared live |
 | `worker://alice/...` | Named scratch | Any workspace actor | Snapshot source namespace into new name |
-| `prompt://alice/...`, `reasoning://alice/...` | Named evidence | Intrinsic scheme contract; model-read-only | Snapshot source history into new name |
+| `prompt://alice/...` | Named prompt evidence | Intrinsic scheme contract; model-read-only | Snapshot source history into new name |
+| `ops:///...`, `reasoning:///...` | Current worker's turn coordinates | Immutable for every actor | Snapshot sources at identical local coordinates |
 | `skill://recipe/...` | Installed skill name | Skill resource contract | Shared installation |
 | HTTP, WebSocket, executor/MCP, A2A resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
 
@@ -1840,10 +1841,10 @@ resource or process semantics; this projection contract is specific to
 | Surface | Contract |
 |---|---|
 | Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a working resource; missing reasoning creates no substitute. |
-| Resource | `reasoning://<worker>/<loop>/<turn>/<call>` is workspace-stored text/plain history; the final coordinate is the producing inference call's sequence. Like `prompt://<worker>/`, only client and `_plurnk` writers may modify it under {§scheme-surface-writableby-403}. Models may READ, FIND, search and COPY from it, but cannot EDIT, KILL, COPY into or MOVE it. |
+| Resource | `reasoning:///<loop>/<turn>` is immutable text/plain source belonging to the current worker's turn under {§turn-source-resources}. Every actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
 | Delivery | The next packet observes the latest model turn's reasoning through actual `_plurnk` READ dispatch under {§reasoning-initial-read}. Initial and explicit READs produce ordinary `log:///.../READ` receipts with numeric line scopes and range metadata, without line anchors: the source is not model-editable. |
-| Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. Client or harness source changes do not rewrite earlier READ receipts; subsequent READs observe current text. |
-| Lifecycle | Restart retains entries and delivery history. FORK snapshots resources and receipts independently; branch edits cannot change parent sources. A durable initial READ prevents automatic redelivery even after log KILL. Ambient observations of another worker's READ do not count as reading one's own source. |
+| Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. A mutable working copy requires ordinary COPY into an editable resource. |
+| Lifecycle | Restart retains sources and delivery history. FORK snapshots sources at the same local coordinates and receipts with independent curation. A durable initial READ prevents automatic redelivery even after log KILL. Ambient observations of another worker's READ do not count as reading one's own source. |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
 ### §reasoning-initial-read Initial reasoning observation
@@ -1962,11 +1963,23 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 ### §turn-ops-entry The admitted turn program
 
-§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program** as an actionless log item in addition to the ordinary result row for every dispatched statement. `op` is null, `attrs.kind="turnOps"` identifies the durable type, `origin` is the turn producer, no target exists, `tx` is empty, and the source lives in `rx.content`, typed `text/vnd.plurnk`. Its canonical model-facing address appends the lowercase `/ops` leaf to its three-part coordinate. The packet does not duplicate that identity as `kind` metadata. It is line-numbered and READ/FIND/KILL-able like any active log body. The worker-initialization `turnOps` is born visible because it is the worked orientation example; every other `turnOps`, including model inference, is born body-suppressed and remains exactly READable until deliberately curated under {§log-readable-projection}. Log-KILL clears the `writableBy` gate for a model-authored item and changes only its active projection under {§log-history-projection}; the exact program remains forensic history. The log has no EDIT surface. The shared executor writes exactly one after every admitted source-backed turn.
+§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program**, including ignored interstitial text, before dispatch. `turn_sources` records that source once, separately from the curatable log and optional provider evidence. Retention does not manufacture a log row. Ordinary READ creates a receipt governed by {§log-readable-projection}; curation of that receipt never changes the source. Initialization reads its own already-persisted source under {§worker-initialization-entry}.
+
+### §turn-source-resources Immutable turn-source resources
+
+| Surface | Contract |
+|---|---|
+| Identity | `ops:///<loop>/<turn>` and `reasoning:///<loop>/<turn>` resolve against the current worker's durable loop and turn sequences. Authorities are invalid; there is no cross-worker alias or access policy. |
+| Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is the selected original provider `text/plain`. Missing source returns 404 rather than a fabricated body. |
+| Retention | One immutable source of each kind per turn. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
+| Operations | Ordinary scoped READ, FIND, content search and COPY from source. READ returns data and never executes it. Sources are read-only for every actor and have no edit hashes. |
+| Index | Source text uses the existing derivation, FTS and graph machinery; only its derivation attachment is replaceable. |
+| FORK | Sources copy with the inherited turns at identical local coordinates. Branch receipt curation is independent; neither branch can rewrite source evidence. |
+| Forensics | Digest assistant artifacts read source directly, independently of receipt presence or curation. Original provider responses retain all attempts and opaque fields separately. |
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
-- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (worker:///docs/) ````. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: the native operation name or invoked executor name, `/ops` for an admitted turn program, `/attempt` for a rejected emission. An executor leaf is derived from the durable submitted statement (`executor`, default `sh`), never the internal `EXEC` dispatch type or the current tool registry. Digits and punctuation in executor names remain part of the leaf. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. READ anchors use the canonical suffixed identity even when addressed by shorthand. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/python3`, `log:///**/ops`, and `log:///**/attempt` deliberately filter canonical leaves. An executor's output stream lives at that same item address under its runtime scheme — `sh:///1/2/3/sh#stdout` — so one `loop/turn/item/invocation` schema addresses log rows and streams. Error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple.
+- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (worker:///docs/) ````. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: the native operation name or invoked executor name, `/attempt` for a rejected emission. An executor leaf is derived from the durable submitted statement (`executor`, default `sh`), never the internal `EXEC` dispatch type or the current tool registry. Digits and punctuation in executor names remain part of the leaf. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. READ anchors use the canonical suffixed identity even when addressed by shorthand. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/python3`, and `log:///**/attempt` deliberately filter canonical leaves. An executor's output stream lives at that same item address under its runtime scheme — `sh:///1/2/3/sh#stdout` — so one `loop/turn/item/invocation` schema addresses log rows and streams. Error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple.
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
 - §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional body matcher compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
@@ -4183,14 +4196,14 @@ source independently from this optional model-exchange record; a request-only
 turn receives a note instead of a fabricated response.
 
 §digest-turn-artifact-identity **Digest packet artifacts project durable turns.**
-After selectors are applied, digest retains every turn with exact `turnOps`, a
+After selectors are applied, digest retains every turn with exact program source, a
 valid stored provider request, or malformed stored packet evidence; orders those
 turns by durable chronology; and names them contiguously from `packet000`. The
 producer does not affect projection.
 
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
-| `packetNNN.assistant.md` | The turn has `turnOps` | Exact persisted `turnOps` source |
+| `packetNNN.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
 | `packetNNN.system.md`, `packetNNN.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
 | `packetNNN.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
@@ -4228,16 +4241,12 @@ of section weights for the rendered request weight.
 
 Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualified `session` noun, `contextSize`, `decodeBudget`, and moved partition-knob names. <!-- lexicon-allow: this sentence enumerates the retired terms -->
 
-§encrypted-reasoning-carrier **Encrypted reasoning is opaque client evidence.**
-When a provider returns encrypted reasoning items, core attaches that list to
-the admitted model `turnOps` row's `attrs.reasoning`. `log/entry` and `readLog`
-carry it to AG-UI, which may project correlated standard reasoning entities.
-Core never decodes the blobs or renders them into a model packet; readable
-reasoning text remains separate in `assistant.reasoning`. The provider-detail
-identity and derived classification retain their exact provider-normalized
-meaning from {§provider-encrypted-reasoning}; core never reinterprets either as
-a client entity. The source row and logical model call remain the lossless
-evidence when a downstream standard cannot represent the complete list.
+§encrypted-reasoning-carrier **Encrypted reasoning remains opaque provider evidence.**
+Original normalized provider responses retain every encrypted item, identity,
+format and ordering under {§provider-encrypted-reasoning}. Core neither decodes
+nor copies these blobs into source resources, log rows, client reasoning events
+or subsequent model requests. This is evidence retention, not native provider
+reasoning continuation. Readable reasoning remains independent.
 
 §body-projection **One full body, one readable view, one packet projection.** Every durable log row has one canonical full body resolved from its stored tx/rx envelope by `LogBody`. READ and FIND over `log:///`, persistent search derivation, and packet rendering apply the same deliberate trimming under {§log-readable-projection}. Packet rendering additionally applies initial suppression and these presentation bounds:
 
@@ -4245,7 +4254,6 @@ evidence when a downstream standard cannot represent the complete list.
 |---|---|
 | any `READ` or `FIND` | complete selected operation result |
 | `TASK` | complete canonical Plurnk Plan JSON {§plan-value} |
-| admitted `/ops` program | complete source after deliberate trimming; initial suppression and total-packet budget admission still apply |
 | actionless lowercase `prompt` | budgeted head under {§prompt-projection} |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
@@ -4358,7 +4366,7 @@ retain distinct contracts and lifetimes.
 
 §digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 
-§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, tags, and structured `attrs`; every exact log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result; and every ordered physical provider request. KILLed `turnOps` still produce their chronological `assistant.md` artifacts because curation cannot rewrite what a producer submitted. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
+§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, tags, and structured `attrs`; every exact log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result; and every ordered physical provider request. Programs still produce chronological `assistant.md` artifacts after every READ receipt is KILLed; source is independent of log curation. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
 
 Unrecognized actionless log rows are retained and labelled as such, not
 interpreted as executable turnOps or allowed to prevent the remaining digest.
@@ -4400,7 +4408,7 @@ USD, and token totals across every physical exchange the turn paid for, failed
 calls included. It is the shared exact derivation from the ledger, never a second
 stored fact, so a live watcher accrues running loop cost per turn (#465).
 
-§notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's own body-suppressed `turnOps`. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
+§notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's exact `ops:///<loop>/<turn>` source. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
 
 ### §tools Executable tool resources
 

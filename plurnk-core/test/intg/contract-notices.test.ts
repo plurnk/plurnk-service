@@ -80,7 +80,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 };
 
 test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
-    // A NOTICE points the model at a line in its own emission; turnOps is ALWAYS body-suppressed
+    // A NOTICE points at exact source retrievable through ops:///, not an automatic log row.
     // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -107,12 +107,12 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
         assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 2:3$/m);
 
-        // The mirror body is ALWAYS suppressed — even on the NOTICE turn;
-        // the model READs the row at the cited line when it cares.
-        const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; initial_folded: string; folded: string; turn_id: number; attrs: string }>({ loop_id: loopId }))
-            .find((r) => r.turn_id === t1.turnId && r.op === null && r.origin === "model" && JSON.parse(r.attrs).kind === "turnOps");
-        assert.equal(echo?.initial_folded, "[[1,-1]]", "the NOTICE turn's model echo stays body-suppressed");
-        assert.equal(echo?.folded, "[]", "the cited program remains READable");
+        const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const source = programs.find(({ turn_id, kind }) => turn_id === t1.turnId && kind === "ops");
+        assert.ok(source?.content, "the notice's source is retained for a scoped ops READ");
+        const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; turn_id: number }>({ loop_id: loopId }))
+            .find((row) => row.turn_id === t1.turnId && row.op === null);
+        assert.equal(echo, undefined, "a notice does not reintroduce automatic source log rows");
     } finally { await db.close(); }
 });
 

@@ -48,6 +48,16 @@ export default class Turn {
         }
     }
 
+    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning", content: string, options: {
+        modelCallId?: number | null;
+    } = {}): Promise<void> {
+        const row = await db.turn_source_record.get<{ turn_id: number }>({
+            turn_id: turnId, kind, content,
+            model_call_id: options.modelCallId ?? null,
+        });
+        if (row === undefined) throw new Error(`Turn.recordSource: ${kind} requires an open turn and its own settled inference evidence`);
+    }
+
     static async complete(db: Db, id: number, status: number): Promise<void> {
         const turn = await db.turn_complete.get<{ id: number }>({ id, status });
         if (turn === undefined) throw new Error(`Turn.complete: turn ${id} is not open`);

@@ -72,11 +72,10 @@ for (const { name, operation, maxStrikes } of [
         assert.ok(finalTurnId !== undefined);
         const turn = await db.test_get_turn.get<{ status: number }>({ id: finalTurnId });
         assert.equal(turn?.status, 200, "durable turn and loop agree with the SEND receipt");
-        const programs = await db.test_model_source_rows.all<{ id: number; turn_id: number }>({ worker_id: workerId });
-        const program = programs.find(({ turn_id }) => turn_id === finalTurnId);
+        const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ worker_id: workerId });
+        const program = programs.find(({ turn_id, kind }) => turn_id === finalTurnId && kind === "ops");
         assert.ok(program, "the accepted program has its own durable source row");
-        const source = await db.test_get_log_entry_by_id.get<{ rx: string }>({ id: program.id });
-        assert.equal(JSON.parse(source!.rx).content, emission.assistant.content);
+        assert.equal(program.content, emission.assistant.content);
     });
 }
 

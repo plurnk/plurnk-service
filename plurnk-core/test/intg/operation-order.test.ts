@@ -131,7 +131,7 @@ TWO
 [{"content":"Continue the task.","status":"in_progress"}]
 \`\`\``;
             const execution = engine.executeAdmittedTurn({
-                ...env, origin, source, sourceFolded: true, statements: TurnOps.parseInternal(source),
+                ...env, origin, source, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
             });
             if (failOnOperationError) await assert.rejects(execution, OperationFailureError);
@@ -140,7 +140,9 @@ TWO
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
                 failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", "TASK"]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
-            assert.equal(JSON.parse(rows.find(({ op }) => op === null)!.rx).content, source, "the submitted program remains durable even when execution stops at an error");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: env.workerId });
+            assert.equal(sources.find(({ turn_id, kind }) => turn_id === env.turnId && kind === "ops")?.content, source,
+                "the submitted program remains durable even when execution stops at an error");
             const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/ordered.md", name: "body" });
             assert.equal(body?.content, failOnOperationError ? content : content.replace("two", "TWO"));
         } finally { await db.close(); }

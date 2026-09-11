@@ -108,7 +108,7 @@ THREE
         let dispatched = 0;
         const turn = await Turn.open(ctx.db, { loopId: ctx.loopId, producer: "client", kind: "operation" });
         const execution = ctx.engine.executeAdmittedTurn({
-            ...ctx, turnId: turn.id, origin: "client", source, sourceFolded: true,
+            ...ctx, turnId: turn.id, origin: "client", source,
             fromSequence: 1, statements: TurnOps.parseInternal(source),
             onDispatch: (id) => {
                 dispatched++;

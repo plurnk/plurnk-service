@@ -1,9 +1,8 @@
 -- PREP: test_reasoning_resources
-SELECT e.pathname, c.content
-FROM entries e JOIN entry_channels c ON c.entry_id = e.id AND c.name = 'body'
-JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-WHERE w.id = $worker_id AND e.scheme = 'reasoning'
-ORDER BY e.id;
+SELECT '/' || l.sequence || '/' || t.sequence AS pathname, s.content
+FROM turn_sources s JOIN turns t ON t.id = s.turn_id JOIN loops l ON l.id = t.loop_id
+WHERE l.worker_id = $worker_id AND s.kind = 'reasoning'
+ORDER BY l.sequence, t.sequence;
 
 -- PREP: test_reasoning_reads
 SELECT le.id, le.turn_id, le.sequence, le.origin, le.ambient_event_id, le.pathname, le.lineMarker,

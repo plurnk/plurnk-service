@@ -17,7 +17,6 @@ import { OPS_DISPATCHED, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
-import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
 import LineAnchors from "../content/line-anchors.ts";
@@ -55,9 +54,7 @@ export default class AdmittedTurnExecutor {
     async executeAdmittedTurn({
         statements,
         source,
-        sourceFolded,
         sourceModelCallId = null,
-        sourceReasoningItems,
         origin,
         workspaceId,
         workerId,
@@ -75,9 +72,7 @@ export default class AdmittedTurnExecutor {
     }: {
         statements: readonly PlurnkStatement[];
         source: string | null;
-        sourceFolded: boolean;
         sourceModelCallId?: number | null;
-        sourceReasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
         origin: WriterTier;
         workspaceId: number;
         workerId: number;
@@ -121,20 +116,11 @@ export default class AdmittedTurnExecutor {
         const outcomes: StrikeOutcome[] = [];
         const results: DispatchResult[] = [];
         let rowSequence = fromSequence;
-        const recordSource = async (): Promise<void> => {
-            if (source === null) return;
-            await this.#dispatcher.writeTurnOps({
-                verbatim: source,
-                workerId,
-                loopId,
-                turnId,
-                sequence: rowSequence,
-                origin,
-                folded: sourceFolded,
+        if (source !== null) {
+            await Turn.recordSource(this.#db, turnId, "ops", source, {
                 modelCallId: sourceModelCallId,
-                ...(sourceReasoningItems !== undefined ? { reasoningItems: sourceReasoningItems } : {}),
             });
-        };
+        }
         let parseErrorsRecorded = false;
         const recordRecoverableParseErrors = async (): Promise<void> => {
             if (parseErrorsRecorded) return;
@@ -260,7 +246,6 @@ export default class AdmittedTurnExecutor {
             results.push(result);
             rowSequence += (result.rowsWritten as number | undefined) ?? 1;
             if (failOnOperationError && result.status >= 400) {
-                await recordSource();
                 throw new OperationFailureError(result);
             }
             for (const normalization of result.scopeNormalizations ?? []) {
@@ -315,7 +300,6 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
-        await recordSource();
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

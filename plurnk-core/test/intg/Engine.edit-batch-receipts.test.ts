@@ -93,8 +93,8 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
                 await rpcCall(ws, 1, "workspace.create", { name: "batch-receipt", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
-                    .find(({ op, status_rx }) => op === "READ" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
+                    .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
                 assert.ok(Array.isArray(anchors) && anchors.length >= 6, `the READ published its anchors; got ${JSON.stringify(anchors)}`);
                 assert.equal(anchors.includes("@451ok"), false, "the unknown anchor was never published");
@@ -115,7 +115,7 @@ replacement
                 pending.batch = statements.join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200, "the model concludes after observing the individual failures");
-                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });
+                const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });
                 const edits = rows.filter(({ op }) => op === "EDIT");
                 assert.equal(edits.length, statements.length);
                 assert.deepEqual(edits.slice(0, 3).map(({ status_rx }) => status_rx), [200, 200, 200], "valid earlier operations land independently");

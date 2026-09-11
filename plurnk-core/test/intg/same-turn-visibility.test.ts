@@ -35,9 +35,9 @@ test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot
                     `${op} was emitted by the executing program and cannot select itself`,
                 );
             }
-            const turnOps = firstModelTurn.find(({ op, attrs }) => op === null
-                && (JSON.parse(attrs) as { kind?: string }).kind === "turnOps");
-            assert.equal(turnOps?.active, 1, "the admitted program remains active evidence");
+            assert.ok(firstModelTurn.every(({ op }) => op !== null), "program retention is independent of the log selection snapshot");
+            const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ worker_id: result.modelWorkerId! });
+            assert.ok(programs.some(({ turn_id, kind }) => turn_id === firstModelTurnId && kind === "ops"));
         } finally { ws.close(); }
     });
 });

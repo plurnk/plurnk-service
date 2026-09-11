@@ -184,11 +184,10 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const foists = rows
             .filter(({ op, origin }) => origin === "_plurnk" && (op === "FIND" || op === "READ"));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
-        const turnOps = rows.find(({ op, origin, attrs }) => op === null
-            && origin === "_plurnk"
-            && (JSON.parse(attrs) as { kind?: string }).kind === "turnOps");
-        assert.ok(turnOps !== undefined, "the initialization source accompanies its operation outcomes");
-        const source = (JSON.parse(turnOps.rx) as { content: string }).content;
+        const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ worker_id: workerId });
+        const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
+        assert.ok(turnSource, "initialization stores exact source before its real READ");
+        const source = turnSource.content;
         const sourceFoists = PlurnkParser.parse(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
             .filter(({ op }) => op === "FIND" || op === "READ");
         assert.equal(sourceFoists.length, foists.length, "the exact source accounts for every structural observation");
@@ -224,16 +223,16 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.ok(logEntries(packet).some(({ path }) => String(path).endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
             .filter(({ path }) => String(path).startsWith("log:///1/1/"));
-        const initializationOutcomes = initialization.filter(({ path }) => !String(path).endsWith("/ops"));
+        const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "TASK"],
-            "turn 0 exposes the executed prompt COPY, surveys, and TASK outcome sequence",
+            ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "TASK"],
+            "turn 0 exposes the executed prompt COPY, surveys, source READ and TASK",
         );
         assert.deepEqual(
-            initialization.filter(({ path }) => String(path).endsWith("/ops")).map((row) => ({ open: "body" in row, origin: row.origin })),
+            initialization.filter(({ target }) => target === "ops:///1/1").map((row) => ({ open: "body" in row, origin: row.origin })),
             [{ open: true, origin: "_plurnk" }],
-            "turn 0 also exposes its exact open source as one ordinary turnOps row (#338)",
+            "turn 0's source is the result of its actual READ",
         );
         assert.deepEqual(
             initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),

@@ -1,5 +1,5 @@
 // {§encrypted-reasoning-carrier} {§agui-encrypted-reasoning} — cross-package
-// coverage for core relay, AG-UI projection, cardinality, and packet exclusion.
+// coverage for original provider evidence, readable delivery, and opaque-state exclusion.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -29,7 +29,7 @@ const projectThroughAgui = async (db: Db, workerId: number, turnId: number) => {
     return events;
 };
 
-test("core preserves the normalized item list, AG-UI correlates it, and the packet excludes it", async () => {
+test("core preserves opaque state only in provider evidence while readable reasoning reaches AG-UI", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-${crypto.randomUUID()}`);
@@ -42,13 +42,15 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
-        // Core preserves the provider-normalized list without reinterpretation.
-        const rows = await db.test_model_source_rows.all<{ attrs: string }>({ worker_id: workerId });
-        const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined);
-        assert.ok(row, "the mirror row carries attrs.reasoning");
-        const list = (JSON.parse(row!.attrs) as { reasoning: Array<{ id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> }> }).reasoning;
-        assert.ok(Array.isArray(list), "attrs.reasoning is the item LIST (the standard shape)");
-        assert.deepEqual(list, [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }], "core relays the normalized item unchanged");
+        const responses = await db.test_model_calls.all<{ response: string }>({ turn_id: t1.turnId });
+        const expected = [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }];
+        assert.deepEqual(JSON.parse(responses[0]!.response).assistant.reasoningEncrypted, expected);
+        const originalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t1.turnId }))!.packet);
+        assert.equal(originalPacket.assistantRaw, null, "the mock supplied no raw wire response to invent");
+        assert.equal(originalPacket.assistant.reasoning, "readable provider reasoning");
+        const sources = await db.test_turn_sources.all<{ content: string }>({ worker_id: workerId });
+        assert.ok(sources.length > 0);
+        assert.ok(sources.every(({ content }) => !content.includes(BLOB)), "sources contain readable text, not opaque state");
 
         const refs = await db.test_log_entries_by_worker.all<{ id: number; turn_id: number }>({ worker_id: workerId });
         const wires = await Promise.all(refs.filter(({ turn_id }) => turn_id === t1.turnId).map(({ id }) => LogEntry.fetchLogEntry(db, id)));
@@ -61,12 +63,11 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         // 2. Cross-lane conformance: real core rows → hydration → AG-UI Translator.
         const events = await projectThroughAgui(db, workerId, t1.turnId);
         const assistant = events.find((e) => e.type === "TEXT_MESSAGE_START") as { messageId?: string } | undefined;
-        const ev = events.find((e) => e.type === "REASONING_ENCRYPTED_VALUE") as { entityId?: string; encryptedValue?: string; subtype?: string } | undefined;
-        assert.ok(ev, "agui projected REASONING_ENCRYPTED_VALUE from core's real serialization");
-        assert.ok(assistant?.messageId, "the same turn projected a real SEND assistant message");
-        assert.equal(ev!.entityId, assistant!.messageId, "encrypted evidence targets the actual SEND entity");
-        assert.notEqual(ev!.entityId, "rs_1", "provider detail identity never masquerades as a client entity");
-        assert.equal(ev!.encryptedValue, BLOB, "the sealed value reaches the seam intact");
+        assert.ok(assistant?.messageId, "the turn projects its actual SEND assistant message");
+        assert.ok(!events.some(({ type }) => type === "REASONING_ENCRYPTED_VALUE"));
+        assert.ok(!JSON.stringify(wires).includes(BLOB), "log serialization does not copy provider-only state");
+        const replay = new Translator({ threadId: "xlane", runId: "reattach" }).replay(wires);
+        assert.ok(!JSON.stringify(replay).includes(BLOB), "reattaching does not imply native reasoning continuation");
         const readable = events.find((e) => e.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
         assert.equal(readable?.delta, "readable provider reasoning", "admitted readable reasoning reaches AG-UI through the derived SEND projection");
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 1,
@@ -99,10 +100,9 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         ] as never });
         const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
-        const rows = await db.test_model_source_rows.all<{ attrs: string }>({ worker_id: workerId });
-        const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined)!;
-        const list = (JSON.parse(row.attrs) as { reasoning: Array<{ id: string; encrypted: Array<{ data: string }> }> }).reasoning;
-        assert.deepEqual(list.map(({ id, encrypted }) => [id, encrypted[0]?.data]), [["rs_a", A], ["rs_b", B]], "the forensic row retains both provider details distinctly");
+        const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turn.turnId });
+        const list = JSON.parse(calls[0]!.response).assistant.reasoningEncrypted as Array<{ id: string; encrypted: Array<{ data: string }> }>;
+        assert.deepEqual(list.map(({ id, encrypted }) => [id, encrypted[0]?.data]), [["rs_a", A], ["rs_b", B]], "provider evidence retains both details distinctly");
         const events = await projectThroughAgui(db, workerId, turn.turnId);
         assert.ok(!events.some((e) => e.type === "REASONING_ENCRYPTED_VALUE"), "the single AG-UI message slot does not select, join, or overwrite multiple values");
     } finally { await db.close(); }
