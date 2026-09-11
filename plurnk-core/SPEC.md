@@ -2180,6 +2180,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
+| complete | The loop holds prompt frames it has not yet published ({§completion-defers-to-prompts}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new prompt arrived during this turn. It is in this packet; a response and a TASK now complete.` |
 | complete | Model fired an operation other than SEND/TASK/KILL, or has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
 | complete | No blocking obligation, or administrative producer | 200 | None |
 | fail | Always | 499; cancel unresolved descendant scope | `All tasks in the final inventory failed.` |
@@ -4294,6 +4295,8 @@ first turn publishes the complete ordered set exactly once. Recovery retries
 complete the same queued loop and never mint duplicate work. Output withholding
 preserves readable prompt rows; explicit KILL follows the ordinary log
 contract.
+
+§completion-defers-to-prompts **A completion never answers a conversation the model has not seen.** A model TASK that would end the loop at `200` while the loop still contains an unpublished prompt frame ({§prompt-loop-containment}) is deferred at `102` with a receipt naming the arrival; the next turn boundary publishes the frame as usual and the model completes after it. The arrival is not the model's doing, so the deferral is neither a refusal nor a strike. `499` is not deferred: declaring failure is weighing it, and the orphan recovery loop still carries any unpublished frame. The recovery loop also remains the guard for the one true race, a frame written after the terminal decision is committed.
 
 §packet-catalog **Catalogs are query results, not packet state.** The packet
 stores no materialized manifest. Complete and one-level entry directories,

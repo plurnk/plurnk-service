@@ -656,3 +656,71 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
         } finally { ws.close(); }
     });
 });
+
+// {§completion-defers-to-prompts} — a Mock whose first response waits on a gate, so the test
+// can inject prompts while turn 1 is genuinely in flight and then let the model complete over them.
+class GatedMock extends Mock {
+    #gate: Promise<void>;
+    #gated = true;
+    readonly entered: Promise<void>;
+    #enter!: () => void;
+    constructor(gate: Promise<void>, ...args: ConstructorParameters<typeof Mock>) {
+        super(...args);
+        this.#gate = gate;
+        this.entered = new Promise<void>((resolve) => { this.#enter = resolve; });
+    }
+    override async generate(args: Parameters<Mock["generate"]>[0]): ReturnType<Mock["generate"]> {
+        if (this.#gated) { this.#gated = false; this.#enter(); await this.#gate; }
+        return super.generate(args);
+    }
+}
+
+test("{§completion-defers-to-prompts}: prompts that arrive during a completing turn defer it, without a strike or a second loop", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const mock = new GatedMock(gate, {
+        contextWindow: 16384,
+        responses: [
+            sendOnly("```SEND\nfirst answer, before the follow-ups\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            sendOnly("```SEND\nanswered both follow-ups\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        ],
+    });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "defer-to-prompts" });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
+            // Turn 1's provider call is held open; two prompts arrive meanwhile.
+            await mock.entered;
+            let first;
+            try {
+                for (const [id, prompt] of [[3, "the first follow-up"], [4, "the second follow-up"]] as const) {
+                    const r = await rpcCall(ws, id, "loop.run", { prompt });
+                    assert.equal((r.result as { action: string }).action, "injected_next_turn", JSON.stringify(r.result ?? r.error));
+                }
+            } finally { release(); }
+            first = await firstPromise;
+            const loopId = (first.result as { loopId: number }).loopId;
+            const done = await waitFor(
+                () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter((e) => e.loopId === loopId),
+                (events) => events.length >= 1,
+                { timeoutMs: 5000 },
+            );
+            assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null }>({ loop_id: loopId });
+            const tasks = rows.filter((r) => r.op === "TASK" && r.origin === "model");
+            assert.equal(tasks.length, 2, "one deferred completion, then the real one");
+            assert.equal(tasks[0]!.status_rx, 102, "the first completion is deferred, not refused");
+            assert.match(tasks[0]!.rx ?? "", /Completion deferred: 2 new prompts arrived during this turn\. They are in this packet; a response and a TASK now complete\./);
+            assert.doesNotMatch(tasks[0]!.rx ?? "", /409|problem/, "a deferral carries no Problem and no strike");
+            assert.equal(tasks[1]!.status_rx, 200);
+            const prompts = rows.filter((r) => r.op === "prompt" && r.origin === "_plurnk");
+            assert.equal(prompts.length, 3, "the initial prompt plus both follow-ups were published");
+            assert.ok(prompts.slice(1).every((p) => p.turn_id === tasks[1]!.turn_id), "both follow-ups were published in the turn the model completed from");
+            await flush();
+            const ts = terminated() as Array<{ loopId: number; result: { status: number } }>;
+            assert.deepEqual(ts.map((event) => event.loopId), [loopId], "no orphan recovery loop was minted: the prompts were answered in place");
+        } finally { ws.close(); }
+    });
+});

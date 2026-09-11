@@ -6,6 +6,7 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
+import { promptLoopPrefix } from "./plurnk-uri.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
 export interface PacketBoundaries {
@@ -126,6 +127,17 @@ export default class TurnDispositionHandler {
             // must not claim, consume, or be blocked by model work elsewhere in
             // the same Worker.
             if (ctx.origin === "model") {
+                // {§completion-defers-to-prompts} — a prompt that arrived during this turn is
+                // published by the next packet; completing over it would answer a conversation
+                // the model has not seen. Not the model's fault, so a deferral, never a strike.
+                const undelivered = await this.#undeliveredPromptCount(workerId, loopId);
+                if (undelivered > 0) {
+                    return withTimingDetail({
+                        status: 102,
+                        detail: `Completion deferred: ${undelivered} new prompt${undelivered === 1 ? "" : "s"} arrived during this turn. `
+                            + `${undelivered === 1 ? "It is" : "They are"} in this packet; a response and a TASK now complete.`,
+                    });
+                }
                 // {§send-premature-terminate} — same-turn failures are unobserved
                 // pending results and therefore refuse completion.
                 const failCount = await this.#unobservedFailureCount(turnId);
@@ -202,6 +214,17 @@ export default class TurnDispositionHandler {
             return failure;
         }
         return { status };
+    }
+
+    // {§completion-defers-to-prompts} Prompt frames this loop contains but has not published
+    // (the same rows the next turn boundary publishes, {§prompt-loop-containment}).
+    async #undeliveredPromptCount(workerId: number, loopId: number): Promise<number> {
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        const prefix = promptLoopPrefix(loopSeq);
+        const rows = await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string }>({
+            worker_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length, loop_id: loopId,
+        });
+        return rows.filter((row) => typeof row.content === "string" && row.content.length > 0).length;
     }
 
     // {§send-premature-terminate} Receipts-only deferral, worded at read time.
