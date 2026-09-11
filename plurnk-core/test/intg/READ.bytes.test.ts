@@ -19,10 +19,10 @@ const fileUrl = (pathname: string, fragment: string | null = null): UrlPath => (
     pathname, query: null, fragment,
 });
 const readStmt = (pathname: string, lineMarker: LineMarker | null = null, fragment: string | null = null): ReadStatement => ({
-    metadata: null, op: "READ", annotation: null, target: fileUrl(pathname, fragment), lineMarker, body: null, position: { line: 1, column: 1 },
+    metadata: null, op: "READ", aside: null, target: fileUrl(pathname, fragment), lineMarker, body: null, position: { line: 1, column: 1 },
 });
 const findStmt = (pathname: string, pattern: string) => ({
-    op: "FIND", annotation: null, lineMarker: null, metadata: null, position: { line: 1, column: 1 },
+    op: "FIND", aside: null, lineMarker: null, metadata: null, position: { line: 1, column: 1 },
     target: { kind: "local", raw: pathname }, body: { dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" },
 }) as never;
 

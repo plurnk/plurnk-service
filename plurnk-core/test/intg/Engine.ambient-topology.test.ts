@@ -34,7 +34,7 @@ const continueResponse = () => ({
         reasoning: null,
         ops: [{
             op: "TASK",
-            annotation: null,
+            aside: null,
             metadata: null,
             target: null,
             lineMarker: null,
@@ -47,7 +47,7 @@ const continueResponse = () => ({
 const plan = (body: string): DispositionStatement => ({
     metadata: null,
     op: "TASK",
-    annotation: null,
+    aside: null,
     target: null,
     lineMarker: null,
     body: PlanValue.admit(body),
@@ -70,7 +70,7 @@ const path = (scheme: string, pathname: string): UrlPath => ({
 const read = (target: UrlPath): ReadStatement => ({
     metadata: null,
     op: "READ",
-    annotation: null,
+    aside: null,
     target,
     lineMarker: null,
     body: null,
@@ -80,7 +80,7 @@ const read = (target: UrlPath): ReadStatement => ({
 const kill = (target: UrlPath): KillStatement => ({
     metadata: null,
     op: "KILL",
-    annotation: null,
+    aside: null,
     target,
     lineMarker: null,
     body: null,

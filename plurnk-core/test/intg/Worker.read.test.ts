@@ -15,7 +15,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStatement = (opts: { target: ParsedPath; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null,
+    op: "EDIT", aside: null,
     target: opts.target,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
@@ -26,7 +26,7 @@ const readStatement = (opts: {
     target?: ParsedPath | null; lineMarker?: LineMarker | null;
 }): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null,
+    op: "READ", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: null,
@@ -37,7 +37,7 @@ const findStatement = (opts: {
     target?: ParsedPath | null; body?: MatcherBody | null; lineMarker?: LineMarker | null;
 }): import("@plurnk/plurnk-contracts").FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null,
+    op: "FIND", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,

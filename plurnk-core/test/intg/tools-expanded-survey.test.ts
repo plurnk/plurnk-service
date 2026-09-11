@@ -27,18 +27,18 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === "worker:///_plurnk/plurnk/*.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
-        const groups = JSON.parse(body) as Array<Array<{ path: string; summary?: string }>>;
+        const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
         const node = groups.flat().find(({ path }) => path.endsWith("/node.md"));
-        const summary = node?.summary;
-        assert.ok(typeof summary === "string" && summary.includes("\\n"), "Node's summary includes its inline body, not just an empty invocation");
-        const parsed = PlurnkParser.parseStatements(summary.replaceAll("\\n", "\n"));
+        const aside = node?.aside;
+        assert.ok(typeof aside === "string" && aside.includes("\\n"), "Node's aside includes its inline body, not just an empty invocation");
+        const parsed = PlurnkParser.parseStatements(aside.replaceAll("\\n", "\n"));
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.ok(item?.kind === "statement" && item.statement.op === "EXEC");
         assert.equal(item.statement.executor, "node");
         assert.equal(item.statement.target, null, "the program is not a script path or metadata modifier");
         assert.ok(typeof item.statement.body === "string" && item.statement.body.length > 0);
-        assert.ok(item.statement.annotation?.includes("JavaScript"), "the description stays on the invocation line");
+        assert.ok(item.statement.aside?.includes("JavaScript"), "the description stays on the invocation line");
     } finally {
         ws.close();
         await daemon.stop();
@@ -76,11 +76,11 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             const survey = entries.find((e) => e.target === "worker:///_plurnk/tools/fixture.md");
             assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.path, e.target]))}`);
             assert.match(String(survey.path), /\/FIND$/, "the survey is a FIND, not a document READ");
-            assert.equal(survey.annotation, undefined, "the target and +tools classification already orient the survey");
+            assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}\\n````"/, "one row per tool: opening fence, annotation, preview, schema link, closing fence");
+            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}\\n````"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
             assert.match(log, /"matched":"````fixture \(fail\) /, "every tool is a row");
-            assert.doesNotMatch(log, /"annotation":"enabled tools: /, "no redundant survey annotation is materialized");
+            assert.doesNotMatch(log, /"aside":"enabled tools: /, "no redundant survey aside is materialized");
             assert.doesNotMatch(log, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md"/, "schema documents are not individual Turn0 discovery rows");
         } finally {
             ws.close();

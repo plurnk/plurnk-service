@@ -27,7 +27,7 @@ const target: UrlPath = {
 };
 const statement: ResolvedEditStatement = {
     metadata: null,
-    op: "EDIT", annotation: null, target, lineMarker: null,
+    op: "EDIT", aside: null, target, lineMarker: null,
     body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 
@@ -295,7 +295,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
         const provider = new Mock({ contextWindow: 100000, responses: [{
             assistant: {
                 content: "",
-                ops: [{ op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Complete.", status: "completed" }], position: { line: 1, column: 1 } } as DispositionStatement],
+                ops: [{ op: "TASK", aside: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Complete.", status: "completed" }], position: { line: 1, column: 1 } } as DispositionStatement],
                 reasoning: null,
             },
         }] });

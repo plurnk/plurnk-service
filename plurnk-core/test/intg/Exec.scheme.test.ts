@@ -23,7 +23,7 @@ import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 // {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `[{"cwd": "…"}]`.
 const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
     metadata: cwd === null ? null : [JSON.stringify({ cwd })],
-    op: "EXEC", annotation: null, executor: runtime,
+    op: "EXEC", aside: null, executor: runtime,
     target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -95,7 +95,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
 
         const statement: ExecStatement = {
             metadata: null,
-            op: "EXEC", executor: "sh", annotation: null,
+            op: "EXEC", executor: "sh", aside: null,
             target: urlPath("worker", "/script"),
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };

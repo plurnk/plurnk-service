@@ -143,27 +143,27 @@ test("a successful KILL receipt retains status 200 because destructive completio
     assert.equal(typeof row?.logTokens, "number");
 });
 
-test("{§log-wire-format}: a present operation annotation materializes and absence costs no metadata", () => {
-    const annotated = PacketWire.renderLog([{
+test("{§log-wire-format}: a present operation aside materializes and absence costs no metadata", () => {
+    const withAside = PacketWire.renderLog([{
         coordinate: "1/1/1",
         origin: "model",
         op: "EXEC",
         status: 200,
-        tx: { executor: "gitea", annotation: "Lists issues", body: null },
+        tx: { executor: "gitea", aside: "Lists issues", body: null },
     }], tok);
-    assert.match(annotated, /"annotation":"Lists issues"/);
+    assert.match(withAside, /"aside":"Lists issues"/);
 
     const absent = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
         op: "EXEC",
         status: 200,
-        tx: { executor: "gitea", annotation: null, body: null },
+        tx: { executor: "gitea", aside: null, body: null },
     }], tok);
-    assert.doesNotMatch(absent, /"annotation":/);
+    assert.doesNotMatch(absent, /"aside":/);
 });
 
-test("{§log-wire-format}: receipt metadata leads with target, then annotation, before other facts", async (t) => {
+test("{§log-wire-format}: receipt metadata leads with target, then aside, before other facts", async (t) => {
     const read = {
         coordinate: "1/5/1", op: "READ", origin: "model", status: 200,
         target: { scheme: null, pathname: "/notes.md" },
@@ -176,21 +176,21 @@ test("{§log-wire-format}: receipt metadata leads with target, then annotation, 
         { name: "ordinary READ", entry: read, target: "notes.md" },
         { name: "FIND", entry: { ...read, op: "FIND" }, target: "notes.md" },
         {
-            name: "annotated FIND",
-            entry: { ...read, op: "FIND", tx: { annotation: "project filesystem" } },
+            name: "FIND with an aside",
+            entry: { ...read, op: "FIND", tx: { aside: "project filesystem" } },
             target: "notes.md",
         },
         {
-            name: "annotated EDIT",
-            entry: { ...read, op: "EDIT", tx: { annotation: "update notes" } },
+            name: "EDIT with an aside",
+            entry: { ...read, op: "EDIT", tx: { aside: "update notes" } },
             target: "notes.md",
         },
         {
-            name: "annotated harness reasoning READ",
+            name: "harness reasoning READ with an aside",
             entry: {
                 ...read, origin: "_plurnk", source: "worker://child",
                 target: { scheme: "reasoning", pathname: "/1/4/1" },
-                tx: { annotation: "Prior reasoning", body: null },
+                tx: { aside: "Prior reasoning", body: null },
             },
             target: "reasoning:///1/4/1",
         },
@@ -208,7 +208,7 @@ test("{§log-wire-format}: receipt metadata leads with target, then annotation, 
         await t.test(name, () => {
             const out = PacketWire.renderLog([entry], tok);
             const metadata = JSON.parse(out.split("\n")[1]!);
-            const orientation = Object.hasOwn(metadata, "annotation") ? ["target", "annotation"] : ["target"];
+            const orientation = Object.hasOwn(metadata, "aside") ? ["target", "aside"] : ["target"];
             const keys = Object.keys(metadata);
             assert.deepEqual(keys.slice(0, orientation.length), orientation);
             assert.equal(metadata.target, target);
@@ -219,12 +219,12 @@ test("{§log-wire-format}: receipt metadata leads with target, then annotation, 
         });
     }
 
-    for (const tx of [{ executor: "sh" }, { executor: "sh", annotation: "no resource target" }]) {
+    for (const tx of [{ executor: "sh" }, { executor: "sh", aside: "no resource target" }]) {
         const entry = { ...read, op: "EXEC", target: null, tx };
         const out = PacketWire.renderLog([entry], tok);
         const metadata = JSON.parse(out.split("\n")[1]!);
         const keys = Object.keys(metadata);
-        assert.deepEqual(keys, [...keys].sort(), "targetless receipts lead with annotation when present");
+        assert.deepEqual(keys, [...keys].sort(), "targetless receipts lead with aside when present");
         assert.equal(Object.hasOwn(metadata, "target"), false, "ordering never invents a target");
     }
 });

@@ -67,7 +67,7 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
         const receipt = logEntries(packet).find((row) => row.target === "reasoning:///1/2");
         assert.ok(receipt);
-        assert.equal(receipt.annotation, "retain this determination");
+        assert.equal(receipt.aside, "retain this determination");
         assert.match(String(receipt.body), /selected reasoning/);
         assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), before, "later inference neither adds nor updates reasoning READs");
         assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet, firstPacket);

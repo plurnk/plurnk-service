@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
+    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
         {
             "$ref": "#/$defs/FindStatement"
@@ -42,7 +42,7 @@
         }
     ],
     "$defs": {
-        "AnnotationOrNull": {
+        "AsideOrNull": {
             "type": [
                 "string",
                 "null"
@@ -147,7 +147,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -159,8 +159,8 @@
                 "op": {
                     "const": "FIND"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -183,7 +183,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -195,8 +195,8 @@
                 "op": {
                     "const": "READ"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -219,7 +219,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -231,8 +231,8 @@
                 "op": {
                     "const": "EDIT"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -258,7 +258,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "source",
                 "destination",
                 "position"
@@ -268,8 +268,8 @@
                 "op": {
                     "const": "COPY"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "source": {
                     "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
@@ -286,7 +286,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "source",
                 "destination",
                 "position"
@@ -296,8 +296,8 @@
                 "op": {
                     "const": "MOVE"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "source": {
                     "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
@@ -314,7 +314,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -326,8 +326,8 @@
                 "op": {
                     "const": "SEND"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -350,7 +350,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "executor",
                 "target",
@@ -363,8 +363,8 @@
                 "op": {
                     "const": "EXEC"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -397,7 +397,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -409,8 +409,8 @@
                 "op": {
                     "const": "BARE"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -433,7 +433,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -445,8 +445,8 @@
                 "op": {
                     "const": "KILL"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -471,7 +471,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -483,8 +483,8 @@
                 "op": {
                     "const": "WORK"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -507,7 +507,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -519,8 +519,8 @@
                 "op": {
                     "const": "FORK"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -543,7 +543,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -555,8 +555,8 @@
                 "op": {
                     "const": "TASK"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "type": "null"

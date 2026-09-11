@@ -42,7 +42,7 @@ const summaryParagraph = (value: string): string =>
         ? `\\${value}`
         : value;
 
-const annotationText = (value: string): string => {
+const asideText = (value: string): string => {
     const normalized = value.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
     const safeStart = /^(?:>|->)/u.test(normalized) ? `Description: ${normalized}` : normalized;
     return safeStart.endsWith("-") ? `${safeStart}.` : safeStart;
@@ -73,13 +73,13 @@ const invocationHeader = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
-    annotation?: string,
+    aside?: string,
     schemaPath?: string,
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
     const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
     const note = [
-        ...(annotation === undefined ? [] : [annotationText(annotation)]),
+        ...(aside === undefined ? [] : [asideText(aside)]),
         ...(schemaPath === undefined ? [] : [`Schema: worker://${schemaPath}`]),
     ].join(" ");
     return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
@@ -114,7 +114,7 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
     const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
     const input = invocation === undefined ? undefined : invocationInput(invocation);
     if (input === undefined) return summary;
-    const header = invocationHeader(source.runtime, invocation!, statement.target.raw, statement.annotation ?? undefined);
+    const header = invocationHeader(source.runtime, invocation!, statement.target.raw, statement.aside ?? undefined);
     return PlurnkParser.frame(header, input).replaceAll("\n", "\\n");
 };
 
@@ -122,7 +122,7 @@ const renderInvocation = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
-    annotation?: string,
+    aside?: string,
     schemaPath?: string,
 ): string[] => [
     "## Invocation",
@@ -130,7 +130,7 @@ const renderInvocation = (
     ...invocationRows(invocation, exactTarget),
     "",
     PlurnkParser.frame(
-        invocationHeader(runtime, invocation, exactTarget, annotation, schemaPath),
+        invocationHeader(runtime, invocation, exactTarget, aside, schemaPath),
         invocationInput(invocation) ?? null,
     ),
 ];

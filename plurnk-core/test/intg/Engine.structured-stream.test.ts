@@ -248,7 +248,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
     const kill: KillStatement = {
         metadata: null,
         op: "KILL",
-        annotation: null,
+        aside: null,
         target: urlPath("log", "/1/2/2"),
         lineMarker: null,
         body: null,

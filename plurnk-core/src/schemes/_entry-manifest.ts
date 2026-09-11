@@ -47,7 +47,7 @@ type CatalogEntryState = {
 
 const CATALOG_SUMMARY_CODE_POINTS = 256;
 
-const catalogSummary = (value: string | null): string | undefined => {
+const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
     const points = [...value];
     return points.length <= CATALOG_SUMMARY_CODE_POINTS
@@ -109,7 +109,7 @@ export default class EntryManifest {
             const channelPath = row.channel === entry.defaultChannel
                 ? entry.path
                 : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
-            const summary = catalogSummary(row.summary);
+            const aside = catalogAside(row.summary);
             const sourceMimetype = row.channel === entry.defaultChannel
                 && row.source_mimetype !== null
                 && row.source_mimetype !== row.mimetype
@@ -121,7 +121,7 @@ export default class EntryManifest {
                 ...(sourceMimetype === undefined ? {} : { sourceMimetype }),
                 weight: weigh(row.content),
                 lines: totalLines,
-                ...(summary === undefined ? {} : { summary }),
+                ...(aside === undefined ? {} : { aside }),
                 ...(row.parse_issues !== null
                     ? { parseIssues: row.parse_issues }
                     : {}),

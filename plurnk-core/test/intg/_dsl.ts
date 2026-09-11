@@ -28,25 +28,25 @@ export const fullReplace: LineMarker = { marks: [1, -1] };
 
 export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, target, lineMarker: marker, body,
+    op: "EDIT", aside: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
 export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, target, lineMarker, body: null,
+    op: "READ", aside: null, target, lineMarker, body: null,
     position: { line: 1, column: 1 },
 });
 
 export const sendStmt = (recipient: ParsedPath | null = null, body: string | null = null): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, target: recipient, lineMarker: null,
+    op: "SEND", aside: null, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 export function dispositionStmt(status: Plan[number]["status"], body: string | null = null): DispositionStatement {
-    const fields = { annotation: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
+    const fields = { aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
     const entries = body === null ? [{ content: "Task progress.", status }] : PlanValue.admit(body);
     return { ...fields, op: "TASK", body: entries.map((entry) => ({ ...entry, status })) };
 }
@@ -55,13 +55,13 @@ export function dispositionStmt(status: Plan[number]["status"], body: string | n
 // matcher body selects the rows.
 export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, body: MatcherBody | null = null): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, target, lineMarker, body,
+    op: "KILL", aside: null, target, lineMarker, body,
     position: { line: 1, column: 1 },
 });
 
 export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, target, lineMarker: null, body,
+    op: "FIND", aside: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -71,7 +71,7 @@ export const copyStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
-    op: "COPY", annotation: null,
+    op: "COPY", aside: null,
     source: { target: src, metadata: null, lineMarker: sourceMarker },
     destination: { target: dst, metadata: null, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
@@ -83,7 +83,7 @@ export const moveStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
-    op: "MOVE", annotation: null,
+    op: "MOVE", aside: null,
     source: { target: src, metadata: null, lineMarker: sourceMarker },
     destination: { target: dst, metadata: null, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
@@ -94,7 +94,7 @@ export const moveStmt = (
 // {§exec-executor-slot} — the executor is the bracket slot; null spells the default shell.
 export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
     metadata,
-    op: "EXEC", annotation: null, executor: runtime, target, lineMarker: null, body,
+    op: "EXEC", aside: null, executor: runtime, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

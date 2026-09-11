@@ -127,7 +127,7 @@ test("PlurnkStatement: KILL with bare target", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: KILL with signal and annotation body", () => {
+test("PlurnkStatement: KILL with signal and aside body", () => {
     const r = validateRoundTrip("```KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
@@ -146,7 +146,7 @@ test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
 
 const baseFields = (op: string) => ({
     op,
-    annotation: null,
+    aside: null,
     target: null,
     metadata: null,
     lineMarker: null,
@@ -156,7 +156,7 @@ const baseFields = (op: string) => ({
 
 const transferFields = (op: "COPY" | "MOVE") => ({
     op,
-    annotation: null,
+    aside: null,
     source: { target: parsePath("source")!, metadata: null, lineMarker: null },
     destination: { target: parsePath("destination")!, metadata: null, lineMarker: null },
     position: { line: 1, column: 0 },

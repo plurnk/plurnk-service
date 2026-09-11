@@ -287,7 +287,7 @@ or selection exists.
 ## §canonical-statement 2. Canonical statement form
 
 `````text
-```OP (path)? <scope>? [metadata]? <!-- annotation -->?
+```OP (path)? <scope>? [metadata]? <!-- aside -->?
 body
 ```
 
@@ -323,8 +323,8 @@ admissible.
 
 §unlabeled-fence-send A top-level opening fence without a name selects an
 unaddressed SEND, without a warning. Its header accepts horizontal whitespace
-and one optional final single-line annotation, but no target, scope, or metadata.
-Its annotation, body, and required closing fence follow the ordinary SEND rules.
+and one optional final single-line aside, but no target, scope, or metadata.
+Its aside, body, and required closing fence follow the ordinary SEND rules.
 No body text is promoted into a header or recursively parsed as operations.
 This applies in every parser tier and preserves the opening fence's source
 position and exact authored source. It neither supplies a TASK inventory nor
@@ -349,11 +349,11 @@ this serializer and the ordinary admission parser.
 | `(path)` | Target/program/tool slot; COPY and MOVE each have two resource operands |
 | `[metadata]` | One JSON array of option objects, owner-interpreted; options, never the op's input |
 | `<scope>` | Operation-specific numeric or anchored coordinates |
-| `<!-- … -->` | Optional final, single-line annotation |
+| `<!-- … -->` | Optional final, single-line aside |
 | Body | Literal content between framing newlines |
 | Closing fence | Exactly the opening backtick count |
 
-§slot-order Producers put target, scope, metadata, then annotation, separated
+§slot-order Producers put target, scope, metadata, then aside, separated
 by one ASCII space. Target and scope form one resource selection; COPY/MOVE
 repeat the complete selection/metadata group per operand. ANTLR accepts
 adjacent slots and scope/metadata permutations within a selection without
@@ -368,11 +368,11 @@ The ingester tolerates body text after horizontal whitespace on the header,
 preserves it, and emits one warning stating that normalization. This does not
 change the meaning of a compact empty block or permit unmatched fences.
 
-§operation-annotation The final header modifier may be one single-line HTML
+§operation-aside The final header modifier may be one single-line HTML
 comment. AstBuilder removes its delimiters and surrounding whitespace into
-`annotation: string | null`. It is durable descriptive text, not authority,
+`aside: string | null`. It is durable descriptive text, not authority,
 routing, timing, or body input. Comments inside a body remain literal except
-for the narrowly owned {§misplaced-annotation-advisory}.
+for the narrowly owned {§misplaced-aside-advisory}.
 
 §scheme-metadata-modifier A target may carry one single-line `[metadata]`
 block after its scope; an executor fence also admits it without a target.
@@ -897,7 +897,7 @@ message, receipt, or diagnostic. Exact source remains in `ops:///` under
 {§turn-ops-log-curation}; body bytes and source positions are unchanged. A matching
 closer still ends its body, and no missing closer is inferred. No generic Markdown
 rendering, indentation stripping or recursive code-block extraction occurs.
-Only a header annotation has annotation semantics.
+Only a header aside has aside semantics.
 
 ## §public-api 12. Public API
 
@@ -1304,10 +1304,10 @@ diagnostics are:
   positions, EXEC/TASK minutes, text coordinates, or no scope. Do not append advice for
   other operations or infer why the producer supplied the value. Spacing and
   boundary-loss diagnostics retain their own contracts.
-- §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
+- §misplaced-aside-advisory **Aside in the body.** A READ or FIND whose
   body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
-  the annotation the model put on the line below the heading. The builder takes
-  the comment as the annotation when the heading has none, builds the operation
+  the aside the model put on the line below the heading. The builder takes
+  the comment as the aside when the heading has none, builds the operation
   with no body, and raises one warning-severity advisory stating that observed
   normalization; the parser places the advisory right after its statement and
   the service delivers it as a `parse_advisory` notice with its position. A body

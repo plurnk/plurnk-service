@@ -13,7 +13,7 @@ const editStatement = (opts: {
 }): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT",
-    annotation: null,
+    aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
@@ -23,7 +23,7 @@ const editStatement = (opts: {
 const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => ({
     metadata: null,
     op: "READ",
-    annotation: null,
+    aside: null,
     target: opts.target ?? null,
     lineMarker: null,
     body: null,

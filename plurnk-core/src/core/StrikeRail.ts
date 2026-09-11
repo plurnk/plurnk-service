@@ -19,7 +19,7 @@ type RailState = { strike_streak: number; cycle_history: string; cycle_wait_revi
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
-const SOURCE_DECORATION = new Set(["annotation", "position"]);
+const SOURCE_DECORATION = new Set(["aside", "position"]);
 
 const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
     ? result

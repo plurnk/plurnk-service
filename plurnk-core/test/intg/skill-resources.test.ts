@@ -70,13 +70,13 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
             const result = await dispatch({ ...findStmt(parsePath(target), body), lineMarker: { marks: [1, -1] } });
             assert.equal(result.status, 200, JSON.stringify(result));
             assert.ok(Array.isArray(result.results));
-            return result.results.flat() as Array<{ path: string; items?: number; summary?: string; mimetype?: string; sourceMimetype?: string }>;
+            return result.results.flat() as Array<{ path: string; items?: number; aside?: string; mimetype?: string; sourceMimetype?: string }>;
         };
         const catalog = await find("skill://*/SKILL.md");
-        assert.ok(catalog.some(({ path, summary }) => path === "skill://plurnk/SKILL.md" && Boolean(summary)));
-        assert.deepEqual(catalog.filter(({ path }) => path !== "skill://plurnk/SKILL.md").map(({ path, summary }) => ({ path, summary })), [
-            { path: "skill://alpha/SKILL.md", summary: "alpha fixture" },
-            { path: "skill://beta/SKILL.md", summary: "beta fixture" },
+        assert.ok(catalog.some(({ path, aside }) => path === "skill://plurnk/SKILL.md" && Boolean(aside)));
+        assert.deepEqual(catalog.filter(({ path }) => path !== "skill://plurnk/SKILL.md").map(({ path, aside }) => ({ path, aside })), [
+            { path: "skill://alpha/SKILL.md", aside: "alpha fixture" },
+            { path: "skill://beta/SKILL.md", aside: "beta fixture" },
         ]);
         assert.deepEqual((await find("skill://*/references/*")).map(({ path }) => path), [
             "skill://alpha/references/guide.md", "skill://alpha/references/nested/**",

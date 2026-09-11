@@ -434,7 +434,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
         // an inline packet link ({§schemes-directory}).
         assert.match(log, /"target":"worker:\/\/\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
         assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
-        assert.match(log, /"summary":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
+        assert.match(log, /"aside":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;

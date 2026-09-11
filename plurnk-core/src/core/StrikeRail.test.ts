@@ -6,7 +6,7 @@ import { parsePath, type BareStatement, type ExecStatement, type ReadStatement }
 test("network query and channel coordinates remain distinct cycle fingerprints", () => {
     const statement = (raw: string): ReadStatement => ({
         op: "READ",
-        annotation: null,
+        aside: null,
         target: parsePath(raw),
         metadata: null,
         lineMarker: null,
@@ -25,7 +25,7 @@ test("EXEC bodies that share a long boilerplate prefix remain distinct cycle act
     // python3 preamble and different line ranges; a 64-character body prefix called that a cycle.
     const pager = (from: number, to: number): ExecStatement => ({
         op: "EXEC",
-        annotation: null,
+        aside: null,
         metadata: null,
         executor: null,
         target: null,
@@ -40,7 +40,7 @@ test("EXEC bodies that share a long boilerplate prefix remain distinct cycle act
 test("distinct BARE prompts remain distinct cycle activities", () => {
     const statement = (body: string): BareStatement => ({
         op: "BARE",
-        annotation: null,
+        aside: null,
         target: null,
         metadata: null,
         lineMarker: null,

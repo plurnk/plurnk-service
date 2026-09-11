@@ -19,7 +19,7 @@ test("DurableStatement projects URL credential slots without mutating execution 
     const target = url("https://user:password@example.test/path?#body");
     const statement: ReadStatement = {
         op: "READ",
-        annotation: null,
+        aside: null,
         target,
         metadata: ["Set-Cookie: a=1", "Set-Cookie: b=2"],
         lineMarker: null,
@@ -44,7 +44,7 @@ test("DurableStatement projects URL credential slots without mutating execution 
 test("DurableStatement applies the same projection to both COPY operands", () => {
     const statement: CopyStatement = {
         op: "COPY",
-        annotation: null,
+        aside: null,
         source: {
             target: url("https://user:password@example.test/source"),
             metadata: ["Authorization: source-secret"],
@@ -73,7 +73,7 @@ test("DurableStatement applies the same projection to both COPY operands", () =>
 test("DurableStatement leaves query text, authored bodies, and local targets exact", () => {
     const statement: EditStatement = {
         op: "EDIT",
-        annotation: null,
+        aside: null,
         target: url("https://example.test/path?authored=query-secret"),
         metadata: ["Authorization: header-secret"],
         lineMarker: null,

@@ -50,7 +50,7 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
             if (limit === 0) assert.equal(read, null);
             else {
                 assert.equal(read?.target?.raw, "reasoning:///3/8");
-                assert.equal(read?.annotation, "inspect this turn's reasoning");
+                assert.equal(read?.aside, "inspect this turn's reasoning");
                 assert.deepEqual(read?.lineMarker, { marks: [1, limit] });
             }
         }

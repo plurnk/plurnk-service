@@ -40,7 +40,7 @@ test("{§safe-uri-target-groups}: space and comma separators expand in member or
 test("{§safe-uri-target-groups}: expansion preserves every non-target statement field", () => {
     const original: KillStatement = {
         op: "KILL",
-        annotation: "inspect both",
+        aside: "inspect both",
 
         target: {
             kind: "url",

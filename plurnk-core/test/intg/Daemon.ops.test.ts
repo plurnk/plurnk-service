@@ -108,7 +108,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
             await rpcCall(ws, 1, "workspace.create", { name: "dispatch-test" });
             const statement = {
                 op: "EDIT" as const,
-                annotation: null,
+                aside: null,
                 metadata: null,
                 target: {
                     kind: "url" as const, raw: "worker:///hello",

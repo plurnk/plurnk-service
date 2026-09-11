@@ -554,7 +554,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
         const body = args.body ?? attrs.inputBody;
         const statement: SendStatement = {
-            op: "SEND", annotation: null, metadata: args.metadata === null ? null : [...args.metadata],
+            op: "SEND", aside: null, metadata: args.metadata === null ? null : [...args.metadata],
             target: parsePath(attrs.inputTarget), lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
         };
         const recipient = await this.#inputRecipient(statement, ctx, runtime);
@@ -592,7 +592,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
         }
         const invocation: ExecStatement = {
-            op: "EXEC", executor: runtime, annotation: null, metadata: null,
+            op: "EXEC", executor: runtime, aside: null, metadata: null,
             target: attrs.resourceSource ? parsePath(attrs.resourceSource) : target === null ? null : parsePath(target),
             lineMarker: null, body, position: { line: 1, column: 1 },
         };
@@ -607,7 +607,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
             const source = await this.readExecSource({
                 op: "READ",
-                annotation: null,
+                aside: null,
                 target: sourceTarget,
                 metadata: null,
                 lineMarker: { marks: [1, -1] },

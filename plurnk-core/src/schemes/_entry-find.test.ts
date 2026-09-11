@@ -6,7 +6,7 @@ import { pathScope } from "./_path-scope.ts";
 
 const statement: FindStatement = {
     op: "FIND",
-    annotation: null,
+    aside: null,
     target: {
         kind: "url",
         raw: "worker:///doc.md",

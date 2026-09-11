@@ -281,7 +281,7 @@ status: "cancelled"
 
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
- * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
 export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | DispositionStatement)
@@ -301,7 +301,7 @@ export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | Grap
 
 export type Plan = PlanEntry[]
 
-export type AnnotationOrNull = (string | null)
+export type AsideOrNull = (string | null)
 
 export type SchemeMetadataOrNull = (string[] | null)
 
@@ -315,7 +315,7 @@ export type LineMarkerOrNull = (LineMarker | null)
 
 export interface FindStatement {
 op: "FIND"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -423,7 +423,7 @@ column: number
 
 export interface ReadStatement {
 op: "READ"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -446,7 +446,7 @@ marks: [(number | string), ...((number | string))[]]
 
 export interface EditStatement {
 op: "EDIT"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -459,7 +459,7 @@ position: Position
 
 export interface CopyStatement {
 op: "COPY"
-annotation: (string | null)
+aside: (string | null)
 source: ResourceSelection
 destination: ResourceSelection
 position: Position
@@ -479,7 +479,7 @@ lineMarker: (TextLineMarker | null)
 
 export interface MoveStatement {
 op: "MOVE"
-annotation: (string | null)
+aside: (string | null)
 source: ResourceSelection
 destination: ResourceSelection
 position: Position
@@ -487,7 +487,7 @@ position: Position
 
 export interface SendStatement {
 op: "SEND"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -508,7 +508,7 @@ json: unknown
 
 export interface ExecStatement {
 op: "EXEC"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -525,7 +525,7 @@ position: Position
 
 export interface BareStatement {
 op: "BARE"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -538,7 +538,7 @@ position: Position
 
 export interface WorkStatement {
 op: "WORK"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -551,7 +551,7 @@ position: Position
 
 export interface ForkStatement {
 op: "FORK"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -564,7 +564,7 @@ position: Position
 
 export interface KillStatement {
 op: "KILL"
-annotation: (string | null)
+aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
@@ -583,7 +583,7 @@ position: Position
 
 export interface DispositionStatement {
 op: "TASK"
-annotation: (string | null)
+aside: (string | null)
 metadata: null
 target: null
 lineMarker: (LineMarker | null)
@@ -613,7 +613,7 @@ _meta?: ({
 
 export interface LookStatement {
 op: "LOOK"
-annotation: AnnotationOrNull
+aside: AsideOrNull
 metadata: SchemeMetadataOrNull
 target: PathOrNull
 lineMarker: TextLineMarkerOrNull
@@ -623,7 +623,7 @@ position: Position
 
 export interface BuffStatement {
 op: "BUFF"
-annotation: AnnotationOrNull
+aside: AsideOrNull
 metadata: SchemeMetadataOrNull
 target: PathOrNull
 lineMarker: LineMarkerOrNull

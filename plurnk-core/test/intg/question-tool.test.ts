@@ -17,7 +17,7 @@ import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLo
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", executor: "question", annotation: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", executor: "question", aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 for (const target of [null, "question", "user"]) test(`{§question-tool}: dispatched question accepts target ${target} and returns the answer`, async () => {

@@ -87,7 +87,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
     ]) assert.equal(family(authored), authored);
 });
 
-test("{§tools-resource-discovery} annotation normalization cannot rewrite schema addresses", () => {
+test("{§tools-resource-discovery} aside normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
     assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
 });

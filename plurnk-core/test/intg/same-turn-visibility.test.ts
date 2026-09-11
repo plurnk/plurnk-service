@@ -184,7 +184,7 @@ replacement
             const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{
-                annotation: string | null;
+                aside: string | null;
                 op: string;
                 origin: string;
                 rx: string;

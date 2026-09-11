@@ -21,7 +21,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; } = {}): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null,
+    op: "READ", aside: null,
     target,
     lineMarker: opts.lineMarker ?? null, body: null,
     position: { line: 1, column: 1 },
@@ -29,7 +29,7 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "FIND", aside: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>

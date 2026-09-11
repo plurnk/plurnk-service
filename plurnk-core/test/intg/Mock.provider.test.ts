@@ -7,7 +7,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 
 const editStmt = (target: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null,
+    op: "EDIT", aside: null,
     target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });

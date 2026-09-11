@@ -29,7 +29,7 @@ test("{§engine-cycle-evidence} every operational operand distinguishes activity
 
 test("{§engine-cycle-evidence} source decoration does not disguise a cycle", () => {
     assert.equal(fingerprint("```READ (a) <1>```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"),
-        fingerprint("\n```READ (a) <1> <!-- another annotation -->```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"));
+        fingerprint("\n```READ (a) <1> <!-- another aside -->```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"));
 });
 
 test("{§engine-cycle-evidence} native inventory changes are workflow changes", () => {

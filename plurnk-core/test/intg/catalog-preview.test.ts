@@ -245,9 +245,9 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     { scheme: "worker", hostname: workerName, pathname: "/*" },
                 ], "the eight surveys execute in their taught order");
                 assert.deepEqual(
-                    finds.map(({ tx }) => (JSON.parse(tx) as { annotation: string | null }).annotation),
+                    finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
                     [null, null, null, null, null, "project filesystem", "workspace entries", "worker scratch"],
-                    "annotations explain only otherwise-cryptic namespace targets",
+                    "asides explain only otherwise-cryptic namespace targets",
                 );
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
@@ -272,24 +272,24 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const skillsSurvey = finds.find((r) => r.pathname === "/SKILL.md");
                 const skillsResult = JSON.parse(skillsSurvey!.rx) as { content?: string; results?: unknown[] };
                 const skillItems = (skillsResult.results
-                    ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
+                    ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
                 assert.deepEqual(skillItems.flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"], "an empty project still has Plurnk's ordinary service skill");
-                assert.ok(skillItems[0]?.[0]?.summary, "the skill arrives with its standard description");
+                assert.ok(skillItems[0]?.[0]?.aside, "the skill arrives with its standard description");
                 const toolSurvey = finds.find((r) => r.pathname === "/_plurnk/plurnk/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results
-                    ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
+                    ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
                 const shell = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/sh.md");
                 assert.equal(
-                    shell?.summary,
+                    shell?.aside,
                     "````sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n````",
-                    "Turn 0 teaches a compact executable witness with its authored summary, as plain text rather than a code span",
+                    "Turn 0 teaches a compact executable witness with its authored aside, as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/python3.md");
                 assert.equal(
-                    python?.summary,
+                    python?.aside,
                     "````python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n````",
-                    "the interpreter summary teaches an executable inline program without requiring a document READ",
+                    "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 for (const removed of ["git", "isogit"]) {
                     const residue = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${removed}.md`);
@@ -297,12 +297,12 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 }
                 for (const [index, name] of ["https", "worker", "wss"].entries()) {
                     const resource = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${name}.md`);
-                    assert.ok(resource !== undefined && resource.summary !== undefined && resource.summary.trim() !== "",
-                        `${name} reference depth is visible with an orienting summary`);
+                    assert.ok(resource !== undefined && resource.aside !== undefined && resource.aside.trim() !== "",
+                        `${name} reference depth is visible with an orienting aside`);
                     const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
                     const reference = Validator.assertEntryReadResult(response.result as EntryReadResult);
                     assert.equal(reference.status, 200);
-                    assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.summary.replace(/\s+/g, " ")),
+                    assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.aside.replace(/\s+/g, " ")),
                         `${name} orientation comes from the readable reference, without pinning its prose`);
                 }
                 const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === null && row.pathname === "/_plurnk/plurnk/sh.md");

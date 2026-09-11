@@ -6,7 +6,7 @@ tokens {
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     OPEN_LOOK, OPEN_BUFF,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
-    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION
+    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE
 }
 
 @lexer::members {
@@ -156,7 +156,7 @@ SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDe
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
-SLOTS_ANNOTATION : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ANNOTATION) ;
+SLOTS_ASIDE : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ASIDE) ;
 SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
 SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;

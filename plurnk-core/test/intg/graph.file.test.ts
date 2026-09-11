@@ -20,7 +20,7 @@ const fileUrl = (pathname: string): UrlPath => ({
 
 const findStmt = (target: UrlPath, body: MatcherBody): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, target, lineMarker: null, body,
+    op: "FIND", aside: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

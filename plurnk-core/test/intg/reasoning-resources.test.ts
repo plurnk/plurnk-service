@@ -134,7 +134,7 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
             const record = parseLogRecords(log).find(({ path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
             assert.ok(record);
-            assert.equal(record.annotation, "inspect this turn's reasoning");
+            assert.equal(record.aside, "inspect this turn's reasoning");
             assert.equal(record.target, "reasoning:///1/1");
             assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");

@@ -31,8 +31,8 @@ test("{§worker-initialization-entry}: turn 0 archives the prompt into the liter
                 [{ target: archive, action: "create" }],
                 "the receipt names the private address the program typed",
             );
-            const tx = JSON.parse(copy.tx) as { annotation: string | null; destination: { target: { raw: string } } };
-            assert.equal(tx.annotation, null, "the prompt archive's source, destination, and tags need no narration");
+            const tx = JSON.parse(copy.tx) as { aside: string | null; destination: { target: { raw: string } } };
+            assert.equal(tx.aside, null, "the prompt archive's source, destination, and tags need no narration");
             assert.equal(tx.destination.target.raw, archive, "the destination path excludes its scope whitespace");
             const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
             assert.equal(body?.content, "first prompt", "COPY <-1> onto the absent named scratch entry created it with the prompt");

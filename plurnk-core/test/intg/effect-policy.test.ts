@@ -13,7 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", aside: null, executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto EXEC through the human gate", async () => {

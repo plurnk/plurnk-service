@@ -36,7 +36,7 @@ for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: a
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         const record = logEntries(packet).find(({ target }) => target === "reasoning:///1/2")!;
         assert.ok(record);
-        assert.equal(record.annotation, "retain reasoning");
+        assert.equal(record.aside, "retain reasoning");
         if (mode === "fits") {
             assert.match(String(record.body), /120:Finding 120:/);
             assert.equal(record.overflow, undefined);

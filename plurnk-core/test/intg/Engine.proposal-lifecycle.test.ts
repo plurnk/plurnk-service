@@ -50,7 +50,7 @@ class ProposingTest {
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null,
+    op: "EDIT", aside: null,
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null },

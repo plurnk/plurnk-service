@@ -79,7 +79,8 @@ export interface EntryCatalogChannel {
     readonly sourceMimetype?: string;
     readonly weight: number;
     readonly lines: number;
-    readonly summary?: string;
+    // {§scheme-catalog-aside} the channel's one-line orientation, clipped; absent when it has none.
+    readonly aside?: string;
     readonly parseIssues?: number;
 }
 

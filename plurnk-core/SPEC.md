@@ -132,7 +132,7 @@ other violations in the same turn still strike normally.
 §engine-cycle-evidence Cycle identity contains the ordered executed operations
 and their dispatch results, including complete operands, scopes, bodies, and
 scheme metadata, including the complete TASK inventory and SEND bodies. Source
-positions and annotations are excluded. Engine-assigned
+positions and asides are excluded. Engine-assigned
 Problem `instance` addresses are excluded from results. Object member order is
 irrelevant; operation and array order are preserved. Only the configured
 `MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
@@ -505,7 +505,7 @@ navigable map instead of blank. Its baseline bodyless FIND surveys follow this
 order; unregistered schemes contribute no survey, and workspace capabilities may
 narrow or omit the reference catalogs under {§capability-admission}.
 
-| Surface | FIND target | Scope / annotation |
+| Surface | FIND target | Scope / aside |
 | --- | --- | --- |
 | Agent Skills | `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
 | Plurnk references: executors, schemes, family managers | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
@@ -516,13 +516,13 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Workspace entries | `worker:///*` | Markerless; `workspace entries` |
 | Named scratch entries | `worker://<worker>/*` | Markerless; `worker scratch` |
 
-Only the three namespace surveys carry annotations; the other targets name
+Only the three namespace surveys carry asides; the other targets name
 their surface. The word `skills` names Agent Skills and nothing else.
 Catalogs select documents independently of their authored bodies; ordinary READ
 supplies examples and complete instructions on demand. A shallow
 result renders direct entries normally and every deeper first-segment directory
 as an actionable `dir/**` summary with its recursive `items` and `tokens`;
-tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives
+tool-family rows also carry the concise `{§scheme-catalog-aside}` that drives
 on-demand capability discovery. Ordinary surveys use FIND's markerless first-16
 page, whose range metadata reports the requested and returned page against the
 complete result total; only the small capability-reference surfaces
@@ -1929,11 +1929,11 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 <coordinate-prefixed body lines when visible>
 ```
 
-The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: every receipt puts `target` first and `annotation` second when present; all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: every receipt puts `target` first and `aside` second when present; all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 Coordinate-prefixed lines are the text currently in context; a metadata-only row contributes no text body. A partially trimmed row carries `"folded":["<scope>",...]`; coordinate gaps expose omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
 
-Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored annotation appears as `annotation`. Every row's accounting follows {§packet-token-accounting}.
+Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
 
 - §packet-attachment-parts A successful READ of an attachable resource carries projection facts with its
   result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
@@ -2153,7 +2153,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   positive-only advisory projection of `{§mimetype-parse-issues}` for the exact
   channel derivation under `{§scheme-catalog-parse-issues}`.
 
-  §scheme-catalog-summary **Catalog summary.** `summary` is the exact channel
+  §scheme-catalog-aside **Catalog aside.** `aside` is the exact channel
   derivation's `{§mimetype-summary}` clipped to at most 256 Unicode code points
   including a visible terminal ellipsis; absent metadata is omitted.
 
@@ -2208,7 +2208,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 
 A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
-§loop-response-messages **Replies and outcome are independent.** Each successful targetless SEND, and a SEND to one of this loop's own prompts ({§send-prompt-acceptance}), contributes its complete authored body to the loop's response, in turn and operation order, separated by a blank line. Other directed SEND, TASK, annotations, interstitial text, inherited rows and ambient observations do not contribute. Collection reads immutable executed operation evidence, not the curated log projection. KILL cannot retract a delivered message. A later failure, cancellation or refused completion preserves prior messages; a task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content.
+§loop-response-messages **Replies and outcome are independent.** Each successful targetless SEND, and a SEND to one of this loop's own prompts ({§send-prompt-acceptance}), contributes its complete authored body to the loop's response, in turn and operation order, separated by a blank line. Other directed SEND, TASK, asides, interstitial text, inherited rows and ambient observations do not contribute. Collection reads immutable executed operation evidence, not the curated log projection. KILL cannot retract a delivered message. A later failure, cancellation or refused completion preserves prior messages; a task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content.
 
 §loop-terminal-authorship **Terminal authorship is explicit when external.**
 
@@ -4467,9 +4467,9 @@ family document at `worker:///_plurnk/plurnk/<runtime>.md`. A general runtime's
 document contains its {§executor-tool-document}; a runtime with an exact
 {§executor-tool-registry} materializes a compact catalog at the same address. The family document summarizes
 the server or runtime, lists every enabled target as a directly copyable
-executable fence named for the runtime, with its input preview ({§operation-annotation} carries the
+executable fence named for the runtime, with its input preview ({§operation-aside} carries the
 target one-liner; no invocation dispatch would reject is ever advertised).
-Schema-backed targets link from that annotation to
+Schema-backed targets link from that aside to
 `<runtime>/<percent-encoded-target>.md` beneath the same root. These documents
 preserve the full tool description and raw input schema under
 {§executor-input-schema-preview}; their nested paths do not contribute extra
@@ -4481,7 +4481,7 @@ Tool-result/output schemas remain ordinary evidence, not teaching.
 flowchart LR
     Survey["Turn 0 FIND<br/>tools/*.md"] --> Families["family paths + summaries"]
     Families --> Read["READ selected family<br/>only when needed"]
-    Read --> Exec["EXEC annotated invocation"]
+    Read --> Exec["EXEC invocation with an aside"]
     Read --> Schema["READ linked input schema<br/>when the preview is insufficient"]
     Schema --> Exec
 ```
@@ -4503,7 +4503,7 @@ shared scratch. Turn 0 surveys the families (`FIND
 server carrying its summary) and, for each server named in
 `PLURNK_MCP_EXPANDED`, adds one FIND over its family document matching the
 complete executable blocks (`FIND (worker:///_plurnk/tools/<server>.md)`
-with a multiline regex over matching fences), so turn 0 names every tool with its annotation and
+with a multiline regex over matching fences), so turn 0 names every tool with its aside and
 signature — one row per tool, paged like every survey. Capability attenuation
 restricts that matcher to the admitted exact tools. No document is delivered
 unasked.
@@ -4512,7 +4512,7 @@ learns an origin.
 
 §tool-document-header-only A registry-less runtime whose declaration carries no
 supplemental details (no `docs/<tag>.md`, no inline `details`) is a
-header-only document: its summary annotation ends with `(invocation only)`, so
+header-only document: its summary aside ends with `(invocation only)`, so
 the catalog row that advertises it says so and the model is not invited to
 READ an empty room. Every runtime and family plurnk ships carries a body.
 

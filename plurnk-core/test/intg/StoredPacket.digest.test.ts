@@ -78,7 +78,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
             const result = await engine.dispatch({
                 workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
                 statement: {
-                    op: "READ", annotation: null, metadata: null, body: null,
+                    op: "READ", aside: null, metadata: null, body: null,
                     target: urlPath("ops", `/1/${turn.sequence}`), lineMarker: { marks: [1, -1] },
                     position: { line: 1, column: 1 },
                 },
@@ -105,7 +105,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
         await Turn.recordSource(db, curationTurn, "ops", sources[2]!);
         const kill: KillStatement = {
             metadata: null,
-            op: "KILL", annotation: null,
+            op: "KILL", aside: null,
             target: urlPath("log", "/1/[1-2]/*/READ"), lineMarker: null, body: null,
             position: { line: 1, column: 1 },
         };

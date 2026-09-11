@@ -15,7 +15,7 @@
         }
     ],
     "$defs": {
-        "AnnotationOrNull": {
+        "AsideOrNull": {
             "type": [
                 "string",
                 "null"
@@ -81,7 +81,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -93,8 +93,8 @@
                 "op": {
                     "const": "LOOK"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
@@ -117,7 +117,7 @@
             "type": "object",
             "required": [
                 "op",
-                "annotation",
+                "aside",
                 "metadata",
                 "target",
                 "lineMarker",
@@ -129,8 +129,8 @@
                 "op": {
                     "const": "BUFF"
                 },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"

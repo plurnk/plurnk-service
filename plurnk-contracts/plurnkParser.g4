@@ -72,26 +72,26 @@ midStatement
     | killStatement
     ;
 
-findStatement : OPEN_FIND slotModifiers? opAnnotation? statementEnd ;
-readStatement : OPEN_READ slotModifiers? opAnnotation? statementEnd ;
-editStatement : OPEN_EDIT slotModifiers? opAnnotation? statementEnd ;
-copyStatement : OPEN_COPY transferModifiers opAnnotation? emptyStatementEnd ;
-moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
+findStatement : OPEN_FIND slotModifiers? opAside? statementEnd ;
+readStatement : OPEN_READ slotModifiers? opAside? statementEnd ;
+editStatement : OPEN_EDIT slotModifiers? opAside? statementEnd ;
+copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
+moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
 dispositionStatement
-    : OPEN_TASK lineMarker? opAnnotation? statementEnd
+    : OPEN_TASK lineMarker? opAside? statementEnd
     ;
-sendStatement : OPEN_SEND resourceSelection? opAnnotation? statementEnd ;
-execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
-bareStatement : OPEN_BARE targetWithMetadata? opAnnotation? statementEnd ;
-workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
-forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;
+sendStatement : OPEN_SEND resourceSelection? opAside? statementEnd ;
+execStatement : OPEN_EXEC execModifiers? opAside? statementEnd ;
+bareStatement : OPEN_BARE targetWithMetadata? opAside? statementEnd ;
+workStatement : OPEN_WORK targetWithMetadata? opAside? statementEnd ;
+forkStatement : OPEN_FORK targetWithMetadata? opAside? statementEnd ;
 // KILL takes a scope ({§kill-scope}): lines of a log body or of an entry.
-killStatement : OPEN_KILL slotModifiers? opAnnotation? statementEnd ;
-lookStatement : OPEN_LOOK slotModifiers? opAnnotation? statementEnd ;
-buffStatement : OPEN_BUFF slotModifiers? opAnnotation? statementEnd ;
+killStatement : OPEN_KILL slotModifiers? opAside? statementEnd ;
+lookStatement : OPEN_LOOK slotModifiers? opAside? statementEnd ;
+buffStatement : OPEN_BUFF slotModifiers? opAside? statementEnd ;
 
-opAnnotation : ANNOTATION ;
+opAside : ASIDE ;
 
 // Inline and multiline blocks normalize through the same AST path. Every
 // statement retains its matching closing fence. {§empty-section}

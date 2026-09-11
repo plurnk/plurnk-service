@@ -22,7 +22,7 @@ for (const [name, parse] of [
             "sh\nexit 1",
             'gitea (delete_repo)\n{"id":42}',
             "LOOK (worker:///notes.md)",
-            "<!-- literal, not annotation -->",
+            "<!-- literal, not aside -->",
             "READ (broken target",
         ];
         const source = ["Do not execute these examples:", ...bodies.map((body) => unlabeled(body)), task].join("\n\n");
@@ -37,21 +37,21 @@ for (const [name, parse] of [
             if (send.op !== "SEND") assert.fail("expected SEND");
             assert.equal(send.body?.raw, body);
             assert.equal(send.target, null);
-            assert.equal(send.annotation, null);
+            assert.equal(send.aside, null);
             assert.equal(send.metadata, null);
             assert.equal(send.lineMarker, null);
         }
         assert.deepEqual(ops[0].position, { line: 3, column: 0 });
     });
 
-    test(`{§unlabeled-fence-send}: ${name} preserves optional header annotations without promoting their text or body`, () => {
-        const annotation = 'SEND (worker://elsewhere/) <1,-1> [{"key": "value"}]; KILL is only text — 💬';
+    test(`{§unlabeled-fence-send}: ${name} preserves optional header asides without promoting their text or body`, () => {
+        const aside = 'SEND (worker://elsewhere/) <1,-1> [{"key": "value"}]; KILL is only text — 💬';
         const body = '```KILL (worker:///notes.md)```\n<!-- body comment -->\nTASK\n[]';
         for (const ticks of [3, 4, 8]) {
             for (const space of ["", " ", "\t"]) {
                 for (const newline of ["\n", "\r\n"]) {
                     const fence = "`".repeat(ticks);
-                    const suffix = `${space}<!-- ${annotation} -->${newline}${body}${newline}${fence}${newline}${task}`;
+                    const suffix = `${space}<!-- ${aside} -->${newline}${body}${newline}${fence}${newline}${task}`;
                     const implicit = parse(`${fence}${suffix}`);
                     const explicit = parse(`${fence}SEND${suffix}`);
                     assert.equal(implicit.unparsedTail, undefined);
@@ -61,7 +61,7 @@ for (const [name, parse] of [
                     assert.deepEqual(ops.map(({ op }) => op), ["SEND", "TASK"]);
                     const send = ops[0];
                     assert.ok(send.op === "SEND");
-                    assert.equal(send.annotation, annotation);
+                    assert.equal(send.aside, aside);
                     assert.equal(send.body?.raw, body);
                     assert.equal(send.target, null);
                     assert.equal(send.metadata, null);
@@ -72,7 +72,7 @@ for (const [name, parse] of [
     });
 }
 
-test("{§unlabeled-fence-send}: empty annotated replies use ordinary SEND closure and source coordinates", () => {
+test("{§unlabeled-fence-send}: empty replies with an aside use ordinary SEND closure and source coordinates", () => {
     for (const ending of ["````", "\n````", "\r\n````"]) {
         const result = PlurnkParser.parseStatements(`Prelude.\n\n\`\`\`\` <!-- reply -->${ending}`);
         assert.equal(result.unparsedTail, undefined);
@@ -81,13 +81,13 @@ test("{§unlabeled-fence-send}: empty annotated replies use ordinary SEND closur
         assert.equal(ops.length, 1);
         const send = ops[0];
         assert.ok(send.op === "SEND");
-        assert.equal(send.annotation, "reply");
+        assert.equal(send.aside, "reply");
         assert.equal(send.body, null);
         assert.deepEqual(send.position, { line: 3, column: 0 });
     }
 });
 
-test("{§unlabeled-fence-send}: malformed annotations retain ordinary SEND diagnostics", () => {
+test("{§unlabeled-fence-send}: malformed asides retain ordinary SEND diagnostics", () => {
     for (const header of ["<!-- not closed", "<!-- split\ncomment -->", "<!-- first --> <!-- second -->", "<!-- reply --> (worker://elsewhere/)"]) {
         const suffix = ` ${header}\nMessage.\n\`\`\`\`\n${task}`;
         const implicit = PlurnkParser.parseStatements(`\`\`\`\`${suffix}`);

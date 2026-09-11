@@ -110,7 +110,7 @@ test("fenced operations: transfer operands and opaque metadata keep their contra
     assert.equal(copy.destination.target.raw, "b");
     assert.deepEqual(copy.destination.lineMarker?.marks, [0]);
     assert.deepEqual(exec.metadata, ['{"headers": {"x": "]"}}']);
-    assert.equal(exec.annotation, "list issues");
+    assert.equal(exec.aside, "list issues");
 });
 
 test("fenced operations: an unfinished block never admits its contents as an executable statement", () => {

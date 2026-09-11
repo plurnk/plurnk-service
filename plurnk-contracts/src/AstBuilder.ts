@@ -76,7 +76,7 @@ type Slots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: 
 type TextSlots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
 
 export default class AstBuilder {
-    // {§misplaced-annotation-advisory} — advisories raised while building one statement; the
+    // {§misplaced-aside-advisory} — advisories raised while building one statement; the
     // parser drains them right after the statement so the model sees WHAT it did on the first try.
     static #advisories: PlurnkParseError[] = [];
 
@@ -87,19 +87,19 @@ export default class AstBuilder {
     }
 
     // A body that is solely an HTML comment can never be a matcher. Preserve it
-    // as the operation annotation and report only that deterministic normalization.
-    static #annotationBody(op: string, annotation: string | null, raw: string | null, position: Position): { annotation: string | null; raw: string | null } {
-        if (raw === null) return { annotation, raw };
+    // as the operation aside and report only that deterministic normalization.
+    static #asideBody(op: string, aside: string | null, raw: string | null, position: Position): { aside: string | null; raw: string | null } {
+        if (raw === null) return { aside, raw };
         const comment = /^\s*<!--([\s\S]*?)-->\s*$/u.exec(raw);
-        if (comment === null) return { annotation, raw };
+        if (comment === null) return { aside, raw };
         AstBuilder.#advisories.push(new PlurnkParseError(
             position.line,
             position.column,
             "parser",
-            `The ${op} body contained only an HTML comment; it was applied as the operation annotation.`,
+            `The ${op} body contained only an HTML comment; it was applied as the operation aside.`,
             "warning",
         ));
-        return { annotation: annotation ?? (comment[1] ?? "").trim(), raw: null };
+        return { aside: aside ?? (comment[1] ?? "").trim(), raw: null };
     }
 
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -130,16 +130,16 @@ export default class AstBuilder {
 
     static #buildFind(ctx: FindStatementContext): FindStatement {
         const positionForBody = AstBuilder.#positionOf(ctx);
-        const bodied = AstBuilder.#annotationBody("FIND", AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), positionForBody);
-        return AstBuilder.#buildFindFrom(ctx, bodied.annotation, bodied.raw);
+        const bodied = AstBuilder.#asideBody("FIND", AstBuilder.#asideOf(ctx), AstBuilder.#bodyTextOf(ctx), positionForBody);
+        return AstBuilder.#buildFindFrom(ctx, bodied.aside, bodied.raw);
     }
 
-    static #buildFindFrom(ctx: FindStatementContext, annotation: string | null, raw: string | null): FindStatement {
+    static #buildFindFrom(ctx: FindStatementContext, aside: string | null, raw: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         return {
             op: "FIND",
-            annotation,
+            aside,
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -165,7 +165,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "LOOK",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -178,7 +178,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "BUFF",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -188,8 +188,8 @@ export default class AstBuilder {
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const bodied = AstBuilder.#annotationBody("READ", AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
-        const annotation = bodied.annotation;
+        const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
+        const aside = bodied.aside;
         const raw = bodied.raw;
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
@@ -207,7 +207,7 @@ export default class AstBuilder {
             const findSlots = slots as Slots;
             return {
                 op: "FIND",
-                annotation,
+                aside,
                 ...findSlots,
                 body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
                 position,
@@ -215,7 +215,7 @@ export default class AstBuilder {
         }
         return {
             op: "READ",
-            annotation,
+            aside,
             ...slots,
             body: null,
             position,
@@ -227,7 +227,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         return {
             op: "EDIT",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -241,7 +241,7 @@ export default class AstBuilder {
         if (selections.length !== 2) throw new Error("COPY grammar did not produce two resource selections");
         return {
             op: "COPY",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
             destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
             position,
@@ -255,7 +255,7 @@ export default class AstBuilder {
         if (selections.length !== 2) throw new Error("MOVE grammar did not produce two resource selections");
         return {
             op: "MOVE",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
             destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
             position,
@@ -269,7 +269,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op,
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             target: null,
             metadata: null,
             lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
@@ -287,7 +287,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
@@ -299,7 +299,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, AstBuilder.#executorOf(ctx) ?? "sh");
         return {
             op: "EXEC",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             executor: AstBuilder.#executorOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
@@ -317,7 +317,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "BARE",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             target: slots.target,
             metadata: slots.metadata,
             lineMarker: null,
@@ -333,7 +333,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "KILL",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -345,7 +345,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "WORK",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             lineMarker: null,
             body: AstBuilder.#requiredBodyTextOf(ctx),
@@ -358,7 +358,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "FORK",
-            annotation: AstBuilder.#annotationOf(ctx),
+            aside: AstBuilder.#asideOf(ctx),
             ...slots,
             lineMarker: null,
             body: AstBuilder.#requiredBodyTextOf(ctx),
@@ -502,8 +502,8 @@ export default class AstBuilder {
         return { line: start?.line ?? 0, column: start?.column ?? 0 };
     }
 
-    static #annotationOf(ctx: ParserRuleContext): string | null {
-        const token = AstBuilder.#findToken(ctx, plurnkLexer.ANNOTATION);
+    static #asideOf(ctx: ParserRuleContext): string | null {
+        const token = AstBuilder.#findToken(ctx, plurnkLexer.ASIDE);
         return token === null ? null : token.slice("<!--".length, -"-->".length).trim();
     }
 

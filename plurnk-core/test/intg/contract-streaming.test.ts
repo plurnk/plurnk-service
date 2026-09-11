@@ -100,7 +100,7 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
         const opened = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "READ", annotation: null, target: urlPath("fakestream", "/feed/x"),
+                op: "READ", aside: null, target: urlPath("fakestream", "/feed/x"),
                 lineMarker: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
@@ -180,7 +180,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
         const opened = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "READ", annotation: null, target: urlPath("detached", "/feed"),
+                op: "READ", aside: null, target: urlPath("detached", "/feed"),
                 lineMarker: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",

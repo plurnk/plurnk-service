@@ -417,7 +417,7 @@ export default class Dispatcher {
         if (handler === undefined || typeof handler.kill === "function") return null;
         const edit: EditStatement = {
             op: "EDIT",
-            annotation: statement.annotation,
+            aside: statement.aside,
             metadata: statement.metadata,
             target: statement.target,
             lineMarker: statement.lineMarker,

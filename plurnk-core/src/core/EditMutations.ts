@@ -114,7 +114,7 @@ export default class EditMutations {
 
         const current = await this.#run(schemeName, {
             op: "READ",
-            annotation: null,
+            aside: null,
             target: authored.target,
             metadata: authored.metadata,
             lineMarker: { marks: [1, -1] },

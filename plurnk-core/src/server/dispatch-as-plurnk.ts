@@ -46,7 +46,7 @@ export default class DispatchAsPlurnk {
             ...statements,
             {
                 op: "TASK",
-                annotation: null,
+                aside: null,
                 target: null,
                 metadata: null,
                 lineMarker: null,

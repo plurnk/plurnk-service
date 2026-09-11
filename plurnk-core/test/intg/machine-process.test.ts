@@ -21,7 +21,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, target, lineMarker: marker, body,
+    op: "EDIT", aside: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 

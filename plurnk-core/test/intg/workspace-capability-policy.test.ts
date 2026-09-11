@@ -17,7 +17,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, in
 const execStmt = (runtime: string): ExecStatement => ({
     metadata: null,
     op: "EXEC",
-    annotation: null,
+    aside: null,
     executor: runtime, target: null,
     lineMarker: null,
     body: "echo hi",
@@ -198,9 +198,9 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         const survey = rows.find(({ op, pathname }) => op === "FIND" && pathname.startsWith("/_plurnk/plurnk/"));
         assert.ok(survey, "read-only policy retains the native reference survey");
         const result = JSON.parse(survey.rx) as { content: string };
-        const items = JSON.parse(result.content) as Array<Array<{ path: string; summary?: string }>>;
+        const items = JSON.parse(result.content) as Array<Array<{ path: string; aside?: string }>>;
         const reference = items.flat().find(({ path }) => path.endsWith("/worker.md"));
-        assert.ok(reference?.summary, `worker orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
+        assert.ok(reference?.aside, `worker orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
         const read = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/worker.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
         assert.ok(JSON.parse(read!.rx).content.includes("## Lifecycle"));

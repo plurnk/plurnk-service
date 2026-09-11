@@ -30,7 +30,7 @@ const target = (pathname = "", fragment: string | null = null): UrlPath => ({
 
 const send = (body: string, pathname = ""): SendStatement => ({
     op: "SEND",
-    annotation: null,
+    aside: null,
     target: target(pathname),
     metadata: null,
     lineMarker: null,

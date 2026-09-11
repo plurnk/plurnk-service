@@ -95,7 +95,7 @@ const fencedSection = (
     } = {},
 ): void => {
     const headerName = `${name}-header`;
-    model.set(headerName, headers.map((header) => [...header, opt(ref("annotation-slot"))]));
+    model.set(headerName, headers.map((header) => [...header, opt(ref("aside-slot"))]));
     model.set(name, FENCE_LENGTHS.flatMap((length): GRule => {
         const fence = "`".repeat(length);
         const open = [lit(fence), ref(headerName)];
@@ -119,7 +119,7 @@ export const buildModel = (): GModel => {
         const closer = `\n${"`".repeat(length)}`;
         forbidLiterals(model, `pattern-body-${length}`, [closer, "\n:"], true, "\n");
     }
-    forbidLiterals(model, "annotation-body", ["-->"], true);
+    forbidLiterals(model, "aside-body", ["-->"], true);
 
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
@@ -226,7 +226,7 @@ export const buildModel = (): GModel => {
     model.set("line-slot", [[lit(" "), ref("line")]]);
     model.set("text-line-slot", [[lit(" "), ref("text-line")]]);
     model.set("park-slot", [[lit(" "), ref("park")]]);
-    model.set("annotation-slot", [[lit(" <!-- "), ref("annotation-body-ne"), lit(" -->")]]);
+    model.set("aside-slot", [[lit(" <!-- "), ref("aside-body-ne"), lit(" -->")]]);
 
     model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
     model.set("target-inner", [[plus(ref("target-atom"))]]);

@@ -13,12 +13,12 @@ test("{§op-execution-order} internal programs may omit TASK without inventing o
 test("TurnOps: internal source round-trips through the public parser", () => {
     const statements: [FindStatement, DispositionStatement] = [
         {
-            op: "FIND", annotation: "workspace files",
+            op: "FIND", aside: "workspace files",
             target: { kind: "local", raw: "*" },
             metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, body: null, position: UNKNOWN_POSITION,
         },
         {
-            op: "TASK", annotation: null, target: null, metadata: null,
+            op: "TASK", aside: null, target: null, metadata: null,
             lineMarker: null, body: [{ content: "Address the prompt.", status: "in_progress" }], position: UNKNOWN_POSITION,
         },
     ];
@@ -39,14 +39,14 @@ test("TurnOps: internal source round-trips through the public parser", () => {
 
 test("TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
     const edit: EditStatement = {
-        op: "EDIT", annotation: null,
+        op: "EDIT", aside: null,
         target: { kind: "local", raw: "AGENTS.md" }, metadata: null, lineMarker: null,
         body: "# Policy\nBe exact.\n", position: UNKNOWN_POSITION,
     };
     const statements: [EditStatement, DispositionStatement] = [
         edit,
         {
-            op: "TASK", annotation: null, target: null, metadata: null,
+            op: "TASK", aside: null, target: null, metadata: null,
             lineMarker: null, body: [{ content: "Edit applied.", status: "completed" }], position: UNKNOWN_POSITION,
         },
     ];

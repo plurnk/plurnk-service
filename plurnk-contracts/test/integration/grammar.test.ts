@@ -82,24 +82,24 @@ test("{§send-directed-scope}: directed SEND preserves numeric timing without ch
         if (statement.op !== "SEND") return;
         assert.equal(Object.hasOwn(statement, "status"), false);
         assert.deepEqual(statement.lineMarker?.marks, components);
-        assert.equal(statement.annotation, "recurring check");
+        assert.equal(statement.aside, "recurring check");
         assert.deepEqual(statement.body, { raw: "Check for updates.", json: null });
     }
     assert.ok(errorsOf(section("SEND", " <0,60>", "No recipient.")).length > 0);
 });
 
-test("trailing operation annotations are durable, single-line, and follow every modifier", () => {
+test("trailing operation asides are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
         "```gitea (list_issues) <!-- Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.md) -->",
         "{\"owner\":\"plurnk\",\"repo\":\"plurnk-service\"}",
         "```",
     ].join("\n"));
     assert.equal(
-        statement.annotation,
+        statement.aside,
         "Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.md)",
     );
-    assert.equal(oneStatement("```READ (README.md)```").annotation, null);
-    assert.equal(oneStatement("```READ (README.md) <!-- -->```").annotation, "");
+    assert.equal(oneStatement("```READ (README.md)```").aside, null);
+    assert.equal(oneStatement("```READ (README.md) <!-- -->```").aside, "");
 
     for (const input of [
         "```EXEC <!-- Lists issues --> [gitea] (list_issues)\n{}\n```",
@@ -261,7 +261,7 @@ test("{§bare-statement} BARE accepts a prompt resource, inline input, or both",
         if (statement.op !== "BARE") assert.fail("expected BARE");
         assert.equal(statement.target?.raw, "worker://alice/prompt.md");
         assert.equal(statement.body, body ?? "");
-        assert.equal(statement.annotation, "isolated review");
+        assert.equal(statement.aside, "isolated review");
         assert.equal(statement.lineMarker, null);
     }
     const inline = oneStatement(section("BARE", "", "What is the capital of Germany?"));
@@ -549,7 +549,7 @@ test("{§slot-order}: target and scope precede opaque metadata in every scoped h
         assert.equal(statement.target?.raw, "known:///item");
         assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
         assert.deepEqual(statement.metadata, ['{"request": {"value": "]"}}', '{"mode": "quiet"}']);
-        assert.equal(statement.annotation, "inspect");
+        assert.equal(statement.aside, "inspect");
         const canonical = PlurnkParser.stringify([statement]);
         assert.equal(canonical, PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
         assert.deepEqual(oneStatement(canonical), statement);
@@ -679,8 +679,8 @@ test("regex modifier-boundary recovery handles flags without masking invalid reg
     }
 });
 
-// {§misplaced-annotation-advisory}
-test("a READ or FIND whose body is only an HTML comment takes it as the annotation and says so", () => {
+// {§misplaced-aside-advisory}
+test("a READ or FIND whose body is only an HTML comment takes it as the aside and says so", () => {
     for (const op of ["READ", "FIND"] as const) {
         const turn = sections(
             section(op, " (Engine.ts) <520,530>", "<!-- Read context around the two matches. -->"),
@@ -690,20 +690,20 @@ test("a READ or FIND whose body is only an HTML comment takes it as the annotati
         const statement = result.items.find((item) => item.kind === "statement" && item.statement.op === op);
         assert.equal(statement?.kind, "statement", `${op} still dispatches as ${op}`);
         if (statement?.kind !== "statement") return;
-        assert.equal(statement.statement.annotation, "Read context around the two matches.", "the comment became the annotation");
+        assert.equal(statement.statement.aside, "Read context around the two matches.", "the comment became the aside");
         assert.equal("body" in statement.statement ? statement.statement.body : undefined, null, "no matcher was manufactured from the comment");
         const warning = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
         assert.equal(warning?.kind, "error", "one advisory follows the statement");
         if (warning?.kind !== "error") return;
         assert.equal(
             warning.error.message,
-            `The ${op} body contained only an HTML comment; it was applied as the operation annotation.`,
+            `The ${op} body contained only an HTML comment; it was applied as the operation aside.`,
         );
     }
-    // a heading annotation wins; a body with any other content remains a matcher
+    // a heading aside wins; a body with any other content remains a matcher
     const kept = PlurnkParser.parse(sections(section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("TASK", "", inventory("n"))));
     const read = kept.items.find((item) => item.kind === "statement" && item.statement.op === "READ");
-    assert.equal(read?.kind === "statement" ? read.statement.annotation : null, "heading");
+    assert.equal(read?.kind === "statement" ? read.statement.aside : null, "heading");
     const matcher = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
     assert.ok(matcher.items.some((item) => item.kind === "statement" && item.statement.op === "FIND"), "a real matcher body still redirects to FIND");
     assert.ok(!matcher.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "no advisory for a real matcher");
@@ -1185,10 +1185,10 @@ test("body text on the heading line is the first body line when it cannot open a
     if (send.op !== "SEND" || !send.body) assert.fail("expected SEND with body");
     assert.equal(send.body.raw, "Paris.");
 
-    const annotated = oneStatement("```FIND (src/**) <!-- where --> /createCoder/i\n```");
-    if (annotated.op !== "FIND") assert.fail("expected FIND");
-    assert.equal(annotated.annotation, "where");
-    assert.equal(annotated.body?.raw, "/createCoder/i");
+    const withAside = oneStatement("```FIND (src/**) <!-- where --> /createCoder/i\n```");
+    if (withAside.op !== "FIND") assert.fail("expected FIND");
+    assert.equal(withAside.aside, "where");
+    assert.equal(withAside.body?.raw, "/createCoder/i");
 
     // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
     const unspaced = oneStatement("```crm (crm_query)[{\"soql\": \"x\"}]```");

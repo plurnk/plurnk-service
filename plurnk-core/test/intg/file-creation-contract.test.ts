@@ -36,7 +36,7 @@ const replaceAll: LineMarker = { marks: [1, -1] };
 const edit = (pathname: string, body: string, lineMarker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT",
-    annotation: null,
+    aside: null,
     target: { kind: "local", raw: pathname },
     lineMarker,
     body,

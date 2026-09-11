@@ -69,7 +69,7 @@ export default class PlurnkParser {
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
                 for (const metadata of statement.metadata ?? []) modifiers.push(`[${metadata}]`);
             }
-            if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
+            if (statement.aside !== null) modifiers.push(`<!-- ${statement.aside} -->`);
             const body = TurnDisposition.is(statement) ? PlanValue.stringify(statement.body)
                 : statement.op === "COPY" || statement.op === "MOVE" || statement.body === null ? null
                 : typeof statement.body === "string" ? statement.body : statement.body.raw;
@@ -308,7 +308,7 @@ export default class PlurnkParser {
                 } else {
                     try {
                         items.push({ kind: "statement", statement: buildFn(c) });
-                        // {§misplaced-annotation-advisory} — the builder's advisories follow their statement.
+                        // {§misplaced-aside-advisory} — the builder's advisories follow their statement.
                         for (const advisory of AstBuilder.takeAdvisories()) items.push({ kind: "error", error: advisory });
                     } catch (e) {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a

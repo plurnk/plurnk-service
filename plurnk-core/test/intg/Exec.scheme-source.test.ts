@@ -53,7 +53,7 @@ const urlTarget = (raw: string): UrlPath => {
 const execStatement = (target: string, body: string, metadata: string[] | null = null): ExecStatement => ({
     metadata,
     op: "EXEC",
-    annotation: null,
+    aside: null,
     executor: "tool", target: urlTarget(target),
     lineMarker: null,
     body,

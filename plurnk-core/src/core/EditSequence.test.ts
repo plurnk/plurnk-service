@@ -10,7 +10,7 @@ import { editReceipt, projectEditReceipt, reviewerReplacementReceipt } from "../
 const identity = "worker:///sequence.md";
 const original = "one\ntwo\nthree\nfour\nfive\nsix\n";
 const statement = (marker: LineMarker, body: string): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, target: null, metadata: null,
+    op: "EDIT", aside: null, target: null, metadata: null,
     lineMarker: marker, body, position: UNKNOWN_POSITION,
 });
 const apply = (sequence: EditSequence, content: string, marker: LineMarker, body: string): string => {

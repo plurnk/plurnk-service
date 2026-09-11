@@ -126,7 +126,7 @@ const unlabeled = unlabeledFence + " <!-- literal example -->\\n" + literalExamp
 const implicitSend = PlurnkParser.parse(unlabeled);
 assertClean("unlabeled SEND", implicitSend);
 if (implicitSend.items.length !== 2 || implicitSend.items[0]?.statement?.op !== "SEND"
-    || implicitSend.items[0]?.statement?.annotation !== "literal example"
+    || implicitSend.items[0]?.statement?.aside !== "literal example"
     || implicitSend.items[0]?.statement?.body?.raw !== literalExample
     || implicitSend.items[1]?.statement?.op !== "TASK") throw new Error("unlabeled fence executed its literal example");
 

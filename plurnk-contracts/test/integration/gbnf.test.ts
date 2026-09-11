@@ -547,8 +547,8 @@ test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and 
     assert.equal(derives("statement", mid("FORK", " (worker://child)")), false);
 });
 
-// {§operation-annotation}
-test("GBNF permits one canonical trailing operation annotation", () => {
+// {§operation-aside}
+test("GBNF permits one canonical trailing operation aside", () => {
     assert.equal(derives("statement", mid("gitea", " (list_issues) <!-- Lists issues -->", "{}")), true);
     assert.equal(derives("statement", mid("gitea", " <!-- Lists issues --> (list_issues)", "{}")), false);
     assert.equal(derives("statement", mid("gitea", " (list_issues) <!-- Lists\nissues -->", "{}")), false);

@@ -704,7 +704,7 @@ export default class TurnRunner {
             // {§worker-initialization-entry}: archive into named scratch before surveying.
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
-                    op: "COPY", annotation: null,
+                    op: "COPY", aside: null,
                     source: { target: promptPublication.path, metadata: null, lineMarker: null },
                     destination: {
                         target: { kind: "url", raw: `worker://${workerName}/prompts.md`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/prompts.md", query: null, fragment: null },
@@ -733,7 +733,7 @@ export default class TurnRunner {
                         pathname: generatedPathname("/agents.md"), query: null, fragment: null,
                     };
                     const agentsRead: ReadStatement = {
-                        op: "READ", annotation: null, target: agentsTarget,
+                        op: "READ", aside: null, target: agentsTarget,
                         metadata: null, lineMarker: null, body: null, position: UNKNOWN_POSITION,
                     };
                     initializationStatements.push(agentsRead);
@@ -801,7 +801,7 @@ export default class TurnRunner {
                     const pattern = "^(\x60{3,})" + regexLiteral(tag) + targetFilter + "[^\\n]*?(?:\\1|\\n[\\s\\S]*?\\n\\1)$";
                     toolExpansions.push({
                         statement: {
-                            op: "FIND", annotation: null,
+                            op: "FIND", aside: null,
                             target: { kind: "url", raw: `worker:///_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             metadata: null,
                             body: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
@@ -812,7 +812,7 @@ export default class TurnRunner {
                 const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
                     {
                         statement: {
-                            op: "FIND", annotation: null,
+                            op: "FIND", aside: null,
                             target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -820,7 +820,7 @@ export default class TurnRunner {
                     },
                     ...(plurnkCatalog === null ? [] : [{
                         statement: {
-                            op: "FIND", annotation: null,
+                            op: "FIND", aside: null,
                             target: plurnkCatalog,
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -834,7 +834,7 @@ export default class TurnRunner {
                         // PLURNK_MCP_EXPANDED add a second survey of their complete
                         // tool tree.
                         statement: {
-                            op: "FIND", annotation: null,
+                            op: "FIND", aside: null,
                             target: toolsCatalog,
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -846,7 +846,7 @@ export default class TurnRunner {
                         // alias level; each row's summary is the agent's identity line,
                         // the exact card stays pullable through READ a2a://<alias>.
                         statement: {
-                            op: "FIND", annotation: null,
+                            op: "FIND", aside: null,
                             target: { kind: "url", raw: "worker:///_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -856,7 +856,7 @@ export default class TurnRunner {
                         // {§members-projection} — enabled members definitions survey at alias
                         // level; each row's summary is what its glob resolved to.
                         statement: {
-                            op: "FIND", annotation: null,
+                            op: "FIND", aside: null,
                             target: { kind: "url", raw: "worker:///_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -864,7 +864,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", annotation: "project filesystem",
+                            op: "FIND", aside: "project filesystem",
                             target: { kind: "local", raw: "*" },
                             metadata: null,
                             body: null,
@@ -874,7 +874,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", annotation: "workspace entries",
+                            op: "FIND", aside: "workspace entries",
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -882,7 +882,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", annotation: "worker scratch",
+                            op: "FIND", aside: "worker scratch",
                             target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -893,7 +893,7 @@ export default class TurnRunner {
                     this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined));
             }
             const task: DispositionStatement = {
-                op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null,
+                op: "TASK", aside: null, target: null, metadata: null, lineMarker: null,
                 body: [{ content: "Address the prompt.", status: "in_progress" }],
                 position: UNKNOWN_POSITION,
             };
@@ -903,7 +903,7 @@ export default class TurnRunner {
             const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence);
             if (reasoningRead !== null) initializationStatements.push(reasoningRead);
             initializationStatements.push({
-                op: "READ", annotation: "inspect this turn's emission", body: null, metadata: null,
+                op: "READ", aside: "inspect this turn's emission", body: null, metadata: null,
                 target: {
                     kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
                     username: null, password: null, hostname: null, port: null, query: null, fragment: null,
@@ -911,7 +911,7 @@ export default class TurnRunner {
                 lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             });
             if (promptPublication !== null) initializationStatements.push({
-                op: "READ", annotation: "inspect Active Prompt", body: null, metadata: null,
+                op: "READ", aside: "inspect Active Prompt", body: null, metadata: null,
                 target: promptPublication.path, lineMarker: null, position: UNKNOWN_POSITION,
             });
             initializationStatements.push(task);
@@ -1009,7 +1009,7 @@ export default class TurnRunner {
         for (const raw of turnOpenPaths) {
             const pathname = raw.startsWith("/") ? raw : `/${raw}`;
             const fileRead: ReadStatement = {
-                op: "READ", annotation: null, lineMarker: null,
+                op: "READ", aside: null, lineMarker: null,
                 target: {
                     kind: "url", raw: `file://${pathname}`, scheme: "file",
                     username: null, password: null, hostname: null, port: null,

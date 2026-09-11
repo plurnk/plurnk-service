@@ -372,7 +372,7 @@ runtime implementing {§executor-tool-registry}; the consumer resolves it from
 the exact effective tool set, after capability attenuation, so a denied tool
 cannot survive in the family orientation line. The inventory renders as
 one compact executable fence naming `runtime (target|...)`, with the optional
-purpose as a trailing annotation and body line breaks represented by literal `\n`;
+purpose as a trailing aside and body line breaks represented by literal `\n`;
 an authored string remains a description, without expanding its tool inventory.
 The consumer deterministically renders the
 model-facing tool document from either the static invocation or the executor's exact
@@ -459,14 +459,14 @@ I/O boundary rather than making packet assembly perform network discovery.
 directory.** A general runtime's document carries exact H2 `Summary` and
 `Invocation` sections plus its executable witness. Its Summary is that compact
 invocation witness in plain text, with the authored description as an
-operation annotation on its invocation line and a literal `\n` before a
+operation aside on its invocation line and a literal `\n` before a
 one-line body. The bundled subprocess interpreters declare concrete inline-program
 examples; their catalog summaries include the program body without a script target.
 An exact registry instead renders one compact family document whose Summary is
 authored or derived from its effective tools. Its H2 `Tools` contains one
-executable fence per tool, naming the runtime and exact target, with its annotation
+executable fence per tool, naming the runtime and exact target, with its aside
 and input preview. A schema-backed invocation
-links from its annotation to a child document containing the full description and
+links from its aside to a child document containing the full description and
 original input JSON Schema. Non-schema invocations retain their authored witness
 and supplemental details.
 Supplemental `details` follows framework-owned sections and cannot own identity,

@@ -73,7 +73,7 @@ ${source}
                     assert.ok(Number(receipt.logTokens) > 0, "packet accounting includes the complete visible receipt");
                     const recalled = await daemon.engine.look({
                         workspaceId, workerId: run.modelWorkerId!, loopId: run.loopId,
-                        statement: { op: "READ", annotation: null, metadata: null, target: parsePath(String(receipt.path)), lineMarker: { marks: [1, -1] }, body: null, position: { line: 1, column: 0 } },
+                        statement: { op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.path)), lineMarker: { marks: [1, -1] }, body: null, position: { line: 1, column: 0 } },
                     });
                     assert.equal(recalled.status, 200);
                     assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");

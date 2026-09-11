@@ -188,7 +188,7 @@ test("{§binary-parity} a byte range copies out of a worker:// entry exactly (co
 // bytes base64 in TEXT content, and a default READ recovers them as the hex byte view — no byte source
 // handed in, synthesized from the stored content — exactly as a File member's #bytes reads.
 const readStmt = (pathname: string): ReadStatement => ({
-    metadata: null, op: "READ", annotation: null,
+    metadata: null, op: "READ", aside: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -237,7 +237,7 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
 // FIND treats a binary entry as bytes, never as its base64 text: a byte run in the entry's bytes is
 // found, and a text search over the workspace is never poisoned into matching a binary's base64.
 const findBody = (raw: string, pattern: string): FindStatement => ({
-    metadata: null, op: "FIND", annotation: null,
+    metadata: null, op: "FIND", aside: null,
     target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: null, body: { dialect: "regex", raw, pattern, flags: "" }, position: { line: 1, column: 1 },
 });

@@ -171,7 +171,7 @@ test("{§scheme-catalog-parse-issues} catalog quietly marks parser recovery with
     } finally { await db.close(); }
 });
 
-test("{§scheme-catalog-summary} catalog projects a bounded summary on only its exact markdown channel", async () => {
+test("{§scheme-catalog-aside} catalog projects a bounded aside on only its exact markdown channel", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-summary-${crypto.randomUUID()}`);
@@ -200,9 +200,9 @@ test("{§scheme-catalog-summary} catalog projects a bounded summary on only its 
 
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
         const tool = catalog.find(([channel]) => channel.path === "worker:///tool.md");
-        assert.equal([...tool![0].summary!].length, 256);
-        assert.equal(tool![0].summary, `${"x".repeat(255)}…`);
-        assert.equal("summary" in tool![1]!, false, "one channel's summary never labels a sibling channel");
+        assert.equal([...tool![0].aside!].length, 256);
+        assert.equal(tool![0].aside, `${"x".repeat(255)}…`);
+        assert.equal("aside" in tool![1]!, false, "one channel's aside never labels a sibling channel");
     } finally { await db.close(); }
 });
 

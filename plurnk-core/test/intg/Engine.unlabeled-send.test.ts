@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
-const verifyLiteralSends = async (annotation: string | null): Promise<void> => {
+const verifyLiteralSends = async (aside: string | null): Promise<void> => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unlabeled-${crypto.randomUUID()}`);
@@ -26,7 +26,7 @@ const verifyLiteralSends = async (annotation: string | null): Promise<void> => {
         ];
         const source = [
             "Do not execute these examples:",
-            ...bodies.map((body) => `\`\`\`\`${annotation === null ? "" : ` <!-- ${annotation} -->`}\n${body}\n\`\`\`\``),
+            ...bodies.map((body) => `\`\`\`\`${aside === null ? "" : ` <!-- ${aside} -->`}\n${body}\n\`\`\`\``),
             PlurnkParser.frame("TASK", '[{"content":"Show the examples.","status":"completed"}]'),
         ].join("\n\n");
         const result = await engine.runLoop({
@@ -44,7 +44,7 @@ const verifyLiteralSends = async (annotation: string | null): Promise<void> => {
         const modelRows = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "SEND", "SEND", "TASK"]);
         const sends = modelRows.filter(({ op }) => op === "SEND");
-        assert.deepEqual(sends.map(({ tx }) => JSON.parse(tx).annotation), bodies.map(() => annotation));
+        assert.deepEqual(sends.map(({ tx }) => JSON.parse(tx).aside), bodies.map(() => aside));
         assert.deepEqual(sends.map(({ tx, status_rx }) => ({ body: JSON.parse(tx).body.raw, target: JSON.parse(tx).target, status: status_rx })),
             bodies.map((body) => ({ body, target: null, status: 200 })));
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
@@ -56,6 +56,6 @@ const verifyLiteralSends = async (annotation: string | null): Promise<void> => {
     } finally { await db.close(); }
 };
 
-for (const annotation of [null, "literal examples"]) {
-    test(`{§unlabeled-fence-send}: model examples (${annotation ?? "unannotated"}) are delivered as SENDs without effects or warnings and /ops stays exact`, () => verifyLiteralSends(annotation));
+for (const aside of [null, "literal examples"]) {
+    test(`{§unlabeled-fence-send}: model examples (${aside ?? "no aside"}) are delivered as SENDs without effects or warnings and /ops stays exact`, () => verifyLiteralSends(aside));
 }

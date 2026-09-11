@@ -16,9 +16,9 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
+const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; aside?: string | null }): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: opts.annotation ?? null,
+    op: "EDIT", aside: opts.aside ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
@@ -27,7 +27,7 @@ const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: Tex
 
 const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null,
+    op: "READ", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: null,
@@ -36,7 +36,7 @@ const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker
 
 const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; body?: MatcherBody | null }): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null,
+    op: "KILL", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
@@ -45,7 +45,7 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; bo
 
 const continuationStmt = (opts: { body?: string | null }): DispositionStatement => ({
     metadata: null,
-    op: "TASK", annotation: null,
+    op: "TASK", aside: null,
     target: null,
     lineMarker: null,
     body: PlanValue.admit(opts.body ?? "Continue the task."),
@@ -102,7 +102,7 @@ test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: the KILL body annotation survives into the log row's tx (even on a 404)", async () => {
+test("Engine.dispatch: the KILL body aside survives into the log row's tx (even on a 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -117,21 +117,21 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
     } finally { await db.close(); }
 });
 
-test("{§operation-annotation}: the descriptive annotation survives durable dispatch unchanged", async () => {
+test("{§operation-aside}: the descriptive aside survives durable dispatch unchanged", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt({
                 target: urlPath("worker", "/annotated"),
                 body: "content",
-                annotation: "Create the shared note",
+                aside: "Create the shared note",
             }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{ tx: string }>({ turn_id: env.turnId });
-        if (log === undefined) throw new Error("annotated EDIT log_entry not found");
-        const tx = JSON.parse(log.tx) as { annotation: unknown };
-        assert.equal(tx.annotation, "Create the shared note");
+        if (log === undefined) throw new Error("EDIT with an aside: log_entry not found");
+        const tx = JSON.parse(log.tx) as { aside: unknown };
+        assert.equal(tx.aside, "Create the shared note");
     } finally { await db.close(); }
 });
 
@@ -747,7 +747,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     try {
         const stmt: EditStatement = {
             metadata: null,
-            op: "EDIT", annotation: null, target: null, lineMarker: null, body: "y",
+            op: "EDIT", aside: null, target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -937,7 +937,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { metadata: null, op: "SEND", annotation: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "SEND", aside: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -1024,7 +1024,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                op: "COPY", annotation: null,
+                op: "COPY", aside: null,
                 source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null },
                 destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null },
                 position: { line: 1, column: 1 },

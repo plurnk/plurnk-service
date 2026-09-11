@@ -51,7 +51,7 @@ interface ActionTarget {
 // The durable statement supplies operand identity and bodies without asking the
 // packet mirror to re-serialize the model's complete emission tag.
 interface StatementTx {
-    annotation?: unknown;
+    aside?: unknown;
     target?: ActionTarget | null;
     lineMarker?: unknown;
     source?: {
@@ -373,7 +373,7 @@ export default class PacketWire {
     static #canonicalJson(obj: Record<string, unknown>): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};
-        for (const key of ["target", "annotation"]) {
+        for (const key of ["target", "aside"]) {
             if (Object.hasOwn(obj, key)) sorted[key] = obj[key];
         }
         for (const k of keys) sorted[k] = obj[k];
@@ -720,7 +720,7 @@ export default class PacketWire {
             // ({§log-kill-meta-operation}).
             if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
-            if (typeof tx?.annotation === "string") meta.annotation = tx.annotation;
+            if (typeof tx?.aside === "string") meta.aside = tx.aside;
             const target = PacketWire.#renderActionTarget(e.target);
             // {§exec-stream}: a terminal stream observation's address is the stream it observed,
             // rendered under `stream` like the invocation's own link — never a `target`, which

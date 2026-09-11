@@ -29,7 +29,7 @@ const execFileP = promisify(execFile);
 const okSend = (): MockResponse => ({
     assistant: {
         content: "",
-        ops: [{ op: "TASK", annotation: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Observed.", status: "completed" }], position: { line: 1, column: 1 } } as DispositionStatement],
+        ops: [{ op: "TASK", aside: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Observed.", status: "completed" }], position: { line: 1, column: 1 } } as DispositionStatement],
         reasoning: null,
     },
 });
@@ -84,7 +84,7 @@ const workerPath = (authority: string, pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, target, lineMarker: null, body,
+    op: "EDIT", aside: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 test("a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {

@@ -44,7 +44,7 @@ const statement = (
     return {
         metadata: null,
         op: "READ",
-        annotation: null,
+        aside: null,
         target,
         lineMarker,
         body: null,
@@ -77,7 +77,7 @@ const readablePdf = () => new Uint8Array(Buffer.from(
 const emptyStatement = (): ReadStatement => ({
     metadata: null,
     op: "READ",
-    annotation: null,
+    aside: null,
     target: {
         kind: "url",
         raw: "https://93.184.216.34/empty",
@@ -98,7 +98,7 @@ const emptyStatement = (): ReadStatement => ({
 const legacyTextStatement = (): ReadStatement => ({
     metadata: null,
     op: "READ",
-    annotation: null,
+    aside: null,
     target: {
         kind: "url",
         raw: "https://93.184.216.34/legacy.txt",

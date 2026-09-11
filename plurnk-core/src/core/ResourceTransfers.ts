@@ -677,7 +677,7 @@ export default class ResourceTransfers {
         }
         const statements: ResolvedEditStatement[] = edits.map(({ marker, body, position }) => ({
             op: "EDIT",
-            annotation: null,
+            aside: null,
             signal: null,
             target: selection.target,
             metadata: selection.metadata,
