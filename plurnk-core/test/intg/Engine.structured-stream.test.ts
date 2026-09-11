@@ -147,7 +147,7 @@ test("application/jsonl publishes nothing while active; its records arrive once,
     const fixture = await setup("application/jsonl", '{"n":1}\n{"n":');
     try {
         const active = await fixture.runTurn();
-        assert.deepEqual(await structuredRows(fixture.db, active.turnId), [], "an active stream enters the Log only as its Child Streams pointer");
+        assert.deepEqual(await structuredRows(fixture.db, active.turnId), [], "an active stream enters the Log only as its Delegation stream pointer");
 
         await close(fixture, "2}\n");
 
@@ -170,7 +170,7 @@ test("an active text channel publishes nothing; its content arrives once, at clo
     const fixture = await setup("text/plain; charset=utf-8", "event one\n");
     try {
         const active = await fixture.runTurn();
-        assert.deepEqual(await structuredRows(fixture.db, active.turnId), [], "an active stream enters the Log only as its Child Streams pointer");
+        assert.deepEqual(await structuredRows(fixture.db, active.turnId), [], "an active stream enters the Log only as its Delegation stream pointer");
 
         await close(fixture, "event two\n");
 

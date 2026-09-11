@@ -7,7 +7,7 @@ SELECT status, wait_revision FROM loops WHERE id = $loop_id;
 -- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
 -- like an open stream. DONE while one exists is premature completion ({§send-premature-terminate}).
 -- Live = a child with ANY unresolved loop (100/102/202) — the SAME definition
--- engine_child_workers_live uses for the Active Child Workers orientation, so the 409 gate and the section the model
+-- engine_child_workers_live uses for the Delegation workers orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
 -- ({§child-orientation}). Administrative loops may interleave with model loops, so newest-loop
 -- inference is not a valid worker-liveness test.
@@ -416,7 +416,7 @@ ORDER BY s.id, ec.name;
 -- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
 -- the channel; source links an EXEC observation to its causal invocation;
 -- attrs.streamEnd is the next turn's cursor. Only terminal observations
--- materialize here, initially visible; active progress stays in Child Streams. {§exec-stream}
+-- materialize here, initially visible; active progress stays in the Delegation streams list. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     subscription_publication_id,
@@ -429,7 +429,7 @@ INSERT INTO log_entries (
 
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — any loop non-terminal (100 pending / 102 processing / 202 parked).
--- Powers the Active Child Workers orienting section ({§child-orientation}): terse `* <status> worker://<name>`
+-- Powers the Delegation workers list ({§child-orientation}): terse `* <status> worker://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
 SELECT r.name,
@@ -458,7 +458,7 @@ WHERE c.id = $worker_id;
 
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
--- size and the size last reported to the model (the publication cursor). Powers the Child Streams
+-- size and the size last reported to the model (the publication cursor). Powers the Delegation streams
 -- orienting section ({§child-orientation}): `* active <runtime>:///<coord> — <channel> N lines (+D)`
 -- pointers the model READs/KILLs. Nothing else reaches the model while a stream is active
 -- ({§exec-stream}). Empty → section omitted.
@@ -474,7 +474,7 @@ ORDER BY e.pathname, ec.name;
 
 -- PREP: engine_stream_reported
 -- {§child-orientation} — the publication cursor now records the size last reported to the
--- model by the Child Streams pointer, so the next packet can say how much the stream grew.
+-- model by the Delegation stream pointer, so the next packet can say how much the stream grew.
 UPDATE subscription_publications SET published_end = $reported
 WHERE id = $publication_id AND published_end < $reported;
 

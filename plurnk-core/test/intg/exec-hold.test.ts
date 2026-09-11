@@ -59,7 +59,7 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
 
 const streamsSection = (packetJson: string): string => {
     const p = JSON.parse(packetJson) as { sections?: Array<{ name: string; content: string }> };
-    return p.sections?.find((s) => s.name === "child-streams")?.content ?? "";
+    return p.sections?.find((s) => s.name === "delegation")?.content ?? "";
 };
 
 const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read" | "host" | "pure" = "pure", holdSuffix?: string) => {

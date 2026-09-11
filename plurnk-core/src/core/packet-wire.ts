@@ -209,19 +209,23 @@ export default class PacketWire {
         }).join("\n");
     }
 
-    // The Child Streams / Active Child Workers sections ({§child-orientation}) — the OPPOSITE of advice: terse
-    // `{status, path}` JSON pointers (same shape as the errors section) to the live things the worker holds,
-    // so the model SEES its active streams + unconcluded workers each turn and reasons for itself (READ /
-    // KILL via the path). Orienting state, never an instruction. "" when none → section omitted,
-    // unless `always`: the child-orientation sections state emptiness as `[]` ({§packet-empty-sections}).
-    static renderChildPointers(rows: unknown, always = false): string {
+    // The Delegation section ({§child-orientation}) — the OPPOSITE of advice: terse `{status, path}`
+    // JSON pointers (same shape as the errors section) to the live things the worker holds, under the
+    // word the teaching uses for handing work out: its unconcluded workers and its open streams. The
+    // model SEES them each turn and reasons for itself (READ / SEND / KILL via the path). Orienting
+    // state, never an instruction; both lists render every turn, `[]` when empty ({§packet-empty-sections}).
+    static renderDelegation(workers: unknown, streams: unknown): string {
+        return `{"workers":${PacketWire.#pointers(workers)},\n"streams":${PacketWire.#pointers(streams)}}`;
+    }
+
+    static #pointers(rows: unknown): string {
         const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown; detail?: unknown }>) : [];
         const pointers = items.map((r) => JSON.stringify({
             status: r.status,
             path: r.path,
             ...(typeof r.detail === "string" && r.detail.length > 0 ? { detail: r.detail } : {}),
         }));
-        return pointers.length === 0 ? (always ? "[]" : "") : `[${pointers.join(",\n")}]`;
+        return pointers.length === 0 ? "[]" : `[${pointers.join(",\n")}]`;
     }
 
     // The git section content: the working-tree summary. "" when absent.

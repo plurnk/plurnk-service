@@ -1,4 +1,4 @@
-// {§exec-stream} {§exec-stream-page} — an active stream reaches the model only as a Child Streams
+// {§exec-stream} {§exec-stream-page} — an active stream reaches the model only as a Delegation stream
 // pointer with its size and growth; at close, ONE foisted READ that is exactly a markerless READ:
 // the first page, the extent, the terminal status. The channel keeps every line for a scoped READ.
 
@@ -74,7 +74,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     }));
 });
 
-test("an active stream reaches the model only as a Child Streams pointer with its size and growth", async () => {
+test("an active stream reaches the model only as a Delegation stream pointer with its size and growth", async () => {
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
@@ -92,7 +92,7 @@ test("an active stream reaches the model only as a Child Streams pointer with it
             assert.equal(finalStatus, 200);
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
-            const pointers = packetSection(packet, "child-streams");
+            const pointers = packetSection(packet, "delegation");
             assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");

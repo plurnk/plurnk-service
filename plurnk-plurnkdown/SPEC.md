@@ -36,9 +36,9 @@ flowchart LR
     subgraph user[user slot]
         direction LR
         worker["Worker"] --> log["Log"]
-        log --> streams["Child Streams"]
-        streams --> workers["Active Child Workers"]
-        workers --> errors["Errors"]
+        log --> turn["Turn"]
+        turn --> delegation["Delegation"]
+        delegation --> errors["Errors"]
         errors --> notices["Notices"]
         notices --> git["Git Status"]
         git --> budget["Context Curation"]
@@ -54,8 +54,8 @@ flowchart LR
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
 | `worker`              | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `date`, `timezone` | {§packet-cache-monotone} |
 | `log`                 | user   | Markdown H3 records with JSON metadata        | {§log-wire-format}              |
-| `child-streams`       | user   | JSON status/path pointers, `[]` when empty    | {§child-orientation}            |
-| `child-workers`       | user   | JSON status/path pointers, `[]` when empty    | {§child-orientation}            |
+| `turn`                | user   | JSON `{loop, turn}` coordinate of this response | {§packet-current-turn}        |
+| `delegation`          | user   | JSON `{workers, streams}` status/path pointers, each `[]` when empty | {§child-orientation} |
 | `errors`              | user   | JSON status/log-path pointers                 | {§operation-results}            |
 | `notices`             | user   | Terse observation bullets                     | {§notice-drain-on-read}         |
 | `git`                 | user   | Working-tree state in a NOTE blockquote       | {§packet-cache-monotone}        |

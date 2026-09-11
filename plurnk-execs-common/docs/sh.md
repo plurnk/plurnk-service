@@ -46,8 +46,9 @@ target that is not a script is refused before anything runs.
 Every shell invocation is host-effecting and proposes for review before it
 runs. Output then streams under the receipt's `stream` address, such as
 `sh:///ab3d5678`: `#stdout` is the default channel and
-`#stderr` is the second; both are `text/stream`. While it runs, Child Streams
-reports each channel's size and growth and READ can inspect any range. On
+`#stderr` is the second; both are `text/stream`. While it runs, the packet's
+`## Delegation` streams list reports each channel's size and growth and READ can
+inspect any range. On
 completion, the harness adds one `_plurnk` READ per channel: its first page
 (up to 16 lines), `range` extent, and terminal exit status. READ the `stream`
 address for more; the `log:///…/READ` item holds only its recorded page:

@@ -714,18 +714,20 @@ EXEC git — never engine machinery.
   outcome or a wait rather than guessing a scratch path to "check on" it.
 - §child-orientation **Child orientation.** Beyond the conclusion delta, every
   turn the packet's status clump surfaces the live things this worker currently
-  holds — open streams (`## Child Streams`) and unconcluded child workers
-  (`## Active Child Workers`) — as `{status, path}` JSON pointers (the same
-  shape as the errors section), just above it. Body-suppressed child activity is durable
-  history; this clump is the current inventory that keeps an active obligation
+  holds under the teaching's own word for handing work out: `## Delegation` is
+  one JSON object, `{"workers": [...], "streams": [...]}`, its unconcluded child
+  workers and its open streams as `{status, path}` pointers (the same shape as
+  the errors section), just above it. Body-suppressed child activity is durable
+  history; this section is the current inventory that keeps an active obligation
   visible even when no new activity arrived. Each open stream pointer carries
-  its channels' sizes and growth since the last packet (`* active
-  sh:///1/2/3/sh — stdout 340 lines (+2048 bytes)`) — the only thing the model
-  learns about a stream before it closes ({§exec-stream}). It is orienting state, never
-  advice: the model sees its live subtree (`* 102 worker://worker-x`, `* active
-  sh:///1/2/3/sh`) and reasons for itself — READ/KILL via the path.
+  its channels' sizes and growth since the last packet in `detail`
+  (`{"status":"active","path":"sh:///1/2/3/sh","detail":"stdout 340 lines (+2048 bytes)"}`)
+  — the only thing the model learns about a stream before it closes
+  ({§exec-stream}). It is orienting state, never advice: the model sees its live
+  subtree (`{"status":102,"path":"worker://worker-x"}`) and reasons for itself —
+  READ, SEND, or KILL via the path.
 - §packet-empty-sections **Emptiness is stated where the model decides on it.**
-  Both child-orientation sections render every turn, `[]` when empty: the
+  `## Delegation` renders every turn, each of its two lists `[]` when empty: the
   model decides whether to wait or complete on exactly these facts, so their
   emptiness is stated rather than inferred from a missing heading. This is the
   deliberate exception to the wire rule that empty content is absent; errors,
@@ -2601,7 +2603,7 @@ two states and no others:
 
 | state | what the model receives |
 |---|---|
-| active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
+| active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
 | terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/<runtime>` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
@@ -2632,7 +2634,7 @@ records stop at the last complete line that fits, or at an exact Unicode region
 when even the first line exceeds the character bound. Explicit READ scopes stay exact.
 
 The durable per-subscription, per-channel cursor records the size last reported
-to the model — by the Child Streams pointer while active, by the terminal
+to the model — by the Delegation stream pointer while active, by the terminal
 observation at close — so the pointer can state growth and no partial document
 or record ever reaches the model. The terminal observation and its cursor
 transition commit atomically; a terminal state with an empty channel still
@@ -3752,14 +3754,13 @@ Conditional absence never reorders the surviving default sections.
 |     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`, its `parent` address or `null`, and the daemon's calendar `date` with its IANA `timezone` ({§packet-current-date}). |
 |     5 | user   | `log`                 | Append-mostly model-visible history. |
 |     6 | user   | `turn`                | `Turn`: `{"loop": L, "turn": T}`, the coordinate this packet's response becomes ({§packet-current-turn}). |
-|     7 | user   | `child-streams`        | Per-turn status; always present, `[]` when empty ({§packet-empty-sections}). |
-|     8 | user   | `child-workers`       | Per-turn status; always present, `[]` when empty ({§packet-empty-sections}). |
-|     9 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|    10 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    11 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    12 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
-|    13 | user   | `prompt`              | Current prompt-entry pointers. |
-|    14 | user   | `recap`               | Optional authored operational recap. |
+|     7 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
+|     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|     9 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    10 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    11 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
+|    12 | user   | `prompt`              | Current prompt-entry pointers. |
+|    13 | user   | `recap`               | Optional authored operational recap. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly

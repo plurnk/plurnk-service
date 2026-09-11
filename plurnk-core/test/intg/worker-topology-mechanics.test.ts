@@ -1,6 +1,6 @@
 // Core worker-topology mechanics at the integration level — fork IDENTITY and the premature-terminate
 // LIVENESS contract. These are the seams the fanout demo broke on (forks colliding on one name, forks
-// inheriting a frozen-live loop, the 409 gate disagreeing with the Active Child Workers orientation). Guarded
+// inheriting a frozen-live loop, the 409 gate disagreeing with the Delegation orientation). Guarded
 // here so they can't reach a real-model tier half-baked again.
 
 import test from "node:test";

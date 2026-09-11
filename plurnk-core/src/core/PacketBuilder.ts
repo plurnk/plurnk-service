@@ -371,10 +371,10 @@ export default class PacketBuilder {
             // sources cannot state about themselves — which `reasoning:///L/T` is the model's own.
             { name: "turn", slot: "user", header: "Turn", content: JSON.stringify({ loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
-            // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
-            // pointers (the path is the actionable address the model READs or KILLs), never advice. {§child-orientation}
-            { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams, true) },
-            { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers, true) },
+            // child-orientation: what this worker holds live — its child workers and its open streams — under
+            // the teaching's own word, just above errors. Terse pointers (the path is the actionable address
+            // the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
+            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },

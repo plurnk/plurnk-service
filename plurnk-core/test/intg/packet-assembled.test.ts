@@ -60,7 +60,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         assert.equal(receipts.length, 2);
         const names = await Promise.all(children.map(async (id) => (await db.fork_get_worker.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
-        const pointers = packetSection(packet, "child-workers");
+        const pointers = packetSection(packet, "delegation");
         for (const [index, name] of names.entries()) {
             assert.match(name, /^[a-f0-9]{8}$/);
             assert.equal(receipts[index]?.worker, `worker://${name}`, "the outcome address is visible beside the spawning operation");
@@ -383,7 +383,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["worker", "log", "turn", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: worker -> log -> turn -> status clump -> active prompt paths -> Recap");
+        assert.deepEqual(slot("user"), ["worker", "log", "turn", "delegation", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: worker -> log -> turn -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active Prompts");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
@@ -516,16 +516,17 @@ test("the live things a worker holds — child workers — surface as terse poin
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        // The live child surfaces as a terse `* <status> worker://<name>` pointer — orienting state, not advice.
-        assert.match(packetSection(packet, "child-workers"), /"status":102,"path":"worker:\/\/worker-x"/, "the live child worker is a status+path pointer the model READs/KILLs itself");
+        // The live child surfaces as a terse status+path pointer under `workers` — orienting state, not advice.
+        assert.match(packetSection(packet, "delegation"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
+        assert.equal(packet.sections.find((section) => section.name === "delegation")?.header, "Delegation", "the section carries the teaching's word");
         // Framework status in the user slot's clump ({§packet-cache-monotone}), above budget-the-law.
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
-        assert.ok(usr.includes("child-workers"), "child-workers rides the status clump");
-        assert.ok(usr.indexOf("log") < usr.indexOf("child-workers") && usr.indexOf("child-workers") < usr.indexOf("budget"), "the clump sits after the log, child-workers above budget-the-law");
+        assert.ok(usr.includes("delegation"), "delegation rides the status clump");
+        assert.ok(usr.indexOf("log") < usr.indexOf("delegation") && usr.indexOf("delegation") < usr.indexOf("budget"), "the clump sits after the log, delegation above budget-the-law");
     } finally { await db.close(); }
 });
 
-test("no live children or streams → the orientation sections are omitted (like errors)", async () => {
+test("no live children or streams → Delegation states both as empty", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);
@@ -534,11 +535,10 @@ test("no live children or streams → the orientation sections are omitted (like
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        // {§packet-empty-sections} — the two child-orientation sections state emptiness as `[]`: the model
+        // {§packet-empty-sections} — Delegation states emptiness as `[]` for both lists: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "child-workers"), "[]", "no live child workers → child-workers states []");
-        assert.equal(packetSection(packet, "child-streams"), "[]", "no open streams → child-streams states []");
+        assert.equal(packetSection(packet, "delegation"), '{"workers":[],\n"streams":[]}', "no live children and no open streams → both lists state []");
     } finally { await db.close(); }
 });
 
