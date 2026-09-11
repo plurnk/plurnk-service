@@ -1768,6 +1768,31 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   coordinates, the shared entry mutation owner rechecks selected endpoint
   neighborhoods against its exact snapshot, and atomic identity/channel claims
   and storage predicates close the remaining races.
+- §edit-pattern **A pattern replaces every selected span with the literal body.**
+  ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under
+  the channel's own mimetype, matches, and expands into one atomic batch
+  ({§edit-batch}) of four-coordinate splices, all relative to the same original
+  content: a regex span is its evidence region; a literal (a glob without
+  metacharacters) is each of its occurrences on every matched line; a glob with
+  metacharacters is the whole matched line; a node dialect's span (`//` xpath,
+  `$` jsonpath) is the node's whole region as its handler reports it, across as
+  many lines as the node spans, so ```` ```EDIT (books.xml) [{"pattern":
+  "//book[price > 35]"}] ```` replaces each such element and an empty body
+  removes it. The body is literal replacement text, never a template; an absent
+  body deletes the spans and leaves their lines. A regex anchors each line (`^`,
+  `$`) and a regex span never crosses a line break — a match that would is
+  refused before any change (400 `pattern-span-invalid`). A numeric scope bounds the lines
+  a pattern may touch; `<0>` and `<-1>` name positions, not lines, and are refused
+  (400 `pattern-scope-invalid`). Every touched line's anchor guards the batch as a
+  precondition, so a same-turn change to one of them is the ordinary
+  {§edit-collision}. Zero matches change nothing: 204 with `matched: 0`, never a
+  clobber. The result is one operation receipt: `matched` spans, `receipt` for the
+  first splice ({§edit-result-receipt-projection}), and `last` beside it for the
+  final one when there were several. Resource-selecting dialects (`~`, `&`)
+  name no spans: 400 `pattern-dialect-unsupported`. A scheme without textual EDIT scopes refuses the
+  pattern before any read (400 `pattern-unsupported`). Same-turn anchor continuity
+  ({§edit-anchor-continuity}) does not carry through a pattern batch; the next
+  anchored EDIT validates against current state.
 
 A `file:///` member EDIT diverges from this immediate-write contract: it diffs against the entry snapshot (the body channel, never a fresh disk read) and **proposes** (202) a disk write that lands via a compare-and-swap on accept. See {§membership-edit-write-cas} and the proposal lifecycle {§proposal}. The marker-required rule above applies identically here — an existing file is never markerlessly replaced.
 
@@ -1789,7 +1814,24 @@ selection or fan-out path.
   the shared bounded preview ({§body-projection}); `<1,-1>` explicitly selects all text. Successful positional reads
   carry the compact requested/returned extent and available total
   ({§range-extent}). Anchors resolve under {§line-anchors} before selection. An
-  invalid text region is 416.
+  invalid text region is 416. A positional slice reads as the text primitive;
+  when that differs from the channel's own mimetype the result names the
+  channel's as `sourceMimetype`, so a consumer can still run the channel's
+  handlers over a whole-resource `<1,-1>` read.
+- §read-pattern **A pattern selects the lines a READ renders.** With a heading
+  matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
+  READ: the matcher runs over the channel's text line by line — a regex anchors
+  each line, so `^` and `$` are the line's ends — and every line a match touches,
+  in source order, is the visible selection. The scope still bounds it: a scoped
+  READ renders exactly the selected lines the scope holds; a whole-resource one
+  pages through the selected lines under the ordinary preview bound, never showing
+  an unselected line. Selected lines keep their physical ordinals and their
+  ordinary anchors, so a pattern READ is a coordinate source for EDIT and KILL. The
+  result carries `matched`, the count of selected lines inside the scope. Zero
+  matches is an empty read (204, `matched: 0`), never a failure. A full-text
+  (`~`) or graph (`&`) pattern selects resources, not lines: 400
+  `pattern-dialect-unsupported`; a matcher its mimetype cannot run answers the
+  matcher's own 415/400 ({§matcher-dispatch}).
 - §read-bytes A binary channel with no readable projection, and the `#bytes` view of
   any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
   octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
@@ -1871,9 +1913,9 @@ streaming are independent. No later turn automatically requests reasoning.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 
-AST: `{ op: "KILL", target, body: MatcherBody | null, lineMarker: TextLineMarker | null }` ({§kill-scope} in the contracts SPEC owns the grammar).
+AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMarker | null, body: null }` ({§kill-scope} and {§matcher-option} in the contracts SPEC own the grammar).
 
-KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional matcher body ({§log-curation-set-selection}); a targetless KILL is 400.
+KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}); a targetless KILL is 400.
 
 A READ carrying active native media is atomic: any KILL scope is ignored and the entire observation is retired, including its native context contribution ({§packet-attachment-parts}). For a model turn, native activity is the attachment selection in its actual input packet; without a model packet, a native observation is atomic by default. Text-only observations in the same selection retain ordinary scoped behavior. Neither form deletes source data or forensic evidence.
 
@@ -1950,6 +1992,12 @@ The packet projects one actionable owner for each retrieval fact:
 | catalog/path FIND | compact `resource` range | none | none |
 | broad matcher FIND | compact `resource` range | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
 | exact matcher FIND | compact `matchLocation` range | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
+| pattern READ ({§read-pattern}) | compact `line` range over the physical lines | the selected lines with their ordinals and anchors | `matcher` and `matched`, the selected line count |
+
+Any row whose statement carried a heading pattern ({§matcher-option}) names it as
+`matcher`, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
+{§copy-move-pattern}) carries its `matched` count beside its receipt, so a
+digest can show what a pattern selected and how much it touched.
 
 The compact range is `{ unit, total, requested: [first,last], returned?:
 [first,last] }` ({§range-extent}); empty results omit `returned`. An empty result
@@ -1986,7 +2034,7 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 - §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (worker:///docs/) ````. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: the native operation name or invoked executor name, `/attempt` for a rejected emission. An executor leaf is derived from the durable submitted statement (`executor`, default `sh`), never the internal `EXEC` dispatch type or the current tool registry. Digits and punctuation in executor names remain part of the leaf. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. READ anchors use the canonical suffixed identity even when addressed by shorthand. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/python3`, and `log:///**/attempt` deliberately filter canonical leaves. An executor's output stream lives at that same item address under its runtime scheme — `sh:///1/2/3/sh#stdout` — so one `loop/turn/item/invocation` schema addresses log rows and streams. Error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple. Within a turn, sequence is arrival order, and the turn's prompt rows arrive first: the prompt publication row and any injected prompt rows are materialized before the program runs, so a turn that received a prompt holds it at `log:///L/T/1/prompt` (further prompts follow, oldest first) and the model's own operations come after — a contract, not an accident of dispatch order ({§packet-current-turn} names `L/T`).
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
-- §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional body matcher compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
+- §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional heading pattern (```` ```KILL (log:///**) [{"pattern": "~stale"}] ````, every dialect a FIND over rows accepts) compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
 §log-kill-meta-operation **A log KILL changes working context, never the underlying resources or execution history.** Receipt visibility depends on the target and result, not the producer, attribution, or age of the turn:
 
@@ -2028,6 +2076,24 @@ AST operands: `{ op: "COPY", source: ResourceSelection, destination: ResourceSel
    channel is 404. Entry sources follow {§membership-source-projection}; active
    log sources follow {§log-readable-projection}. Binary sources transfer bytes
    under {§binary-parity}; text anchors resolve under {§line-anchors}.
+   - §copy-move-pattern **A source pattern selects whole matching lines; a
+     destination is a place.** A source operand's heading pattern
+     (```` ```COPY (notes.md) [{"pattern": "TODO"}] (todos.md) <-1> ````) runs
+     over the source text line by line, bounded by the source scope and by what
+     the source shows ({§log-readable-projection}); the selection is every line a
+     match touches, in source order, each with its own line separator exactly as
+     a scoped whole-line selection carries it. The result reports `matched`. Zero
+     matches transfer nothing: 204 with `matched: 0`, and no destination is
+     created. A MOVE retires exactly the selected lines through the source's EDIT
+     path, one empty-body line splice per line in one batch guarded by their
+     anchors ({§edit-pattern}); within one channel the insertion and the removals
+     are one atomic batch, and a deferred MOVE ({§proposal}) retires the same
+     lines after acceptance. A curated source retires rows, not lines of its
+     projection, so a pattern MOVE from `log:///` is 400 `pattern-unsupported`
+     (COPY the lines, then KILL its rows by pattern); a pattern on a binary
+     channel is 400 `pattern-unsupported` (bytes have no lines); a pattern on
+     the destination is 400 `pattern-destination-unsupported`; resource-selecting
+     dialects (`~`, `&`) are 400 `pattern-dialect-unsupported`.
 2. Resolve destination path, channel, and optional text scope. Source and
    destination mimetypes must be compatible under {§mimetype-verbatim-transfer}
    or the result is 415. Destination anchors
@@ -4934,7 +5000,7 @@ Carried from the contract walk; durable.
   {§copy-move-observation}.
 - **READ rx** prefixes every textual line under {§render-rule}; eligible
   editable resources carry `@hash N:`, and all others carry `N:`.
-- **FIND body matcher** applies to the addressed entry channel (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope and channel select candidates; the path-glob is the (target).
+- **FIND pattern** (`[{"pattern": …}]` in the heading, {§matcher-option}) applies to the addressed entry channel (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope and channel select candidates; the path-glob is the (target). On READ, EDIT, KILL, COPY and MOVE the same heading pattern selects lines within one resource ({§read-pattern}, {§edit-pattern}, {§kill-pattern}, {§copy-move-pattern}).
 - **Scoped KILL** on the **log** (`log:///`) removes a body span from its readable projection ({§log-kill-scope}); on an entry it deletes that span through the EDIT path ({§kill-scope-entry}). A whole-entry KILL deletes the entry, or one `#fragment` channel.
 - **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary sources materialize through {§membership-source-projection}; projected bodies are READ-able, while source-aware EDIT remains 415.
 
@@ -4942,4 +5008,4 @@ Carried from the contract walk; durable.
 
 A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. Its packet metadata and canonical log body use {§edit-result-receipt-projection}. ```` ```EDIT (path) <scope> ```` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
-A body pattern on an entry KILL is refused (400 `kill-body-log-only`): body patterns select log items ({§log-kill-scope}), and a selector core does not apply is never silently dropped, so a scoped entry KILL can never widen to its whole span. The refusal identifies the unsupported body without requiring a scope or presuming whole-entry deletion.
+§kill-pattern **A pattern on an entry KILL deletes each matching line.** ```` ```KILL (path) [{"pattern": "beta"}] ```` takes the same EDIT path as a scoped KILL, expanded under {§edit-pattern} in whole lines: the resource is read once, the matcher runs line by line, and every line a match touches becomes one empty-body line splice in one atomic batch guarded by those lines' anchors. A numeric scope bounds the lines the pattern may touch. Zero matches change nothing (204, `matched: 0`); a whole-entry KILL never widens from a pattern that selected nothing. The receipt is the EDIT path's, compacted the same way: `matched` lines, the first deletion's `receipt` with its `removedText` ({§edit-receipt-removed-text}), and `last` for the final one. Node-selecting patterns (`//`, `$`) select whole lines here, as they name nodes with line extents; resource-selecting ones (`~`, `&`) are refused (400 `pattern-dialect-unsupported`). The log stays the exception: a pattern on `log:///` selects rows ({§log-curation-set-selection}), and a stream scheme's KILL is process control, so a pattern there is 400 `kill-pattern-unsupported`.

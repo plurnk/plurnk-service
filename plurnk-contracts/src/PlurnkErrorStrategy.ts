@@ -160,7 +160,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             const prior = stream.get(i);
             if (prior.line !== tok.line) return null;
             if (prior.type === plurnkParser.RPAREN) {
-                return { at: tok, message: "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading" };
+                return { at: tok, message: 'a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{"pattern": "…"}]`' };
             }
         }
         return null;

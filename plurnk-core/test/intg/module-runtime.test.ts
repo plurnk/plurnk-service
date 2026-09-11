@@ -71,7 +71,7 @@ const readStatement = (pathname: string): ReadStatement => ({
         fragment: null,
     } as UrlPath,
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: {
         line: 1,
         column: 1,

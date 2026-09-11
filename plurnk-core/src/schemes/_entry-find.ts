@@ -157,14 +157,14 @@ export const projectFindResult = (
         matchLocationCount,
     };
 
-    const locationMode = statement.body !== null && scope.kind === "exact";
+    const locationMode = statement.matcher !== null && scope.kind === "exact";
     let completeItems: MatchItem[];
     if (locationMode) {
         completeItems = uniqueMatchLocations(resources.flatMap(({ match }) => match.matches));
     } else {
         const resourceItems: CatalogResource[] = [
             ...resources.map(({ item, match }): CatalogMatch => {
-                if (statement.body === null) return item;
+                if (statement.matcher === null) return item;
                 const locations = uniqueMatchLocations(match.matches);
                 const single = locations.length === 1 ? locations[0] : undefined;
                 return [
@@ -193,7 +193,7 @@ export const projectFindResult = (
         return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range }) as FindResult;
     }
 
-    if (statement.body !== null && matchingPathCount === 0) {
+    if (statement.matcher !== null && matchingPathCount === 0) {
         return {
             status: 204,
             ...fields,
@@ -344,7 +344,7 @@ export default class EntryFind {
         const { db, workspaceId } = ctx;
         // {§find-scoped-isolation} Candidates retain the selected workspace and literal authority.
         type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
-        const fulltext = statement.body?.dialect === "fts";
+        const fulltext = statement.matcher?.dialect === "fts";
         let candidates = await db[fulltext ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
             scheme,
@@ -366,7 +366,7 @@ export default class EntryFind {
             multipleAuthorities ? EntryManifest.toPath(scheme, candidate.authority, candidate.pathname) : candidate.pathname,
             { authority: candidate.authority, pathname: candidate.pathname },
         ]));
-        const folders = statement.body === null && scope !== null
+        const folders = statement.matcher === null && scope !== null
             ? [...Map.groupBy([...coordinateByKey.entries()], ([, coordinate]) => coordinate.authority)]
                 .flatMap(([authority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname))
                     .map((folder) => ({
@@ -423,7 +423,7 @@ export default class EntryFind {
         // dialects already carry honest match evidence; relation dialects map
         // their indexed source spans into readable TextRegions below.
         let matches: Match[];
-        if (statement.body !== null && statement.body.dialect === "fts") {
+        if (statement.matcher !== null && statement.matcher.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
@@ -439,16 +439,16 @@ export default class EntryFind {
                 },
             };
             const ranked = await EntryFts.rankCandidates(
-                ctx.db, candidateSet.candidates, statement.body.raw.slice(1), ctx.signal,
+                ctx.db, candidateSet.candidates, statement.matcher.raw.slice(1), ctx.signal,
             );
             if (ranked.status !== 200) return { status: ranked.status, matches: [], problem: ranked.problem };
             matches = ranked.matches.map(({ key, matches: locations }) => ({ pathname: key, matches: locations }));
-        } else if (statement.body === null) {
+        } else if (statement.matcher === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
-        } else if (statement.body.dialect === "graph") {
+        } else if (statement.matcher.dialect === "graph") {
             // {§relation-indexed-dialects} Parser admission owns graph syntax;
             // this remains a defensive boundary for typed/programmatic callers.
-            if (!/^&[<>]?[^\s<>]\S*$/.test(statement.body.raw)) return {
+            if (!/^&[<>]?[^\s<>]\S*$/.test(statement.matcher.raw)) return {
                 status: 400,
                 matches: [],
                 error: "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
@@ -496,7 +496,7 @@ export default class EntryFind {
                 ctx.db,
                 universe.candidates,
                 scopedCandidates.candidates,
-                statement.body.raw,
+                statement.matcher.raw,
             );
             if (graph.status !== 200) {
                 return {
@@ -545,7 +545,7 @@ export default class EntryFind {
             const byteSupplier = effectiveBytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
             const r = textCandidates.length === 0
                 ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
-                : await Matcher.matchCandidates(statement.body, textCandidates, mimetypes);
+                : await Matcher.matchCandidates(statement.matcher, textCandidates, mimetypes);
             if (r.status !== 200) return {
                 status: r.status,
                 matches: [],
@@ -553,7 +553,7 @@ export default class EntryFind {
             };
             const bytesMatched = byteCandidates.length === 0
                 ? { status: 200, matches: [] as Match[] }
-                : await EntryFind.#matchBytes(statement.body, byteCandidates, byteSupplier, mimetypes, channelOf);
+                : await EntryFind.#matchBytes(statement.matcher, byteCandidates, byteSupplier, mimetypes, channelOf);
             if (bytesMatched.status !== 200) return {
                 status: bytesMatched.status,
                 matches: [],
@@ -579,7 +579,7 @@ export default class EntryFind {
     // coordinates that paste into a byte READ. The load is bounded by the mimetypes binary input
     // ceiling; a larger resource fails by name rather than being skipped.
     static async #matchBytes(
-        body: NonNullable<FindStatement["body"]>,
+        body: NonNullable<FindStatement["matcher"]>,
         pathnames: readonly string[],
         bytesOf: (pathname: string) => ByteSource,
         mimetypes: NonNullable<PlurnkSchemeContext["mimetypes"]>,
@@ -711,7 +711,7 @@ export default class EntryFind {
         // `dir/**` scopes. The summaries are navigation metadata, not hidden
         // resource matches.
         const scopes: CatalogScope[] = [];
-        if (statement.body === null) {
+        if (statement.matcher === null) {
             for (const folder of match.folders ?? []) {
                 let weight = 0;
                 let items = 0;

@@ -47,7 +47,7 @@ const statement = (
         aside: null,
         target,
         lineMarker,
-        body: null,
+        matcher: null, body: null,
         position: { line: 1, column: 0 },
     };
 };
@@ -91,7 +91,7 @@ const emptyStatement = (): ReadStatement => ({
         fragment: null,
     },
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 0 },
 });
 
@@ -112,7 +112,7 @@ const legacyTextStatement = (): ReadStatement => ({
         fragment: null,
     },
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 0 },
 });
 

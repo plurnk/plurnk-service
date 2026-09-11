@@ -25,7 +25,7 @@ export default class ReasoningView {
         if (limit === 0) return null;
         const pathname = `/${loopSequence}/${turnSequence}`;
         return {
-            op: "READ", aside: "inspect this turn's reasoning", metadata: null, body: null,
+            op: "READ", aside: "inspect this turn's reasoning", metadata: null, matcher: null, body: null,
             target: {
                 kind: "url", scheme: "reasoning", raw: `reasoning://${pathname}`, pathname,
                 username: null, password: null, hostname: null, port: null, query: null, fragment: null,

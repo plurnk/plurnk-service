@@ -11,6 +11,8 @@ import LineMarkerOps from "./line-marker.ts";
 import ByteView, { type ByteSource } from "./byte-view.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 import ReadResolve from "./read-resolve.ts";
+import Matcher from "./matcher.ts";
+import PatternEdits from "./pattern-edits.ts";
 
 // {§packet-attachment-parts} — a projected image member names its picture: source mimetype and
 // the handler's dimensions, read from the member's projection facts, never from the bytes.
@@ -40,6 +42,9 @@ const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: stri
 };
 
 export interface AnchoredReadResult extends EntryReadResult {
+    // {§read-selection-projection} — a positional slice reads as the text primitive; the channel's
+    // own mimetype rides beside it so a consumer can still run the channel's handlers.
+    readonly sourceMimetype?: string;
     readonly lineOrdinals?: readonly number[];
     readonly lineAnchorIdentity?: string;
     readonly lineAnchors?: readonly string[];
@@ -308,12 +313,46 @@ export default class ReadProjector {
             lineMarker = statement.lineMarker as LineMarker | null;
         }
 
+        // {§read-pattern} — a matcher selects the lines the READ renders: every line a match
+        // touches, in source order, inside the scope, with its ordinary anchors. Zero matches is
+        // an empty read, never a failure; `matched` counts the selected lines inside the scope.
+        let visibleLines = opts.visibleLines?.[selected];
+        if (statement.matcher !== null) {
+            if (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph") {
+                return failure(
+                    "pattern-dialect-unsupported",
+                    400,
+                    `READ selects lines with a text matcher; a ${statement.matcher.dialect === "fts" ? "~full-text" : "&graph"} pattern selects resources through FIND.`,
+                    {},
+                    { target, retryable: false },
+                );
+            }
+            if (mimetypes === undefined) throw new Error("ReadProjector: a READ pattern requires the mimetypes capability");
+            const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(statement.matcher), selectedRepresentation.content, selectedRepresentation.mimetype, mimetypes);
+            if (match.status >= 400 || match.status === 203) {
+                return Results.assertReadResult({
+                    ...(match.problem === undefined
+                        ? failure("pattern-unapplicable", 422, match.reason ?? `The pattern could not be applied to ${target}.`, {}, { target, retryable: false })
+                        : { status: match.status >= 400 ? match.status : 422, problem: match.problem }),
+                    content: null,
+                    mimetype: null,
+                    channel,
+                }) as EntryReadResult;
+            }
+            const ordered = PatternEdits.lines(match.matches ?? [], null);
+            visibleLines = visibleLines === undefined ? ordered : ordered.filter((line) => visibleLines!.includes(line));
+        }
         const resolved = await ReadResolve.resolve({
             content: selectedRepresentation.content,
             mimetype: selectedRepresentation.mimetype,
             lineMarker,
-            ...(opts.visibleLines?.[selected] === undefined ? {} : { visibleLines: opts.visibleLines[selected] }),
+            ...(visibleLines === undefined ? {} : { visibleLines }),
         });
+        // A whole-resource pattern READ pages through every selected line; a scoped one renders
+        // exactly the selected lines the scope holds.
+        const matched = statement.matcher === null || visibleLines === undefined
+            ? undefined
+            : lineMarker === null ? visibleLines.length : (resolved.lineOrdinals?.length ?? 0);
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {
                 return Results.assertReadResult({
@@ -342,7 +381,14 @@ export default class ReadProjector {
             );
         }
 
-        const projected = { ...resolved, channel, ...(image === null ? {} : { image }), ...(document === null ? {} : { document }) };
+        const projected = {
+            ...resolved,
+            channel,
+            ...(resolved.mimetype === selectedRepresentation.mimetype ? {} : { sourceMimetype: selectedRepresentation.mimetype }),
+            ...(matched === undefined ? {} : { matched }),
+            ...(image === null ? {} : { image }),
+            ...(document === null ? {} : { document }),
+        };
         const producerResult = selectedRepresentation.producerResult;
         // {§read-content-wins} — a channel that delivered content reads as that content; the
         // producer's failure projects onto a READ only when there is nothing to read.

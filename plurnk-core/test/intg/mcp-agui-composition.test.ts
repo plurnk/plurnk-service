@@ -96,7 +96,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture/echo.md) <1,-1>```\n```TASK\n[{\"content\":\"Invoke the documented observation tool.\",\"status\":\"in_progress\"}]\n```"),
             makeMockResponse("\n```fixture (echo)\nhello from MCP\n```\n\n```TASK\n[{\"content\":\"Inspect the attributable tool failure.\",\"status\":\"in_progress\"}]\n```"),
             makeMockResponse("\n```KILL (log:///**/READ)```\n```fixture (echo)\n{\"message\":\"hello from MCP\"}\n```\n\n```TASK\n[{\"content\":\"Inspect the corrected tool result.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("\n```FIND (fixture:///**) <1,-1>\ninvalid-tool-arguments\n```\n\n```TASK\n[{\"content\":\"Inspect the source's durable terminal result.\",\"status\":\"in_progress\"}]\n```"),
+            makeMockResponse("\n```FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]```\n\n```TASK\n[{\"content\":\"Inspect the source's durable terminal result.\",\"status\":\"in_progress\"}]\n```"),
             makeMockResponse("```SEND\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```TASK\n[{\"content\":\"Invoke the documented host tool.\",\"status\":\"in_progress\"}]\n```"),
             makeMockResponse("\n```fixture (fail)```\n```TASK\n[{\"content\":\"Inspect the failure.\",\"status\":\"in_progress\"}]\n```"),

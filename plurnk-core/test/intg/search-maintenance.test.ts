@@ -17,7 +17,7 @@ const url = (pathname: string): UrlPath => ({
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 test("{§derivation-dedup-parallel} changed resources report one aggregate derivation lifecycle", async () => {
     const mimetypes = new Mimetypes();

@@ -104,7 +104,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         const matched = await k.find(
-            { ...findStmt(urlPath("worker", "/config.json")), body: { dialect: "jsonpath", raw: "$.host" } as MatcherBody },
+            { ...findStmt(urlPath("worker", "/config.json")), matcher: { dialect: "jsonpath", raw: "$.host" } as MatcherBody },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(r.status, 200, "plain READ of the entry still works");
@@ -129,7 +129,7 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
         const r = await engine.dispatch({
             statement: {
                 ...findStmt(urlPath("worker", "/log.txt")),
-                body: { dialect: "regex", raw: "/error: (\\w+)/g", pattern: "error: (\\w+)", flags: "g" } as MatcherBody,
+                matcher: { dialect: "regex", raw: "/error: (\\w+)/g", pattern: "error: (\\w+)", flags: "g" } as MatcherBody,
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
@@ -566,7 +566,7 @@ test("recursive-descent jsonpath over a deep code-entry parse tree matches", asy
         await k.edit(editStmt(urlPath("worker", "/util.ts"), source), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
 
         const matched = await k.find(
-            { ...findStmt(urlPath("worker", "/util.ts")), body: { dialect: "jsonpath", raw: "$..*" } as MatcherBody },
+            { ...findStmt(urlPath("worker", "/util.ts")), matcher: { dialect: "jsonpath", raw: "$..*" } as MatcherBody },
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.notEqual(matched.status, 400, `depth cap resurfaced as a model-blamed 400: ${matched.problem?.detail ?? ""}`);

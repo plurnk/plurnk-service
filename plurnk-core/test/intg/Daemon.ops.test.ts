@@ -117,6 +117,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                     query: null, fragment: null,
                 },
                 lineMarker: null,
+                matcher: null,
                 body: "world",
                 position: { line: 1, column: 1 },
             };

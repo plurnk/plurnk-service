@@ -53,12 +53,12 @@ test("protocol operations parse as executable fences", () => {
     const cases: Array<[Op, string, string | undefined]> = [
         ["TASK", "", "inspect, act, report"],
         ["TASK", " <5>", "[]"],
-        ["FIND", " (known:///**) <1,20>", "Paris*"],
+        ["FIND", " (known:///**) <1,20> [{\"pattern\": \"Paris*\"}]", undefined],
         ["READ", " (README.md)", undefined],
         ["EDIT", " (notes.md) <2>", "replacement"],
         ["COPY", " (notes.md) (archive.md) <0>", undefined],
         ["MOVE", " (notes.md) (archive.md)", undefined],
-        ["KILL", " (log:///**) <@aB3dE>", "~topic"],
+        ["KILL", " (log:///**) <@aB3dE> [{\"pattern\": \"~topic\"}]", undefined],
         ["KILL", " (log:///**) <17,-1>", undefined],
         ["SEND", " (worker://child)", "progress"],
         ["EXEC", " (node/./) <60,5>", "console.log(1)"],
@@ -113,11 +113,11 @@ test("trailing operation asides are durable, single-line, and follow every modif
 test("balanced parentheses are ordinary target content", () => {
     const statement = oneStatement(section(
         "FIND",
-        " (https://en.wikipedia.org/wiki/Igor_Smirnov_(politician))",
-        "/spouse|wife|married|Zhannetta|Lotnik/i",
+        " (https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)) [{\"pattern\": \"/spouse|wife|married|Zhannetta|Lotnik/i\"}]",
     ));
     if (statement.op !== "FIND") assert.fail("expected FIND");
     assert.equal(statement.target?.raw, "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)");
+    assert.equal(statement.matcher?.dialect, "regex");
 });
 
 test("unmatched target parentheses require escaped or percent-encoded spelling", () => {
@@ -252,7 +252,7 @@ test("COPY and MOVE require exactly two singular path operands", () => {
 
     const read = PlurnkParser.parseStatements(section("READ", " (brief.md) (drafts/brief.md)"));
     const readErrors = read.items.filter((item) => item.kind === "error");
-    assert.equal(readErrors[0]?.error.message, "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading");
+    assert.equal(readErrors[0]?.error.message, "a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{\"pattern\": \"…\"}]`");
 });
 
 test("{§bare-statement} BARE accepts a prompt resource, inline input, or both", () => {
@@ -492,14 +492,16 @@ test("AST extracts target, raw body, and position without framing state", () => 
 });
 test("slot permutations produce equivalent AST values", () => {
     const variants = [
-        "```FIND (p) <2>\nm\n```",
-        "```FIND <2> (p)\nm\n```",
+        '```FIND (p) <2> [{"pattern": "m"}]```',
+        '```FIND <2> (p) [{"pattern": "m"}]```',
     ];
     for (const input of variants) {
         const statement = oneStatement(input);
         if (statement.op !== "FIND") assert.fail("expected FIND");
         assert.equal(statement.target?.raw, "p");
         assert.deepEqual(statement.lineMarker, { marks: [2] });
+        assert.deepEqual(statement.matcher, { dialect: "glob", raw: "m" });
+        assert.equal(statement.metadata, null, "a block carrying only the pattern leaves no metadata for the owner");
     }
 
     // {§turn-disposition} — a recipient in the path slot is a mid-turn message with no disposition.
@@ -511,15 +513,16 @@ test("slot permutations produce equivalent AST values", () => {
 
 test("modifier delimiters make horizontal spacing optional", () => {
     for (const input of [
-        "```FIND(p)<2>\nm\n```",
-        "```FIND\t(p)\t<2>\nm\n```",
-        "```FIND  (p) \t<2>\nm\n```",
-        "```FIND<2>(p)\nm\n```",
+        '```FIND(p)<2>[{"pattern": "m"}]```',
+        '```FIND\t(p)\t<2>\t[{"pattern": "m"}]```',
+        '```FIND  (p) \t<2> [{"pattern": "m"}]```',
+        '```FIND<2>(p)[{"pattern": "m"}]```',
     ]) {
         const statement = oneStatement(input);
         if (statement.op !== "FIND") assert.fail("expected FIND");
         assert.equal(statement.target?.raw, "p", input);
         assert.deepEqual(statement.lineMarker, { marks: [2] }, input);
+        assert.deepEqual(statement.matcher, { dialect: "glob", raw: "m" }, input);
     }
 
     const send = oneStatement("```SEND(worker://child)\ndone\n```");
@@ -614,69 +617,68 @@ test("duplicate slots are rejected", () => {
 
 // {§heading-inline-body}
 test("body text on the heading line runs as the body and raises one advisory naming the rule", () => {
-    const turn = "\n```FIND (Engine.ts) /resolveWorkerPrimary/\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```";
+    const turn = "\n```EDIT (Engine.ts) <3> replacement text\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```";
     const result = PlurnkParser.parse(turn);
-    const find = result.items.find((item) => item.kind === "statement" && item.statement.op === "FIND");
-    assert.equal(find?.kind, "statement", "the inline matcher still dispatches as FIND");
-    if (find?.kind !== "statement") return;
-    assert.deepEqual((find.statement as { body?: { dialect: string; raw: string } }).body?.raw, "/resolveWorkerPrimary/", "the matcher is the body");
+    const edit = result.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
+    assert.equal(edit?.kind, "statement", "the inline body still dispatches as EDIT");
+    if (edit?.kind !== "statement") return;
+    assert.equal((edit.statement as { body?: string | null }).body, "replacement text", "the inline text is the body");
     const advisory = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
     assert.equal(advisory?.kind, "error", "one advisory follows");
     if (advisory?.kind !== "error") return;
     assert.match(advisory.error.message, /body text was on the OP line and was taken as the body/);
     assert.match(advisory.error.message, /body content goes immediately beneath the opening fence line/);
     assert.equal(advisory.error.line, 2, "the advisory points at the heading");
-    const canonical = PlurnkParser.parse("\n```FIND (Engine.ts)\n/resolveWorkerPrimary/\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
+    const canonical = PlurnkParser.parse("\n```EDIT (Engine.ts) <3>\nreplacement text\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
     assert.ok(!canonical.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "the canonical two-line form raises nothing");
 });
 
-test("a matcher before its heading modifiers receives a bounded trailing-text error", () => {
-    const malformed = "```FIND\n/require|ABS_MODULE_PATH|module_load/ (**/*.go) <1,-1>\n```";
-    const result = PlurnkParser.parseStatements(malformed);
-    const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    assert.equal(
-        errors[0]?.error.message,
-        "Regex matcher has trailing text after `/pattern/flags`.",
-    );
-    assert.doesNotMatch(errors[0]?.error.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
+// {§matcher-option}
+test("a matcher written as a body is refused by name; the option form is stated", () => {
+    for (const [op, body] of [["FIND", "/resolveWorkerPrimary/"], ["READ", "resolveWorkerPrimary"], ["KILL", "~topic"]] as const) {
+        const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("TASK", "", inventory("n"))));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, op);
+        assert.equal(errors[0]!.error.message, `${op} takes no body; a matcher belongs in the heading as [{"pattern": "…"}].`);
+        assert.doesNotMatch(errors[0]!.error.message, /resolveWorkerPrimary|topic/u, "the diagnostic does not echo the body");
+        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["TASK"], `${op} is dropped; its sibling runs`);
+    }
+    // The inline-heading form is the same mistake and gets the same answer.
+    const inline = PlurnkParser.parse("\n```FIND (Engine.ts) /resolveWorkerPrimary/\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
+    assert.ok(inline.items.some((item) => item.kind === "error" && item.error.severity === "error" && /FIND takes no body/u.test(item.error.message)));
 });
 
-test("regex trailing-text feedback does not presume misplaced heading modifiers", () => {
-    for (const input of [
-        "```FIND (src/**)\n/needle/i unexpected text\n```",
-        "```FIND (src/**)\n/needle/i unexpected text\n```",
-        "```FIND (src/**)\n/needle/i <!-- explanatory text -->\n```",
-    ]) {
-        const errors = errorsOf(input);
-        assert.equal(errors.length, 1);
-        assert.match(errors[0]!.message, /Regex matcher has trailing text after/u);
-        assert.doesNotMatch(errors[0]!.message, /heading|modifiers|following line/u);
+test("a malformed regex pattern receives a bounded dialect error that echoes nothing", () => {
+    const errors = errorsOf('```FIND (**/*.go) <1,-1> [{"pattern": "/require|ABS_MODULE_PATH|module_load/ trailing"}]```');
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0]?.message, "Regex matcher has trailing text after `/pattern/flags`.");
+    assert.doesNotMatch(errors[0]?.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
+    for (const pattern of ["/x/z", "/x/ii", "/(/i", "/unclosed"]) {
+        const error = firstError(`\`\`\`FIND (src/**) [{"pattern": ${JSON.stringify(pattern)}}]\`\`\``);
+        assert.equal(error.severity, "error");
+        assert.doesNotMatch(error.message, /Regex matcher has trailing text/u, pattern);
+        assert.match(error.message, /not a valid.*regex|no closing/u, pattern);
     }
 });
 
-test("regex modifier-boundary recovery handles flags without masking invalid regexes", () => {
+test("a pattern with flags parses; an invalid one drops only its own statement", () => {
     for (const flags of ["i", "", "giu"]) {
         const result = PlurnkParser.parse(sections(
-            `\`\`\`FIND (**/*.ts)
-/disabled-rules|comment|lint\\s*\\(/${flags} <1,-1> <!-- locate entry points -->
-\`\`\``,
+            `\`\`\`FIND (**/*.ts) <1,-1> [{"pattern": "/disabled-rules|comment|lint\\\\s*\\\\(/${flags}"}] <!-- locate entry points -->\`\`\``,
             section("READ", " (package.json)"),
             section("TASK", "", inventory("inspect")),
         ));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, flags);
-        assert.match(errors[0]!.error.message, /Regex matcher has trailing text/u);
-        assert.match(errors[0]!.error.message, /\/pattern\/flags/u);
-        assert.doesNotMatch(errors[0]!.error.message, /Invalid flags|disabled-rules|entry points/u);
-        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], flags);
+        const find = result.items.find((item) => item.kind === "statement" && item.statement.op === "FIND");
+        assert.equal(find?.kind === "statement" && find.statement.op === "FIND" ? find.statement.matcher?.dialect : null, "regex", flags);
     }
-    for (const matcher of ["/x/z <1,-1>", "/x/ii <1,-1>", "/(/i <1,-1>", "/x/z", "/unclosed"]) {
-        const error = firstError(section("FIND", " (src/**)", matcher));
-        assert.equal(error.severity, "error");
-        assert.doesNotMatch(error.message, /Regex matcher has trailing text/u, matcher);
-        assert.match(error.message, /not a valid.*regex|no closing/u, matcher);
-    }
+    const result = PlurnkParser.parse(sections(
+        '```FIND (**/*.ts) [{"pattern": "/(/i"}]```',
+        section("READ", " (package.json)"),
+        section("TASK", "", inventory("inspect")),
+    ));
+    assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
 });
 
 // {§misplaced-aside-advisory}
@@ -700,13 +702,12 @@ test("a READ or FIND whose body is only an HTML comment takes it as the aside an
             `The ${op} body contained only an HTML comment; it was applied as the operation aside.`,
         );
     }
-    // a heading aside wins; a body with any other content remains a matcher
+    // a heading aside wins; a body with any other content is refused as a body ({§matcher-option})
     const kept = PlurnkParser.parse(sections(section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("TASK", "", inventory("n"))));
     const read = kept.items.find((item) => item.kind === "statement" && item.statement.op === "READ");
     assert.equal(read?.kind === "statement" ? read.statement.aside : null, "heading");
-    const matcher = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
-    assert.ok(matcher.items.some((item) => item.kind === "statement" && item.statement.op === "FIND"), "a real matcher body still redirects to FIND");
-    assert.ok(!matcher.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "no advisory for a real matcher");
+    const refused = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
+    assert.ok(refused.items.some((item) => item.kind === "error" && /READ takes no body/u.test(item.error.message)), "a body that is not a comment is refused");
 });
 
 test("scope spellings normalize to ordered numeric marks", () => {
@@ -851,8 +852,11 @@ test("malformed URL authority becomes one visitor error", () => {
 });
 
 // {§matcher-prefix-claims}
-test("matcher dialects project to typed bodies", () => {
-    for (const [body, dialect] of [
+// {§matcher-option} — the pattern option carries every matcher dialect exactly as the body once did.
+const patterned = (op: Parameters<typeof section>[0], slots: string, pattern: string): string => section(op, `${slots} [{"pattern": ${JSON.stringify(pattern)}}]`);
+
+test("matcher dialects project to typed matchers", () => {
+    for (const [pattern, dialect] of [
         ["/foo|bar/i", "regex"],
         ["//user[@role='admin']", "xpath"],
         ["$.greeting", "jsonpath"],
@@ -862,14 +866,16 @@ test("matcher dialects project to typed bodies", () => {
         ["&>createCoder", "graph"],
         ["&createCoder", "graph"],
     ] as const) {
-        const statement = oneStatement(section("FIND", " (source/**)", body));
-        if (statement.op !== "FIND") assert.fail(body);
-        assert.equal(statement.body?.dialect, dialect, body);
-        assert.equal(statement.body?.raw, body, body);
+        const statement = oneStatement(patterned("FIND", " (source/**)", pattern));
+        if (statement.op !== "FIND") assert.fail(pattern);
+        assert.equal(statement.matcher?.dialect, dialect, pattern);
+        assert.equal(statement.matcher?.raw, pattern, pattern);
+        assert.equal(statement.body, null, pattern);
+        assert.equal(statement.metadata, null, pattern);
     }
 });
 
-test("matcher admission rejects multiline bodies before dialect classification", () => {
+test("matcher admission rejects multiline patterns before dialect classification", () => {
     const renderedRead = [
         "@et6xE 2286:\t// Set debug flag from environment if not already set",
         "@alreh 2287:\tif (!requireDebug) {",
@@ -877,75 +883,104 @@ test("matcher admission rejects multiline bodies before dialect classification",
     ].join("\n");
 
     for (const op of ["FIND", "READ", "KILL"] as const) {
-        const result = PlurnkParser.parseStatements(section(op, " (source.ts)", renderedRead));
+        const result = PlurnkParser.parseStatements(patterned(op, " (source.ts)", renderedRead));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1, op);
         assert.equal(errors[0]?.error.source, "visitor", op);
-        assert.equal(errors[0]?.error.message, "Matcher body has 3 lines; expected 1.", op);
+        assert.equal(errors[0]?.error.message, "Matcher has 3 lines; expected 1.", op);
         assert.equal(result.items.some((item) => item.kind === "statement"), false, op);
     }
 });
 
-test("graph claims ampersand and validates its complete single-line shape", () => {
-    for (const body of ["&", "&<", "&>", "&two symbols"] as const) {
-        const result = PlurnkParser.parseStatements(section("FIND", " (source/**)", body));
+test("a pattern that is not a string is the language's own diagnostic", () => {
+    for (const block of ['{"pattern": 7}', '{"pattern": null}', '{"pattern": ["a"]}']) {
+        const result = PlurnkParser.parseStatements(section("FIND", ` (source/**) [${block}]`));
         const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, body);
-        assert.equal(errors[0]?.error.source, "visitor", body);
+        assert.equal(errors.length, 1, block);
+        assert.match(errors[0]!.error.message, /"pattern" must be a string matcher/u, block);
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, block);
+    }
+});
+
+test("a block the language cannot read lifts nothing and stays for the owner", () => {
+    for (const heading of [
+        ' (source/**) [{"pattern": "x"} trailing]',
+        ' (source/**) [{"pattern": "x"}] [{"pattern": "y"}]',
+        ' (source/**) ["not an object"]',
+    ]) {
+        const statement = oneStatement(section("FIND", heading));
+        if (statement.op !== "FIND") assert.fail(heading);
+        assert.equal(statement.matcher, null, heading);
+        assert.notEqual(statement.metadata, null, heading);
+    }
+});
+
+test("other option keys beside the pattern stay with the owner, verbatim", () => {
+    const statement = oneStatement(section("READ", ' (https://api.example/me) [{"pattern": "/token/i", "Accept": "application/json"}]'));
+    if (statement.op !== "READ") assert.fail("expected READ");
+    assert.deepEqual(statement.matcher, { dialect: "regex", raw: "/token/i", pattern: "token", flags: "i" });
+    assert.deepEqual(statement.metadata, ['{"pattern": "/token/i", "Accept": "application/json"}']);
+});
+
+test("graph claims ampersand and validates its complete single-line shape", () => {
+    for (const pattern of ["&", "&<", "&>", "&two symbols"] as const) {
+        const result = PlurnkParser.parseStatements(patterned("FIND", " (source/**)", pattern));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, pattern);
+        assert.equal(errors[0]?.error.source, "visitor", pattern);
         assert.equal(
             errors[0]?.error.message,
             "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
-            body,
+            pattern,
         );
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, body);
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, pattern);
     }
 });
 
 test("at-sign matcher text remains in the fallback glob dialect", () => {
-    for (const body of [
+    for (const pattern of [
         "@createCoder",
         "@et6xE 2286:const value = true;",
         "@(createCoder|deleteCoder)",
     ] as const) {
-        const statement = oneStatement(section("FIND", " (source/**)", body));
-        if (statement.op !== "FIND") assert.fail(body);
-        assert.equal(statement.body?.dialect, "glob", body);
-        assert.equal(statement.body?.raw, body, body);
+        const statement = oneStatement(patterned("FIND", " (source/**)", pattern));
+        if (statement.op !== "FIND") assert.fail(pattern);
+        assert.equal(statement.matcher?.dialect, "glob", pattern);
+        assert.equal(statement.matcher?.raw, pattern, pattern);
     }
 });
 
-test("a body-leading at-sign retains FIND coercion in a TASK-less READ", () => {
+test("a READ with a pattern on an exact target stays a READ ({§read-pattern})", () => {
     const result = PlurnkParser.parse([
-        "```READ (data/users.json) <1,-1>",
-        "@data/users.json",
-        "```",
+        '```READ (data/users.json) <1,-1> [{"pattern": "@data/users.json"}]```',
     ].join("\n"));
     const errors = result.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors, []);
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(statements.length, 1);
-    assert.ok(statements[0].op === "FIND");
-    assert.equal(statements[0].body?.raw, "@data/users.json");
+    assert.ok(statements[0].op === "READ");
+    assert.equal(statements[0].matcher?.raw, "@data/users.json");
+    assert.deepEqual(statements[0].lineMarker?.marks, [1, -1]);
 });
 
-test("regex bodies retain pattern, flags, escaped delimiters, and character classes", () => {
-    const regex = oneStatement(section("FIND", " (log://x)", "/foo|bar/i"));
-    if (regex.op !== "FIND" || regex.body?.dialect !== "regex") assert.fail("expected regex");
-    assert.equal(regex.body.pattern, "foo|bar");
-    assert.equal(regex.body.flags, "i");
-    assert.equal(new RegExp(regex.body.pattern, regex.body.flags).test("FOO"), true);
+test("regex patterns retain pattern, flags, escaped delimiters, and character classes", () => {
+    const regex = oneStatement(patterned("FIND", " (log://x)", "/foo|bar/i"));
+    if (regex.op !== "FIND" || regex.matcher?.dialect !== "regex") assert.fail("expected regex");
+    assert.equal(regex.matcher.pattern, "foo|bar");
+    assert.equal(regex.matcher.flags, "i");
+    assert.equal(new RegExp(regex.matcher.pattern, regex.matcher.flags).test("FOO"), true);
 
-    for (const [body, pattern] of [["/a\\/b/i", "a\\/b"], ["/[/]/", "[/]"]] as const) {
-        const statement = oneStatement(section("FIND", " (log://x)", body));
-        if (statement.op !== "FIND" || statement.body?.dialect !== "regex") assert.fail(body);
-        const matcher = statement.body;
-        assert.equal(matcher.pattern, pattern);
+    for (const [pattern, expected] of [["/a\\/b/i", "a\\/b"], ["/[/]/", "[/]"]] as const) {
+        const statement = oneStatement(patterned("FIND", " (log://x)", pattern));
+        if (statement.op !== "FIND" || statement.matcher?.dialect !== "regex") assert.fail(pattern);
+        const matcher = statement.matcher;
+        assert.equal(matcher.pattern, expected);
         assert.doesNotThrow(() => new RegExp(matcher.pattern, matcher.flags));
     }
 });
 
 test("declared matcher prefixes fail as their declared dialect instead of falling back", () => {
-    for (const [body, message] of [
+    for (const [pattern, message] of [
         ["/unclosed-regex", /has no closing `\/`/],
         ["/(abc/", /not a valid `\/pattern\/flags` regex/],
         ["/hello/i:", /Invalid flags/],
@@ -955,68 +990,80 @@ test("declared matcher prefixes fail as their declared dialect instead of fallin
         ["$HOME", /not a valid jsonpath/],
         ["$.users[", /not a valid jsonpath/],
     ] as const) {
-        const result = PlurnkParser.parseStatements(section("FIND", " (source)", body));
+        const result = PlurnkParser.parseStatements(patterned("FIND", " (source)", pattern));
         const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, body);
-        assert.equal(errors[0]?.error.source, "visitor", body);
-        assert.match(errors[0]!.error.message, message, body);
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, body);
+        assert.equal(errors.length, 1, pattern);
+        assert.equal(errors[0]?.error.source, "visitor", pattern);
+        assert.match(errors[0]!.error.message, message, pattern);
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, pattern);
     }
 });
 
 test("matcher validation is per section and does not consume siblings", () => {
     const result = PlurnkParser.parseStatements(sections(
-        section("FIND", " (a.txt)", "/ok/i"),
-        section("FIND", " (b.txt)", "/bad/i:"),
+        patterned("FIND", " (a.txt)", "/ok/i"),
+        patterned("FIND", " (b.txt)", "/bad/i:"),
         section("KILL", " (log:///1/2/3)"),
     ));
     assert.equal(result.items.filter((item) => item.kind === "statement").length, 2);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
 });
 
-test("ordinary matcher text remains glob and non-matcher bodies remain opaque", () => {
-    const glob = oneStatement(section("FIND", " (known:///**)", ":<1,-1>:/hello/i:"));
+test("ordinary matcher text remains glob and EDIT bodies remain opaque", () => {
+    const glob = oneStatement(patterned("FIND", " (known:///**)", ":<1,-1>:/hello/i:"));
     if (glob.op !== "FIND") assert.fail("expected FIND");
-    assert.equal(glob.body?.dialect, "glob");
+    assert.equal(glob.matcher?.dialect, "glob");
 
     const edit = oneStatement(section("EDIT", " (p)", "/this is literal EDIT content/x"));
     assert.equal(edit.op, "EDIT");
     assert.equal(edit.body, "/this is literal EDIT content/x");
+    assert.equal(edit.matcher, null);
+});
+
+test("an EDIT pattern is lifted beside its literal body ({§edit-pattern})", () => {
+    const edit = oneStatement(patterned("EDIT", " (p) <3,9>", "/oldName/g") .replace("\n```", "\nnewName\n```"));
+    if (edit.op !== "EDIT") assert.fail("expected EDIT");
+    assert.equal(edit.matcher?.dialect, "regex");
+    assert.equal(edit.body, "newName");
+    assert.deepEqual(edit.lineMarker?.marks, [3, 9]);
+    const bare = oneStatement(patterned("EDIT", " (p)", "oldName"));
+    assert.equal(bare.op === "EDIT" ? bare.body : undefined, null, "an empty body with a pattern deletes the spans; the parser admits it");
 });
 
 test("semantic matcher accepts arbitrary text and a result-position scope", () => {
-    const kill = oneStatement(section("KILL", " (log://**)", "~find anything about: !@#$%^ malformed (but valid as query)"));
+    const kill = oneStatement(patterned("KILL", " (log://**)", "~find anything about: !@#$%^ malformed (but valid as query)"));
     if (kill.op !== "KILL") assert.fail("expected KILL");
-    assert.equal(kill.body?.dialect, "fts");
+    assert.equal(kill.matcher?.dialect, "fts");
+    assert.equal(kill.body, null);
 
-    const find = oneStatement(section("FIND", " (known://**) <5>", "~graph algorithms"));
+    const find = oneStatement(patterned("FIND", " (known://**) <5>", "~graph algorithms"));
     if (find.op !== "FIND") assert.fail("expected FIND");
     assert.deepEqual(find.lineMarker, { marks: [5] });
-    assert.equal(find.body?.dialect, "fts");
+    assert.equal(find.matcher?.dialect, "fts");
 });
 
-// {§read-find-normalization}
-test("READ aggregate forms normalize to schema-valid FIND", () => {
+// {§read-find-normalization} — the glob half: a survey target is a FIND; a matcher never changes the op.
+test("READ of a glob target normalizes to schema-valid FIND; a matcher keeps its op", () => {
     const cases = [
-        { input: section("READ", " (worker:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4],  },
-        { input: section("READ", " (worker:///page.md) <3,5>", "/header/i"), op: "FIND", dialect: "regex", marks: [3, 5], },
-        { input: section("READ", " (src/**/*.ts) <2>"), op: "FIND", dialect: null, marks: [2],  },
-        { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "FIND", dialect: null, marks: [4, 8],  },
-        { input: section("READ", " (worker:///src/**/*.ts)", "TODO"), op: "FIND", dialect: "glob", marks: null,  },
+        { input: section("READ", " (worker:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4] },
+        { input: patterned("READ", " (worker:///page.md) <3,5>", "/header/i"), op: "READ", dialect: "regex", marks: [3, 5] },
+        { input: section("READ", " (src/**/*.ts) <2>"), op: "FIND", dialect: null, marks: [2] },
+        { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "FIND", dialect: null, marks: [4, 8] },
+        { input: patterned("READ", " (worker:///src/**/*.ts)", "TODO"), op: "FIND", dialect: "glob", marks: null },
     ] as const;
 
     for (const { input, op, dialect, marks } of cases) {
         const statement = oneStatement(input);
         assert.equal(statement.op, op, input);
         assert.deepEqual(statement.lineMarker?.marks ?? null, marks, input);
-        assert.equal(statement.op === "FIND" ? statement.body?.dialect ?? null : null, dialect, input);
+        assert.equal(statement.op === "FIND" || statement.op === "READ" ? statement.matcher?.dialect ?? null : null, dialect, input);
         const validation = Validator.validatePlurnkStatement(statement);
         assert.equal(validation.valid, true, `${input}: ${JSON.stringify(validation.errors)}`);
     }
 });
 
 test("READ matcher admission retains positioned dialect errors", () => {
-    const result = PlurnkParser.parseStatements(section("READ", " (page.html)", "// foo {bar}"));
+    const result = PlurnkParser.parseStatements(patterned("READ", " (page.html)", "// foo {bar}"));
     assert.equal(result.items.some((item) => item.kind === "statement"), false);
     const errors = result.items.filter((item) => item.kind === "error");
     assert.equal(errors.length, 1);
@@ -1071,10 +1118,10 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
         assert.equal(error.message, `${runtime} accepts one \`(program)\` path at most once`);
     }
 
-    // {§heading-inline-body} — a matcher after the target on the heading line is the body now.
-    const inline = oneStatement("```FIND (data.json) $.role\n```");
-    if (inline.op !== "FIND") assert.fail("expected FIND");
-    assert.deepEqual(inline.body, { dialect: "jsonpath", raw: "$.role" });
+    // {§heading-inline-body} — text after the target on the heading line is the body, and a FIND
+    // body is refused by name ({§matcher-option}).
+    const inline = firstError("```FIND (data.json) $.role\n```");
+    assert.equal(inline.message, 'FIND takes no body; a matcher belongs in the heading as [{"pattern": "…"}].');
 
     const target = PlurnkParser.parseStatements("```EDIT (path").unparsedTail;
     assert.match(target?.reason ?? "", /target slot of `EDIT`.*add `\)`/);
@@ -1185,10 +1232,10 @@ test("body text on the heading line is the first body line when it cannot open a
     if (send.op !== "SEND" || !send.body) assert.fail("expected SEND with body");
     assert.equal(send.body.raw, "Paris.");
 
-    const withAside = oneStatement("```FIND (src/**) <!-- where --> /createCoder/i\n```");
-    if (withAside.op !== "FIND") assert.fail("expected FIND");
+    const withAside = oneStatement("```EDIT (src/a.ts) <4> <!-- where --> replacement\n```");
+    if (withAside.op !== "EDIT") assert.fail("expected EDIT");
     assert.equal(withAside.aside, "where");
-    assert.equal(withAside.body?.raw, "/createCoder/i");
+    assert.equal(withAside.body, "replacement");
 
     // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
     const unspaced = oneStatement("```crm (crm_query)[{\"soql\": \"x\"}]```");

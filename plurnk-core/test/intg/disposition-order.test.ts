@@ -69,7 +69,7 @@ test("TASK authored first ends the turn: nothing after it executes, and one diag
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "```TASK\n[{\"content\":\"Inspect results.\",\"status\":\"in_progress\"}]\n```\n```READ (worker:///note.md)```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```FIND (worker:///*)\n/[/\n```\n```KILL (log:///99/*/*)```";
+        const source = "```TASK\n[{\"content\":\"Inspect results.\",\"status\":\"in_progress\"}]\n```\n```READ (worker:///note.md)```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```\n```KILL (log:///99/*/*)```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: result.turnId });

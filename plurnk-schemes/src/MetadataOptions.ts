@@ -33,6 +33,9 @@ export default class MetadataOptions {
             }
             Object.assign(options, element);
         }
+        // {§matcher-option} — `pattern` is the language's key: the parser lifts it into the
+        // statement's matcher and leaves the block for its owner, who never interprets it.
+        delete options.pattern;
         return { options };
     }
 }

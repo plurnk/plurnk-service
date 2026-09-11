@@ -271,7 +271,7 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
 
         const matchedFind = {
             ...findStmt(urlPath("worker", "/notes.md")),
-            body: regex("target"),
+            matcher: regex("target"),
         };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({

@@ -33,7 +33,7 @@ const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null 
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname: `/${pathname}`, query: null, fragment: null },
-    lineMarker: marker, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
@@ -42,7 +42,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname: `/${pathname}`, query: null, fragment: null },
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 // Bare-path edit — the form the sysprompt actually trains the model to
@@ -52,7 +52,7 @@ const bareEditStmt = (relPath: string, body: string, marker: LineMarker | null =
     metadata: null,
     op: "EDIT", aside: null,
     target: { kind: "local", raw: relPath },
-    lineMarker: marker, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {

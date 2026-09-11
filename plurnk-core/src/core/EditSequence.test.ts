@@ -11,7 +11,7 @@ const identity = "worker:///sequence.md";
 const original = "one\ntwo\nthree\nfour\nfive\nsix\n";
 const statement = (marker: LineMarker, body: string): ResolvedEditStatement => ({
     op: "EDIT", aside: null, target: null, metadata: null,
-    lineMarker: marker, body, position: UNKNOWN_POSITION,
+    lineMarker: marker, body, matcher: null, position: UNKNOWN_POSITION,
 });
 const apply = (sequence: EditSequence, content: string, marker: LineMarker, body: string): string => {
     const snapshot = sequence.observe(identity, content);

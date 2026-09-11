@@ -26,15 +26,15 @@ export const planValue = (content: string): Plan => [
 // the ordinary marker math to a full replace.
 export const fullReplace: LineMarker = { marks: [1, -1] };
 
-export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null): ResolvedEditStatement => ({
+export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null, matcher: MatcherBody | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: marker, body,
+    op: "EDIT", aside: null, target, lineMarker: marker, matcher, body,
     position: { line: 1, column: 1 },
 });
 
-export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null): ReadStatement => ({
+export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null, target, lineMarker, body: null,
+    op: "READ", aside: null, target, lineMarker, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -52,16 +52,16 @@ export function dispositionStmt(status: Plan[number]["status"], body: string | n
 }
 
 // {§kill-scope} — a scoped KILL suppresses one log body interval or deletes an entry span; a
-// matcher body selects the rows.
-export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, body: MatcherBody | null = null): KillStatement => ({
+// matcher ({§matcher-option}) selects the rows or lines.
+export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): KillStatement => ({
     metadata: null,
-    op: "KILL", aside: null, target, lineMarker, body,
+    op: "KILL", aside: null, target, lineMarker, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
-export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
+export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, body,
+    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -72,8 +72,8 @@ export const copyStmt = (
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
     op: "COPY", aside: null,
-    source: { target: src, metadata: null, lineMarker: sourceMarker },
-    destination: { target: dst, metadata: null, lineMarker: destinationMarker },
+    source: { target: src, metadata: null, lineMarker: sourceMarker, matcher: null },
+    destination: { target: dst, metadata: null, lineMarker: destinationMarker, matcher: null },
     position: { line: 1, column: 1 },
 });
 
@@ -84,8 +84,8 @@ export const moveStmt = (
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
     op: "MOVE", aside: null,
-    source: { target: src, metadata: null, lineMarker: sourceMarker },
-    destination: { target: dst, metadata: null, lineMarker: destinationMarker },
+    source: { target: src, metadata: null, lineMarker: sourceMarker, matcher: null },
+    destination: { target: dst, metadata: null, lineMarker: destinationMarker, matcher: null },
     position: { line: 1, column: 1 },
 });
 

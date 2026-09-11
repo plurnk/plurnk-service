@@ -24,16 +24,16 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
     op: "READ", aside: null,
  target,
-    lineMarker: null, body: null,
+    lineMarker: null, matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
+const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
  target,
-    lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    lineMarker: null, matcher, body: null,
+     position: { line: 1, column: 1 },
 });
 
 const matchLines = (
@@ -63,7 +63,7 @@ const seedJson = async (db: Db, workspaceId: number, workerId: number, mimetypes
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("worker", path),
-            lineMarker: null, body: content,
+            lineMarker: null, matcher: null, body: content,
             position: { line: 1, column: 1 },
         },
         makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
@@ -278,7 +278,7 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
                 op: "FIND", aside: null,
                 target: urlPath("worker", "/team.json"),
                 lineMarker: null,
-                body: { dialect: "jsonpath", raw: "$[*].name" } as MatcherBody,
+                matcher: { dialect: "jsonpath", raw: "$[*].name" } as MatcherBody, body: null,
                 position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId,

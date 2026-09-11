@@ -70,13 +70,14 @@ export default class KillHandler {
         }
         const binding = await ResourceBindings.resolve(path, ctx);
         const manifest = binding?.manifest;
-        // {§kill-scope-entry} — a body pattern selects log items; any other KILL that carries one is
-        // refused, never silently widened to its whole scope.
-        if (statement.body !== null) {
+        // {§kill-pattern} — a pattern selects log rows or an entry's lines; both leave before this
+        // point. A KILL that still carries one addresses a worker, a stream, or a scheme with no
+        // lines, and is refused rather than silently widened to its whole target.
+        if (statement.matcher !== null) {
             return this.#failure(
-                "kill-body-log-only",
+                "kill-pattern-unsupported",
                 400,
-                "KILL body patterns are supported only for log:/// targets.",
+                `A KILL pattern selects log rows or an entry's lines; ${schemeName}:// has neither.`,
                 {},
                 { retryable: false },
             );

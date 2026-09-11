@@ -190,7 +190,7 @@ test("{§binary-parity} a byte range copies out of a worker:// entry exactly (co
 const readStmt = (pathname: string): ReadStatement => ({
     metadata: null, op: "READ", aside: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 test("{§scheme-source-bytes} bytes declared as text retain exact UTF-8 rather than exposing base64", async () => {
@@ -239,7 +239,7 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
 const findBody = (raw: string, pattern: string): FindStatement => ({
     metadata: null, op: "FIND", aside: null,
     target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
-    lineMarker: null, body: { dialect: "regex", raw, pattern, flags: "" }, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: { dialect: "regex", raw, pattern, flags: "" }, body: null, position: { line: 1, column: 1 },
 });
 
 test("{§binary-parity} FIND searches a binary entry as its bytes, never its base64 text", async () => {

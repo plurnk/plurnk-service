@@ -14,7 +14,7 @@ const response = (content: string) => ({
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 const collect = "```READ (worker://child)```\n```TASK\n[{\"content\":\"Collect the child result.\",\"status\":\"waiting\"}]\n```";
-const invalidFind = "```FIND (worker:///x)\n$fC\n```";
+const invalidFind = "```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```";
 
 for (const priorStrike of [false, true]) {
     test(`{§join-blocking-collect} a complete-loop collect parks without a strike${priorStrike ? " after prior failure" : " at maxStrikes=1"}`, async (t) => {

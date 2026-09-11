@@ -281,7 +281,7 @@ status: "cancelled"
 
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
- * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
 export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | DispositionStatement)
@@ -322,7 +322,14 @@ aside: (string | null)
 metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
-body: (MatcherBody | null)
+/**
+ * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ */
+matcher: (MatcherBody | null)
+/**
+ * FIND takes no body; its matcher is the `pattern` option.
+ */
+body: null
 position: Position
 }
 /**
@@ -430,6 +437,10 @@ aside: (string | null)
 metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
+/**
+ * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ */
+matcher: (MatcherBody | null)
 body: null
 position: Position
 }
@@ -453,6 +464,10 @@ aside: (string | null)
 metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
+/**
+ * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ */
+matcher: (MatcherBody | null)
 body: (string | null)
 position: Position
 }
@@ -475,6 +490,10 @@ target: ParsedPath
  */
 metadata: (string[] | null)
 lineMarker: (TextLineMarker | null)
+/**
+ * The selection matcher lifted from the operand's `[{"pattern": …}]` option; meaningful on the source operand, refused by the owner on a destination.
+ */
+matcher: (MatcherBody | null)
 }
 
 export interface MoveStatement {
@@ -575,9 +594,13 @@ target: (ParsedPath | null)
  */
 lineMarker: (TextLineMarker | null)
 /**
- * A body pattern selects log items for a scoped KILL, as a FIND body does ({§kill-scope}); null otherwise.
+ * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
  */
-body: (MatcherBody | null)
+matcher: (MatcherBody | null)
+/**
+ * KILL takes no body; its matcher is the `pattern` option.
+ */
+body: null
 position: Position
 }
 

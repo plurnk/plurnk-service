@@ -396,7 +396,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
         // covers its candidates: settle once, then re-read the attachments it produced. The 503s
         // below remain the truth when coverage is still incomplete afterwards.
-        if (statement.body !== null && (statement.body.dialect === "fts" || statement.body.dialect === "graph") && core.settleDerivations !== undefined) {
+        if (statement.matcher !== null && (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph") && core.settleDerivations !== undefined) {
             const coverage = resolveSearchCandidates(rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })));
             if (coverage.state === "incomplete") {
                 await core.settleDerivations();
@@ -410,7 +410,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             }
         }
         let matches: Match[];
-        if (statement.body?.dialect === "fts") {
+        if (statement.matcher?.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -425,13 +425,13 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
             );
             const ranked = await EntryFts.rankCandidates(
-                db, candidateSet.candidates, statement.body.raw.slice(1), core.signal,
+                db, candidateSet.candidates, statement.matcher.raw.slice(1), core.signal,
             );
             if (ranked.status !== 200) {
                 return Results.assert({ status: ranked.status, problem: ranked.problem, ...emptyFindFields() }) as FindResult;
             }
             matches = ranked.matches.map(({ key, matches: locations }) => ({ pathname: key, matches: locations }));
-        } else if (statement.body?.dialect === "graph") {
+        } else if (statement.matcher?.dialect === "graph") {
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -467,7 +467,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 db,
                 universe.candidates,
                 candidateSet.candidates,
-                statement.body.raw,
+                statement.matcher.raw,
             );
             if (graph.status !== 200) {
                 return empty(
@@ -486,7 +486,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             }));
             const readable = Matcher.addTextRegions(sourceMatches, projected);
             matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
-        } else if (statement.body === null) {
+        } else if (statement.matcher === null) {
             matches = projected.map(({ key }) => ({ pathname: key, matches: [] }));
         } else {
             if (mimetypes === undefined) {
@@ -495,12 +495,12 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     "Content matching requires the mimetypes capability.",
                     {
                         stage: "matcher",
-                        dialect: statement.body.dialect,
+                        dialect: statement.matcher.dialect,
                         retryable: false,
                     },
                 );
             }
-            const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
+            const r = await Matcher.matchCandidates(statement.matcher, projected, mimetypes);
             if (r.status !== 200) {
                 if (r.problem === undefined) {
                     throw new Error(`Log.find: matcher returned status ${r.status} without Problem Details`);
@@ -513,7 +513,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             }
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
-        const folderSummaries = statement.body === null
+        const folderSummaries = statement.matcher === null
             ? pathFolderSummaries(scope, candidateRows.map((row) => LogEntryProjection.base(row.coordinate)))
             : [];
         const resources: FindProjectionResource[] = [];
@@ -782,7 +782,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
             };
         };
-        if (statement.body !== null) {
+        if (statement.matcher !== null) {
             const matched = await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
             if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
             if (matched.status !== 200) {
@@ -908,7 +908,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const core = this.coreContext(ctx);
         const outcome = scope === null
             ? await this.#planKill(pathname.replace(/^\//, ""), core, null)
-            : await this.#planScoped({ op: "KILL", aside: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, body: null, position: UNKNOWN_POSITION }, core, null);
+            : await this.#planScoped({ op: "KILL", aside: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, matcher: null, body: null, position: UNKNOWN_POSITION }, core, null);
         if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
         return outcome.result;
     }

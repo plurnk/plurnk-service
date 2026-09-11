@@ -17,7 +17,7 @@ const validateRoundTrip = (input: string) => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: FIND with tag CSV, path, line marker, matcher", () => {
-    const r = validateRoundTrip("```FIND (known://docs) <1-20>\n*.xml\n```");
+    const r = validateRoundTrip('```FIND (known://docs) <1-20> [{"pattern": "*.xml"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -27,12 +27,12 @@ test("PlurnkStatement: READ with bare local path and empty body", () => {
 });
 
 test("PlurnkStatement: KILL with regex matcher", () => {
-    const r = validateRoundTrip("```KILL (known://**)\n/error|fail/i\n```");
+    const r = validateRoundTrip('```KILL (known://**) [{"pattern": "/error|fail/i"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL with jsonpath matcher", () => {
-    const r = validateRoundTrip("```KILL (log://**)\n$.status\n```");
+    const r = validateRoundTrip('```KILL (log://**) [{"pattern": "$.status"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -105,12 +105,12 @@ test("PlurnkStatement parser preserves a decimal marker for runtime validation",
 });
 
 test("PlurnkStatement: FIND with decimal threshold and semantic matcher", () => {
-    const r = validateRoundTrip("```FIND (known://**) <0.7>\n~territorial concessions\n```");
+    const r = validateRoundTrip('```FIND (known://**) <0.7> [{"pattern": "~territorial concessions"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
-    const r = validateRoundTrip("```FIND (known://**) <0.7,10,20>\n~concessions\n```");
+    const r = validateRoundTrip('```FIND (known://**) <0.7,10,20> [{"pattern": "~concessions"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -127,9 +127,11 @@ test("PlurnkStatement: KILL with bare target", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: KILL with signal and aside body", () => {
-    const r = validateRoundTrip("```KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n```");
+test("PlurnkStatement: KILL carries its reason as an aside, never a body ({§matcher-option})", () => {
+    const r = validateRoundTrip("```KILL (sh:///3/1/2) <!-- runaway; no output for 4 turns -->```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+    const refused = PlurnkParser.parseStatements("```KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n```");
+    assert.equal(refused.items[0]?.kind, "error");
 });
 
 test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
@@ -144,12 +146,15 @@ test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
 // Per-op shape constraints — hand-crafted fixtures
 // -------------------------------------------------------------------------
 
+// The text and log operations carry a `matcher` beside the shared slots ({§matcher-option}).
+const MATCHER_OPS = new Set(["FIND", "READ", "EDIT", "KILL"]);
 const baseFields = (op: string) => ({
     op,
     aside: null,
     target: null,
     metadata: null,
     lineMarker: null,
+    ...(MATCHER_OPS.has(op) ? { matcher: null } : {}),
     body: null,
     position: { line: 1, column: 0 },
 });
@@ -157,8 +162,8 @@ const baseFields = (op: string) => ({
 const transferFields = (op: "COPY" | "MOVE") => ({
     op,
     aside: null,
-    source: { target: parsePath("source")!, metadata: null, lineMarker: null },
-    destination: { target: parsePath("destination")!, metadata: null, lineMarker: null },
+    source: { target: parsePath("source")!, metadata: null, lineMarker: null, matcher: null },
+    destination: { target: parsePath("destination")!, metadata: null, lineMarker: null, matcher: null },
     position: { line: 1, column: 0 },
 });
 
@@ -248,6 +253,7 @@ test("PlurnkStatement: COPY operands independently accept metadata and text scop
             target: parsePath("known://draft/source")!,
             metadata: ["source metadata"],
             lineMarker: { marks: [1, 4] },
+            matcher: { dialect: "glob", raw: "needle" },
         },
         destination: {
             target: {
@@ -264,6 +270,7 @@ test("PlurnkStatement: COPY operands independently accept metadata and text scop
             },
             metadata: ["destination metadata"],
             lineMarker: { marks: [12, 5, 12, 5] },
+            matcher: null,
         },
     };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
@@ -312,11 +319,11 @@ test("PlurnkStatement: rejects extra property", () => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: round-trip survives slot-order permutation (path-first)", () => {
-    const r = validateRoundTrip("```FIND (known://docs) <1>\n*.xml\n```");
+    const r = validateRoundTrip('```FIND (known://docs) <1> [{"pattern": "*.xml"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: round-trip survives slot-order permutation (L-first)", () => {
-    const r = validateRoundTrip("```FIND <1-5> (known://docs)\n*.xml\n```");
+    const r = validateRoundTrip('```FIND <1-5> (known://docs) [{"pattern": "*.xml"}]```');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

@@ -21,7 +21,7 @@ const statement: FindStatement = {
     },
     metadata: null,
     lineMarker: null,
-    body: { dialect: "regex", raw: "/selected/", pattern: "selected", flags: "" },
+    matcher: { dialect: "regex", raw: "/selected/", pattern: "selected", flags: "" }, body: null,
     position: { line: 1, column: 1 },
 };
 
@@ -65,7 +65,7 @@ test("{§find-result-projection}: exact duplicate locations are materialized and
 
 test("{§find-result-projection}: resource results are default-first channel groups and scopes are one-element groups", () => {
     const result = projectFindResult(
-        { ...statement, body: null },
+        { ...statement, matcher: null },
         pathScope("*", false),
         [{ item, match: { pathname: "/doc.md", matches: [] } }],
         [{ path: "worker:///src/**", items: 2, weight: 8 }],

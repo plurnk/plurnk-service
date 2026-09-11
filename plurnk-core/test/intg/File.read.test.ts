@@ -23,13 +23,13 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
     metadata: null,
     op: "READ", aside: null,
     target,
-    lineMarker: opts.lineMarker ?? null, body: null,
+    lineMarker: opts.lineMarker ?? null, matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
+const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,  position: { line: 1, column: 1 },
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -260,7 +260,7 @@ test("File.find: a binary member does not poison a body search across readable m
             "file",
         );
 
-        const result = await new File().find(parseFind("```FIND (**)\n/needle/\n```"), ctx);
+        const result = await new File().find(parseFind("```FIND (**) [{\"pattern\":\"/needle/\"}]```"), ctx);
         assert.equal(result.status, 200);
         assert.deepEqual(resourcePaths(result), ["readme.md"]);
     });

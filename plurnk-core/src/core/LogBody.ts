@@ -134,8 +134,12 @@ export default class LogBody {
             if (rx !== null && typeof rx === "object") {
                 const result = rx as Record<string, unknown>;
                 if (Object.hasOwn(result, "receipt")) {
+                    // {§edit-pattern} — a pattern batch keeps the first landed span as its receipt
+                    // and the last as `last`; the row shows both boundaries.
+                    const last = result.last;
                     return LogBody.#receiptBody([
                         assertEditReceipt(result.receipt),
+                        ...(last !== undefined && last !== null ? [assertEditReceipt({ ...(result.receipt as object), effect: last })] : []),
                     ]);
                 }
                 if (row.op === "EDIT" && typeof result.span === "string") {

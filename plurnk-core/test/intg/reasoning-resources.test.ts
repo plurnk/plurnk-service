@@ -182,9 +182,7 @@ test("{§reasoning-history}: immutable sources support search, FORK, restart, an
         assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
 Retained determination.
 \`\`\``)).status, 403);
-        const found = await dispatch(`\`\`\`FIND (${target})
-~"Finding 2"
-\`\`\``);
+        const found = await dispatch(`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\``);
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
         assert.equal(found.matchLocationCount, 1);
@@ -199,7 +197,7 @@ Retained determination.
 Branch-only decision.
 \`\`\``, forkContext)).status, 403);
         assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, original);
-        const stillFound = await dispatch(`\`\`\`FIND (${target})\n~"Finding 2"\n\`\`\``);
+        const stillFound = await dispatch(`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\``);
         assert.equal(stillFound.status, 200, "denied writes leave indexed source unchanged");
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const observations = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });

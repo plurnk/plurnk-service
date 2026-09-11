@@ -19,7 +19,7 @@ for (const [source, expected] of [
 }
 
 test("{§turn-shape} omitted TASK does not hide a bounded malformed sibling", () => {
-    const result = PlurnkParser.parse("````READ (notes.md)````\n\n````FIND (*)\n/broken/ trailing\n````");
+    const result = PlurnkParser.parse("````READ (notes.md)````\n\n````FIND (*) [{\"pattern\": \"/broken/ trailing\"}]````");
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ"]);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []),

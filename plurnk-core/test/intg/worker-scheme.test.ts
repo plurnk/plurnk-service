@@ -82,7 +82,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 // READ from one named namespace: worker://<owner>/<path>.
@@ -90,7 +90,7 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
     metadata: null,
     op: "READ", aside: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 // KILL in one named namespace: worker://<owner>/<path> — deletes the scratch entry (path present).
@@ -98,7 +98,7 @@ const killEntry = (owner: string, path: string): KillStatement => ({
     metadata: null,
     op: "KILL", aside: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 test("{§machine-processes-entry-inheritance}: a fork copies named scratch without changing literal references", async () => {
@@ -381,7 +381,7 @@ test("the exact worker control address is enforced before every operation path (
             { ...forkWorker("worker", "fork"), target },
             sendStmt(target, "message"),
             readStmt(target),
-            { metadata: null, op: "KILL", aside: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "KILL", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
         ];
 
         const results = [];
@@ -431,7 +431,7 @@ test("{§worker-control-addressing}: all Worker names are literal; tilde is not 
             "a literal tilde never aliases the caller's named scratch");
         for (const name of ["actor", "self"]) {
             assert.equal((await dispatch(editStmt(workerEntry(name, "notes.md"), "scratch"))).status, 201);
-            const kill: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath(name), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+            const kill: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath(name), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
             assert.equal((await dispatch(kill)).status, 200);
         }
         assert.deepEqual(killed, [workerId, named.id]);
@@ -848,12 +848,12 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
         const turnId = await insertTurn(db, loopId, 1, 102);
         const sisterId = await insertWorker(db, workspaceId, null, "worker");
 
-        const killWorker: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("worker"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killWorker, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
         assert.deepEqual(killed, [sisterId], "the named sister worker is aborted by id");
 
-        const killGhost: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killGhost: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("ghost"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
@@ -869,7 +869,7 @@ for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "p
         const childId = await insertWorker(db, workspaceId, related ? meId : null, "author");
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", aside: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
+        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", aside: null, lineMarker: null, target, matcher: null, body: null, position: { line: 1, column: 1 } });
 
         // {§entry-owner}: the authority is part of the workspace entry key.
         const childLoop = await insertLoop(db, childId, 1, "go");
@@ -993,7 +993,7 @@ test("{§op-synchronous} KILL(worker) settles before same-turn completion", asyn
         });
 
         // Killing the worker settles immediately and does not itself block completion.
-        const killWorker: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("leftover-worker"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.

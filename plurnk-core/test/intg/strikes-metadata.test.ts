@@ -28,7 +28,7 @@ class CapturingMock extends Mock {
 test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
         response("```READ (worker:///absent)```\n```TASK\n[]\n```", 10),
-        response("```READ (worker:///absent)```\n```FIND (worker:///x)\n$fC\n```", 10),
+        response("```READ (worker:///absent)```\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```", 10),
         response("\n```EDIT (worker:///note)\nr\n```\n\n```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```", 10),
         response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });

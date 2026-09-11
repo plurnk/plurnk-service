@@ -20,7 +20,7 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
     target: urlPath("worker", pathname),
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const response = (ops: PlurnkStatement[]): MockResponse => ({
@@ -227,7 +227,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             metadata: null,
             op: "READ" as const, aside: null,
             target: urlPath("worker", pathname),
-            lineMarker: null, body: null,
+            lineMarker: null, matcher: null, body: null,
             position: { line: 1, column: 1 },
         });
         const provider = new Mock({

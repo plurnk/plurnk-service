@@ -133,7 +133,7 @@ export default class LoopDocs {
             statements.push({
                 op: "KILL", aside: null,
                 target: LoopDocs.#target(pathname),
-                metadata: null, lineMarker: null, body: null, position: UNKNOWN_POSITION,
+                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             } satisfies KillStatement);
         }
         for (const [pathname, content] of desired) {
@@ -141,7 +141,7 @@ export default class LoopDocs {
             statements.push({
                 op: "EDIT", aside: null,
                 target: LoopDocs.#target(pathname),
-                metadata: null, lineMarker: { marks: [1, -1] }, body: content, position: UNKNOWN_POSITION,
+                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: content, position: UNKNOWN_POSITION,
             });
         }
 

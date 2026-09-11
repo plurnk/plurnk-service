@@ -85,7 +85,7 @@ test("bracket metadata parses after the target; a leading bracket on a non-execu
 test("a second path on a one-path operation names the slot contract", () => {
     const r = PlurnkParser.parse(turn(frame("FIND (/needle/) (src/) <1,-1>", null)));
     assert.equal(errors(r).length, 1);
-    assert.equal(errors(r)[0].message, "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading");
+    assert.equal(errors(r)[0].message, "a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{\"pattern\": \"…\"}]`");
     assert.deepEqual(statements(r).map(({ op }) => op), ["TASK"]);
 });
 

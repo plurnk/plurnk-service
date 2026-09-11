@@ -43,7 +43,7 @@ const killStatement = (scheme: string, pathname: string): KillStatement => ({
         fragment: null,
     },
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 

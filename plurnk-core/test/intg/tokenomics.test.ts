@@ -22,7 +22,7 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
     target: urlPath(pathname), lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 const setup = async () => {

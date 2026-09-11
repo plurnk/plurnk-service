@@ -89,7 +89,7 @@ for (const pretty of [false, true]) {
             };
             const url = `https://${HOST}/dist/index.json`;
             if (prepared) assert.equal((await run(`READ (${url})`)).status, 200);
-            const found = await run(`FIND (${url})`, "$[?(@.lts != false)].version");
+            const found = await run(`FIND (${url}) [${JSON.stringify({ pattern: "$[?(@.lts != false)].version" })}]`);
             assert.equal(found.status, 200);
             assert.ok(found.content);
             const locations = JSON.parse(found.content) as Array<{
@@ -193,7 +193,7 @@ test("#283: a scoped READ of a project file still returns exactly the window", a
                 op: "EDIT", aside: null,
                 target: { kind: "url", raw: "worker:///scope.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/scope.md", query: null, fragment: null },
                 lineMarker: null,
-                body: content,
+                matcher: null, body: content,
                 position: { line: 1, column: 0 },
             },
             ...ids, sequence: ++sequence, origin: "model",
@@ -247,7 +247,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
         const acquired = await dispatch("```READ (https://93.184.216.34/channel-facts)```");
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        await dispatch("```FIND (https://93.184.216.34/channel-facts)\n/v[0-9.]+/i\n```");
+        await dispatch("```FIND (https://93.184.216.34/channel-facts) [{\"pattern\":\"/v[0-9.]+/i\"}]```");
         const bodyFind = await readContent(db, ids, sequence);
         const bodyLocations = JSON.parse(String(bodyFind.content ?? "[]")) as Array<{ channel?: string }>;
         assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
@@ -255,7 +255,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
             assert.equal(location.channel, "body", "a default-channel match names the body channel");
         }
 
-        await dispatch("```FIND (https://93.184.216.34/channel-facts#html)\n/v[0-9.]+/i\n```");
+        await dispatch("```FIND (https://93.184.216.34/channel-facts#html) [{\"pattern\":\"/v[0-9.]+/i\"}]```");
         const htmlFind = await readContent(db, ids, sequence);
         const htmlLocations = JSON.parse(String(htmlFind.content ?? "[]")) as Array<{ channel?: string }>;
         assert.ok(htmlLocations.length > 0, "the #html-channel FIND reports match locations");

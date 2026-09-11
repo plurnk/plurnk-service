@@ -10,7 +10,7 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
         target: parsePath(raw),
         metadata: null,
         lineMarker: null,
-        body: null,
+        matcher: null, body: null,
         position: { line: 1, column: 1 },
     });
     const first = StrikeRail.fingerprintTurn([statement("https://example.org/x?a=1&b=2#body")]);

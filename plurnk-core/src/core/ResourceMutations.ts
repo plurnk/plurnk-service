@@ -71,6 +71,10 @@ export default class ResourceMutations {
         return this.#edits.withMergeFacts(...args);
     }
 
+    markLineDeletion(statement: EditStatement): void {
+        this.#edits.markLineDeletion(statement);
+    }
+
     settleEdit(...args: Parameters<EditMutations["settleEdit"]>): ReturnType<EditMutations["settleEdit"]> {
         return this.#edits.settleEdit(...args);
     }

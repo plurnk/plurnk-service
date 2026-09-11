@@ -64,7 +64,7 @@ test("client: LOOK and BUFF share single-line matcher admission", () => {
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1, op);
         assert.equal(errors[0]?.error.source, "visitor", op);
-        assert.equal(errors[0]?.error.message, "Matcher body has 2 lines; expected 1.", op);
+        assert.equal(errors[0]?.error.message, "Matcher has 2 lines; expected 1.", op);
         assert.equal(result.items.some((item) => item.kind === "statement"), false, op);
     }
 });
@@ -84,7 +84,7 @@ test("client: a different-lane LOOK heading remains body text and therefore viol
     assert.equal(result.items.some((item) => item.kind === "statement"), false);
     const errors = result.items.filter((item) => item.kind === "error");
     assert.equal(errors.length, 1);
-    assert.equal(errors[0]?.error.message, "Matcher body has 3 lines; expected 1.");
+    assert.equal(errors[0]?.error.message, "Matcher has 3 lines; expected 1.");
 });
 
 // -------------------------------------------------------------------------

@@ -22,13 +22,13 @@ const url = (pathname: string): UrlPath => ({
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: LineMarker | null = null): FindStatement => ({
+const findStmt = (target: UrlPath, matcher: MatcherBody | null, lineMarker: LineMarker | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker, body,
-    position: { line: 1, column: 1 },
+    op: "FIND", aside: null, target, lineMarker, matcher, body: null,
+     position: { line: 1, column: 1 },
 });
 
 const glob = (raw: string): MatcherBody => ({ dialect: "glob", raw });
@@ -84,7 +84,7 @@ test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body"
     const { db, workspaceId, workerId } = await setup();
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
-        const stmt: ReadStatement = { metadata: null, op: "READ", aside: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
+        const stmt: ReadStatement = { metadata: null, op: "READ", aside: null, target: url("lines"), lineMarker: { marks: [2, 2] }, matcher: null, body: null, position: { line: 1, column: 1 } };
         const r = await lookThroughScheme("worker", null, stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);

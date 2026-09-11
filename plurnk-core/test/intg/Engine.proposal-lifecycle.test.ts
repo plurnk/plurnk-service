@@ -54,7 +54,7 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null },
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const setupEngine = async (db: Db, proposing: ProposingTest = new ProposingTest()): Promise<{

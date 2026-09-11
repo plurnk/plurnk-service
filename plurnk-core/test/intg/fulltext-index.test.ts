@@ -17,7 +17,7 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: marker, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
     const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });

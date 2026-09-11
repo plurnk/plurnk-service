@@ -17,13 +17,13 @@ const url = (pathname: string): UrlPath => ({
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody | null = null): FindStatement => ({
+const findStmt = (target: UrlPath, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+     position: { line: 1, column: 1 },
 });
 
 const glob = (raw: string): MatcherBody => ({ dialect: "glob", raw });

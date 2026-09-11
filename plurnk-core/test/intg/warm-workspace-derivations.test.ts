@@ -31,7 +31,7 @@ const url = (pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EDIT", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
     const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });

@@ -21,7 +21,7 @@ const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: Tex
     op: "EDIT", aside: opts.aside ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
-    body: opts.body ?? null,
+    matcher: null, body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
@@ -30,16 +30,16 @@ const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker
     op: "READ", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
-const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; body?: MatcherBody | null }): KillStatement => ({
+const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; matcher?: MatcherBody | null }): KillStatement => ({
     metadata: null,
     op: "KILL", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
-    body: opts.body ?? null,
+    matcher: opts.matcher ?? null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -102,18 +102,19 @@ test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: the KILL body aside survives into the log row's tx (even on a 404)", async () => {
+test("Engine.dispatch: the KILL matcher survives into the log row's tx (even on a 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: killStmt({ target: urlPath("worker", "/gone"), body: { dialect: "glob", raw: "superseded — see /final" } }),
+            statement: killStmt({ target: urlPath("worker", "/gone"), matcher: { dialect: "glob", raw: "superseded — see /final" } }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("KILL log_entry not found");
         assert.equal(log.op, "KILL");
-        const tx = JSON.parse(log.tx) as { body: string | null };
-        assert.deepEqual(tx.body, { dialect: "glob", raw: "superseded — see /final" });
+        const tx = JSON.parse(log.tx) as { matcher: MatcherBody | null; body: null };
+        assert.deepEqual(tx.matcher, { dialect: "glob", raw: "superseded — see /final" });
+        assert.equal(tx.body, null);
     } finally { await db.close(); }
 });
 
@@ -747,7 +748,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     try {
         const stmt: EditStatement = {
             metadata: null,
-            op: "EDIT", aside: null, target: null, lineMarker: null, body: "y",
+            op: "EDIT", aside: null, target: null, lineMarker: null, matcher: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -1025,8 +1026,8 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         const result = await engine.dispatch({
             statement: {
                 op: "COPY", aside: null,
-                source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null },
-                destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null },
+                source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null, matcher: null },
+                destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null, matcher: null },
                 position: { line: 1, column: 1 },
             },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,

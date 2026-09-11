@@ -73,7 +73,7 @@ const read = (target: UrlPath): ReadStatement => ({
     aside: null,
     target,
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -83,7 +83,7 @@ const kill = (target: UrlPath): KillStatement => ({
     aside: null,
     target,
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 

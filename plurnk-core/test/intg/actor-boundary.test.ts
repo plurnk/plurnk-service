@@ -24,7 +24,7 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: marker, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 test("two workers in one workspace both write the same shared entry — no lock", async () => {

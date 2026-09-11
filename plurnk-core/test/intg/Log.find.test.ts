@@ -21,11 +21,11 @@ const editStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
-    lineMarker: null, body: content, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
+    op: "READ", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 const resources = (result: FindResult): CatalogResource[] =>
     result.results.filter((item): item is CatalogResource => Array.isArray(item));

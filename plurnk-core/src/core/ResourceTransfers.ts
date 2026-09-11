@@ -15,6 +15,7 @@ import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
+import PatternEdits from "../content/pattern-edits.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
 // COPY and MOVE orchestration: source selection, destination writes, move settlement.
@@ -107,7 +108,13 @@ export default class ResourceTransfers {
         const selected = await this.#selection.selectSource(resolvedSource, ctx, "COPY");
         if (MutationEffects.isDispatchResult(selected)) return selected;
         const result = await this.writeDestination(statement, selected, resolvedDestination, ctx);
-        return MutationEffects.prependScopeNormalizations(result, selected.scopeNormalizations);
+        return ResourceTransfers.#withMatched(MutationEffects.prependScopeNormalizations(result, selected.scopeNormalizations), selected);
+    }
+
+    // {§copy-move-pattern} — a pattern transfer reports how many lines it selected.
+    static #withMatched(result: DispatchResult, selected: SelectedSource): DispatchResult {
+        if (selected.matchedLines === undefined || result.status >= 300) return result;
+        return Results.assert({ ...result, matched: selected.matchedLines.length });
     }
 
 
@@ -134,6 +141,14 @@ export default class ResourceTransfers {
 
         const handler = this.#schemes.get(resolvedSource.scheme, ctx.workspaceId);
         if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
+        // {§copy-move-pattern} — a curated source retires rows, not lines of its projection.
+        if (selected.matchedLines !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
+            return MutationEffects.failure(
+                "pattern-unsupported", 400,
+                `MOVE cannot retire lines of the '${resolvedSource.scheme}' projection by pattern; COPY the lines and KILL its rows by pattern.`,
+                {}, { scheme: resolvedSource.scheme, operation: "MOVE", retryable: false },
+            );
+        }
         if (!ResourceTransfers.#curatedSource(resolvedSource)) {
             const sourceBinding = await this.#resolveDataEntryAddress({
                 target: resolvedSource.target,
@@ -156,9 +171,9 @@ export default class ResourceTransfers {
                 resolvedDestination,
                 ctx,
             );
-            return resolvedDestination.lineMarker === null
+            return ResourceTransfers.#withMatched(resolvedDestination.lineMarker === null
                 ? MutationEffects.prependScopeNormalizations(result, selected.scopeNormalizations)
-                : result;
+                : result, selected);
         }
 
         const destinationResult = MutationEffects.prependScopeNormalizations(
@@ -221,10 +236,10 @@ export default class ResourceTransfers {
         const base = destinationResult.status === 304
             ? { ...destinationResult, status: 200 }
             : destinationResult;
-        return MutationEffects.withCombinedEffects(
+        return ResourceTransfers.#withMatched(MutationEffects.withCombinedEffects(
             base,
             MutationEffects.effectsOf(sourceResult),
-        );
+        ), selected);
     }
 
 
@@ -234,7 +249,7 @@ export default class ResourceTransfers {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        if (source.lineMarker === null) {
+        if (source.lineMarker === null && source.matchedLines === undefined) {
             if (destination.lineMarker !== null) {
                 return MutationEffects.failure(
                     "move-region-overlap",
@@ -263,6 +278,7 @@ export default class ResourceTransfers {
             source.lineAnchorPrecondition,
             resolvedDestination.precondition,
         );
+        const removals = ResourceTransfers.#sourceRemovals(source, statement.position);
         const moved = await this.invokeEditBatch(
             resolvedDestination.selection,
             [
@@ -271,17 +287,26 @@ export default class ResourceTransfers {
                     body: source.content,
                     position: statement.position,
                 },
-                {
-                    marker: source.lineMarker,
-                    body: "",
-                    position: statement.position,
-                },
+                ...removals,
             ],
             ctx,
             precondition,
         );
         const effect = MutationEffects.pendingEffect(resolvedDestination.selection, "update");
-        return MutationEffects.finalizeEffects(moved, resolvedDestination.selection, [effect, effect]);
+        return MutationEffects.finalizeEffects(moved, resolvedDestination.selection, [effect, ...removals.map(() => effect)]);
+    }
+
+    // The edits that take a scoped source out of its channel: the scope itself, or each line a
+    // pattern selected ({§copy-move-pattern}).
+    static #sourceRemovals(
+        source: ResolvedResourceSelection & { readonly matchedLines?: readonly number[] },
+        position: EditStatement["position"],
+    ): Array<{ readonly marker: LineMarker; readonly body: string; readonly position: EditStatement["position"] }> {
+        if (source.matchedLines !== undefined) {
+            return PatternEdits.deletions(source.matchedLines).map(({ marker, body }) => ({ marker, body, position }));
+        }
+        if (source.lineMarker === null) throw new InvalidOperationResultError("A whole-channel MOVE source has no removal edits.");
+        return [{ marker: source.lineMarker, body: "", position }];
     }
 
 
@@ -294,14 +319,19 @@ export default class ResourceTransfers {
 
     async removeMoveSource(
         statement: MoveStatement,
-        source: ResolvedResourceSelection,
+        source: ResolvedResourceSelection & { readonly matchedLines?: readonly number[] },
         ctx: PlurnkSchemeContext,
         lineAnchorPrecondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
         const effect = MutationEffects.pendingEffect(
             source,
-            source.lineMarker === null ? "delete" : "update",
+            source.lineMarker === null && source.matchedLines === undefined ? "delete" : "update",
         );
+        if (source.matchedLines !== undefined) {
+            const removals = ResourceTransfers.#sourceRemovals(source, statement.position);
+            const edited = await this.invokeEditBatch(source, removals, ctx, lineAnchorPrecondition);
+            return MutationEffects.finalizeEffects(edited, source, removals.map(() => effect));
+        }
         if (ResourceTransfers.#curatedSource(source)) {
             const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as
                 { kill?: (pathname: string, scope: LineMarker | null, ctx: SchemeCtxImpl) => Promise<DispatchResult> } | undefined;
@@ -682,6 +712,7 @@ export default class ResourceTransfers {
             target: selection.target,
             metadata: selection.metadata,
             lineMarker: marker,
+            matcher: null,
             body,
             position,
         }));
@@ -848,6 +879,7 @@ export default class ResourceTransfers {
                 target: deferred.target,
                 metadata: deferred.metadata,
                 lineMarker: deferred.lineMarker,
+                matcher: null,
             },
             ctx,
             "read",
@@ -878,6 +910,7 @@ export default class ResourceTransfers {
             {
                 ...resolvedSource,
                 lineMarker: resolvedSource.lineMarker as LineMarker | null,
+                ...(deferred.matchedLines === undefined ? {} : { matchedLines: deferred.matchedLines }),
             },
             ctx,
             deferred.lineAnchorPrecondition,

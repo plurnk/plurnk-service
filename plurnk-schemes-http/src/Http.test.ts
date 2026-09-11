@@ -203,7 +203,7 @@ const readStmt = (
     lineMarker: ReadStatement["lineMarker"] = null,
     metadata: ReadStatement["metadata"] = null,
 ): ReadStatement => ({
-    op: "READ", aside: null, target, metadata, lineMarker, body: null,
+    op: "READ", aside: null, target, metadata, lineMarker, matcher: null, body: null,
     position: { line: 0, column: 0 },
 });
 const sendStmt = (target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
@@ -212,15 +212,15 @@ const sendStmt = (target: UrlPath | null, body?: string, metadata: SendStatement
     position: { line: 0, column: 0 },
 });
 const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null, metadata: ResolvedEditStatement["metadata"] = null): ResolvedEditStatement => ({
-    op: "EDIT", aside: null, target, metadata, lineMarker, body,
+    op: "EDIT", aside: null, target, metadata, lineMarker, matcher: null, body,
     position: { line: 0, column: 0 },
 });
-const killStmt = (target: UrlPath | null, body: KillStatement["body"] = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
-    op: "KILL", aside: null, target, metadata, lineMarker: null, body,
+const killStmt = (target: UrlPath | null, matcher: KillStatement["matcher"] = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
+    op: "KILL", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
-const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
-    op: "FIND", aside: null, target, metadata, lineMarker: null, body,
+const findStmt = (target: UrlPath | null, matcher: FindStatement["matcher"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
+    op: "FIND", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
 const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) => {

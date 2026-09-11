@@ -17,11 +17,11 @@ const fileUrl = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname, query: null, fragment: null,
 });
-const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: fileUrl(pathname), lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: fileUrl(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     lookThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } });
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: fileUrl(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
 const setup = async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
@@ -178,14 +178,14 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
-            target: { kind: "local", raw: "no/such.md" }, body: null } as never;
+            target: { kind: "local", raw: "no/such.md" }, matcher: null, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
         assert.equal(findMiss.status, 404, "FIND over an absent exact path cannot certify an empty set");
         assert.equal(findMiss.problem?.detail, "No entry exists at no/such.md.");
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
         const surveyStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
-            target: { kind: "local", raw: "empty-dir/" }, body: null } as never;
+            target: { kind: "local", raw: "empty-dir/" }, matcher: null, body: null } as never;
         const survey = await file.find(surveyStmt, ctx);
         assert.equal(survey.status, 200, "an empty folder survey is orienting, not an error");
 

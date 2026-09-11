@@ -628,7 +628,7 @@ test("{§plan-slotless}: a malformed continuation heading preserves siblings wit
 test("a syntactically legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const malformed = "\n```FIND (worker:///x)\n$fC\n```\n\n```TASK\n[{\"content\":\"inspect the results next\",\"status\":\"in_progress\"}]\n```";
+        const malformed = "\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```\n\n```TASK\n[{\"content\":\"inspect the results next\",\"status\":\"in_progress\"}]\n```";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -715,7 +715,7 @@ test("a syntactically legal $fC matcher failure is bounded, admitted once, and m
     }
 });
 
-test("#409: a body-bearing READ with pasted READ lines is refused before FIND dispatch", async () => {
+test("#409: a READ carrying pasted READ lines as a body is refused before dispatch, echoing nothing", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const renderedRead = [
@@ -755,12 +755,12 @@ ${renderedRead}
         assert.equal(
             rows.some(({ origin, op }) => origin === "model" && (op === "READ" || op === "FIND")),
             false,
-            "READ-to-FIND coercion remains correct, but the malformed matcher never dispatches",
+            "the body-bearing READ never dispatches ({§matcher-option})",
         );
         const error = rows.find(({ origin, op }) => origin === "model" && op === "error");
         assert.ok(error);
         const result = JSON.parse(error.rx) as { problem?: { detail?: string } };
-        assert.equal(result.problem?.detail, "Matcher body has 3 lines; expected 1.");
+        assert.equal(result.problem?.detail, 'READ takes no body; a matcher belongs in the heading as [{"pattern": "…"}].');
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const turnOps = sources.find((row) => row.turn_id === failed.turnId && row.kind === "ops");
         assert.ok(turnOps, "the admitted source remains durable independently of result rows");
@@ -780,7 +780,7 @@ ${renderedRead}
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(log, /Matcher body has 3 lines; expected 1\./);
+        assert.match(log, /READ takes no body; a matcher belongs in the heading/);
         assert.doesNotMatch(
             log,
             /@et6xE/,
@@ -797,7 +797,7 @@ test("a bounded malformed operation prevents same-turn completion until the mode
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("\n```FIND (**)\n/unterminated[\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+                invalid("\n```FIND (**) [{\"pattern\":\"/unterminated[\"}]```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             ],
         });
 

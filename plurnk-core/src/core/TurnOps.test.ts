@@ -15,7 +15,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
         {
             op: "FIND", aside: "workspace files",
             target: { kind: "local", raw: "*" },
-            metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, body: null, position: UNKNOWN_POSITION,
+            metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
         },
         {
             op: "TASK", aside: null, target: null, metadata: null,
@@ -41,7 +41,7 @@ test("TurnOps: internal source preserves trailing body newlines across a section
     const edit: EditStatement = {
         op: "EDIT", aside: null,
         target: { kind: "local", raw: "AGENTS.md" }, metadata: null, lineMarker: null,
-        body: "# Policy\nBe exact.\n", position: UNKNOWN_POSITION,
+        matcher: null, body: "# Policy\nBe exact.\n", position: UNKNOWN_POSITION,
     };
     const statements: [EditStatement, DispositionStatement] = [
         edit,

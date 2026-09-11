@@ -348,7 +348,28 @@ balanced brackets inside the block are retained, and double-quoted strings
 protect their brackets. Brackets inside `(path)` remain ordinary path and
 glob characters. A block that is not valid JSON, or a second block on one
 operand, is the owner's `400`, never a parser diagnostic. An unfinished block
-or multiline metadata loses its boundary.
+or multiline metadata loses its boundary. One key is the language's own:
+`pattern` ({§matcher-option}).
+
+§matcher-option **`pattern` is the matcher, and it lives in the heading.** On
+FIND, READ, KILL, EDIT, and each COPY/MOVE operand, the option
+`[{"pattern": "<matcher>"}]` carries the matcher string exactly as a body once
+did: the leading prefix claims its dialect under {§matcher-prefix-claims}, and
+AstBuilder lifts it into the statement's `matcher` (`MatcherBody | null`),
+positioned dialect errors included. A block that carries only `pattern`
+leaves `metadata: null` for the owner; beside other keys the block stays with
+the owner verbatim, and the owner's reader treats `pattern` as reserved. The
+language lifts only from one block that parses as a JSON array of objects;
+anything else lifts nothing and reaches the owner's `400` untouched. A
+`pattern` that is present but not a string is the language's own positioned
+diagnostic, as is a matcher of a claimed dialect that fails admission. FIND,
+READ, and KILL take no body at all: a body on them is refused by name
+(`FIND takes no body; a matcher belongs in the heading as [{"pattern": "…"}]`),
+never silently read as a matcher; a body that is only an HTML comment is still
+the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body: with
+a matcher it is the replacement for every selected span ({§edit-pattern}), and
+an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
+whose block left no metadata back as `[{"pattern": "…"}]`.
 
 ## 3. Lexical elements
 
@@ -378,7 +399,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
-| KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
+| KILL | required target, including a log item        | optional text region ({§kill-scope}) | none; the matcher is the `pattern` option |
 | SEND | optional recipient | optional recipient timing | message |
 | TASK | none | optional timeout and poll for waiting intent | Plurnk Plan JSON array |
 
@@ -461,8 +482,9 @@ takes no scope. Scheduling does not change the message body or disposition.
 
 §kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
 anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
-```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional one-line matcher body that selects rows. The AST
-is `{ op: "KILL", target, lineMarker: TextLineMarker | null, body: MatcherBody | null }`.
+```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional matcher option that
+selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
+The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: null }`.
 Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.
@@ -506,16 +528,16 @@ metadata modifier. No scope, persistent worker identity, or output-language
 shape is represented. Provider selection, source admission, batching,
 accounting, and observation timing belong to the consuming service.
 
-§read-find-normalization An authored READ with a nonempty matcher body or a
-target path classified as a glob normalizes during AST construction to one
-ordinary FIND statement. Target, signals, scope, and matcher are preserved;
-FIND's result pagination and projection contract then applies. The canonical
-AST retains no parallel matcher-READ mode, and the runtime performs no READ
-fan-out.
+§read-find-normalization An authored READ whose target path is classified as
+a glob normalizes during AST construction to one ordinary FIND statement:
+target, signals, scope, and matcher are preserved, and FIND's result
+pagination and projection contract then applies. A matcher never changes the
+operation: READ with a `pattern` on an exact target stays READ and renders the
+selected lines ({§read-pattern}); the runtime performs no READ fan-out.
 
-§read-exact-target After normalization, READ targets one exact resource (a
-local path or scheme URL, with optional `#channel` fragment or
-`{header: value}` metadata) and has no matcher body. A `<scope>` on READ selects
+§read-exact-target READ targets one exact resource (a local path or scheme
+URL, with optional `#channel` fragment or `[metadata]`) and has no body. A
+`<scope>` on READ selects
 a text region from that exact target. Without a scope, READ defaults to
 `<1,16>`; `<1,-1>` explicitly selects all text. Decimal scope components are
 invalid on READ.
@@ -630,12 +652,12 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
-FIND, authored READ, KILL, LOOK, and BUFF accept an optional body matcher.
-The lexer preserves the body opaquely; AstBuilder assigns the dialect from its
-leading characters, then normalizes matcher-bearing READ to FIND under
-{§read-find-normalization}.
-A leading prefix claims its dialect. Invalid claimed syntax is a positioned
-visitor error and never falls back to glob matching.
+FIND, READ, KILL, EDIT, and the COPY/MOVE operands accept an optional matcher
+through the `pattern` option ({§matcher-option}); the client-tier LOOK and
+BUFF still carry theirs as a body. AstBuilder assigns the dialect from the
+matcher's leading characters. A leading prefix claims its dialect. Invalid
+claimed syntax is a positioned visitor error and never falls back to glob
+matching.
 
 - §heading-boundary-recovery A column-0 heading is the trustworthy boundary. After a
   statement-level error the parser discards the rest of that statement and resumes at the
@@ -650,8 +672,8 @@ visitor error and never falls back to glob matching.
   statement, stating the `(path) <scope>` form that was used. The statement runs; a warning is
   never a strike. A `<` anywhere else in the slot remains the lexer's refusal.
 - §second-path-slot A second `(path)` on a heading that already closed one is a parser
-  error at the second paren stating the one-slot rule and that a pattern belongs in the body;
-  the statement is dropped and its siblings run.
+  error at the second paren stating the one-slot rule and that a pattern belongs in the
+  `[{"pattern": …}]` option; the statement is dropped and its siblings run.
 
 | Prefix    | Dialect  | Canonical body                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|

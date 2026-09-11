@@ -102,6 +102,42 @@ export default class AstBuilder {
         return { aside: aside ?? (comment[1] ?? "").trim(), raw: null };
     }
 
+    // {§matcher-option} — `pattern` is the language's key inside `[metadata]`: lifted into the
+    // statement's `matcher`, classified exactly as a body matcher was ({§matcher-prefix-claims}).
+    // A block that carries only `pattern` leaves no metadata for the owner; beside other keys the
+    // block stays for the owner, whose reader skips the reserved key. The block's shape stays the
+    // owner's business ({§scheme-metadata-modifier}): a second block or malformed JSON lifts
+    // nothing and reaches the owner's 400 untouched; only a present `pattern` that is not a
+    // string, or a malformed matcher, is the language's own positioned diagnostic.
+    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position): { matcher: MatcherBody | null; metadata: SchemeMetadata } {
+        if (metadata === null || metadata.length !== 1) return { matcher: null, metadata };
+        let parsed: unknown;
+        try { parsed = JSON.parse(`[${metadata[0]}]`); }
+        catch (cause) {
+            if (!(cause instanceof SyntaxError)) throw cause;
+            return { matcher: null, metadata };
+        }
+        const elements = parsed as unknown[];
+        if (elements.some((element) => typeof element !== "object" || element === null || Array.isArray(element))) {
+            return { matcher: null, metadata };
+        }
+        const options = Object.assign({}, ...elements as object[]) as Record<string, unknown>;
+        if (!Object.hasOwn(options, "pattern")) return { matcher: null, metadata };
+        const pattern = options.pattern;
+        if (typeof pattern !== "string") {
+            throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher, e.g. [{"pattern": "/needle/i"}].`);
+        }
+        const matcher = AstBuilder.#parseMatcherBody(pattern, position);
+        const others = Object.keys(options).filter((key) => key !== "pattern");
+        return { matcher, metadata: others.length === 0 ? null : metadata };
+    }
+
+    // {§matcher-option} — a text or log operation's body is never a matcher any more.
+    static #refuseBody(op: string, raw: string | null, position: Position): void {
+        if (raw === null || raw.trim() === "") return;
+        throw new PlurnkParseError(position.line, position.column, "visitor", `${op} takes no body; a matcher belongs in the heading as [{"pattern": "…"}].`);
+    }
+
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
     // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
@@ -137,11 +173,15 @@ export default class AstBuilder {
     static #buildFindFrom(ctx: FindStatementContext, aside: string | null, raw: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
+        AstBuilder.#refuseBody("FIND", raw, position);
+        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position);
         return {
             op: "FIND",
             aside,
             ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
+            metadata: lifted.metadata,
+            matcher: lifted.matcher,
+            body: null,
             position,
         };
     }
@@ -194,8 +234,11 @@ export default class AstBuilder {
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
             : slots.target?.raw;
-        const hasMatcher = raw !== null && raw.trim() !== "";
-        if (hasMatcher || (targetPath !== undefined && PathSyntax.hasGlob(targetPath))) {
+        AstBuilder.#refuseBody("READ", raw, position);
+        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position);
+        // {§read-find-normalization} — a glob target is a survey, so it is a FIND; a matcher on an
+        // exact target stays a READ and selects the lines it renders ({§read-pattern}).
+        if (targetPath !== undefined && PathSyntax.hasGlob(targetPath)) {
             if (slots.lineMarker?.marks.some((mark) => typeof mark === "string") === true) {
                 throw new PlurnkParseError(
                     position.line,
@@ -209,7 +252,9 @@ export default class AstBuilder {
                 op: "FIND",
                 aside,
                 ...findSlots,
-                body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
+                metadata: lifted.metadata,
+                matcher: lifted.matcher,
+                body: null,
                 position,
             };
         }
@@ -217,6 +262,8 @@ export default class AstBuilder {
             op: "READ",
             aside,
             ...slots,
+            metadata: lifted.metadata,
+            matcher: lifted.matcher,
             body: null,
             position,
         };
@@ -225,10 +272,13 @@ export default class AstBuilder {
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
+        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position);
         return {
             op: "EDIT",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
+            metadata: lifted.metadata,
+            matcher: lifted.matcher,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
@@ -330,12 +380,15 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        AstBuilder.#refuseBody("KILL", AstBuilder.#bodyTextOf(ctx), position);
+        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position);
         return {
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
+            metadata: lifted.metadata,
+            matcher: lifted.matcher,
+            body: null,
             position,
         };
     }
@@ -471,10 +524,12 @@ export default class AstBuilder {
     static #resourceSelectionFromCtx(ctx: ResourceSelectionContext, pos: Position): ResourceSelection {
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos);
         if (target === null) throw new Error("resource selection grammar did not produce a target");
+        const lifted = AstBuilder.#liftMatcher("COPY/MOVE", AstBuilder.#metadataFromCtx(ctx), pos);
         return {
             target,
-            metadata: AstBuilder.#metadataFromCtx(ctx),
+            metadata: lifted.metadata,
             lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#singleMarker(ctx, pos)),
+            matcher: lifted.matcher,
         };
     }
 
@@ -635,7 +690,7 @@ export default class AstBuilder {
                 pos.line,
                 pos.column,
                 "visitor",
-                `Matcher body has ${lineCount} lines; expected 1.`,
+                `Matcher has ${lineCount} lines; expected 1.`,
             );
         }
         if (raw.startsWith("//")) {

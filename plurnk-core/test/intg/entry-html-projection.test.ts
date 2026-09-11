@@ -19,7 +19,7 @@ const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadSta
     metadata: null,
     op: "READ", aside: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 test("an AUTHORED html write is verbatim — attribute data survives a default READ (the email regression)", async () => {
@@ -115,7 +115,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
                 username: null, password: null, hostname: "example.org", port: null,
                 pathname: "/page", query: null, fragment: null,
             },
-            lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
+            lineMarker: { marks: [2, 3] }, matcher: null, body: null, position: { line: 1, column: 1 },
         };
         const result = await lookThroughScheme("https", new Http(), statement, ctx);
         assert.equal(result.status, 200);
@@ -147,7 +147,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
                 username: null, password: null, hostname: "example.org", port: null,
                 pathname: "/empty", query: null, fragment: "header",
             },
-            lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
+            lineMarker: { marks: [2, 3] }, matcher: null, body: null, position: { line: 1, column: 1 },
         };
         const result = await lookThroughScheme("https", new Http(), statement, ctx);
         assert.equal(result.status, 200);

@@ -40,7 +40,7 @@ const edit = (pathname: string, body: string, lineMarker: LineMarker | null = nu
     target: { kind: "local", raw: pathname },
     lineMarker,
     body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 type Constraint = { effect: string; glob: string; source?: string };

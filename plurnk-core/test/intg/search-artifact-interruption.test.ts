@@ -28,7 +28,7 @@ const target: UrlPath = {
 const statement: ResolvedEditStatement = {
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: null,
-    body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
+    matcher: null, body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 
 test("{§derivation-dedup-parallel} an interrupted artifact remains unattached until retry completes", async () => {

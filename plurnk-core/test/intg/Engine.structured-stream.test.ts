@@ -251,7 +251,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
         aside: null,
         target: urlPath("log", "/1/2/2"),
         lineMarker: null,
-        body: null,
+        matcher: null, body: null,
         position: { line: 1, column: 1 },
     };
     const fixture = await setup("application/json", "", [

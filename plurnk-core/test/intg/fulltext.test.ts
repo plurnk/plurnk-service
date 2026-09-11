@@ -15,11 +15,11 @@ const url = (pathname: string): UrlPath => ({
 });
 const edit = (pathname: string, body: string, lineMarker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null, op: "EDIT", aside: null, target: url(pathname), lineMarker, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 const find = (pathname: string, query: string, marks: LineMarker["marks"] = [1, -1]): FindStatement => ({
     metadata: null, op: "FIND", aside: null, target: url(pathname),
-    lineMarker: { marks }, body: { dialect: "fts", raw: `~${query}` },
+    lineMarker: { marks }, matcher: { dialect: "fts", raw: `~${query}` }, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -172,9 +172,9 @@ test("FTS5 respects literal namespaces and removes deleted targets from every ob
         const ownFind = { ...find("*", query), target: { ...url("*"), raw: "worker://first/*", hostname: "first" } };
         assert.deepEqual(resourcePaths(await worker.find(ownFind, ctx)), ["worker://first/note.txt"]);
         assert.deepEqual(resourcePaths(await worker.find(ownFind, sibling)), ["worker://first/note.txt"]);
-        assert.equal((await worker.find({ ...ownFind, body: { dialect: "fts", raw: "~secondneedle" } }, ctx)).status, 204);
+        assert.equal((await worker.find({ ...ownFind, matcher: { dialect: "fts", raw: "~secondneedle" } }, ctx)).status, 204);
         assert.equal((await worker.killEntry({
-            ...find("note.txt", query), op: "KILL", target: owned, body: null, lineMarker: null,
+            ...find("note.txt", query), op: "KILL", target: owned, matcher: null, body: null, lineMarker: null,
         }, ctx)).status, 200);
         await SearchIndex.maintain(ctx);
         assert.equal((await worker.find(ownFind, ctx)).status, 204);

@@ -16,7 +16,7 @@ const editStatement = (opts: {
     aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
-    body: opts.body ?? null,
+    matcher: null, body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
@@ -26,7 +26,7 @@ const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => (
     aside: null,
     target: opts.target ?? null,
     lineMarker: null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -218,7 +218,7 @@ test("Worker.edit: lineMarker on non-existent entry — body becomes content", a
         const stmt = editStatement({ target: urlPath("worker", "/new"), body: "first line\nsecond line", lineMarker: { marks: [0] } });
         const result = await new Worker().edit(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 201);
-        const read = await lookThroughScheme("worker", null, { ...stmt, op: "READ", lineMarker: null, body: null } as never, makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await lookThroughScheme("worker", null, { ...stmt, op: "READ", lineMarker: null, matcher: null, body: null } as never, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((read as { content: string }).content, "first line\nsecond line");
     } finally { await db.close(); }
 });

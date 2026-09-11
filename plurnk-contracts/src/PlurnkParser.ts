@@ -54,10 +54,16 @@ export default class PlurnkParser {
                 throw new TypeError(`Executor name ${JSON.stringify(name)} is reserved for a Plurnk operation.`);
             }
             const modifiers: string[] = [];
+            // {§matcher-option} — a lifted matcher whose block left no metadata behind is written back
+            // as its `pattern` option; a retained block already carries it verbatim.
+            const metadataOf = (metadata: readonly string[] | null | undefined, matcher: { raw: string } | null | undefined): string[] =>
+                metadata !== null && metadata !== undefined ? metadata.map((block) => `[${block}]`)
+                    : matcher !== null && matcher !== undefined ? [`[${JSON.stringify({ pattern: matcher.raw })}]`]
+                        : [];
             const selection = (resource: ResourceSelection): void => {
                 modifiers.push(`(${resource.target.raw})`);
                 if (resource.lineMarker !== null) modifiers.push(`<${resource.lineMarker.marks.join(",")}>`);
-                for (const metadata of resource.metadata ?? []) modifiers.push(`[${metadata}]`);
+                modifiers.push(...metadataOf(resource.metadata, resource.matcher));
             };
             if (statement.op === "COPY" || statement.op === "MOVE") {
                 selection(statement.source);
@@ -67,7 +73,7 @@ export default class PlurnkParser {
                     modifiers.push(`(${statement.target.raw})`);
                 }
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
-                for (const metadata of statement.metadata ?? []) modifiers.push(`[${metadata}]`);
+                modifiers.push(...metadataOf(statement.metadata, "matcher" in statement ? statement.matcher : null));
             }
             if (statement.aside !== null) modifiers.push(`<!-- ${statement.aside} -->`);
             const body = TurnDisposition.is(statement) ? PlanValue.stringify(statement.body)

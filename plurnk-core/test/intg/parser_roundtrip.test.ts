@@ -168,13 +168,14 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
 
 for (const [header, body] of [
     ["EDIT (worker:///countries/france/capital)", "Paris"],
-    ["FIND (worker:///users.json)", "$.name"],
+    ['FIND (worker:///users.json) [{"pattern":"$.name"}]', ""],
     ["SEND (worker:///result)", "Paris"],
     ["sh", "uname -r"],
 ]) {
     test(`parser: fence length does not change the AST (${header})`, () => {
-        const short = parseOne(`\`\`\`${header}\n${body}\n\`\`\``);
-        const long = parseOne(`\`\`\`\`\`${header}\n${body}\n\`\`\`\`\``);
+        const lines = body === "" ? "" : `${body}\n`;
+        const short = parseOne(`\`\`\`${header}\n${lines}\`\`\``);
+        const long = parseOne(`\`\`\`\`\`${header}\n${lines}\`\`\`\`\``);
         assert.deepEqual(stripVolatile(short), stripVolatile(long));
     });
 }

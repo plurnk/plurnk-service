@@ -41,9 +41,7 @@ test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted 
         assert.equal(preview.content, formatted.split("\n").slice(0, 16).join("\n"));
         const scoped = await dispatch(`\`\`\`READ (${target}) <20,22>\`\`\``);
         assert.equal(scoped.content, formatted.split("\n").slice(19, 22).join("\n"));
-        const found = await dispatch(`\`\`\`FIND (${target})
-/value19/
-\`\`\``);
+        const found = await dispatch(`\`\`\`FIND (${target}) [{"pattern":"/value19/"}]\`\`\``);
         assert.equal(found.status, 200);
         const locations = JSON.parse(found.content);
         assert.ok(locations.length > 0);

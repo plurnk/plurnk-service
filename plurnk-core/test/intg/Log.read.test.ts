@@ -18,7 +18,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
     op: "READ", aside: null, target,
-    lineMarker: null, body: null,
+    lineMarker: null, matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -27,7 +27,7 @@ const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
     op: "EDIT", aside: null,
     target: urlPath("worker", pathname),
     lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 const setup = async () => {
@@ -266,7 +266,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
         const stmt: FindStatement = {
             metadata: null,
             op: "FIND", aside: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
-            body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, position: { line: 1, column: 1 },
+            matcher: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
@@ -306,7 +306,7 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
             metadata: null,
             op: "FIND", aside: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
-            body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, position: { line: 1, column: 1 },
+            matcher: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
@@ -330,7 +330,7 @@ test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
                 op: "FIND", aside: null,
                 target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
-                body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
+                matcher: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" }, body: null,
                 position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

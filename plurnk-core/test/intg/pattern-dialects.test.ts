@@ -106,9 +106,7 @@ ${FEED}
 ${NOTES}
 \`\`\``,
     ].join("\n\n");
-    const finds = PROBES.map(({ target, pattern }) => `\`\`\`FIND (${target})
-${pattern}
-\`\`\``).join("\n\n");
+    const finds = PROBES.map(({ target, pattern }) => `\`\`\`FIND (${target}) [${JSON.stringify({ pattern })}]\`\`\``).join("\n\n");
     const mock = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse(`${seed}
 
@@ -135,9 +133,9 @@ ${pattern}
             assert.equal(finds.length, PROBES.length, "one dispatched row per FIND");
             for (const [index, probe] of PROBES.entries()) {
                 const row = finds[index]!;
-                const tx = JSON.parse(row.tx) as { target?: { raw?: string }; body?: { raw?: string } };
+                const tx = JSON.parse(row.tx) as { target?: { raw?: string }; matcher?: { raw?: string } };
                 assert.equal(tx.target?.raw, probe.target, `probe ${index + 1} target`);
-                assert.equal(tx.body?.raw, probe.pattern, `probe ${index + 1} pattern`);
+                assert.equal(tx.matcher?.raw, probe.pattern, `probe ${index + 1} pattern`);
                 probe.expect(row.rx, row.status_rx);
             }
             assert.equal(finalStatus, 200);

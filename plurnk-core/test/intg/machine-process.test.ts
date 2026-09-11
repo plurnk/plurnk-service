@@ -22,7 +22,7 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: marker, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 test("a workspace-commons entry is shared — a second worker updates it rather than minting another", async () => {

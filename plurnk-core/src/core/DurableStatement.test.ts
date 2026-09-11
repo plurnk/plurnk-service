@@ -23,7 +23,7 @@ test("DurableStatement projects URL credential slots without mutating execution 
         target,
         metadata: ["Set-Cookie: a=1", "Set-Cookie: b=2"],
         lineMarker: null,
-        body: null,
+        matcher: null, body: null,
         position: { line: 1, column: 0 },
     };
 
@@ -45,16 +45,8 @@ test("DurableStatement applies the same projection to both COPY operands", () =>
     const statement: CopyStatement = {
         op: "COPY",
         aside: null,
-        source: {
-            target: url("https://user:password@example.test/source"),
-            metadata: ["Authorization: source-secret"],
-            lineMarker: null,
-        },
-        destination: {
-            target: url("https://:password@example.test/destination"),
-            metadata: ["Authorization: destination-secret"],
-            lineMarker: { marks: [1, 1] },
-        },
+        source: { target: url("https://user:password@example.test/source"), metadata: ["Authorization: source-secret"], lineMarker: null, matcher: null },
+        destination: { target: url("https://:password@example.test/destination"), metadata: ["Authorization: destination-secret"], lineMarker: { marks: [1, 1] }, matcher: null },
         position: { line: 1, column: 0 },
     };
 
@@ -77,7 +69,7 @@ test("DurableStatement leaves query text, authored bodies, and local targets exa
         target: url("https://example.test/path?authored=query-secret"),
         metadata: ["Authorization: header-secret"],
         lineMarker: null,
-        body: "authored body-secret",
+        matcher: null, body: "authored body-secret",
         position: { line: 1, column: 0 },
     };
     const projected = DurableStatement.project(statement);

@@ -713,6 +713,21 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
 
+// {§retrieval-packet-metadata} {§edit-pattern} — a pattern mutation names its matcher and count.
+test("log render: a pattern EDIT carries its matcher and matched count beside the receipt", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "EDIT",
+        status: 200,
+        target: { scheme: "worker", pathname: "/notes.md" },
+        tx: { target: { scheme: "worker", pathname: "/notes.md" }, matcher: { dialect: "glob", raw: "foo" }, lineMarker: null, body: "baz" },
+        rx: { status: 200, matched: 3, receipt: receipt("1:alpha baz\n2:baz bar", "<1,7,1,10>") },
+    }], tok);
+    assert.match(out, /"matched":3,"matcher":"foo"/);
+    assert.match(out, /"rev":"abcdef01"/);
+});
+
 test("log render: a matcher FIND exposes surgical coordinates", () => {
     const matches = [
         { region: { startLine: 143, startColumn: 1, endLine: 143, endColumn: 8 } },
@@ -724,7 +739,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
         op: "FIND",
         status: 200,
         target: { scheme: null, pathname: "/spec.md" },
-        tx: { body: { raw: "/overflow/" } },
+        tx: { matcher: { raw: "/overflow/" } },
         rx: {
             content: JSON.stringify(matches),
             mimetype: "application/json",
@@ -804,7 +819,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         },
         {
             coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
-            target: { scheme: "worker", pathname: "/**" }, tx: { body: { raw: "/target/" } },
+            target: { scheme: "worker", pathname: "/**" }, tx: { matcher: { raw: "/target/" } },
             rx: {
                 content: '[{"path":"worker:///a","matchLocationCount":2}]', mimetype: "application/json",
                 itemsWeightTotal: 1_000, returnedItemsWeightTotal: 400,
@@ -814,7 +829,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         },
         {
             coordinate: "1/1/5", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
-            target: { scheme: null, pathname: "/exact.md" }, tx: { body: { raw: "/target/" } },
+            target: { scheme: null, pathname: "/exact.md" }, tx: { matcher: { raw: "/target/" } },
             rx: {
                 content: `[${JSON.stringify({ region })}]`, mimetype: "application/json",
                 itemsWeightTotal: 80, returnedItemsWeightTotal: 80,

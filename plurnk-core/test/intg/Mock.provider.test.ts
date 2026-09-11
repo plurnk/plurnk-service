@@ -9,7 +9,7 @@ const editStmt = (target: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
     target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockResponse => ({

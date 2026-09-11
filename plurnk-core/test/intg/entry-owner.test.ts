@@ -21,7 +21,7 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
     metadata: null,
     op: "READ", aside: null,
     target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null } as UrlPath,
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 test("fan-out: equal causal coordinates create distinct outputs shared by the workspace", async () => {

@@ -639,11 +639,12 @@ export default class TurnRunner {
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
                     op: "COPY", aside: null,
-                    source: { target: promptPublication.path, metadata: null, lineMarker: null },
+                    source: { target: promptPublication.path, metadata: null, lineMarker: null, matcher: null },
                     destination: {
                         target: { kind: "url", raw: `worker://${workerName}/prompts.md`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/prompts.md", query: null, fragment: null },
                         metadata: null,
                         lineMarker: { marks: [-1] },
+                        matcher: null,
                     },
                     position: UNKNOWN_POSITION,
                 };
@@ -668,7 +669,7 @@ export default class TurnRunner {
                     };
                     const agentsRead: ReadStatement = {
                         op: "READ", aside: null, target: agentsTarget,
-                        metadata: null, lineMarker: null, body: null, position: UNKNOWN_POSITION,
+                        metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
                     };
                     initializationStatements.push(agentsRead);
                 }
@@ -738,8 +739,8 @@ export default class TurnRunner {
                             op: "FIND", aside: null,
                             target: { kind: "url", raw: `worker:///_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             metadata: null,
-                            body: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
-                            lineMarker: null, position: UNKNOWN_POSITION,
+                            matcher: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
+                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
                     });
                 }
@@ -749,7 +750,7 @@ export default class TurnRunner {
                             op: "FIND", aside: null,
                             target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                             metadata: null,
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
                     ...(plurnkCatalog === null ? [] : [{
@@ -757,7 +758,7 @@ export default class TurnRunner {
                             op: "FIND", aside: null,
                             target: plurnkCatalog,
                             metadata: null,
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         } satisfies FindStatement,
                     }]),
                     ...(toolsCatalog === null ? [] : [{
@@ -771,7 +772,7 @@ export default class TurnRunner {
                             op: "FIND", aside: null,
                             target: toolsCatalog,
                             metadata: null,
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         } satisfies FindStatement,
                     }]),
                     ...toolExpansions,
@@ -783,7 +784,7 @@ export default class TurnRunner {
                             op: "FIND", aside: null,
                             target: { kind: "url", raw: "worker:///_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
                             metadata: null,
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
                     {
@@ -793,7 +794,7 @@ export default class TurnRunner {
                             op: "FIND", aside: null,
                             target: { kind: "url", raw: "worker:///_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                             metadata: null,
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
                     {
@@ -801,6 +802,7 @@ export default class TurnRunner {
                             op: "FIND", aside: "project filesystem",
                             target: { kind: "local", raw: "*" },
                             metadata: null,
+                            matcher: null,
                             body: null,
                             lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
                             position: UNKNOWN_POSITION,
@@ -811,7 +813,7 @@ export default class TurnRunner {
                             op: "FIND", aside: "workspace entries",
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
-                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
                     },
                     {
@@ -819,7 +821,7 @@ export default class TurnRunner {
                             op: "FIND", aside: "worker scratch",
                             target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
-                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                            matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
                     },
                 ];
@@ -837,7 +839,7 @@ export default class TurnRunner {
             const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence);
             if (reasoningRead !== null) initializationStatements.push(reasoningRead);
             initializationStatements.push({
-                op: "READ", aside: "inspect this turn's emission", body: null, metadata: null,
+                op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
                 target: {
                     kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
                     username: null, password: null, hostname: null, port: null, query: null, fragment: null,
@@ -845,7 +847,7 @@ export default class TurnRunner {
                 lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             });
             if (promptPublication !== null) initializationStatements.push({
-                op: "READ", aside: "inspect Active Prompt", body: null, metadata: null,
+                op: "READ", aside: "inspect Active Prompt", matcher: null, body: null, metadata: null,
                 target: promptPublication.path, lineMarker: null, position: UNKNOWN_POSITION,
             });
             initializationStatements.push(task);
@@ -943,7 +945,7 @@ export default class TurnRunner {
         for (const raw of turnOpenPaths) {
             const pathname = raw.startsWith("/") ? raw : `/${raw}`;
             const fileRead: ReadStatement = {
-                op: "READ", aside: null, lineMarker: null,
+                op: "READ", aside: null, lineMarker: null, matcher: null,
                 target: {
                     kind: "url", raw: `file://${pathname}`, scheme: "file",
                     username: null, password: null, hostname: null, port: null,

@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
+    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
         {
             "$ref": "#/$defs/FindStatement"
@@ -151,6 +151,7 @@
                 "metadata",
                 "target",
                 "lineMarker",
+                "matcher",
                 "body",
                 "position"
             ],
@@ -171,8 +172,13 @@
                 "lineMarker": {
                     "$ref": "#/$defs/LineMarkerOrNull"
                 },
+                "matcher": {
+                    "$ref": "#/$defs/MatcherBodyOrNull",
+                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                },
                 "body": {
-                    "$ref": "#/$defs/MatcherBodyOrNull"
+                    "type": "null",
+                    "description": "FIND takes no body; its matcher is the `pattern` option."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -187,6 +193,7 @@
                 "metadata",
                 "target",
                 "lineMarker",
+                "matcher",
                 "body",
                 "position"
             ],
@@ -207,6 +214,10 @@
                 "lineMarker": {
                     "$ref": "#/$defs/TextLineMarkerOrNull"
                 },
+                "matcher": {
+                    "$ref": "#/$defs/MatcherBodyOrNull",
+                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                },
                 "body": {
                     "type": "null"
                 },
@@ -223,6 +234,7 @@
                 "metadata",
                 "target",
                 "lineMarker",
+                "matcher",
                 "body",
                 "position"
             ],
@@ -242,6 +254,10 @@
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "matcher": {
+                    "$ref": "#/$defs/MatcherBodyOrNull",
+                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
                 },
                 "body": {
                     "type": [
@@ -437,6 +453,7 @@
                 "metadata",
                 "target",
                 "lineMarker",
+                "matcher",
                 "body",
                 "position"
             ],
@@ -458,9 +475,13 @@
                     "$ref": "#/$defs/TextLineMarkerOrNull",
                     "description": "Scope of the kill: lines of a log body or of an entry ({§kill-scope}); null kills the whole target."
                 },
-                "body": {
+                "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "A body pattern selects log items for a scoped KILL, as a FIND body does ({§kill-scope}); null otherwise."
+                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                },
+                "body": {
+                    "type": "null",
+                    "description": "KILL takes no body; its matcher is the `pattern` option."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

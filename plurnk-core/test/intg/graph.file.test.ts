@@ -18,10 +18,10 @@ const fileUrl = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody): FindStatement => ({
+const findStmt = (target: UrlPath, matcher: MatcherBody): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+     position: { line: 1, column: 1 },
 });
 
 const graph = (raw: string): MatcherBody => ({ dialect: "graph", raw });

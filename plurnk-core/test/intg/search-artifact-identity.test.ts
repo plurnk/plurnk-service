@@ -20,7 +20,7 @@ const url = (pathname: string): UrlPath => ({
 const edit = (pathname: string, body: string): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target: url(pathname), lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 test("identical entries attach one complete search artifact and both remain addressable", async () => {

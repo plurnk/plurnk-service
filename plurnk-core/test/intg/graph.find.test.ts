@@ -25,13 +25,13 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: marker, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody): FindStatement => ({
+const findStmt = (target: UrlPath, matcher: MatcherBody): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+     position: { line: 1, column: 1 },
 });
 
 const graph = (raw: string): MatcherBody => ({ dialect: "graph", raw });

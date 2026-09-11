@@ -170,7 +170,7 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
         };
         assert.deepEqual(resourcePaths(await query("```FIND (ops:///1/) <1,-1>```")), ["ops:///1/1", "ops:///1/2", "ops:///1/3"]);
         assert.deepEqual(resourcePaths(await query("```FIND (ops:///*/*) <2,2>```")), ["ops:///1/2"]);
-        assert.deepEqual(resourcePaths(await query("```FIND (ops:///1/*) <1,-1>\n~needle\n```")), ["ops:///1/1", "ops:///1/2", "ops:///1/3"]);
+        assert.deepEqual(resourcePaths(await query("```FIND (ops:///1/*) <1,-1> [{\"pattern\":\"~needle\"}]```")), ["ops:///1/1", "ops:///1/2", "ops:///1/3"]);
         const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ worker_id: workerId });
         assert.ok(indexed.every(({ deep_hash }) => deep_hash !== null), "history uses the persistent shared derivation index");
     } finally { await db.close(); }

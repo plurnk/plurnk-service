@@ -115,7 +115,7 @@ test("Round-trip: AST.position from parsed statement validates", () => {
 });
 
 test("Round-trip: AST.lineMarker (single) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements("```FIND (p) <5>\nm\n```");
+    const result = PlurnkParser.parseStatements('```FIND (p) <5> [{"pattern": "m"}]```');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
@@ -124,7 +124,7 @@ test("Round-trip: AST.lineMarker (single) from parsed statement validates", () =
 });
 
 test("Round-trip: AST.lineMarker (range) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements("```FIND (p) <1-10>\nm\n```");
+    const result = PlurnkParser.parseStatements('```FIND (p) <1-10> [{"pattern": "m"}]```');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
@@ -302,39 +302,39 @@ test("Validator: MatcherBody rejects regex missing pattern/flags", () => {
     assert.equal(valid, false);
 });
 
-test("Round-trip: AST.body (regex MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("```FIND (p)\n/foo|bar/i\n```");
+test("Round-trip: AST.matcher (regex MatcherBody) validates", () => {
+    const result = PlurnkParser.parseStatements('```FIND (p) [{"pattern": "/foo|bar/i"}]```');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
-    assert.ok(item.statement.body);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.body!);
+    assert.ok(item.statement.matcher);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.body (xpath MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("```FIND (p)\n//user[@role]\n```");
+test("Round-trip: AST.matcher (xpath MatcherBody) validates", () => {
+    const result = PlurnkParser.parseStatements('```FIND (p) [{"pattern": "//user[@role]"}]```');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
-    assert.ok(item.statement.body);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.body!);
+    assert.ok(item.statement.matcher);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.body (jsonpath MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("```FIND (p)\n$.field\n```");
+test("Round-trip: AST.matcher (jsonpath MatcherBody) validates", () => {
+    const result = PlurnkParser.parseStatements('```FIND (p) [{"pattern": "$.field"}]```');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
-    assert.ok(item.statement.body);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.body!);
+    assert.ok(item.statement.matcher);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.body (glob MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("```FIND (p)\n*.xml\n```");
+test("Round-trip: AST.matcher (glob MatcherBody) validates", () => {
+    const result = PlurnkParser.parseStatements('```FIND (p) [{"pattern": "*.xml"}]```');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
-    assert.ok(item.statement.body);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.body!);
+    assert.ok(item.statement.matcher);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 

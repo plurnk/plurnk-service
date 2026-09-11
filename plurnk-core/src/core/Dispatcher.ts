@@ -406,9 +406,10 @@ export default class Dispatcher {
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "EDIT") return statement;
-        // A body pattern is a log selector; a scoped KILL carrying one is not an EDIT — the KILL
-        // handler refuses it ({§kill-scope-entry}).
-        if (statement.op !== "KILL" || statement.lineMarker === null || statement.body !== null) return null;
+        // {§kill-scope-entry} a scoped KILL of an entry empties the span; {§kill-pattern} a KILL with
+        // a matcher removes every whole line the pattern selects, inside its scope when one is given.
+        // Both are emptying EDITs; the log and every scheme with its own kill() keep their own path.
+        if (statement.op !== "KILL" || (statement.lineMarker === null && statement.matcher === null)) return null;
         const cached = this.#scopedEntryEdits.get(statement);
         if (cached !== undefined) return cached;
         const schemeName = schemeNameOf(statement.target);
@@ -421,10 +422,12 @@ export default class Dispatcher {
             metadata: statement.metadata,
             target: statement.target,
             lineMarker: statement.lineMarker,
+            matcher: statement.matcher,
             body: "",
             position: statement.position,
         };
         this.#scopedEntryEdits.set(statement, edit);
+        if (statement.matcher !== null) this.#resourceMutations.markLineDeletion(edit);
         return edit;
     }
 
@@ -1058,7 +1061,7 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
         if (statement.target === null || WorkerControlAddress.isWorkerScheme(statement.target)) return { statement };
-        const read: ReadStatement = { ...statement, op: "READ", body: null, lineMarker: { marks: [1, -1] } };
+        const read: ReadStatement = { ...statement, op: "READ", matcher: null, body: null, lineMarker: { marks: [1, -1] } };
         const denial = await this.#checkCapabilities(read, ctx);
         if (denial !== null) return { result: denial };
         const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
@@ -1097,6 +1100,7 @@ export default class Dispatcher {
             const read: ReadStatement = {
                 ...statement,
                 op: "READ",
+                matcher: null,
                 body: null,
                 lineMarker: { marks: [1, -1] },
             };

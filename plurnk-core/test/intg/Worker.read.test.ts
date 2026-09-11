@@ -18,7 +18,7 @@ const editStatement = (opts: { target: ParsedPath; body?: string | null; lineMar
     op: "EDIT", aside: null,
     target: opts.target,
     lineMarker: opts.lineMarker ?? null,
-    body: opts.body ?? null,
+    matcher: null, body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
@@ -29,18 +29,18 @@ const readStatement = (opts: {
     op: "READ", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
-    body: null,
+    matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const findStatement = (opts: {
-    target?: ParsedPath | null; body?: MatcherBody | null; lineMarker?: LineMarker | null;
+    target?: ParsedPath | null; matcher?: MatcherBody | null; lineMarker?: LineMarker | null;
 }): import("@plurnk/plurnk-contracts").FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
-    body: opts.body ?? null,
+    matcher: opts.matcher ?? null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -138,7 +138,7 @@ test("Worker.read: an empty exact scope retains its region and matcher evidence"
         const result = await k.find(
             findStatement({
                 target: urlPath("worker", "/empty-exact"),
-                body: { dialect: "regex", raw: "/a/", pattern: "a", flags: "" },
+                matcher: { dialect: "regex", raw: "/a/", pattern: "a", flags: "" },
             }),
             makeSchemeCtx({ db, workspaceId, workerId }),
         );
@@ -153,7 +153,7 @@ test("Worker.find: exact regex matcher returns flat locations", async () => {
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/match"), body: "alpha beta alpha gamma" }), makeSchemeCtx({ db, workspaceId, workerId }));
         const matcher: MatcherBody = { dialect: "regex", raw: "/alpha/g", pattern: "alpha", flags: "g" };
-        const result = await k.find(findStatement({ target: urlPath("worker", "/match"), body: matcher }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await k.find(findStatement({ target: urlPath("worker", "/match"), matcher }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "application/json");
         assert.ok(result.results.length > 0);
@@ -166,7 +166,7 @@ test("Worker.find: exact glob matcher returns flat match locations", async () =>
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/g"), body: "TODO: one\nhello\nTODO: two\nworld" }), makeSchemeCtx({ db, workspaceId, workerId }));
         const matcher: MatcherBody = { dialect: "glob", raw: "TODO*" };
-        const result = await k.find(findStatement({ target: urlPath("worker", "/g"), body: matcher }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await k.find(findStatement({ target: urlPath("worker", "/g"), matcher }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "application/json");
         assert.ok(result.results.length > 0);
@@ -179,7 +179,7 @@ test("Worker.find: matcher evaluates the full resource before projecting locatio
         await k.edit(editStatement({ target: urlPath("worker", "/c"), body: "one\nprojected\nfoo later" }), makeSchemeCtx({ db, workspaceId, workerId }));
         const result = await k.find(findStatement({
             target: urlPath("worker", "/c"),
-            body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
+            matcher: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);

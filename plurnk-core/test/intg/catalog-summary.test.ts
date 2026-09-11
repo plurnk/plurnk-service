@@ -17,7 +17,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 
 test("[catalog] engine_scheme_catalog_summary tallies distinct entries per scheme", async () => {

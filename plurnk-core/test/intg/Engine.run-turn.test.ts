@@ -31,7 +31,7 @@ const editStmt = (pathname: string, body: string, marker: LineMarker | null = fu
     metadata: null,
     op: "EDIT", aside: null,
     target: urlPath("worker", pathname),
-    lineMarker: marker, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 // A response with content but NO pre-parsed ops, so the engine runs the parser.
@@ -547,7 +547,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
             metadata: null,
             op: "READ", aside: null,
             target: urlPath("worker", `/not-there-${delimiter}`),
-            lineMarker: null, body: null, position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
             contextWindow: 100000,
@@ -577,13 +577,13 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("sealed", "/x"),
-            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("worker", p),
-            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         // maxStrikes=2. Pattern: hard, clean, hard, hard, done.
         // After turn 1: streak=1. After turn 2: streak=0 (reset). After
@@ -617,7 +617,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("sealed", "/x"),
-            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
             contextWindow: 100000,
@@ -748,7 +748,7 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("sealed", "/x"),
-            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
             contextWindow: 100000,
@@ -964,7 +964,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("sealed", "/illegal"),
-            lineMarker: null, body: "x", position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({
             contextWindow: 100000,
@@ -992,7 +992,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
             metadata: null,
             op: "EDIT", aside: null,
             target: urlPath("sealed", "/a"),
-            lineMarker: null, body: "x", position: { line: 1, column: 1 },
+            lineMarker: null, matcher: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({
             contextWindow: 100000,

@@ -143,7 +143,7 @@ test("an exact regex FIND returns its flat match location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("```FIND (notes.md)\n/phoenix/\n```", "FIND");
+        const stmt = parseOp<FindStatement>("```FIND (notes.md) [{\"pattern\":\"/phoenix/\"}]```", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -154,7 +154,7 @@ test("contract: an exact FIND returns every match as a flat location", async () 
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
-        const stmt = parseOp<FindStatement>("```FIND (log.md)\n*target*\n```", "FIND");
+        const stmt = parseOp<FindStatement>("```FIND (log.md) [{\"pattern\":\"*target*\"}]```", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -165,7 +165,7 @@ test("contract: an exact jsonpath FIND returns flat structural locations", async
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
-        const stmt = parseOp<FindStatement>("```FIND (config.json)\n$.host\n```", "FIND");
+        const stmt = parseOp<FindStatement>("```FIND (config.json) [{\"pattern\":\"$.host\"}]```", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);

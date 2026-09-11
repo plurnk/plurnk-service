@@ -27,7 +27,7 @@ const killExec = (pathname: string): KillStatement => ({
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null,
     },
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {

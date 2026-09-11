@@ -611,6 +611,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 target: sourceTarget,
                 metadata: null,
                 lineMarker: { marks: [1, -1] },
+                matcher: null,
                 body: null,
                 position: { line: 0, column: 0 },
             }, core);

@@ -56,7 +56,7 @@ test("{§safe-uri-target-groups}: expansion preserves every non-target statement
         },
         metadata: ["trace: one"],
         lineMarker: { marks: [2, 4] },
-        body: { dialect: "glob", raw: "*.md" },
+        matcher: { dialect: "glob", raw: "*.md" }, body: null,
         position: { line: 7, column: 3 },
     };
 

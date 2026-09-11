@@ -68,7 +68,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         const scope = pathScope(/^\/\d+$/.test(pathname) ? `${pathname}/` : pathname, true);
         const load = () => db.turn_source_candidates.all<Source>({ worker_id: workerId, kind: this.#kind });
         let all = await load();
-        const relation = statement.body?.dialect === "fts" || statement.body?.dialect === "graph";
+        const relation = statement.matcher?.dialect === "fts" || statement.matcher?.dialect === "graph";
         if (relation && all.some(({ deep_hash }) => deep_hash === null) && core.settleDerivations !== undefined) {
             await core.settleDerivations();
             all = await load();
@@ -81,17 +81,17 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
             const candidates = resolveSearchCandidates(selected.map(({ pathname: key, deep_hash: deepHash }) => ({ key, deepHash })));
             const universe = resolveSearchCandidates(all.map(({ pathname: key, deep_hash: deepHash }) => ({ key, deepHash })));
             if (candidates.state !== "ready" || universe.state !== "ready") return failed(503, "search-index-incomplete", "The persistent search index does not yet cover the selected history.");
-            if (statement.body!.dialect === "fts") {
-                const result = await EntryFts.rankCandidates(db, candidates.candidates, statement.body!.raw.slice(1), core.signal);
+            if (statement.matcher!.dialect === "fts") {
+                const result = await EntryFts.rankCandidates(db, candidates.candidates, statement.matcher!.raw.slice(1), core.signal);
                 if (result.status !== 200) return { ...result, ...emptyFindFields() };
                 matches = result.matches;
             } else {
-                const result = await EntryGraph.matchCandidates(db, universe.candidates, candidates.candidates, statement.body!.raw);
+                const result = await EntryGraph.matchCandidates(db, universe.candidates, candidates.candidates, statement.matcher!.raw);
                 if (result.status !== 200) return failed(result.status, "invalid-expression", "Malformed graph matcher; expected &symbol, &<symbol, or &>symbol.");
                 matches = Matcher.addTextRegions(result.matches.map(({ key, lineStart, lineEnd }) => ({ key, span: { lineStart, lineEnd } })), projections);
             }
-        } else if (statement.body !== null) {
-            const result = await Matcher.matchCandidates(statement.body, projections, mimetypes);
+        } else if (statement.matcher !== null) {
+            const result = await Matcher.matchCandidates(statement.matcher, projections, mimetypes);
             if (result.status !== 200) return { ...result, ...emptyFindFields() };
             matches = result.matches;
         } else {
@@ -106,7 +106,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
                 match: { pathname: key, matches: evidence },
             };
         });
-        const folders = statement.body === null ? pathFolderSummaries(scope, all.map(({ pathname }) => pathname)).map(({ selector, pathnames }) => ({
+        const folders = statement.matcher === null ? pathFolderSummaries(scope, all.map(({ pathname }) => pathname)).map(({ selector, pathnames }) => ({
             path: `${this.#kind}://${selector}`, items: pathnames.length,
             weight: pathnames.reduce((sum, key) => sum + weigh(byPath.get(key)!.content), 0),
         })) : [];

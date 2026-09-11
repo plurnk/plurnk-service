@@ -62,10 +62,12 @@ interface StatementTx {
         target?: ActionTarget | null;
         lineMarker?: unknown;
     };
-    body?: string | { raw?: unknown } | null;
+    matcher?: { raw?: unknown } | null;
+    body?: string | null;
 }
 interface RxView {
     content?: unknown;
+    matched?: unknown;
     exitCode?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
@@ -807,19 +809,13 @@ export default class PacketWire {
             // {§retrieval-packet-metadata}: one extent/coordinate owner plus
             // only FIND aggregates that add information beyond that extent.
             let findItems: number | null = null;
+            // {§matcher-option} — a pattern rides the heading; the row shows it as `matcher`.
+            const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
+            if (patterned) {
+                meta.matcher = (tx as { matcher: { raw: string } }).matcher.raw;
+                if (op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
+            }
             if (op === "READ" || op === "FIND") {
-                const findMatcher = op === "FIND"
-                    && tx !== null
-                    && tx !== undefined
-                    && typeof tx === "object"
-                    && tx.body !== null
-                    && typeof tx.body === "object";
-                if (findMatcher) {
-                    const body = tx?.body;
-                    if (body !== null && typeof body === "object" && typeof body.raw === "string") {
-                        meta.matcher = body.raw;
-                    }
-                }
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) findItems = parsed.length;
@@ -856,7 +852,8 @@ export default class PacketWire {
                     meta.returnedItemsTokenTotal = rx.returnedItemsWeightTotal;
                 }
                 if (
-                    findMatcher
+                    op === "FIND"
+                    && patterned
                     && range !== null
                     && typeof range === "object"
                     && (range as { unit?: unknown }).unit === "resource"

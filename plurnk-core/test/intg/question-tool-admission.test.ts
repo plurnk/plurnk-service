@@ -22,7 +22,7 @@ const findStatement = (): FindStatement => ({
         username: null, password: null, hostname: null, port: null,
         pathname: "/_plurnk/plurnk/*.md", query: null, fragment: null,
     },
-    body: null,
+    matcher: null, body: null,
     lineMarker: { marks: [1, -1] }, position: { line: 1, column: 1 },
 });
 

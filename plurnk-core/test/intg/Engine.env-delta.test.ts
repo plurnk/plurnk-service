@@ -85,7 +85,7 @@ const workerPath = (authority: string, pathname: string): UrlPath => ({
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null, target, lineMarker: null, body,
-    position: { line: 1, column: 1 },
+    matcher: null, position: { line: 1, column: 1 },
 });
 test("a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {
     const db = await openMigrated();
@@ -521,7 +521,7 @@ test("a child-activity delta preserves typed attributes and initial classificati
             op: "EDIT", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
-            tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
+            tx: JSON.stringify({ op: "EDIT", matcher: null, body: "page" }), mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 201, span: "1:page" }), mimetype_rx: "application/json",
             status_rx: 201, weight: 1, state: "resolved", outcome: null,
             attrs: JSON.stringify({ kind: "entry_materialized" }),
