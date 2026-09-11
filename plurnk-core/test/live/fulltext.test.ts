@@ -34,9 +34,9 @@ test("live: full-text FIND — locate a note by its words without surveying each
             op: "FIND",
         });
         assert.ok(finds.some(({ tx }) => {
-            const statement = JSON.parse(tx) as { body?: { dialect?: string } | null };
-            return statement.body?.dialect === "fts";
-        }), "the model used a full-text matcher rather than surveying entry bodies");
+            const statement = JSON.parse(tx) as { matcher?: { dialect?: string } | null };
+            return statement.matcher?.dialect === "fts";
+        }), "the model used a full-text pattern rather than surveying entry bodies");
     } finally {
         await s.cleanup();
     }
