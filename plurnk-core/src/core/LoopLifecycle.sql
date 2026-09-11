@@ -82,8 +82,10 @@ WITH RECURSIVE tree(id, depth) AS (
     FROM workers child
     JOIN tree ON child.parent_worker_id = tree.id
 )
+-- CROSS JOIN fixes the nesting: the walked tree is the outer loop and each worker is a
+-- primary-key probe, instead of a scan of every worker probing the tree ({§db-fk-indexes}).
 SELECT tree.id AS worker_id, tree.depth, workers.cancelled_through_sequence
-FROM tree JOIN workers ON workers.id = tree.id
+FROM tree CROSS JOIN workers ON workers.id = tree.id
 WHERE $include_root = 1 OR tree.id <> $worker_id
 ORDER BY tree.depth DESC, tree.id;
 

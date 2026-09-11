@@ -543,6 +543,7 @@ test("log_entries: indexes exist", async () => {
         const names = rows.map((r) => r.name).sort();
         assert.deepEqual(names, [
             "log_entries_at",
+            "log_entries_deep_hash",
             "log_entries_loop_id",
             "log_entries_model_call_id",
             "log_entries_subscription_publication_id",

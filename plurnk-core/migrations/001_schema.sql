@@ -85,6 +85,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_default_conversation
     ON workers (workspace_id) WHERE default_conversation = 1;
 -- {§worker-scheme-spawn}: a retained name cannot be rebound to another actor.
 CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
+-- {§db-fk-indexes} Foreign-key check paths: without these, updating or replacing a route scans every worker.
+CREATE INDEX IF NOT EXISTS workers_model_route_id       ON workers (model_route_id)       WHERE model_route_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS workers_spawn_model_route_id ON workers (spawn_model_route_id) WHERE spawn_model_route_id IS NOT NULL;
 
 CREATE TRIGGER IF NOT EXISTS workers_provider_identity_immutable
 BEFORE UPDATE OF provider_identity ON workers
@@ -316,6 +319,10 @@ CREATE TABLE IF NOT EXISTS loops (
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
+-- {§db-fk-indexes} Foreign-key check paths (route replacement, recurrence-root cascade) stop scanning loops.
+CREATE INDEX IF NOT EXISTS loops_model_route_id         ON loops (model_route_id)         WHERE model_route_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS loops_spawn_model_route_id   ON loops (spawn_model_route_id)   WHERE spawn_model_route_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS loops_recurrence_root_loop_id ON loops (recurrence_root_loop_id) WHERE recurrence_root_loop_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS loops_live_recurrence
 ON loops (COALESCE(recurrence_root_loop_id, id))
 WHERE repeat_interval_ms IS NOT NULL AND status IN (100, 102, 202);
@@ -475,6 +482,9 @@ CREATE TABLE IF NOT EXISTS turn_sources (
     deep_hash TEXT REFERENCES derivations(deep_hash),
     PRIMARY KEY (turn_id, kind)
 ) STRICT;
+
+-- {§db-fk-indexes} A derivation replacement checks its referrers; the hash is indexed where it is a foreign key.
+CREATE INDEX IF NOT EXISTS turn_sources_deep_hash ON turn_sources (deep_hash) WHERE deep_hash IS NOT NULL;
 
 CREATE TRIGGER IF NOT EXISTS turn_sources_immutable
 BEFORE UPDATE OF turn_id, kind, content, model_call_id ON turn_sources
@@ -977,6 +987,9 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     FOREIGN KEY (deep_hash) REFERENCES derivations(deep_hash)
 ) STRICT, WITHOUT ROWID;
 
+-- {§db-fk-indexes} Derivation replacement checks channels by hash; catalog joins drive on it too.
+CREATE INDEX IF NOT EXISTS entry_channels_deep_hash ON entry_channels (deep_hash) WHERE deep_hash IS NOT NULL;
+
 -- {§crud} A publication is one SQL statement: failure rolls back metadata and
 -- every channel. The view is an input boundary, not a second persisted copy.
 CREATE VIEW IF NOT EXISTS entry_publication AS
@@ -1053,7 +1066,9 @@ CREATE TABLE IF NOT EXISTS symbol_defs (
     FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (name);
+CREATE INDEX IF NOT EXISTS symbol_defs_name   ON symbol_defs (name);
+-- {§db-fk-indexes} Reindexing deletes a derivation's definitions by derivation; mirrors symbol_refs_source.
+CREATE INDEX IF NOT EXISTS symbol_defs_source ON symbol_defs (derivation_id);
 
 -- symbol_refs
 -- &graph EDGES ({§relation-indexed-dialects}), from mimetypes' `references` channel.
@@ -1193,6 +1208,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (turn_id, sequence);
 CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
+-- {§db-fk-indexes} Derivation replacement checks the rows that cite the hash.
+CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (deep_hash) WHERE deep_hash IS NOT NULL;
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
 -- {§loop-response-messages}: executed messages survive curation. This projection
 -- is also used inside atomic cancellation; no second response accumulator exists.
@@ -1237,6 +1254,9 @@ CREATE TABLE IF NOT EXISTS log_entry_projections (
     FOREIGN KEY (output_admission_turn_id) REFERENCES turns(id),
     FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+-- {§db-fk-indexes} Opening a turn checks admissions that cite a turn; without this every projection row is read.
+CREATE INDEX IF NOT EXISTS log_entry_projections_output_admission_turn ON log_entry_projections (output_admission_turn_id) WHERE output_admission_turn_id IS NOT NULL;
 
 -- {§context-output-selection} Admission is a durable projection decision, not
 -- deletion or proof of provider delivery. It cannot be reset to replay output.
@@ -1928,6 +1948,9 @@ CREATE TABLE IF NOT EXISTS client_interactions (
 
 CREATE INDEX IF NOT EXISTS client_interactions_worker_id_id
     ON client_interactions (worker_id, id);
+-- {§db-fk-indexes} Turn and loop inserts check interactions by their loop and turn.
+CREATE INDEX IF NOT EXISTS client_interactions_loop_id ON client_interactions (loop_id);
+CREATE INDEX IF NOT EXISTS client_interactions_turn_id ON client_interactions (turn_id);
 
 -- subscriptions
 -- Durable subscription lifecycle per SPEC {§subscriptions}. The row records what
@@ -1990,6 +2013,10 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
     WHERE closed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
+-- {§db-fk-indexes} Worker and entry deletion, and every by-worker stream lookup, otherwise scan all subscriptions,
+-- closed ones included; the active-only partial indexes above do not cover foreign-key checks.
+CREATE INDEX IF NOT EXISTS subscriptions_worker_id ON subscriptions (worker_id) WHERE worker_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS subscriptions_entry_id  ON subscriptions (entry_id);
 
 CREATE TRIGGER IF NOT EXISTS subscriptions_wake_revision
 AFTER UPDATE OF closed_at ON subscriptions
