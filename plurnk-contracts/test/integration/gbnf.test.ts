@@ -175,8 +175,7 @@ const derivesQwenTurn = (content: string, reasoning = "thought", separator = "")
     derives("root-qwen", `${thinkTail(reasoning)}${separator}${content}`);
 
 const mid = (op: string, slots = "", body?: string): string => {
-    const executor = op === "EXEC" ? /^\s*\[([^\]]+)\]/.exec(slots) : null;
-    const header = executor === null ? op + slots : executor[1] + slots.slice(executor[0].length);
+    const header = op + slots;
     return body === undefined ? "```" + header + "```\n" : "```" + header + "\n" + body + "\n```\n";
 };
 // {§turn-disposition}
@@ -285,18 +284,18 @@ test("GBNF keeps brace globs inside targets and shapes opaque metadata after tar
         "brace alternation remains target syntax",
     );
     assert.equal(
-        derivesTurn(turn([mid("READ", " (https://api.example/me) {Authorization: Bearer TOKEN} {Accept: application/json}")], 102, "continue")),
+        derivesTurn(turn([mid("READ", ' (https://api.example/me) [{"Authorization": "Bearer TOKEN"}] [{"Accept": "application/json"}]')], 102, "continue")),
         true,
         "ordered metadata blocks follow the complete target",
     );
 });
 
-test("{§scheme-metadata-modifier}: rails preserve quoted braces and nested metadata", () => {
+test("{§scheme-metadata-modifier}: rails preserve quoted brackets and nested metadata", () => {
     for (const metadata of [
-        `args=${JSON.stringify(["}", "{", 'quote"}here', "\\}", "line\nbreak"])}`,
-        'request={"nested":{"value":"}"}}',
+        JSON.stringify({ args: ["]", "[", 'quote"]here', "\\]", "line\nbreak"] }),
+        JSON.stringify({ request: { nested: { value: "]" } } }),
     ]) {
-        const content = turn([mid("EXEC", ` [node] (script.js) {${metadata}}`, "stdin")], 102, "continue");
+        const content = turn([mid("node", ` (script.js) [${metadata}]`, "stdin")], 102, "continue");
         assert.equal(derivesTurn(content), true, metadata);
         const parsed = PlurnkParser.parse(content);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
@@ -528,15 +527,15 @@ test("GBNF mid-turn SENDs name a recipient or the user and never carry a label",
 });
 
 test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and bodies", () => {
-    assert.equal(derives("statement", mid("EXEC", " [node] (./) <60,5>", "npm test")), true);
-    assert.equal(derives("statement", mid("EXEC", " [python3] (tools/report.py)", "input")), true);
-    assert.equal(derives("statement", mid("EXEC", " (./) [node]", "npm test")), false, "the executor leads the path");
-    assert.equal(derives("statement", mid("READ", " [python3] (tool.py)")), false, "only EXEC takes an executor");
-    assert.equal(derives("statement", mid("EXEC", " {cwd=sub}", "make test")), true, "cwd metadata stands alone on the shell");
-    assert.equal(derives("statement", mid("EXEC", " [node] {cwd=sub}", "console.log(1)")), true);
-    assert.equal(derives("statement", mid("READ", " {cwd=sub}", "x")), false, "metadata follows a target elsewhere");
-    assert.equal(derives("statement", mid("EXEC", " <60,5> [node] (./)", "npm test")), false);
-    assert.equal(derives("statement", mid("EXEC", " [node] (./) <@aZ09b>", "npm test")), false, "EXEC scopes are minutes, never anchors");
+    assert.equal(derives("statement", mid("node", " (./) <60,5>", "npm test")), true);
+    assert.equal(derives("statement", mid("python3", " (tools/report.py)", "input")), true);
+    assert.equal(derives("statement", mid("EXEC", " (./) [node]", "npm test")), true, "a bracket after the program is metadata, not an executor");
+    assert.equal(derives("statement", mid("READ", " [python3] (tool.py)")), false, "metadata follows the target; a leading bracket selects nothing");
+    assert.equal(derives("statement", mid("EXEC", ' [{"cwd": "sub"}]', "make test")), true, "cwd metadata stands alone on the shell");
+    assert.equal(derives("statement", mid("node", ' [{"cwd": "sub"}]', "console.log(1)")), true);
+    assert.equal(derives("statement", mid("READ", ' [{"cwd": "sub"}]', "x")), false, "metadata follows a target elsewhere");
+    assert.equal(derives("statement", mid("EXEC", " <60,5> [node] (./)", "npm test")), false, "the scope follows the program and its metadata");
+    assert.equal(derives("statement", mid("node", " (./) <@aZ09b>", "npm test")), false, "EXEC scopes are minutes, never anchors");
     assert.equal(derives("statement", mid("BARE", "", "prompt")), true);
     assert.equal(derives("statement", mid("BARE", " (worker://~/prompt.md)", "prompt")), true);
     assert.equal(derives("statement", mid("BARE", " (worker://~/prompt.md)")), true);
@@ -650,7 +649,7 @@ test("{§rail-heading-boundaries}: every supported fence length covers the compl
         mid("EDIT", " (notes.md) <1,-1>", "replacement"),
         mid("COPY", " (source.md) (copy.md)"),
         mid("MOVE", " (source.md) (destination.md)"),
-        mid("EXEC", " [sh]", "printf hello"),
+        mid("sh", "", "printf hello"),
         mid("gitea", " (list_issues)", '{"repo_id":42}'),
         mid("BARE", "", "What is the capital of Germany?"),
         mid("BARE", " (question.md)"),

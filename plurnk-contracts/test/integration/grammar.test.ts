@@ -11,11 +11,7 @@ import {
 
 type Op = PlurnkOp;
 
-const section = (op: Op, slots = "", body?: string): string => {
-    const executor = op === "EXEC" ? /^\s*\[([^\]]+)\]/.exec(slots) : null;
-    const header = executor === null ? op + slots : executor[1] + slots.slice(executor[0].length);
-    return PlurnkParser.frame(header, body ?? null);
-};
+const section = (op: Op, slots = "", body?: string): string => PlurnkParser.frame(op + slots, body ?? null);
 
 const sections = (...values: string[]): string => values.join("\n\n");
 const inventory = (content: string, status: Plan[number]["status"] = "in_progress") =>
@@ -139,12 +135,12 @@ test("unmatched target parentheses require escaped or percent-encoded spelling",
 test("an unfinished metadata modifier names only its structural repair", () => {
     const secret = "Bearer secret-that-must-not-echo";
     const parsed = PlurnkParser.parseStatements(
-        `\`\`\`READ (https://example.test/data) {Authorization: ${secret}`,
+        `\`\`\`READ (https://example.test/data) [{"Authorization": "${secret}"`,
     );
     assert.equal(parsed.items.length, 0);
     assert.equal(
         parsed.unparsedTail?.reason,
-        "metadata modifier of `READ` opened at line 1 but never closed - add `}`",
+        "metadata modifier of `READ` opened at line 1 but never closed - add `]`",
     );
     assert.equal(parsed.unparsedTail?.reason.includes(secret), false);
 });
@@ -271,9 +267,9 @@ test("{§bare-statement} BARE accepts a prompt resource, inline input, or both",
     const inline = oneStatement(section("BARE", "", "What is the capital of Germany?"));
     if (inline.op !== "BARE") assert.fail("expected BARE");
     assert.equal(inline.target, null);
-    const metadata = oneStatement(section("BARE", ' (https://example.test/prompt) {"Accept":"text/plain"}'));
+    const metadata = oneStatement(section("BARE", ' (https://example.test/prompt) [{"Accept": "text/plain"}]'));
     if (metadata.op !== "BARE") assert.fail("expected BARE");
-    assert.deepEqual(metadata.metadata, ['"Accept":"text/plain"']);
+    assert.deepEqual(metadata.metadata, ['{"Accept": "text/plain"}']);
 
     const body = "```BARE (prompt://alice/1/1)```";
     const fenced = PlurnkParser.parseStatements(section("TASK", "", body));
@@ -534,25 +530,25 @@ test("modifier delimiters make horizontal spacing optional", () => {
 
 test("scheme metadata is an opaque ordered modifier outside the target", () => {
     const statement = oneStatement(
-        "```READ (https://api.example/me) {Authorization: Bearer TOKEN} {Accept: application/json} <1,4>```",
+        '```READ (https://api.example/me) [{"Authorization": "Bearer TOKEN"}] [{"Accept": "application/json"}] <1,4>```',
     );
     assert.equal(statement.op, "READ");
     assert.equal(statement.target?.raw, "https://api.example/me");
     assert.deepEqual(statement.metadata, [
-        "Authorization: Bearer TOKEN",
-        "Accept: application/json",
+        '{"Authorization": "Bearer TOKEN"}',
+        '{"Accept": "application/json"}',
     ]);
     assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
 });
 
 test("{§slot-order}: target and scope precede opaque metadata in every scoped heading", () => {
     for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "EXEC"] as const) {
-        const header = `${op === "EXEC" ? "node" : op} (known:///item) <1,4> {request={"value":"}"}} {mode=quiet} <!-- inspect -->`;
+        const header = `${op === "EXEC" ? "node" : op} (known:///item) <1,4> [{"request": {"value": "]"}}] [{"mode": "quiet"}] <!-- inspect -->`;
         const statement = oneStatement(PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
         assert.equal(statement.op, op);
         assert.equal(statement.target?.raw, "known:///item");
         assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
-        assert.deepEqual(statement.metadata, ['request={"value":"}"}', "mode=quiet"]);
+        assert.deepEqual(statement.metadata, ['{"request": {"value": "]"}}', '{"mode": "quiet"}']);
         assert.equal(statement.annotation, "inspect");
         const canonical = PlurnkParser.stringify([statement]);
         assert.equal(canonical, PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
@@ -564,13 +560,13 @@ test("{§transfer-resource-selections}: scope and metadata stay with their own C
     for (const op of ["COPY", "MOVE"] as const) {
         for (const sourceScope of ["", " <@abcde,@f1234>"]) {
             for (const destinationScope of ["", " <0>"]) {
-                const header = `${op} (known:///source#body)${sourceScope} {source=one} {source=two} (known:///destination#notes)${destinationScope} {destination=one} <!-- transfer -->`;
+                const header = `${op} (known:///source#body)${sourceScope} [{"source": "one"}] [{"source": "two"}] (known:///destination#notes)${destinationScope} [{"destination": "one"}] <!-- transfer -->`;
                 const statement = oneStatement(PlurnkParser.frame(header, null));
                 if (statement.op !== "COPY" && statement.op !== "MOVE") assert.fail("expected transfer");
                 assert.equal(statement.source.target.raw, "known:///source#body");
                 assert.equal(statement.destination.target.raw, "known:///destination#notes");
-                assert.deepEqual(statement.source.metadata, ["source=one", "source=two"]);
-                assert.deepEqual(statement.destination.metadata, ["destination=one"]);
+                assert.deepEqual(statement.source.metadata, ['{"source": "one"}', '{"source": "two"}']);
+                assert.deepEqual(statement.destination.metadata, ['{"destination": "one"}']);
                 assert.deepEqual(statement.source.lineMarker, sourceScope ? { marks: ["@abcde", "@f1234"] } : null);
                 assert.deepEqual(statement.destination.lineMarker, destinationScope ? { marks: [0] } : null);
                 assert.equal(PlurnkParser.stringify([statement]), PlurnkParser.frame(header, null));
@@ -582,26 +578,26 @@ test("{§transfer-resource-selections}: scope and metadata stay with their own C
 
 test("{§slot-order}: a resource selection never silently accepts a second scope", () => {
     for (const header of [
-        "READ (item) <1> {mode=one} <2>",
-        "COPY (source) <1> {mode=one} <2> (destination)",
-        "MOVE (source) (destination) <1> {mode=one} <2>",
-        "SEND (worker://reviewer) <1> {mode=one} <2>",
+        'READ (item) <1> [{"mode": "one"}] <2>',
+        'COPY (source) <1> [{"mode": "one"}] <2> (destination)',
+        'MOVE (source) (destination) <1> [{"mode": "one"}] <2>',
+        'SEND (worker://reviewer) <1> [{"mode": "one"}] <2>',
     ]) {
         const errors = errorsOf(PlurnkParser.frame(header, null));
         assert.ok(errors.some(({ severity }) => severity === "error"), header);
     }
 });
 
-test("{§scheme-metadata-modifier}: quoted braces and escapes remain exact metadata content", () => {
+test("{§scheme-metadata-modifier}: quoted brackets and escapes remain exact metadata content", () => {
     for (const metadata of [
-        `args=${JSON.stringify(["}", "{", 'quote"}here', "\\}", "line\nbreak"])}`,
-        'request={"nested":{"value":"}"}}',
+        JSON.stringify({ args: ["]", "[", 'quote"]here', "\\]", "line\nbreak"] }),
+        JSON.stringify({ request: { nested: { value: "]" } } }),
     ]) {
-        const statement = oneStatement(`\`\`\`node (script.js) {${metadata}} {cwd=sub}
+        const statement = oneStatement(`\`\`\`node (script.js) [${metadata}] [{"cwd": "sub"}]
 stdin
 \`\`\``);
         if (statement.op !== "EXEC") assert.fail("expected EXEC");
-        assert.deepEqual(statement.metadata, [metadata, "cwd=sub"]);
+        assert.deepEqual(statement.metadata, [metadata, '{"cwd": "sub"}']);
         assert.equal(statement.body, "stdin");
     }
 });
@@ -1031,14 +1027,14 @@ test("READ matcher admission retains positioned dialect errors", () => {
 test("COPY and MOVE operands project path, metadata, fragment, and scope independently", () => {
     const copy = oneStatement(section(
         "COPY",
-        " (known:///draft#body) {source metadata} <2,4> (known:///archive#notes) {destination metadata} <1,3,1,3>",
+        ' (known:///draft#body) [{"source": "metadata"}] <2,4> (known:///archive#notes) [{"destination": "metadata"}] <1,3,1,3>',
     ));
     if (copy.op !== "COPY" || copy.destination.target.kind !== "url") assert.fail("expected COPY");
     assert.equal(copy.destination.target.fragment, "notes");
     assert.equal(copy.destination.target.raw, "known:///archive#notes");
-    assert.deepEqual(copy.destination.metadata, ["destination metadata"]);
+    assert.deepEqual(copy.destination.metadata, ['{"destination": "metadata"}']);
     assert.deepEqual(copy.destination.lineMarker, { marks: [1, 3, 1, 3] });
-    assert.deepEqual(copy.source.metadata, ["source metadata"]);
+    assert.deepEqual(copy.source.metadata, ['{"source": "metadata"}']);
     assert.deepEqual(copy.source.lineMarker, { marks: [2, 4] });
 
     const move = oneStatement(section("MOVE", " (worker:///draft) (./out.txt)"));
@@ -1083,8 +1079,8 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
     const target = PlurnkParser.parseStatements("```EDIT (path").unparsedTail;
     assert.match(target?.reason ?? "", /target slot of `EDIT`.*add `\)`/);
 
-    const metadata = PlurnkParser.parseStatements("```EDIT (p) {meta").unparsedTail;
-    assert.match(metadata?.reason ?? "", /metadata modifier of `EDIT`.*add `\}`/);
+    const metadata = PlurnkParser.parseStatements('```EDIT (p) [{"meta"').unparsedTail;
+    assert.match(metadata?.reason ?? "", /metadata modifier of `EDIT`.*add `\]`/);
 });
 
 test("diagnostics do not leak ANTLR implementation vocabulary", () => {
@@ -1195,19 +1191,19 @@ test("body text on the heading line is the first body line when it cannot open a
     assert.equal(annotated.body?.raw, "/createCoder/i");
 
     // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
-    const unspaced = oneStatement("```crm (crm_query){\"soql\": \"x\"}```");
+    const unspaced = oneStatement("```crm (crm_query)[{\"soql\": \"x\"}]```");
     if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
-    assert.deepEqual(unspaced.metadata, ['"soql": "x"']);
+    assert.deepEqual(unspaced.metadata, ['{"soql": "x"}']);
     assert.equal(oneStatement("```READ (a.md) <1,3>```").op, "READ");
 });
 
 // {§exec-executor-slot}
 test("the fence name selects EXEC while its modifiers retain their contracts", () => {
-    const railed = oneStatement("```python3 (tools/report.py) {cwd=build} <30>\ninput\n```");
+    const railed = oneStatement('```python3 (tools/report.py) [{"cwd": "build"}] <30>\ninput\n```');
     if (railed.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(railed.executor, "python3");
     assert.equal(railed.target?.raw, "tools/report.py");
-    assert.deepEqual(railed.metadata, ["cwd=build"]);
+    assert.deepEqual(railed.metadata, ['{"cwd": "build"}']);
     assert.deepEqual(railed.lineMarker, { marks: [30] });
     assert.equal(railed.body, "input");
     const bare = oneStatement("```EXEC\npwd\n```");
@@ -1225,20 +1221,27 @@ test("the fence name selects EXEC while its modifiers retain their contracts", (
     if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(unspaced.executor, "jq");
     assert.equal(unspaced.target?.raw, "data.json");
-    for (const input of [
-        "```EXEC (tool.py) [python3]\ninput\n```",
-        "```python3 (tool.py) [node]\ninput\n```",
-        "```python3 [node] (tool.py)\ninput\n```",
-    ]) {
-        assert.equal(firstError(input).message, "unexpected bracket modifier; the fence name selects the executor");
+    // {§legacy-bracket-slot} — a bracket after the program or leading an executor fence is metadata
+    // for that executor, never a selector: the fence name still selects the executor.
+    for (const [input, executor, metadata] of [
+        ["```EXEC (tool.py) [python3]\ninput\n```", null, "python3"],
+        ["```python3 (tool.py) [node]\ninput\n```", "python3", "node"],
+        ["```python3 [node] (tool.py)\ninput\n```", "python3", "node"],
+    ] as const) {
+        const legacy = oneStatement(input);
+        if (legacy.op !== "EXEC") assert.fail("expected EXEC");
+        assert.equal(legacy.executor, executor, input);
+        assert.equal(legacy.target?.raw, "tool.py", input);
+        assert.deepEqual(legacy.metadata, [metadata], input);
+        assert.equal(legacy.body, "input", input);
     }
-    const cwdOnly = oneStatement("```EXEC {cwd=sub}\nmake test\n```");
+    const cwdOnly = oneStatement('```EXEC [{"cwd": "sub"}]\nmake test\n```');
     if (cwdOnly.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(cwdOnly.executor, null);
-    assert.deepEqual(cwdOnly.metadata, ["cwd=sub"]);
+    assert.deepEqual(cwdOnly.metadata, ['{"cwd": "sub"}']);
     assert.equal(cwdOnly.body, "make test");
-    const executorCwd = oneStatement("```node {cwd=sub}\nconsole.log(process.cwd())\n```");
+    const executorCwd = oneStatement('```node [{"cwd": "sub"}]\nconsole.log(process.cwd())\n```');
     if (executorCwd.op !== "EXEC") assert.fail("expected EXEC");
-    assert.deepEqual(executorCwd.metadata, ["cwd=sub"]);
+    assert.deepEqual(executorCwd.metadata, ['{"cwd": "sub"}']);
     assert.match(firstError("```READ [python3] (tool.py)```").message, /unexpected bracket modifier; the fence name selects the executor/);
 });

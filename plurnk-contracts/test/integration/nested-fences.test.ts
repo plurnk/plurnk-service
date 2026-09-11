@@ -16,11 +16,11 @@ for (const [name, parse] of [
     test(`{§fence-boundary}: ${name} retains a complete report and its TASK without admitting quoted operations`, () => {
         const body = [
             "The process reversed the supplied bytes.",
-            "````node {stdin=open}",
+            '````node [{"stdin": "open"}]',
             'process.stdin.on("data", value => process.stdout.write(value));',
             "````",
             "The input was delivered with:",
-            "````SEND (node:///ab3d5678) {eof=true}",
+            '````SEND (node:///ab3d5678) [{"eof": true}]',
             "oranges",
             "````",
             "Observed stdout: segnaro. No further input is needed.",
@@ -45,7 +45,7 @@ test("{§fence-boundary}: nesting preserves exact bodies across widths, depths, 
                     const fence = "`".repeat(width);
                     const body = [
                         `${fence}KILL (notes.md)${fence}`,
-                        ...Array.from({ length: depth }, (_, index) => `${fence}unknown${index} {not valid metadata`),
+                        ...Array.from({ length: depth }, (_, index) => `${fence}unknown${index} [not valid metadata`),
                         "literal 🙂 content",
                         ...Array.from({ length: depth }, () => `${fence}\t `),
                         "  trailing content  ",

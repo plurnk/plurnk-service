@@ -57,7 +57,7 @@ export default class PlurnkParser {
             const selection = (resource: ResourceSelection): void => {
                 modifiers.push(`(${resource.target.raw})`);
                 if (resource.lineMarker !== null) modifiers.push(`<${resource.lineMarker.marks.join(",")}>`);
-                for (const metadata of resource.metadata ?? []) modifiers.push(`{${metadata}}`);
+                for (const metadata of resource.metadata ?? []) modifiers.push(`[${metadata}]`);
             };
             if (statement.op === "COPY" || statement.op === "MOVE") {
                 selection(statement.source);
@@ -67,7 +67,7 @@ export default class PlurnkParser {
                     modifiers.push(`(${statement.target.raw})`);
                 }
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
-                for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
+                for (const metadata of statement.metadata ?? []) modifiers.push(`[${metadata}]`);
             }
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
             const body = TurnDisposition.is(statement) ? PlanValue.stringify(statement.body)
@@ -268,7 +268,7 @@ export default class PlurnkParser {
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
         const heading = lexer.getOpenHeading().replace(/^`+/, "") || openTag;
         const reason = modeName === "METADATA"
-            ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`}\``
+            ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`]\``
             : modeName === "TARGET"
                 ? `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``
                 : `${openTag} block opened at line ${from.line} but was not closed with ${lexer.getFenceLength()} backticks`;

@@ -45,7 +45,7 @@ for (const [name, parse] of [
     });
 
     test(`{§unlabeled-fence-send}: ${name} preserves optional header annotations without promoting their text or body`, () => {
-        const annotation = 'SEND (worker://elsewhere/) <1,-1> {key=value}; KILL is only text — 💬';
+        const annotation = 'SEND (worker://elsewhere/) <1,-1> [{"key": "value"}]; KILL is only text — 💬';
         const body = '```KILL (worker:///notes.md)```\n<!-- body comment -->\nTASK\n[]';
         for (const ticks of [3, 4, 8]) {
             for (const space of ["", " ", "\t"]) {

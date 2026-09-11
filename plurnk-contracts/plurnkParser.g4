@@ -131,7 +131,7 @@ slotModifiers
 execModifiers
     : execSlot+
     ;
-// {§exec-executor-slot} — `{cwd=…}` metadata may stand without a program path on EXEC.
+// {§exec-executor-slot} — `[{"cwd": …}]` metadata may stand without a program path on EXEC.
 execSlot
     : targetWithMetadata
     | metadata
@@ -140,6 +140,6 @@ execSlot
 
 target      : LPAREN TARGET_TEXT* lineMarker? RPAREN ;
 targetWithMetadata : target metadata* ;
-metadata    : LBRACE METADATA_TEXT* RBRACE ;
+metadata    : LBRACKET METADATA_TEXT* RBRACKET ;
 lineMarker  : L_MARKER ;
 body        : BODY_TEXT+ ;

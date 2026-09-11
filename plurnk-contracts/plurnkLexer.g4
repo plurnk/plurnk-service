@@ -5,7 +5,7 @@ tokens {
     OPEN_SEND, OPEN_TASK,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     OPEN_LOOK, OPEN_BUFF,
-    LPAREN, RPAREN, LBRACE, RBRACE, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
+    LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
     TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION
 }
 
@@ -152,7 +152,7 @@ TEXT_TICK : '`' -> type(TEXT), channel(HIDDEN) ;
 mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
-SLOTS_LBRACE : { this.slotReady && this.metadataReady }? '{' { this.metadataDepth = 0; } -> type(LBRACE), mode(METADATA) ;
+SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
@@ -178,12 +178,12 @@ mode METADATA;
 METADATA_FENCE : { this.closingAt(1) }? FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
 METADATA_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
 METADATA_STRING : '"' ('\\' ~[\r\n] | ~["\\\r\n])* '"' -> type(METADATA_TEXT) ;
-METADATA_INNER : ~[{}"`\r\n]+ -> type(METADATA_TEXT) ;
+METADATA_INNER : ~[[\]"`\r\n]+ -> type(METADATA_TEXT) ;
 METADATA_TICK : '`' -> type(METADATA_TEXT) ;
 METADATA_QUOTE : '"' -> type(METADATA_TEXT) ;
-METADATA_NEST_OPEN : '{' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
-METADATA_NEST_END : { this.metadataDepth > 0 }? '}' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
-METADATA_END : '}' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACE), mode(SLOTS) ;
+METADATA_NEST_OPEN : '[' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
+METADATA_NEST_END : { this.metadataDepth > 0 }? ']' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
+METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode BODY;
 B_NEST_OPEN : { this.nestedOpeningAhead() }? FENCE NAME { this.nestedFenceDepth++; } -> type(BODY_TEXT) ;

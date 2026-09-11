@@ -287,7 +287,7 @@ or selection exists.
 ## §canonical-statement 2. Canonical statement form
 
 `````text
-```OP (path)? <scope>? {metadata}* <!-- annotation -->?
+```OP (path)? <scope>? [metadata]? <!-- annotation -->?
 body
 ```
 
@@ -347,7 +347,7 @@ this serializer and the ordinary admission parser.
 |---|---|
 | Fence name | Reserved native OP, otherwise a registered executor or attached MCP service |
 | `(path)` | Target/program/tool slot; COPY and MOVE each have two resource operands |
-| `{metadata}` | Opaque owner-defined modifiers; not JSON input in disguise |
+| `[metadata]` | One JSON array of option objects, owner-interpreted; options, never the op's input |
 | `<scope>` | Operation-specific numeric or anchored coordinates |
 | `<!-- … -->` | Optional final, single-line annotation |
 | Body | Literal content between framing newlines |
@@ -374,13 +374,17 @@ comment. AstBuilder removes its delimiters and surrounding whitespace into
 routing, timing, or body input. Comments inside a body remain literal except
 for the narrowly owned {§misplaced-annotation-advisory}.
 
-§scheme-metadata-modifier A target may carry repeatable single-line
-`{metadata}` blocks; EXEC also admits them without a target. Balanced braces
-inside blocks are retained, and double-quoted strings protect their braces.
-The AST preserves each block's exact inner text in order. Braces inside
-`(path)` remain ordinary path/glob characters. The selected scheme or executor
-owns interpretation, validation and authority; the language assigns no meaning
-to metadata. An unfinished block or multiline metadata loses its boundary.
+§scheme-metadata-modifier A target may carry one single-line `[metadata]`
+block after its scope; an executor fence also admits it without a target.
+Read with its brackets, the block is a JSON array of option objects, merged
+left to right with later keys winning; the keys belong to the selected scheme
+or executor, which owns interpretation, validation and authority. The language
+assigns no meaning to the content and stores each block's exact inner text:
+balanced brackets inside the block are retained, and double-quoted strings
+protect their brackets. Brackets inside `(path)` remain ordinary path and
+glob characters. A block that is not valid JSON, or a second block on one
+operand, is the owner's `400`, never a parser diagnostic. An unfinished block
+or multiline metadata loses its boundary.
 
 ## 3. Lexical elements
 
@@ -390,7 +394,7 @@ to metadata. An unfinished block or multiline metadata loses its boundary.
 | Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
 | Fence | Three or more backticks, matched by exact count |
 | `(path)` | Local path, URI, program or tool name; §5 |
-| `{metadata}` | Opaque, repeatable owner-defined modifier |
+| `[metadata]` | One JSON array of owner-defined option objects |
 | `<scope>` | Numeric or anchored coordinates; §7 |
 | Body | Literal text; never recursively interpreted as operations |
 
@@ -473,7 +477,7 @@ input-body JSON against its schema. Unknown names do not fall back to a shell.
 The native `EXEC` form without a selected executor retains the runtime's
 default executor contract; canonical shell examples name `sh` explicitly.
 The path names a program or tool and is never split. Metadata such as
-`{cwd=…}` remains interpreted by the selected executor.
+`[{"cwd": "…"}]` remains interpreted by the selected executor.
 
 §turn-disposition TASK is the sole workflow declaration. `TurnDisposition`
 derives intent from its canonical inventory under {§task-inventory-intent}.
@@ -499,9 +503,12 @@ Without a scope, KILL retires or deletes the whole target; with one, it removes 
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.
 
-§legacy-bracket-slot No header has a bracket modifier. The runtime or MCP
-service is the fence name, and tool input belongs in the body. A stray `[`
-produces one bounded header diagnostic; it cannot select another executor.
+§legacy-bracket-slot Brackets are the metadata modifier, never an executor
+selector: the runtime or MCP service is the fence name, and tool input belongs
+in the body. A bracket block that leads an executor fence or follows a target
+is metadata, so a legacy `[node]` selector reaches its owner as metadata text
+and is refused there; a bracket before the target of a non-executor OP is one
+bounded header diagnostic that selects nothing.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and SEND scope owner-defined timing. READ, EDIT, COPY,

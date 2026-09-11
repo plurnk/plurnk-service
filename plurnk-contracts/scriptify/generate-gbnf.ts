@@ -210,12 +210,12 @@ export const buildModel = (): GModel => {
     // An executor name is a runtime tag: scheme-name characters, `+` included (#105).
     model.set("executor-name", [[cls([R("a", "z")]), star(cls([R("0", "9"), R("A", "Z"), R("a", "z"), ...C("_.+-")]))]]);
     model.set("exec-name", [[lit("EXEC")], [ref("executor-name")]]);
-    // The program path with its metadata, or `{cwd=…}` metadata alone.
+    // The program path with its metadata, or `[{"cwd": …}]` metadata alone.
     model.set("exec-program", [[ref("target-slot")], [ref("metadata-slot"), star(ref("metadata-slot"))]]);
     model.set("metadata-slot", [[lit(" "), ref("metadata-block")]]);
-    model.set("metadata-block", [[lit("{"), star(ref("metadata-inner")), lit("}")]]);
+    model.set("metadata-block", [[lit("["), star(ref("metadata-inner")), lit("]")]]);
     model.set("metadata-inner", [
-        [bodyOther('{}"', true)],
+        [bodyOther('[]"', true)],
         [ref("metadata-block")],
         [lit('"'), star(ref("metadata-string")), lit('"')],
     ]);

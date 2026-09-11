@@ -70,7 +70,7 @@ test("fenced operations: a longer backtick run cannot supply a closing-fence suf
         const fence = "`".repeat(count);
         for (const extra of [1, 4]) {
             const longer = "`".repeat(count + extra);
-            for (const header of ["READ (notes.md)", "READ (notes.md", "sh {broken", "EDIT (notes.md) text", "EDIT (notes.md)\ntext\n"]) {
+            for (const header of ["READ (notes.md)", "READ (notes.md", "sh [broken", "EDIT (notes.md) text", "EDIT (notes.md)\ntext\n"]) {
                 const source = `${fence}${header}${longer}`;
                 const result = PlurnkParser.parseStatements(source);
                 assert.deepEqual(result.unparsedTail?.from, { line: 1, column: 0 }, source);
@@ -103,13 +103,13 @@ test("fenced operations: framing excludes only its own newlines, preserving CRLF
 });
 
 test("fenced operations: transfer operands and opaque metadata keep their contracts", () => {
-    const [copy, exec] = statements('```COPY (a) <@abcde> (b) <0>```\n```gitea (issue_list) {"headers":{"x":"}"}} <1,0.1> <!-- list issues -->\n{}\n```');
+    const [copy, exec] = statements('```COPY (a) <@abcde> (b) <0>```\n```gitea (issue_list) [{"headers": {"x": "]"}}] <1,0.1> <!-- list issues -->\n{}\n```');
     assert.equal(copy.op, "COPY");
     assert.equal(exec.op, "EXEC");
     if (copy.op !== "COPY" || exec.op !== "EXEC") return;
     assert.equal(copy.destination.target.raw, "b");
     assert.deepEqual(copy.destination.lineMarker?.marks, [0]);
-    assert.deepEqual(exec.metadata, ['"headers":{"x":"}"}']);
+    assert.deepEqual(exec.metadata, ['{"headers": {"x": "]"}}']);
     assert.equal(exec.annotation, "list issues");
 });
 
@@ -156,7 +156,7 @@ test("fenced operations: inherited JavaScript property names are ordinary execut
 });
 
 test("fenced operations: a closed malformed target or metadata stays local to its block", () => {
-    for (const header of ["READ (broken", 'sh {"cwd":"broken"', "READ (a) <oops>"]) {
+    for (const header of ["READ (broken", 'sh [{"cwd": "broken"', "READ (a) <oops>"]) {
         const result = PlurnkParser.parseStatements(header.startsWith("sh")
             ? `\`\`\`${header}\`\`\`\n\`\`\`READ (safe.md)\`\`\``
             : `\`\`\`${header}\n\`\`\`\n\`\`\`READ (safe.md)\`\`\``);
