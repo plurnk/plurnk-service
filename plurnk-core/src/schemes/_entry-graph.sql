@@ -10,14 +10,6 @@ DELETE FROM symbol_defs WHERE derivation_id = $derivation_id;
 -- PREP: graph_delete_refs
 DELETE FROM symbol_refs WHERE derivation_id = $derivation_id;
 
--- PREP: graph_insert_def
-INSERT INTO symbol_defs (derivation_id, name, kind, container, line, end_line)
-VALUES ($derivation_id, $name, $kind, $container, $line, $end_line);
-
--- PREP: graph_insert_ref
-INSERT INTO symbol_refs (derivation_id, name, kind, container, line, col)
-VALUES ($derivation_id, $name, $kind, $container, $line, $col);
-
 -- PREP: graph_insert_defs_bulk
 INSERT INTO symbol_defs (derivation_id, name, kind, container, line, end_line)
 SELECT $derivation_id,
@@ -27,11 +19,10 @@ SELECT $derivation_id,
 FROM json_each($rows);
 
 -- PREP: graph_insert_refs_bulk
-INSERT INTO symbol_refs (derivation_id, name, kind, container, line, col)
+INSERT INTO symbol_refs (derivation_id, name, kind, container, line)
 SELECT $derivation_id,
        json_extract(value, '$.name'), json_extract(value, '$.kind'),
-       json_extract(value, '$.container'), json_extract(value, '$.line'),
-       json_extract(value, '$.column')
+       json_extract(value, '$.container'), json_extract(value, '$.line')
 FROM json_each($rows);
 
 -- PREP: derivation_get

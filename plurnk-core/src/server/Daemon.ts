@@ -1611,6 +1611,9 @@ export default class Daemon implements ApplicationPort {
         // conclusion notifications. Join the supervisor-owned async tails only
         // after those producers settle, before the caller may close SQLite.
         const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
+        // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
+        // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
+        const optimizeResult = await settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [
             moduleResult,
             functionalityResult,
@@ -1620,6 +1623,7 @@ export default class Daemon implements ApplicationPort {
             ...(mimetypeResult === null ? [] : [mimetypeResult]),
             schemeResult,
             wakeResult,
+            optimizeResult,
         ]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
             .flatMap((result) => result.reason instanceof AggregateError

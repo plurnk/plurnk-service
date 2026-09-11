@@ -354,14 +354,6 @@ test("turns: unique index turns_loop_id_sequence exists", async () => {
     } finally { await db.close(); }
 });
 
-test("turns: index turns_timestamp exists", async () => {
-    const { db } = await setup();
-    try {
-        const row = await db.test_turns_index_meta.get<{ name: string }>({ name: "turns_timestamp" });
-        assert.equal(row?.name, "turns_timestamp");
-    } finally { await db.close(); }
-});
-
 test("turns: id auto-assigns on insert", async () => {
     const { db, loopId } = await setup();
     try {

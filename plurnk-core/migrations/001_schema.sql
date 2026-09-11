@@ -149,7 +149,6 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     outcome                 TEXT,
     attrs                   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
     terminated_by           TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
-    created_at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1),
     CHECK (
         (kind = 'activity' AND terminated_by IS NULL)
@@ -172,6 +171,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
 
 CREATE INDEX IF NOT EXISTS ambient_events_workspace_id_id
     ON ambient_events (workspace_id, id);
+-- {§db-index-owners} Producer deletion's foreign-key check walks its events by producer; no registry statement selects by it.
 CREATE INDEX IF NOT EXISTS ambient_events_producer_kind_id
     ON ambient_events (producer_worker_id, kind, id);
 CREATE INDEX IF NOT EXISTS ambient_events_parent_id
@@ -470,7 +470,6 @@ CREATE TABLE IF NOT EXISTS turns (
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
-CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
 -- {§turn-source-resources}: immutable source facts belong to their turn, not
 -- its curatable log. Derivation attachments are replaceable, source bytes are not.
@@ -852,8 +851,6 @@ BEGIN
     SELECT RAISE(ABORT, 'provider request identity is immutable');
 END;
 
-CREATE INDEX IF NOT EXISTS provider_requests_inference_call_id
-    ON provider_requests (inference_call_id, sequence);
 
 CREATE TRIGGER IF NOT EXISTS provider_requests_state_forward_only
 BEFORE UPDATE OF state ON provider_requests
@@ -1082,7 +1079,6 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
     kind       TEXT    NOT NULL,
     container  TEXT,
     line       INTEGER NOT NULL,
-    col        INTEGER,
     FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -1210,7 +1206,6 @@ CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 -- {§db-fk-indexes} Derivation replacement checks the rows that cite the hash.
 CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (deep_hash) WHERE deep_hash IS NOT NULL;
-CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
 -- {§loop-response-messages}: executed messages survive curation. This projection
 -- is also used inside atomic cancellation; no second response accumulator exists.
 CREATE VIEW IF NOT EXISTS loop_responses AS
@@ -2008,11 +2003,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
     ON subscriptions (entry_id)
     WHERE closed_at IS NULL;
 
-CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
-    ON subscriptions (scheme)
-    WHERE closed_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 -- {§db-fk-indexes} Worker and entry deletion, and every by-worker stream lookup, otherwise scan all subscriptions,
 -- closed ones included; the active-only partial indexes above do not cover foreign-key checks.
 CREATE INDEX IF NOT EXISTS subscriptions_worker_id ON subscriptions (worker_id) WHERE worker_id IS NOT NULL;

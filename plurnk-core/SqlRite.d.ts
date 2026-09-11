@@ -81,8 +81,6 @@ export class SqlRiteSync {
 	fts_rank_candidates: SqlRiteSyncPreparedStatements;
 	graph_delete_defs: SqlRiteSyncPreparedStatements;
 	graph_delete_refs: SqlRiteSyncPreparedStatements;
-	graph_insert_def: SqlRiteSyncPreparedStatements;
-	graph_insert_ref: SqlRiteSyncPreparedStatements;
 	graph_insert_defs_bulk: SqlRiteSyncPreparedStatements;
 	graph_insert_refs_bulk: SqlRiteSyncPreparedStatements;
 	derivation_get: SqlRiteSyncPreparedStatements;
@@ -272,6 +270,7 @@ export class SqlRiteSync {
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
+	maintenance_optimize: SqlRiteSyncPreparedStatements;
 	native_content_retain: SqlRiteSyncPreparedStatements;
 	native_content_read: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
@@ -339,8 +338,6 @@ export default class SqlRite {
 	fts_rank_candidates: SqlRitePreparedStatements;
 	graph_delete_defs: SqlRitePreparedStatements;
 	graph_delete_refs: SqlRitePreparedStatements;
-	graph_insert_def: SqlRitePreparedStatements;
-	graph_insert_ref: SqlRitePreparedStatements;
 	graph_insert_defs_bulk: SqlRitePreparedStatements;
 	graph_insert_refs_bulk: SqlRitePreparedStatements;
 	derivation_get: SqlRitePreparedStatements;
@@ -530,6 +527,7 @@ export default class SqlRite {
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
+	maintenance_optimize: SqlRitePreparedStatements;
 	native_content_retain: SqlRitePreparedStatements;
 	native_content_read: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
