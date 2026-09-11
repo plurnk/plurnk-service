@@ -24,7 +24,7 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const sends = (rows ?? []).filter((r) => r.op === "TASK" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen failure");
-            assert.match(sends[0]?.rx ?? "", /failed operation/, "the refusal names the failure, not a generic error");
+            assert.match(sends[0]?.rx ?? "", /operation failed in the same turn/, "the refusal names the failure, not a generic error");
         } finally { ws.close(); }
     });
 });
