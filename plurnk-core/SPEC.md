@@ -2187,7 +2187,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 
 A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
-§loop-response-messages **Replies and outcome are independent.** Each successful targetless SEND contributes its complete authored body to the loop's response, in turn and operation order, separated by a blank line. Directed SEND, TASK, annotations, interstitial text, inherited rows and ambient observations do not contribute. Collection reads immutable executed operation evidence, not the curated log projection. KILL cannot retract a delivered message. A later failure, cancellation or refused completion preserves prior messages; a task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content.
+§loop-response-messages **Replies and outcome are independent.** Each successful targetless SEND, and a SEND to one of this loop's own prompts ({§send-prompt-acceptance}), contributes its complete authored body to the loop's response, in turn and operation order, separated by a blank line. Other directed SEND, TASK, annotations, interstitial text, inherited rows and ambient observations do not contribute. Collection reads immutable executed operation evidence, not the curated log projection. KILL cannot retract a delivered message. A later failure, cancellation or refused completion preserves prior messages; a task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content.
 
 §loop-terminal-authorship **Terminal authorship is explicit when external.**
 
@@ -2222,6 +2222,15 @@ violations follow the current admission and strike contracts
   neutral recovery distinguishes targetless replies from directed SEND without
   guessing which one was intended. A scheme that does not implement SEND
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
+- §send-prompt-acceptance **One tolerated exception: this loop's own prompt.** The packet
+  lists `prompt://<worker>/<loop>/<id>` addresses under Active Prompts, and a model that
+  addresses one of them means what an untargeted SEND means. The engine accepts a model
+  SEND to a prompt of the current worker and loop as exactly that response: it dispatches
+  as the untargeted case, the row keeps the address the model wrote, and the body joins the
+  loop's response under {§loop-response-messages}. Nothing is taught about the form and it
+  creates no per-prompt result structure; a prompt of another loop or another worker stays
+  `400 send-target-not-a-recipient`. An undocumented acceptance in the same spirit as KILL
+  in the completion turn, not a recipient.
 - §send-idle-turn **Inventory-only continuation is valid.** An `in_progress` inventory continues whether or not another operation ran, including while children or streams are live. TASK is operational state; neither absence of other operations nor a not-ready READ may replace its intent with an implicit park. Exact repeating activity remains subject to {§engine-cycle-evidence}.
 - §send-premature-terminate **Premature terminate — the pending set.**
   A model's completion turn permits SEND, TASK, and KILL. Every other

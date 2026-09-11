@@ -9,7 +9,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { foldAuthorityIntoPath, promptLoopPrefix, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -454,8 +454,11 @@ export default class Dispatcher {
         } = context;
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
-        const denial = this.#checkWritable(statement, origin, workspaceId)
-            ?? await this.#checkCapabilities(statement, schemeCtx);
+        // {§send-prompt-acceptance} — a model SEND addressed to one of this loop's own prompts
+        // means what an untargeted SEND means; the address the packet showed it is accepted.
+        const ownPrompt = statement.op === "SEND" && origin === "model" && await this.#isOwnPromptAddress(statement.target, workerId, loopId);
+        const denial = ownPrompt ? null : (this.#checkWritable(statement, origin, workspaceId)
+            ?? await this.#checkCapabilities(statement, schemeCtx));
         if (denial !== null) {
             result = denial;
         } else {
@@ -467,7 +470,7 @@ export default class Dispatcher {
             try {
                 if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
-                } else if (statement.op === "SEND" && statement.target === null) {
+                } else if (statement.op === "SEND" && (statement.target === null || ownPrompt)) {
                     result = { status: 200 };
                 } else if (TurnDisposition.is(statement)) {
                     result = await this.#disposition.handle(statement, {
@@ -1101,6 +1104,17 @@ export default class Dispatcher {
         return result;
     }
 
+
+    // {§send-prompt-acceptance} `prompt://<this worker>/<this loop>/<id>` names a prompt the loop
+    // contains; a SEND to it is the response, exactly as if untargeted. Another worker's or
+    // another loop's prompt is not a recipient and keeps the ordinary refusal.
+    async #isOwnPromptAddress(target: ParsedPath | null, workerId: number, loopId: number): Promise<boolean> {
+        if (target === null || target.kind !== "url" || target.scheme !== "prompt") return false;
+        const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });
+        if (worker === undefined || target.hostname !== worker.name) return false;
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        return target.pathname.startsWith(promptLoopPrefix(loopSeq));
+    }
 
     // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,
     // after earlier operations have executed. Every non-SEND/TASK/KILL model operation

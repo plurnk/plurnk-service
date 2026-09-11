@@ -1204,7 +1204,9 @@ FROM log_entries le JOIN turns t ON t.id = le.turn_id
 WHERE le.op = 'SEND' AND le.state = 'resolved' AND le.status_rx BETWEEN 200 AND 299
   AND le.source IS NULL AND le.inherited_history = 0
   AND json_valid(le.tx)
-  AND json_type(le.tx, '$.target') = 'null'
+  -- {§send-prompt-acceptance}: a SEND to one of this loop's own prompts is the response too;
+  -- the dispatcher admits only own-loop prompt addresses, so the scheme alone identifies them.
+  AND (json_type(le.tx, '$.target') = 'null' OR json_extract(le.tx, '$.target.scheme') = 'prompt')
   AND json_type(le.tx, '$.body.raw') = 'text'
   AND length(json_extract(le.tx, '$.body.raw')) > 0
 GROUP BY le.loop_id;
