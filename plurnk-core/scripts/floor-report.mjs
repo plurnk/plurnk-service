@@ -5,7 +5,7 @@
 //
 // The metric: input weight of the FIRST model call for a fresh worker in an
 // empty project under the selected config — the price of existing, before any work.
-// Decomposed with the packet's own per-row accounting (tokensActive is the
+// Decomposed with the packet's own per-row accounting (logTokens is the
 // daemon's exact weigher, embedded in each Markdown-framed log record).
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "../test/intg/_rpc.ts";
 import { parseLogRecords } from "../test/LogRecords.ts";
+import { contentWeight } from "../src/core/content-weight.ts";
 
 class Capture extends Mock {
     requests = [];
@@ -53,16 +54,14 @@ try {
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
     const user = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
 
-    // The packet's own accounting: every log record reports tokensActive and
-    // a visible body contributes its separately reclaimable tokensBody.
+    // Measure the visible body here; the packet carries only its complete-row charge.
     const logSection = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/.exec(user);
     if (logSection === null) throw new Error("first request has no Log section");
     const logContent = logSection[1].trim();
     const rows = parseLogRecords(logContent).map((row) => {
-        const active = Number(row.tokensActive ?? 0);
-        const bodyTokens = Number(row.tokensBody ?? 0);
-        const visible = typeof row.body === "string";
-        return { path: String(row.path), active, metadata: active - (visible ? bodyTokens : 0) };
+        const active = Number(row.logTokens ?? 0);
+        const body = typeof row.body === "string" ? contentWeight(row.body.trimEnd()) : 0;
+        return { path: String(row.path), active, metadata: active - body };
     });
     const byOp = new Map();
     for (const row of rows) {

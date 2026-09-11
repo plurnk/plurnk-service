@@ -56,8 +56,8 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
-    const state = JSON.parse(budget.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
-    const usage = state.tokensActiveTotal;
+    const state = JSON.parse(budget.split("\n\n")[0]!) as { logTokensTotal: number; tokensActiveMax: number };
+    const usage = state.logTokensTotal;
     const ceiling = state.tokensActiveMax;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
@@ -146,7 +146,7 @@ test("the model-facing budget is one measured three-field state (#478)", async (
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["tokensActiveTotal", "tokensActiveMax", "tokensResponseMax"], "the active-total/maximum/response state stays, and only those three");
+        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["logTokensTotal", "tokensActiveMax", "tokensResponseMax"], "the active-total/maximum/response state stays, and only those three");
         assert.equal(budget.split("\n").length, 1, "one JSON line — no ranking or mandate follows the three fields");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
@@ -169,15 +169,15 @@ test("{§tokenomics-pressure-inventory}: a pressured composed packet points to i
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");
-        const object = JSON.parse(budget.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveLargest: Array<{ path: string; tokensBody: number; tokensActive: number }> };
-        const inventory = object.tokensActiveLargest;
+        const object = JSON.parse(budget.split("\n\n")[0]!) as { logTokensTotal: number; logTokensLargest: Array<{ path: string; logTokens: number }> };
+        const inventory = object.logTokensLargest;
         assert.ok(inventory.length > 0, "the pressure inventory rides inside the JSON object");
         const [largest] = inventory;
         assert.match(largest.path, /^log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+$/u);
-        assert.equal(typeof largest.tokensBody, "number");
-        assert.equal(typeof largest.tokensActive, "number");
+        assert.equal(typeof largest.logTokens, "number");
         const advised = logEntries(stored.packet).find((row) => row.path === largest.path);
+        assert.equal(largest.logTokens, advised?.logTokens, "inventory and receipt use the same complete-row charge");
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
-        assert.equal(object.tokensActiveTotal, stored.weight, "conditional advice participates in exact packet accounting");
+        assert.equal(object.logTokensTotal, stored.weight, "conditional advice participates in exact packet accounting");
     } finally { await db.close(); }
 });

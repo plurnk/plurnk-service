@@ -1,12 +1,11 @@
-const TOKENS_ACTIVE_TOTAL_PLACEHOLDER = "{{tokensActiveTotal}}";
+const TOKENS_ACTIVE_TOTAL_PLACEHOLDER = "{{logTokensTotal}}";
 const MAX_WIDTH_PASSES = 64;
 
 type MeasurePacket = (content: string) => number;
 
 interface LargestLogItem {
     readonly path: string;
-    readonly tokensBody: number;
-    readonly tokensActive: number;
+    readonly logTokens: number;
 }
 
 const PRESSURE_FRACTION = 0.8;
@@ -23,7 +22,7 @@ export default class BudgetReadout {
         // {§provider-flexed-allowance} (#482): the disclosed number stays the
         // configured floor; wire-level overflow tolerance is never advertised.
         const responseField = responseMax === null ? "" : `,"tokensResponseMax":${responseMax}`;
-        return `{"tokensActiveTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"tokensActiveMax":${ceiling}${responseField}}`;
+        return `{"logTokensTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"tokensActiveMax":${ceiling}${responseField}}`;
     }
 
     // {§tokenomics-render-weight-budget} — the width only expands, so the final
@@ -45,9 +44,9 @@ export default class BudgetReadout {
         const warning = `\n\n> [!WARNING]\n> ${newOverflow ? OVERFLOW_MANDATE : PRESSURE_MANDATE}`;
         const ranked = largestLogItems
             .map((item) => BudgetReadout.#assertLargestLogItem(item))
-            .toSorted((a, b) => a.tokensActive === b.tokensActive
+            .toSorted((a, b) => a.logTokens === b.logTokens
                 ? a.path < b.path ? -1 : a.path > b.path ? 1 : 0
-                : a.tokensActive > b.tokensActive ? -1 : 1)
+                : a.logTokens > b.logTokens ? -1 : 1)
             .slice(0, LARGEST_LOG_ITEMS_MAX);
         for (let count = ranked.length; count > 0; count -= 1) {
             const pressured = BudgetReadout.#withInventory(template, ranked.slice(0, count)) + warning;
@@ -88,13 +87,13 @@ export default class BudgetReadout {
         return template.replace(TOKENS_ACTIVE_TOTAL_PLACEHOLDER, value.padStart(width));
     }
 
-    // The inventory rides inside the same JSON object as a `tokensActiveLargest`
+    // The inventory rides inside the same JSON object as a `logTokensLargest`
     // field, so the block opens as one JSON payload; the recovery mandate follows it.
     static #withInventory(template: string, items: readonly LargestLogItem[]): string {
         const largest = items
-            .map(({ path, tokensBody, tokensActive }) => JSON.stringify({ path, tokensBody, tokensActive }))
+            .map(({ path, logTokens }) => JSON.stringify({ path, logTokens }))
             .join(",");
-        const object = template.replace(/\}\s*$/u, () => `,"tokensActiveLargest":[${largest}]}`);
+        const object = template.replace(/\}\s*$/u, () => `,"logTokensLargest":[${largest}]}`);
         return object;
     }
 
@@ -102,7 +101,7 @@ export default class BudgetReadout {
         if (!item.path.startsWith("log:///") || /[\r\n]/u.test(item.path)) {
             throw new TypeError(`Largest log item path must be one log:/// URI, got ${JSON.stringify(item.path)}`);
         }
-        for (const [name, value] of Object.entries({ tokensBody: item.tokensBody, tokensActive: item.tokensActive })) {
+        for (const [name, value] of Object.entries({ logTokens: item.logTokens })) {
             if (!Number.isSafeInteger(value) || value <= 0) {
                 throw new TypeError(`Largest log item ${name} must be a positive safe integer`);
             }

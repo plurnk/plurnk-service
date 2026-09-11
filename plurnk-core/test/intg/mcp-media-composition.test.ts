@@ -109,11 +109,10 @@ for (const modalities of [["image"], []] as InputModality[][]) {
             if (modalities.length) {
                 assert.equal(parts[delivered]![0]!.mediaType, "image/png");
                 assert.deepEqual(Buffer.from(parts[delivered]![0]!.data), PNG, "a scoped READ delivers the complete original image");
-                assert.match(texts[delivered]!, /has been ejected from context/u);
-            } else {
-                assert.doesNotMatch(texts[delivered]!, /has been ejected from context/u);
             }
-            assert.equal(parts[delivered + 1]!.length, 0, "later turns do not replay the image");
+            assert.doesNotMatch(texts[delivered]!, /has been ejected from context/u);
+            assert.equal(parts[delivered + 1]!.length, modalities.length, "later turns retain the READ's native content");
+            if (modalities.length) assert.deepEqual(Buffer.from(parts[delivered + 1]![0]!.data), PNG);
             if (form === "inline" || form === "link") assert.match(texts[delivered]!, /1:89\n2:50\n3:4e/u, "byte scope still returns exactly the selected octets");
             assert.equal(resourceReads, form === "inline" || form === "embedded" ? 0 : 1, "embedded content needs no refetch; resource reads use the standard MCP cache");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; status_rx: number }>({ loop_id: run.loopId });

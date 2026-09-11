@@ -86,11 +86,9 @@ SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
        projection.active AS projection_active,
        projection.folded AS projection_folded,
        projection.output_admission_turn_id,
-       projection.output_withheld,
-       delivery.delivered_at AS native_delivered_at
+       projection.output_withheld
 FROM log_entries
 JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
-LEFT JOIN native_content_deliveries delivery ON delivery.log_entry_id = log_entries.id
 WHERE worker_id = $worker_id
 ORDER BY id;
 
@@ -107,12 +105,6 @@ SET active = $active,
     output_admission_turn_id = $output_admission_turn_id,
     output_withheld = $output_withheld
 WHERE log_entry_id = $log_entry_id;
-
--- PREP: fork_insert_native_content_delivery
--- A FORK inherits whether copied history already crossed its one-shot native
--- delivery boundary, without inventing provider-call evidence for the branch.
-INSERT INTO native_content_deliveries (log_entry_id, delivered_at)
-VALUES ($log_entry_id, $delivered_at);
 
 -- PREP: fork_get_log_curation_effects
 -- Both identities in a copied log-curation effect belong to the branch history.

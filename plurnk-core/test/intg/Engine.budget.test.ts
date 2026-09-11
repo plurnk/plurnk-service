@@ -55,8 +55,8 @@ test("Engine.runTurn: context budget readout carries partition-derived maximum a
         const packet = JSON.parse(row.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
         // provider window 4000 − fixture total output budget 1280 = 2720
-        assert.match(budget, /"tokensActiveTotal":\s*\d+,"tokensActiveMax":2720\b/u, "state carries the provider-derived maximum and assembled total");
-        const usage = Number(/"tokensActiveTotal":\s*(\d+)/.exec(budget)?.[1]);
+        assert.match(budget, /"logTokensTotal":\s*\d+,"tokensActiveMax":2720\b/u, "state carries the provider-derived maximum and assembled total");
+        const usage = Number(/"logTokensTotal":\s*(\d+)/.exec(budget)?.[1]);
         assert.ok(usage > 0 && usage < 2720, `active total ${usage} within (0, 2720)`);
         assert.equal(usage, packet.weight, "the model-facing token label projects the exact stored curation weight");
     } finally { await db.close(); }

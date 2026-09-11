@@ -244,6 +244,14 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         });
         const trimmed = LogVisibility.parse(row.folded);
         const { stream } = JSON.parse(row.attrs) as { stream?: unknown };
+        const result = row.mimetype_rx === "application/json" ? JSON.parse(row.rx) as Record<string, unknown> : {};
+        const media = (result.image ?? result.document) as { mimetype?: string } | undefined;
+        const attributes = {
+            ...(typeof stream === "string" ? { stream } : {}),
+            ...(typeof result.nativeContentHash === "string" && media?.mimetype !== undefined
+                ? { nativeContentHash: result.nativeContentHash, sourceProjection: { mimetype: media.mimetype, facts: media } }
+                : {}),
+        };
         return {
             identity: `log:///${LogEntryProjection.coordinate(pathname, row)}`,
             ...(trimmed.length === 0 ? {} : { visibleLines: {
@@ -260,7 +268,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 // {§log-channel-miss-names-stream} (#502) — an EXEC item's stream link rides as
                 // representation data so the projector's channel miss can name the address the
                 // model meant (`<runtime>:///<coord>/<runtime>#<channel>`); selection stays the projector's.
-                ...(typeof stream === "string" ? { attributes: { stream } } : {}),
+                attributes,
             },
         };
     }
@@ -696,12 +704,18 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 mimetype_rx: string;
                 attrs: string;
                 folded: string;
-            }>({ ids: JSON.stringify(ids) });
+                native_active: number;
+            }>({ ids: JSON.stringify(ids), turn_id: ctx.turnId });
             if (rows.length !== ids.length) {
                 throw new Error("Log curation selection changed before its visibility plan was resolved.");
             }
             const targets: Array<LogCurationPlan["targets"][number]> = [];
             for (const row of rows) {
+                if (row.native_active === 1) {
+                    const folded = LogVisibility.parse(row.folded);
+                    targets.push({ id: row.id, activeBefore: 1, activeAfter: 0, foldedBefore: folded, foldedAfter: folded });
+                    continue;
+                }
                 const body = LogBody.resolve({
                     op: row.op,
                     attrs: row.attrs,
@@ -864,6 +878,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
         const rows = await ctx.db.log_curation_targets.all<{ id: number; folded: string }>({
             ids: JSON.stringify(selected.ids),
+            turn_id: ctx.turnId,
         });
         if (rows.length !== selected.ids.length) {
             throw new Error("Log KILL selection changed before its projection plan was resolved.");

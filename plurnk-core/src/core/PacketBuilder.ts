@@ -377,8 +377,8 @@ export default class PacketBuilder {
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined && curationBudget !== null) {
             const transformedLog = drafts.find((section) => section.name === "log");
-            const reclaimableBodies = transformedLog?.content === renderedLog.content
-                ? renderedLog.reclaimableBodies
+            const curationTargets = transformedLog?.content === renderedLog.content
+                ? renderedLog.curationTargets
                 : [];
             const content = BudgetReadout.resolve(budgetSection.content, curationBudget, (candidate) => {
                 const candidateDrafts = drafts.map((section) =>
@@ -386,7 +386,7 @@ export default class PacketBuilder {
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
                     + attachmentsWeight;
-            }, reclaimableBodies, renderedLog.newOverflow);
+            }, curationTargets, renderedLog.newOverflow);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.
@@ -507,9 +507,9 @@ export default class PacketBuilder {
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
             output_admission_turn_id: number | null; output_withheld: number;
-            tx: string; mimetype_tx: string; initial_folded: string; folded: string; native_delivered_at: string | null; source: string | null; attrs: string | null;
+            tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
-        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: "[]", id: null, native_delivered_at: null, output_admission_turn_id: null, output_withheld: 0 }))].map((r) => {
+        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: "[]", id: null, output_admission_turn_id: null, output_withheld: 0 }))].map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
             const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
             const rawLineAnchors = LogEntryProjection.op(r) === "READ"
@@ -564,7 +564,6 @@ export default class PacketBuilder {
                 mimetype_tx: r.mimetype_tx,
                 initial_folded: r.id === transientOpenLogEntryId ? LogVisibility.OPEN : LogVisibility.parse(r.initial_folded),
                 folded: LogVisibility.parse(r.folded),
-                native_delivered_at: r.native_delivered_at,
                 source: r.source,
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),
                 ...(lineAnchors === undefined ? {} : { lineAnchors }),

@@ -99,7 +99,6 @@ interface LogEntryView {
     attrs?: unknown;
     lineAnchors?: readonly string[];
     lineNumberWidth?: number;
-    native_delivered_at?: unknown;
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
@@ -119,15 +118,14 @@ interface RenderLogOptions {
     readonly projectRoot?: string | null;
 }
 
-interface ReclaimableLogBody {
+interface ReclaimableLogItem {
     readonly path: string;
-    readonly tokensBody: number;
-    readonly tokensActive: number;
+    readonly logTokens: number;
 }
 
 export interface RenderedLog {
     readonly content: string;
-    readonly reclaimableBodies: readonly ReclaimableLogBody[];
+    readonly curationTargets: readonly ReclaimableLogItem[];
     // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
     readonly unadmittedOutput: readonly number[];
@@ -139,7 +137,7 @@ export { imageWeight, pdfWeight };
 
 interface RenderedLogRow {
     readonly content: string;
-    readonly reclaimableBody: ReclaimableLogBody | null;
+    readonly curationTarget: ReclaimableLogItem | null;
     readonly attachment: PacketAttachment | null;
     readonly unadmittedOutput: number | null;
     readonly newOverflow: boolean;
@@ -240,12 +238,12 @@ export default class PacketWire {
     // accounting come from one render pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", reclaimableBodies: [], attachments: [], unadmittedOutput: [], newOverflow: false };
+        if (log.length === 0) return { content: "", curationTargets: [], attachments: [], unadmittedOutput: [], newOverflow: false };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         return {
             content: rows.map(({ content }) => content).join("\n\n"),
-            reclaimableBodies: rows.flatMap(({ reclaimableBody }) =>
-                reclaimableBody === null ? [] : [reclaimableBody]),
+            curationTargets: rows.flatMap(({ curationTarget }) =>
+                curationTarget === null ? [] : [curationTarget]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
             unadmittedOutput: rows.flatMap(({ unadmittedOutput }) => unadmittedOutput === null ? [] : [unadmittedOutput]),
             newOverflow: rows.some(({ newOverflow }) => newOverflow),
@@ -963,13 +961,6 @@ export default class PacketWire {
                     fullBody.lineOrdinals ?? null,
                 );
 
-            // {§packet-token-accounting} — tokensBody reports the projected body's weight even
-            // when that body is withheld. Active accounting happens only after every field and
-            // the final row framing are known below.
-            const renderedBodyWeight = body.length > 0 ? weighContent(body) : 0;
-            // Never tokensBody:0 — a zero-weight visible body is field absence, and
-            // tokensBody presence is what marks the folded state (#338).
-            if (fullBody.content.length > 0 && renderedBodyWeight > 0) meta.tokensBody = renderedBodyWeight;
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
             // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
             // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
@@ -981,9 +972,6 @@ export default class PacketWire {
                 meta.folded = LogVisibility.format(bodyVisibility.folded);
             }
 
-            // {§log-wire-format} — the three body states stay self-describing:
-            // coordinate lines ⇒ visible, `tokensBody` without lines ⇒ suppressed,
-            // neither ⇒ no canonical body.
             const display = bodyVisibility.readableContent.length === 0
                 ? "none"
                 : bodyVisibility.fullyFolded || e.output_withheld === true
@@ -1002,9 +990,17 @@ export default class PacketWire {
                 )
                 : projection.chunk;
             if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
-            const outputWithheld = e.output_withheld === true && !bodyVisibility.fullyFolded && body.length > 0;
+            const nativeCandidate = op === "READ" && typeof e.status === "number" && e.status >= 200 && e.status < 300
+                ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target) : null;
+            const native = nativeCandidate !== null && (options.acceptedAttachmentKinds?.has(nativeCandidate.kind) ?? true)
+                ? nativeCandidate : null;
+            const outputWithheld = e.output_withheld === true
+                && ((!bodyVisibility.fullyFolded && body.length > 0) || native !== null);
             if (outputWithheld) {
-                meta.overflow = `${projectedLineCount} output lines not shown; tokensActiveTotal exceeds tokensActiveMax`;
+                const omitted = body.length > 0
+                    ? `${projectedLineCount} output lines${native === null ? "" : " and native content"}`
+                    : "native content";
+                meta.overflow = `${omitted} not shown; logTokensTotal exceeds tokensActiveMax`;
             }
             const renderRow = (): string => {
                 const metadata = PacketWire.#canonicalJson(meta);
@@ -1015,33 +1011,22 @@ export default class PacketWire {
 
             // The accounting field participates in the row it measures. Iterate
             // until its decimal width and therefore the rendered row's curation
-            // weight are stable. The metadata share is derivable (tokensActive −
-            // tokensBody when open; tokensActive otherwise) and feeds no
-            // curation decision, so it is not serialized (#338).
-            // {§packet-attachment-parts} — only an undelivered READ supported by this request's
-            // route contributes native content and its weight.
-            const candidate = display === "open"
-                && op === "READ"
-                && (e.native_delivered_at === null || e.native_delivered_at === undefined)
-                ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target)
-                : null;
-            const attachment = candidate !== null
-                && (options.acceptedAttachmentKinds?.has(candidate.kind) ?? true)
-                ? candidate
+            // weight are stable. {§packet-token-accounting}
+            // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
+            const attachment = e.output_withheld !== true
+                && !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
+                ? native
                 : null;
             if (attachment !== null) meta.tokensAttachment = attachment.weight;
-            meta.tokensActive = 0;
+            meta.logTokens = 0;
             for (let pass = 0; pass < 8; pass += 1) {
-                const tokensActive = weighContent(renderRow()) + (attachment?.weight ?? 0);
-                if (meta.tokensActive === tokensActive) {
-                    const tokensBody = typeof meta.tokensBody === "number" ? meta.tokensBody : 0;
+                const logTokens = weighContent(renderRow()) + (attachment?.weight ?? 0);
+                if (meta.logTokens === logTokens) {
                     return {
                         content: renderRow(),
-                        reclaimableBody: display === "open" && tokensBody > 0
-                            ? { path, tokensBody, tokensActive }
-                            : null,
+                        curationTarget: { path, logTokens },
                         attachment,
-                        unadmittedOutput: display === "open"
+                        unadmittedOutput: (display === "open" || attachment !== null)
                             && fullBody.provenance === "returned"
                             && e.output_admission_turn_id == null
                             && typeof e.id === "number"
@@ -1049,7 +1034,7 @@ export default class PacketWire {
                         newOverflow: outputWithheld && e.newOverflow === true,
                     };
                 }
-                meta.tokensActive = tokensActive;
+                meta.logTokens = logTokens;
             }
             throw new Error("packet log row accounting did not converge");
         });
@@ -1062,6 +1047,8 @@ export default class PacketWire {
         path: string | null,
     ): PacketAttachment | null {
         const view = rx as RxView | null | undefined;
+        const contentHash = (rx as { nativeContentHash?: unknown } | null)?.nativeContentHash;
+        if (typeof contentHash !== "string") return null;
         const pathname = typeof target?.pathname === "string" && target.pathname.length > 0
             ? target.pathname
             : typeof target?.raw === "string" ? target.raw : null;
@@ -1071,13 +1058,13 @@ export default class PacketWire {
         if (image !== undefined && typeof image.mimetype === "string" && Number.isSafeInteger(image.width) && Number.isSafeInteger(image.height)) {
             const width = image.width as number;
             const height = image.height as number;
-            return { coordinate, path, scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
+            return { contentHash, coordinate, path, scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
         }
         const document = view?.document as { mimetype?: unknown; pages?: unknown; bytes?: unknown } | undefined;
         if (document !== undefined && typeof document.mimetype === "string" && Number.isSafeInteger(document.bytes)) {
             const pages = Number.isSafeInteger(document.pages) ? document.pages as number : null;
             return {
-                coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf",
+                contentHash, coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf",
                 ...(pages === null ? {} : { pages }),
                 weight: pdfWeight(pages, document.bytes as number),
             };
@@ -1086,10 +1073,10 @@ export default class PacketWire {
     }
 
     // {§packet-attachment-parts} — the wire form with native parts: user text first, then each accepted
-    // file immediately followed by its reactive ejection sentence.
+    // retained native part in observation order.
     static async wireMessages(
         packet: RequestPacket,
-        bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array | null>,
+        bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
     ): Promise<ChatMessage[]> {
         const [system, user] = PacketWire.packetToWireMessages(packet) as [ChatMessage, ChatMessage];
@@ -1097,12 +1084,7 @@ export default class PacketWire {
         for (const attachment of packet.attachments ?? []) {
             if (!accepts(attachment.kind)) continue;
             const bytes = await bytesOf(attachment);
-            if (bytes === null) continue;
             parts.push({ type: "file", data: bytes, mediaType: attachment.mimetype });
-            parts.push({
-                type: "text",
-                text: `${attachment.path} has been ejected from context. It must be READ again to retain it in context.`,
-            });
         }
         return parts.length === 1 ? [system, user] : [system, { role: "user", content: parts }];
     }

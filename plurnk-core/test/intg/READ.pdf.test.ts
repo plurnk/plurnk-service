@@ -1,5 +1,5 @@
-// {§packet-attachment-parts} — a PDF READ creates one native-content delivery. A document route gets
-// the file followed by the reactive ejection sentence; a route that cannot take documents gets text alone.
+// {§packet-attachment-parts} — a PDF READ retains one native observation. A document route gets
+// the file alongside its receipt; a route that cannot take documents gets text alone.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -59,10 +59,7 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const file = user.content.find((part) => part.type === "file");
     assert.ok(text?.type === "text" && /"tokensAttachment":1500/.test(text.text), "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
-    assert.deepEqual(user.content.at(-1), {
-        type: "text",
-        text: "contract.pdf has been ejected from context. It must be READ again to retain it in context.",
-    });
+    assert.equal(user.content.length, 2, "the retained document needs no ejection message");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

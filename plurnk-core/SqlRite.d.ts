@@ -232,7 +232,6 @@ export class SqlRiteSync {
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
 	fork_set_log_entry_projection: SqlRiteSyncPreparedStatements;
-	fork_insert_native_content_delivery: SqlRiteSyncPreparedStatements;
 	fork_get_log_curation_effects: SqlRiteSyncPreparedStatements;
 	fork_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
 	fork_get_scratch_entries: SqlRiteSyncPreparedStatements;
@@ -273,6 +272,8 @@ export class SqlRiteSync {
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
+	native_content_retain: SqlRiteSyncPreparedStatements;
+	native_content_read: SqlRiteSyncPreparedStatements;
 	reasoning_initial_reads: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
@@ -490,7 +491,6 @@ export default class SqlRite {
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
 	fork_set_log_entry_projection: SqlRitePreparedStatements;
-	fork_insert_native_content_delivery: SqlRitePreparedStatements;
 	fork_get_log_curation_effects: SqlRitePreparedStatements;
 	fork_insert_log_curation_effect: SqlRitePreparedStatements;
 	fork_get_scratch_entries: SqlRitePreparedStatements;
@@ -531,6 +531,8 @@ export default class SqlRite {
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
+	native_content_retain: SqlRitePreparedStatements;
+	native_content_read: SqlRitePreparedStatements;
 	reasoning_initial_reads: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;

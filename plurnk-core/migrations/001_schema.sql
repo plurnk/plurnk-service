@@ -1088,6 +1088,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content);
 -- initial_folded is the immutable visibility with which the event entered the
 -- log. Current model-facing membership and folded intervals belong to
 -- log_entry_projections below; curation never rewrites or removes this event.
+-- {§packet-attachment-parts}: READ snapshots survive source changes and log curation.
+CREATE TABLE IF NOT EXISTS native_contents (
+    hash TEXT NOT NULL PRIMARY KEY CHECK (length(hash) = 64),
+    content BLOB NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS native_contents_immutable
+BEFORE UPDATE ON native_contents
+BEGIN
+    SELECT RAISE(ABORT, 'native content is immutable');
+END;
+
 CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -1148,6 +1160,10 @@ CREATE TABLE IF NOT EXISTS log_entries (
     rx              TEXT    NOT NULL,
     mimetype_rx     TEXT    NOT NULL           CHECK (length(mimetype_rx) > 0),
     status_rx       INTEGER NOT NULL           CHECK (status_rx BETWEEN 100 AND 599),
+    native_content_hash TEXT GENERATED ALWAYS AS (
+        CASE WHEN mimetype_rx = 'application/json' AND json_valid(rx)
+        THEN json_extract(rx, '$.nativeContentHash') END
+    ) VIRTUAL REFERENCES native_contents(hash),
 
     -- Complete canonical LogBody content before coordinate/presentation
     -- projection; persistence envelopes do not contribute. {§tokenomics-weight-stored-at-write}
@@ -1260,16 +1276,6 @@ FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE projection.active = 1;
 
--- {§packet-attachment-parts} — absence means an attachable READ may still
--- contribute native content. Presence is the append-only fact that a completed
--- model response crossed that one-shot delivery boundary. This lifecycle is not
--- part of the log-curation projection.
-CREATE TABLE IF NOT EXISTS native_content_deliveries (
-    log_entry_id INTEGER NOT NULL PRIMARY KEY,
-    delivered_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
-) STRICT, WITHOUT ROWID;
-
 CREATE TRIGGER IF NOT EXISTS model_calls_native_inputs_valid
 BEFORE UPDATE OF native_inputs ON model_calls
 WHEN (
@@ -1296,32 +1302,6 @@ OR EXISTS (
 )
 BEGIN
     SELECT RAISE(ABORT, 'model call native inputs must be unique successful READ coordinates owned by its worker');
-END;
-
--- Closing a model call with response evidence is the native-content delivery
--- boundary. Both facts commit in the same SQLite statement; a call that ends
--- without a response cannot consume native content.
-CREATE TRIGGER IF NOT EXISTS native_content_deliveries_from_model_response
-AFTER UPDATE OF response, native_inputs ON model_calls
-WHEN NEW.response IS NOT NULL
-BEGIN
-    INSERT INTO native_content_deliveries (log_entry_id)
-    SELECT entry.id
-    FROM json_each(NEW.native_inputs) native
-    JOIN inference_calls call ON call.id = NEW.id
-    JOIN turns request_turn ON request_turn.id = call.turn_id
-    JOIN loops request_loop ON request_loop.id = request_turn.loop_id
-    JOIN log_entries entry ON entry.worker_id = request_loop.worker_id
-    JOIN turns entry_turn ON entry_turn.id = entry.turn_id
-    JOIN loops entry_loop ON entry_loop.id = entry_turn.loop_id
-    WHERE (entry_loop.sequence || '/' || entry_turn.sequence || '/' || entry.sequence) = native.value
-    ON CONFLICT (log_entry_id) DO NOTHING;
-END;
-
-CREATE TRIGGER IF NOT EXISTS native_content_deliveries_immutable
-BEFORE UPDATE ON native_content_deliveries
-BEGIN
-    SELECT RAISE(ABORT, 'native-content delivery evidence is immutable');
 END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_initialize_projection

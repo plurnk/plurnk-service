@@ -51,7 +51,12 @@ SELECT
     le.rx,
     le.mimetype_rx,
     le.attrs,
-    le.folded
+    le.folded,
+    CASE WHEN json_valid(le.rx) THEN (json_type(le.rx, '$.nativeContentHash') = 'text'
+        AND ((SELECT packet FROM turns WHERE id = $turn_id) IS NULL OR EXISTS (
+            SELECT 1 FROM json_each((SELECT packet FROM turns WHERE id = $turn_id), '$.attachments') part
+            WHERE json_extract(part.value, '$.coordinate') = (l.sequence || '/' || t.sequence || '/' || le.sequence)
+        ))) ELSE 0 END AS native_active
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id

@@ -175,7 +175,7 @@ for (const [proposals, withOptions] of [
     });
 }
 
-test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ delivers its complete native image once", async (t) => {
+test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ retains its complete native image", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-image-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dir = join(root, ".agents", "skills", "sample");
@@ -202,7 +202,10 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
     assert.deepEqual(Buffer.from(image.data), PNG);
     assert.match(chatMessageText(user), /1:89\n2:50\n3:4e/);
     const later = provider.received[2]?.find((message) => message.role === "user");
-    assert.equal(typeof later?.content, "string", "the next request keeps the receipt, not a permanent image");
+    assert.ok(Array.isArray(later?.content), "the native observation stays in context");
+    const retained = later.content.find((part) => part.type === "file");
+    assert.ok(retained?.type === "file");
+    assert.deepEqual(Buffer.from(retained.data), PNG);
 });
 
 test("{§skills-functionality} a model discovers a skill and reads its original tree through the skill authority", async (t) => {

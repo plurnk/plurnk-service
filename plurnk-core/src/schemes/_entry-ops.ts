@@ -10,6 +10,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../core/content-hash.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
+import NativeContent from "../core/NativeContent.ts";
 
 // Shared static-method helpers for workspace entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -457,6 +458,7 @@ export default class EntryOps {
             representation: stored.entry,
             mimetypes: ctx.mimetypes,
             ...(effectiveBytes === undefined ? {} : { bytes: effectiveBytes }),
+            retainNative: (content) => NativeContent.retain(ctx.db, content),
         }) as Promise<ReadResult>;
     }
 }

@@ -10,6 +10,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helpers.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 40)] });
 
@@ -60,7 +61,8 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const ceiling = Number(/"tokensActiveMax":\s*(\d+)/.exec(budgetSection)?.[1]);
             const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
             assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
-            assert.ok(Number(projectedPrompt?.tokensBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
+            const projectedBody = String(projectedPrompt?.body ?? "").trimEnd().split("\n").map((line) => line.replace(/^\s*\d+:/u, "")).join("\n");
+            assert.ok(contentWeight(projectedBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
             const bodyTarget = typeof projectedPrompt?.path === "string" ? projectedPrompt.path : undefined;
             assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/prompt$/,
                 "the prompt body is addressed in the first packet-bearing turn");

@@ -286,6 +286,7 @@ test("{§digest-forensic-fidelity}: native attachment selection remains distinct
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const attachment = {
+        contentHash: "a".repeat(64),
         coordinate: "log:///1/2/2/READ", path: "board.png", scheme: "file", pathname: "board.png",
         mimetype: "image/png", kind: "image" as const, weight: 547, width: 640, height: 640,
     };

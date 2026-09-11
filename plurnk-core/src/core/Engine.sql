@@ -526,13 +526,12 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.initial_folded, le.folded, delivery.delivered_at AS native_delivered_at,
+    le.state, le.outcome, le.initial_folded, le.folded,
     le.source, le.weight, le.attrs,
     le.output_admission_turn_id, le.output_withheld
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
-LEFT JOIN native_content_deliveries delivery ON delivery.log_entry_id = le.id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
 -- Proposed rows wait for resolution ({§proposal-proposed-hidden}); successful
 -- log-KILL receipts stay out of the packet ({§log-kill-meta-operation}).

@@ -1,8 +1,7 @@
 import type { InputModality } from "@plurnk/plurnk-providers";
 
 // {§packet-attachment-parts} — the kinds of member a packet can carry as a native part and the
-// catalog modality the route must declare. Reactive lifecycle evidence rides beside an actual
-// part; this table contributes no permanent packet teaching.
+// catalog modality the route must declare.
 export type AttachmentKind = "image" | "pdf";
 
 export interface AttachmentRow {

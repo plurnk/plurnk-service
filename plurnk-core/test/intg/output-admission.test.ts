@@ -53,7 +53,7 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         const stored = await db.test_get_turn.get<{ packet: string; producer: string; kind: string }>({ id: second.turnId });
         const packet = JSON.parse(stored!.packet);
         const omitted = logEntries(packet).find((row) => row.path === `log://${path}`)!;
-        assert.equal(omitted.overflow, "600 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+        assert.equal(omitted.overflow, "600 output lines not shown; logTokensTotal exceeds tokensActiveMax");
         assert.equal(omitted.body, undefined);
         assert.equal(omitted.problem, undefined, "packet omission does not fabricate an operation failure");
         const warning = packetSection(packet, "budget");
@@ -125,7 +125,7 @@ test("{§context-output-receipt}: scoped KILL precedes admission and FIND retain
         });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const omitted = logEntries(packet).find((row) => row.path === `log://${path}`)!;
-        assert.equal(omitted.overflow, "590 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+        assert.equal(omitted.overflow, "590 output lines not shown; logTokensTotal exceeds tokensActiveMax");
         assert.equal(omitted.body, undefined);
         const searching = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
         const searchContext = { workspaceId, workerId, loopId, turnId: searching.id, origin: "_plurnk" as const };
@@ -176,7 +176,7 @@ test("{§context-output-hard-413}: an impossible floor terminates the loop witho
         const provider = providerAt(2, [response(continuing)]);
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, messages, provider, maxTurns: 3 });
         assert.equal(result.result.status, 413);
-        assert.equal(result.result.problem?.detail, "Context Token Budget Overflow: tokensActiveTotal exceeds tokensActiveMax; retained context cannot fit.");
+        assert.equal(result.result.problem?.detail, "Context Token Budget Overflow: logTokensTotal exceeds tokensActiveMax; retained context cannot fit.");
         assert.equal(result.reason, "token_budget");
         assert.equal(provider.remaining, 1);
         const turn = await db.test_get_turn.get<{ kind: string; producer: string; packet: string | null; status: number }>({ id: result.turnIds.at(-1)! });
@@ -203,7 +203,7 @@ test("{§context-output-selection}: prior admitted output and an oversized autho
         const small = providerAt(12_000, [response(continuing)]);
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
         assert.equal(second.status, 413);
-        assert.equal(second.curationFailure?.problem?.detail, "Context Token Budget Overflow: tokensActiveTotal exceeds tokensActiveMax; retained context cannot fit.");
+        assert.equal(second.curationFailure?.problem?.detail, "Context Token Budget Overflow: logTokensTotal exceeds tokensActiveMax; retained context cannot fit.");
         assert.equal(small.remaining, 1);
         const after = await db.engine_render_log.all({ worker_id: workerId });
         assert.deepEqual(after, before, "authored state cannot be removed to manufacture a fit");
@@ -245,7 +245,7 @@ for (const origin of ["plugin", "_plurnk"] as const) test(`{§context-output-sel
         const row = logEntries(packet).find(({ path }) => path === `log:///1/${earlier.sequence}/1/READ`)!;
         assert.equal(row.status, 503, "withholding does not restamp the actual operation result");
         assert.equal((row.problem as { detail: string }).detail, "Connection closed.");
-        assert.equal(row.overflow, "1 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+        assert.equal(row.overflow, "1 output lines not shown; logTokensTotal exceeds tokensActiveMax");
         assert.equal(row.body, undefined);
         const projected = await db.engine_render_log.all<{ id: number; folded: string; output_withheld: number; rx: string }>({ worker_id: workerId });
         assert.equal(projected.find(({ id }) => id === inserted!.id)!.folded, "[]");

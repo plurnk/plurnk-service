@@ -44,6 +44,20 @@ export interface AnchoredReadResult extends EntryReadResult {
     readonly lineAnchorIdentity?: string;
     readonly lineAnchors?: readonly string[];
     readonly lineNumberWidth?: number;
+    readonly nativeContentHash?: string;
+}
+
+interface ReadProjectionOptions {
+    readonly statement: ReadStatement;
+    readonly manifest: SchemeManifest;
+    readonly publishesLineAnchors: boolean;
+    readonly target: string;
+    readonly identity: string;
+    readonly representation: StoredEntryData;
+    readonly mimetypes: Mimetypes | undefined;
+    readonly bytes?: ByteSource;
+    readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
+    readonly retainNative?: (bytes: Uint8Array) => Promise<string>;
 }
 
 // {§universal-read-composition} Core's one exact-resource projection over a complete canonical
@@ -107,18 +121,30 @@ export default class ReadProjector {
         } as AnchoredReadResult;
     }
 
-    static async project(opts: {
-        readonly statement: ReadStatement;
-        readonly manifest: SchemeManifest;
-        readonly publishesLineAnchors: boolean;
-        readonly target: string;
-        readonly identity: string;
-        readonly representation: StoredEntryData;
-        readonly mimetypes: Mimetypes | undefined;
-        // {§read-bytes} — the scheme's byte supplier for this resource, when it has one.
-        readonly bytes?: ByteSource;
-        readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
-    }): Promise<AnchoredReadResult> {
+    static async project(opts: ReadProjectionOptions): Promise<AnchoredReadResult> {
+        const attributes = opts.representation.attributes;
+        const sourceProjection = attributes?.sourceProjection as { mimetype?: string } | undefined;
+        const mimetype = sourceProjection?.mimetype ?? opts.representation.channels[opts.manifest.defaultChannel]?.mimetype;
+        const native = mimetype?.startsWith("image/") || mimetype === "application/pdf";
+        let content: Uint8Array | null = null;
+        let bytes = opts.bytes;
+        if (native && bytes !== undefined) {
+            const size = await bytes.size();
+            if (size !== null) {
+                content = Buffer.from(await bytes.read(1, size));
+                const snapshot = content;
+                bytes = { size: async () => snapshot.byteLength, read: async (start, end) => snapshot.subarray(start - 1, end) };
+            }
+        }
+        const result = await ReadProjector.#project({ ...opts, ...(bytes === undefined ? {} : { bytes }) });
+        if (result.status >= 300 || !("image" in result || "document" in result)) return result;
+        const hash = content !== null && opts.retainNative !== undefined
+            ? await opts.retainNative(content)
+            : attributes?.nativeContentHash;
+        return typeof hash === "string" ? { ...result, nativeContentHash: hash } : result;
+    }
+
+    static async #project(opts: ReadProjectionOptions): Promise<AnchoredReadResult> {
         const { statement, manifest, target, identity, representation, mimetypes, bytes } = opts;
         const fragment = statement.target?.kind === "url"
             ? statement.target.fragment

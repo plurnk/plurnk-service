@@ -85,6 +85,9 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 
 ````KILL (log:///**/READ) <17,-1> <!-- trims each item's log lines from 17 on -->````
 
+> [!CAUTION]
+> logTokensTotal must not exceed tokensActiveMax.
+
 > [!TIP]
 > Using KILL on READ log items and lines safely hides rather than deletes the information.
 
@@ -134,7 +137,7 @@ YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid dia
 |--------|----------|------------------------------------|-------------------------|------------------|
 | `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
 | `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535   |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.logTokens>500)]` | RFC 9535   |
 | `~`    | full-text | `~query`                          | `~retry` | SQLite FTS5 |
 | `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
 | none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |

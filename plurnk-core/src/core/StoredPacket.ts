@@ -13,6 +13,7 @@ export type PacketAssistant = {
 
 // {§packet-attachment-parts} — one READ-selected native delivery, weighed and addressable for the wire.
 export interface PacketAttachment {
+    readonly contentHash: string;
     readonly coordinate: string;
     readonly path: string;
     readonly scheme: string;
@@ -80,8 +81,8 @@ export default class StoredPacket {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
             const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
-            StoredPacket.#keys(attachment, ["coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages"], `${subject}[${index}]`);
-            for (const key of ["coordinate", "path", "scheme", "pathname", "mimetype"]) {
+            StoredPacket.#keys(attachment, ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages"], `${subject}[${index}]`);
+            for (const key of ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype"]) {
                 if (typeof attachment[key] !== "string" || attachment[key] === "") throw new TypeError(`${subject}[${index}].${key} must be a non-empty string`);
             }
             if (attachment.kind !== "image" && attachment.kind !== "pdf") throw new TypeError(`${subject}[${index}].kind must be "image" or "pdf"`);

@@ -1,8 +1,7 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { RequestPacket } from "./StoredPacket.ts";
-import type { SchemeHandler } from "@plurnk/plurnk-schemes";
-import EntryAddressBinding from "./EntryAddressBinding.ts";
-import { parsePath, PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import NativeContent from "./NativeContent.ts";
+import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
@@ -258,7 +257,7 @@ export type AdmittedTurnResult = {
     readonly steerStruck: boolean;
 };
 
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: tokensActiveTotal exceeds tokensActiveMax; retained context cannot fit.";
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: logTokensTotal exceeds tokensActiveMax; retained context cannot fit.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -563,9 +562,8 @@ export default class TurnRunner {
         return { line, column };
     }
 
-    // {§packet-attachment-parts} — a route receives, as native parts read from the scheme's bytes at
-    // request time, the packet's attachments of every kind its model accepts; every other attachment
-    // reaches it as the text projection alone.
+    // {§packet-attachment-parts}: native parts come from the READ's immutable snapshot,
+    // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
@@ -576,22 +574,7 @@ export default class TurnRunner {
         }
         const nativeInputs = new Set<string>();
         const messages = await PacketWire.wireMessages(packet, async (attachment) => {
-            const parsed = parsePath(attachment.path);
-            const target = parsed?.kind === "local" ? { ...parsed, raw: attachment.pathname } : parsed;
-            if (target === null) throw new TypeError(`Invalid attachment resource: ${attachment.path}`);
-            const resolved = await this.#dispatcher.bindEntryAddress(target, ctx);
-            if (resolved?.result != null) throw new OperationFailureError(resolved.result);
-            if (resolved?.address == null) return null;
-            const handler = this.#schemes.get(attachment.scheme, ctx.workspaceId) as SchemeHandler | undefined;
-            let source = handler?.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
-            if (source === undefined && handler?.manifest !== undefined) {
-                const stored = await EntryCrud.readEntry(resolved.address, ctx, resolved.address.scheme);
-                if (stored.entry !== null) source = await EntryCrud.storedByteSource(stored.entry, handler.manifest.defaultChannel, ctx.mimetypes);
-            }
-            if (source === undefined) return null;
-            const total = await source.size();
-            if (total === null || total === 0) return null;
-            const bytes = await source.read(1, total);
+            const bytes = await NativeContent.read(ctx.db, attachment.contentHash);
             nativeInputs.add(attachment.coordinate);
             return bytes;
         }, (kind) => accepted.includes(kind));

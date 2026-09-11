@@ -79,10 +79,10 @@ const prepareLog = async ({ db, workspaceId, workerId, loopId, engine }: Fixture
 };
 
 const budgetOf = (packet: RequestPacket): {
-    tokensActiveTotal: number;
+    logTokensTotal: number;
     tokensActiveMax: number;
     tokensResponseMax: number;
-    tokensActiveLargest?: Array<{ path: string; tokensBody: number; tokensActive: number }>;
+    logTokensLargest?: Array<{ path: string; tokensBody: number; logTokens: number }>;
 } => JSON.parse(packetSection(packet, "budget").split("\n")[0]!);
 
 test("{§packet-token-accounting} non-unit calibration preserves one ruler for READ, FIND, inventory and total", async (t) => {
@@ -97,18 +97,18 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     const state = budgetOf(packet);
     const rows = logEntries(packet);
     const read = rows.find(({ path }) => path === "log:///1/1/2/READ")!;
-    assert.ok(Number(read.tokensActive) < state.tokensActiveTotal, "a visible READ cannot outweigh its complete packet");
-    assert.equal(state.tokensActiveTotal, packet.weight, "the total retains the measured curation ruler");
+    assert.ok(Number(read.logTokens) < state.logTokensTotal, "a visible READ cannot outweigh its complete packet");
+    assert.equal(state.logTokensTotal, packet.weight, "the total retains the measured curation ruler");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
     assert.equal(state.tokensActiveMax, Math.floor(provider.inputCapacity! / factor));
     assert.equal(state.tokensResponseMax, provider.outputBudget! - provider.reasoningBudget!);
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ path }) => path === "log:///1/1/3/FIND")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");
-    assert.ok(state.tokensActiveLargest?.some(({ path }) => path === read.path), "pressure identifies the dominant body");
-    for (const item of state.tokensActiveLargest!) {
+    assert.ok(state.logTokensLargest?.some(({ path }) => path === read.path), "pressure identifies the dominant body");
+    for (const item of state.logTokensLargest!) {
         const row = rows.find(({ path }) => path === item.path)!;
-        assert.equal(item.tokensActive, row.tokensActive, "the same row has the same cost in the pressure inventory");
+        assert.equal(item.logTokens, row.logTokens, "the same row has the same cost in the pressure inventory");
         assert.equal(item.tokensBody, row.tokensBody);
     }
     assert.equal(f.packets.curationOverflow(packet), null);
@@ -183,7 +183,7 @@ test("{§tokenomics-client-gauge} the response cannot retroactively change its o
     assert.notEqual(await TokenCalibration.forModel(f.db, "mock"), priorFactor, "the response changes the conversion for subsequent packets");
     assert.equal(state.tokensActiveMax, Math.floor(provider.inputCapacity! / priorFactor));
     assert.equal(usage.curationBudget, state.tokensActiveMax);
-    assert.equal(usage.curationWeight, state.tokensActiveTotal);
+    assert.equal(usage.curationWeight, state.logTokensTotal);
     assert.equal(usage.curationWeight, packet.weight);
     assert.equal(usage.contextCapacity, provider.inputCapacity, "physical capacity is not converted");
     assert.equal(usage.contextTokens, 17_000, "reported usage stays provider-token evidence");
@@ -225,7 +225,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
             const usage = await f.engine.loopUsage(f.loopId);
             assert.equal("assistant" in packet, false, "no failed or rejected request invents an accepted assistant response");
             assert.equal(usage.curationWeight, packet.weight);
-            assert.equal(budgetOf(packet).tokensActiveTotal, packet.weight);
+            assert.equal(budgetOf(packet).logTokensTotal, packet.weight);
             assert.equal(usage.curationBudget, Math.floor(provider.inputCapacity! / factor));
             assert.equal(usage.curationBudget, budgetOf(packet).tokensActiveMax);
         });
@@ -245,8 +245,9 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     assert.equal(trimmedRead.body, undefined);
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
         .split("\n\n").find((row) => row.startsWith(`### ${String(read.path)}\n`))!;
-    assert.equal(read.tokensBody, contentWeight(renderedRead(before).split("\n").slice(2).join("\n")));
-    assert.equal(Number(read.tokensActive) - Number(trimmedRead.tokensActive),
+    assert.equal(read.logTokens, contentWeight(renderedRead(before)));
+    assert.equal(read.tokensBody, undefined);
+    assert.equal(Number(read.logTokens) - Number(trimmedRead.logTokens),
         contentWeight(renderedRead(before)) - contentWeight(renderedRead(trimmed)),
         "the scoped KILL's saving is the actual row-size change, without a conversion multiplier");
     assert.ok(trimmed.weight < before.weight, "the large body removal more than pays for its receipt");
@@ -254,7 +255,7 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     const killed = await f.build();
     assert.equal(logEntries(killed).some(({ path }) => path === read.path), false);
     for (const packet of [before, trimmed, killed]) {
-        assert.equal(budgetOf(packet).tokensActiveTotal, packet.weight);
+        assert.equal(budgetOf(packet).logTokensTotal, packet.weight);
         assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
         assert.equal(budgetOf(packet).tokensActiveMax, budgetOf(before).tokensActiveMax);
     }
@@ -268,7 +269,7 @@ test("{§tokenomics-calibrated-readout} unknown and unseen-model capacities do n
     await recordSamples(f);
     const fresh = await f.build(providerAt(25_000, [], "unseen-model"));
     assert.equal(budgetOf(fresh).tokensActiveMax, 25_000);
-    assert.equal(budgetOf(fresh).tokensActiveTotal, fresh.weight);
+    assert.equal(budgetOf(fresh).logTokensTotal, fresh.weight);
     const unknown = await f.build(providerAt(null));
     assert.equal(packetSection(unknown, "budget"), "");
     assert.equal(f.packets.curationBudgetFor(unknown), null);

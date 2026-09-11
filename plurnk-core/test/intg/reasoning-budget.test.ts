@@ -70,7 +70,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const record = parseLogRecords(packet.sections.find(({ name }: { name: string }) => name === "log").content).find(({ target: value }) => value === target)!;
             assert.equal(record.body, undefined);
-            assert.equal(record.overflow, "16 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+            assert.equal(record.overflow, "16 output lines not shown; logTokensTotal exceeds tokensActiveMax");
             assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).length, 1, "recovery does not redeliver the same source");
             const exact = await engine.look({ ...context, statement: statement(`\`\`\`READ (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>\`\`\``) });
             assert.equal(exact.status, 200, "withheld reasoning remains readable at the log address");
@@ -113,7 +113,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
                 assert.equal(overflow.status, 102, JSON.stringify(overflow));
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: overflow.turnId }))!.packet);
                 const record = parseLogRecords(packet.sections.find(({ name }: { name: string }) => name === "log").content).find(({ annotation }) => annotation === "inspect selected reasoning")!;
-                assert.equal(record.overflow, "120 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+                assert.equal(record.overflow, "120 output lines not shown; logTokensTotal exceeds tokensActiveMax");
                 assert.equal(record.body, undefined);
             }
         }

@@ -6,7 +6,7 @@ import { contentWeight } from "./content-weight.ts";
 const resolve = (
     ceiling: number,
     baseWeight: number,
-    largestLogItems: ReadonlyArray<{ path: string; tokensBody: number; tokensActive: number }> = [],
+    largestLogItems: ReadonlyArray<{ path: string; logTokens: number }> = [],
 ): { content: string; usage: number } => {
     const prefix = "x".repeat(baseWeight * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
@@ -17,8 +17,8 @@ const resolve = (
 test("BudgetReadout: the block opens as one JSON object whose total is the exact render-weight", () => {
     const { content, usage } = resolve(100_000, 100);
     assert.equal(content.split("\n").length, 1, "neutral telemetry is one JSON line");
-    const parsed = JSON.parse(content) as { tokensActiveTotal: number; tokensActiveMax: number };
-    assert.equal(parsed.tokensActiveTotal, usage);
+    const parsed = JSON.parse(content) as { logTokensTotal: number; tokensActiveMax: number };
+    assert.equal(parsed.logTokensTotal, usage);
     assert.equal(parsed.tokensActiveMax, 100_000);
 });
 
@@ -34,8 +34,8 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
     for (const specimen of cases) {
         await t.test(specimen.name, () => {
             const { content, usage } = resolve(specimen.ceiling, specimen.baseWeight);
-            const parsed = JSON.parse(content.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
-            assert.equal(parsed.tokensActiveTotal, usage, "the displayed total is the exact render-weight");
+            const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; tokensActiveMax: number };
+            assert.equal(parsed.logTokensTotal, usage, "the displayed total is the exact render-weight");
             assert.equal(parsed.tokensActiveMax, specimen.ceiling);
         });
     }
@@ -44,20 +44,20 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
 test("BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
     const { content, usage } = resolve(9, 62);
     assert.match(content, /\n\n> \[!WARNING\]\n> YOU MUST KILL/u);
-    const parsed = JSON.parse(content.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
-    assert.equal(parsed.tokensActiveTotal, usage);
+    const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; tokensActiveMax: number };
+    assert.equal(parsed.logTokensTotal, usage);
     assert.equal(parsed.tokensActiveMax, 9);
-    assert.doesNotMatch(content, /tokensActiveLargest/u, "no inventory without candidate rows");
+    assert.doesNotMatch(content, /logTokensLargest/u, "no inventory without candidate rows");
 });
 
 test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appear only at pressure", () => {
     const items = [
-        { path: "log:///1/1/6/READ", tokensBody: 60, tokensActive: 70 },
-        { path: "log:///1/1/2/READ", tokensBody: 100, tokensActive: 110 },
-        { path: "log:///1/1/5/READ", tokensBody: 70, tokensActive: 80 },
-        { path: "log:///1/1/4/READ", tokensBody: 80, tokensActive: 90 },
-        { path: "log:///1/1/3/READ", tokensBody: 90, tokensActive: 100 },
-        { path: "log:///1/1/1/READ", tokensBody: 100, tokensActive: 110 },
+        { path: "log:///1/1/6/READ", logTokens: 70 },
+        { path: "log:///1/1/2/READ", logTokens: 110 },
+        { path: "log:///1/1/5/READ", logTokens: 80 },
+        { path: "log:///1/1/4/READ", logTokens: 90 },
+        { path: "log:///1/1/3/READ", logTokens: 100 },
+        { path: "log:///1/1/1/READ", logTokens: 110 },
     ];
 
     const below = resolve(1_000, 700, items);
@@ -67,7 +67,7 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
     const pressured = resolve(1_500, 1_180, items);
     assert.match(
         pressured.content,
-        /^\{"tokensActiveTotal":\s*\d+,"tokensActiveMax":1500,"tokensActiveLargest":\[/u,
+        /^\{"logTokensTotal":\s*\d+,"tokensActiveMax":1500,"logTokensLargest":\[/u,
         "the block opens as one JSON payload with the inventory folded in",
     );
     assert.match(
@@ -76,28 +76,28 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
         "the recovery mandate follows the JSON that names its targets",
     );
     const object = JSON.parse(pressured.content.split("\n\n")[0]!) as {
-        tokensActiveTotal: number;
-        tokensActiveLargest: ReadonlyArray<{ path: string; tokensBody: number; tokensActive: number }>;
+        logTokensTotal: number;
+        logTokensLargest: ReadonlyArray<{ path: string; logTokens: number }>;
     };
     assert.deepEqual(
-        object.tokensActiveLargest,
+        object.logTokensLargest,
         [
-            { path: "log:///1/1/1/READ", tokensBody: 100, tokensActive: 110 },
-            { path: "log:///1/1/2/READ", tokensBody: 100, tokensActive: 110 },
-            { path: "log:///1/1/3/READ", tokensBody: 90, tokensActive: 100 },
-            { path: "log:///1/1/4/READ", tokensBody: 80, tokensActive: 90 },
-            { path: "log:///1/1/5/READ", tokensBody: 70, tokensActive: 80 },
+            { path: "log:///1/1/1/READ", logTokens: 110 },
+            { path: "log:///1/1/2/READ", logTokens: 110 },
+            { path: "log:///1/1/3/READ", logTokens: 100 },
+            { path: "log:///1/1/4/READ", logTokens: 90 },
+            { path: "log:///1/1/5/READ", logTokens: 80 },
         ],
         "rank by active cost, break ties by path, and bound the recovery index at five",
     );
-    assert.equal(object.tokensActiveTotal, pressured.usage, "the displayed total includes the conditional inventory");
+    assert.equal(object.logTokensTotal, pressured.usage, "the displayed total includes the conditional inventory");
 });
 
 test("{§tokenomics-pressure-inventory}: the optional list yields room before the required warning", () => {
     const item = {
         path: `log:///${"1".repeat(200)}/READ`,
-        tokensBody: 100,
-        tokensActive: 110,
+
+        logTokens: 110,
     };
     const pressured = resolve(1_000, 850, [item]);
     assert.doesNotMatch(pressured.content, /"path":/u, "an inventory that cannot fit is omitted");
@@ -109,13 +109,13 @@ test("{§context-output-warning}: actual new omission overrides pressure even be
     const content = BudgetReadout.resolve(BudgetReadout.draft(10_000), 10_000, contentWeight, [], true);
     assert.match(content, /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
     assert.equal((content.match(/YOU MUST/gu) ?? []).length, 1);
-    assert.equal(JSON.parse(content.split("\n\n")[0]!).tokensActiveTotal, contentWeight(content));
+    assert.equal(JSON.parse(content.split("\n\n")[0]!).logTokensTotal, contentWeight(content));
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
         () => BudgetReadout.resolve('{"tokensActiveMax":100}', 100, () => 10),
-        /must contain \{\{tokensActiveTotal\}\} exactly once/,
+        /must contain \{\{logTokensTotal\}\} exactly once/,
     );
     assert.throws(
         () => BudgetReadout.resolve(BudgetReadout.draft(100), 100, () => Number.NaN),
@@ -136,7 +136,7 @@ test("{§tokenomics-calibrated-readout} a converted ceiling changes pressure wit
     const ceiling = 100;
     const prefix = "x".repeat(85 * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
-    const items = [{ path: "log:///1/2/3/READ", tokensBody: 40, tokensActive: 44 }];
+    const items = [{ path: "log:///1/2/3/READ", logTokens: 44 }];
     const raw = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items);
     assert.match(raw, /YOU MUST KILL superseded/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
     const convertedCeiling = 200;
@@ -144,7 +144,7 @@ test("{§tokenomics-calibrated-readout} a converted ceiling changes pressure wit
     const usage = measure(calibrated);
     assert.match(
         calibrated,
-        new RegExp(`"tokensActiveTotal":\\s*${usage},`, "u"),
+        new RegExp(`"logTokensTotal":\\s*${usage},`, "u"),
         `the displayed figure retains the measured curation units; got: ${calibrated}`,
     );
     assert.doesNotMatch(calibrated, /YOU MUST KILL/u, "the same packet under an honest factor carries no mandate");

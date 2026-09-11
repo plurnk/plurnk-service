@@ -24,7 +24,7 @@ test("{§log-readable-projection}: sparse READ rendering keeps source numbers an
     assert.doesNotMatch(complete, /"lineOrdinals"/, "internal coordinate maps do not become packet trivia");
 });
 
-test("{§log-readable-projection}: initial suppression prices only the body still available to READ", () => {
+test("{§log-readable-projection}: suppressed rows charge only their materialized metadata", () => {
     const entry = {
         coordinate: "1/1/1", op: "READ", origin: "model", status: 200,
         initial_folded: [[1, -1]], rx: { content: "one\ntwo\nthree", mimetype: "text/plain", startLine: 1 },
@@ -32,9 +32,11 @@ test("{§log-readable-projection}: initial suppression prices only the body stil
     const whole = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
     const partial = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, 2]] }], tok))[0]!;
     const gone = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, -1]] }], tok))[0]!;
-    assert.ok(Number(whole.tokensBody) > Number(partial.tokensBody));
-    assert.ok(Number(partial.tokensBody) > 0);
-    assert.equal(gone.tokensBody, undefined, "trimmed content must not be advertised as recoverable");
+    for (const row of [whole, partial, gone]) {
+        assert.equal(row.tokensBody, undefined, "hidden content has no separate advertised body charge");
+        assert.ok(Number(row.logTokens) > 0);
+    }
+    assert.equal(whole.logTokens, tok(PacketWire.renderLog([entry], tok)), "metadata charge is exact");
     assert.equal(whole.body, undefined);
     assert.equal(partial.body, undefined);
     assert.equal(gone.body, undefined);
@@ -118,7 +120,7 @@ test("log entry: a no-body row omits body, display, model origin, and routine st
     const [row] = parseLogRecords(out);
     assert.equal(row?.path, "log:///1/1/1/EDIT");
     assert.equal(row?.target, "out.txt");
-    assert.equal(typeof row?.tokensActive, "number");
+    assert.equal(typeof row?.logTokens, "number");
     assert.equal(row?.body, undefined, "a none-state row has no coordinate lines");
     assert.equal(row?.origin, undefined, "model is the default origin");
     assert.equal(row?.status, undefined, "200 is the default status");
@@ -138,7 +140,7 @@ test("a successful KILL receipt retains status 200 because destructive completio
     assert.equal(row?.path, "log:///1/2/3/KILL");
     assert.equal(row?.status, 200);
     assert.equal(row?.target, "worker:///obsolete.md");
-    assert.equal(typeof row?.tokensActive, "number");
+    assert.equal(typeof row?.logTokens, "number");
 });
 
 test("{§log-wire-format}: a present operation annotation materializes and absence costs no metadata", () => {
@@ -212,7 +214,7 @@ test("{§log-wire-format}: receipt metadata leads with target, then annotation, 
             assert.equal(metadata.target, target);
             const rest = keys.slice(orientation.length);
             assert.deepEqual(rest, [...rest].sort());
-            assert.equal(metadata.tokensActive, tok(out), "ordering participates in actual row accounting");
+            assert.equal(metadata.logTokens, tok(out), "ordering participates in actual row accounting");
             assert.equal(PacketWire.renderLog([entry], tok), out, "unchanged facts keep stable packet bytes");
         });
     }
@@ -234,11 +236,11 @@ test("{§packet-markdown}: section headings are separated from content without s
     }], tok);
     const packet = PacketWire.renderSlot([
         { slot: "user", header: "Log", content: log },
-        { slot: "user", header: "Context Curation", content: "tokensActiveTotal: 100\n" },
+        { slot: "user", header: "Context Curation", content: "logTokensTotal: 100\n" },
         { slot: "user", header: "Empty", content: "" },
         { slot: "user", header: null, content: "bare\n" },
     ], "user");
-    assert.equal(packet, `## Log\n\n${log}\n\n## Context Curation\n\ntokensActiveTotal: 100\n\nbare`);
+    assert.equal(packet, `## Log\n\n${log}\n\n## Context Curation\n\nlogTokensTotal: 100\n\nbare`);
     assert.match(packet, /### log:\/\/\/1\/2\/1\/READ\n\{/u);
 });
 
@@ -911,7 +913,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 416, "canonical retrieval metadata has one reviewed Gemma-token count after Markdown record framing");
+    assert.equal(metadataTokens, 389, "canonical retrieval metadata has one reviewed Gemma-token count after the single logTokens field");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -1234,7 +1236,8 @@ test("a suppressed program READ receipt keeps its address and readable extent", 
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"target":"ops:\/\/\/1\/1",/, "the READ receipt identifies the immutable source");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
-    assert.match(out, /"tokensBody":\d+/, "suppressed state = tokensBody without a body field (#338)");
+    assert.equal(parseLogRecords(out)[0]?.logTokens, tok(out), "the suppressed receipt charges only its metadata");
+    assert.doesNotMatch(out, /tokensBody/);
     assert.equal(parseLogRecords(out)[0]?.body, undefined, "the suppressed body is withheld");
     assert.doesNotMatch(out, /"op":"turn"/, "turnOps never masquerade as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while suppressed — budget-neutral");
@@ -1277,7 +1280,7 @@ test("{§body-projection}: scoped program READs bypass previews, not curation or
         const complete = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
         assert.equal(complete.body, `${numbered.join("\n")}\n`, `${origin} source exceeds both preview bounds without clipping`);
         assert.equal(complete.chunk, undefined);
-        assert.equal(complete.tokensBody, tok(numbered.join("\n")), "accounting includes the complete rendered program");
+        assert.equal(complete.logTokens, tok(PacketWire.renderLog([entry], tok)), "accounting includes the complete rendered program and metadata");
 
         const trimmed = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[3, 4]] }], tok))[0]!;
         assert.equal(trimmed.body, `${numbered.filter((_, index) => index !== 2 && index !== 3).join("\n")}\n`,
@@ -1285,10 +1288,10 @@ test("{§body-projection}: scoped program READs bypass previews, not curation or
         const suppressed = parseLogRecords(PacketWire.renderLog([{ ...entry, initial_folded: [[1, -1]] }], tok))[0]!;
         assert.equal(suppressed.body, undefined);
         assert.equal(suppressed.chunk, undefined);
-        assert.equal(suppressed.tokensBody, complete.tokensBody, "suppression prices the same recoverable program");
+        assert.ok(Number(suppressed.logTokens) < Number(complete.logTokens), "suppression no longer charges the absent program body");
         const withheld = parseLogRecords(PacketWire.renderLog([{ ...entry, output_withheld: true }], tok))[0]!;
         assert.equal(withheld.body, undefined);
-        assert.equal(withheld.overflow, `${lines.length} output lines not shown; tokensActiveTotal exceeds tokensActiveMax`);
+        assert.equal(withheld.overflow, `${lines.length} output lines not shown; logTokensTotal exceeds tokensActiveMax`);
     }
 });
 
@@ -1325,47 +1328,49 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // visible: coordinate lines
     ], tok);
     assert.doesNotMatch(out, /```|"path"|"body"/, "the projection needs no fence or duplicate path/body fields");
-    const arr = parseLogRecords(out) as Array<{ body?: string; tokensBody?: number }>;
-    // #338 — the three body states stay self-describing through physical presence:
-    const state = (e: { body?: string; tokensBody?: number }): string => "body" in e ? "visible" : "tokensBody" in e ? "suppressed" : "none";
-    assert.deepEqual(arr.map(state), ["none", "suppressed", "visible"], "no display label — coordinate-line presence is the state");
+    const arr = parseLogRecords(out) as Array<{ body?: string; logTokens: number }>;
+    assert.deepEqual(arr.map((row) => "body" in row), [false, false, true], "coordinate-line presence determines what is in context");
+    assert.doesNotMatch(out, /tokensBody|"display"/);
     assert.ok(!("body" in arr[0]), "a none row has no body lines");
-    assert.ok(!("body" in arr[1]) && (arr[1].tokensBody ?? 0) > 0, "a suppressed row withholds its body and prices a recovery READ");
+    assert.ok(!("body" in arr[1]) && arr[1].logTokens > 0, "a suppressed row charges its retained metadata");
     assert.equal(arr[2].body, "1:gamma\n", "an open row carries its ordinary addressable projection after metadata");
 });
 
-test("{§packet-token-accounting}: row accounting distinguishes canonical body cost from active packet cost", () => {
-    const rendered = PacketWire.renderLog([
+test("{§packet-token-accounting}: each row exposes one exact current-context charge", () => {
+    const entries = [
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } },
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } },
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/open.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } },
         { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/markdown", startLine: 1 } },
-    ], tok);
+    ];
+    const rendered = PacketWire.renderLog(entries, tok);
     const rows = parseLogRecords(rendered) as Array<{
         body?: string;
-        tokensActive: number;
+        logTokens: number;
         tokensBody?: number;
         tokensMetadata?: number;
         tokensTotal?: number;
     }>;
 
-    for (const row of rows) {
+    for (const [index, row] of rows.entries()) {
         assert.ok(!Object.hasOwn(row, "tokensTotal"), "the ambiguous former field is absent");
         assert.ok(!Object.hasOwn(row, "tokensMetadata"), "the metadata share is derivable, never serialized (#338)");
-        assert.ok(row.tokensActive > 0, "every materialized row reports its active cost");
+        assert.ok(row.logTokens > 0, "every materialized row reports its active cost");
+        assert.equal(row.tokensBody, undefined, "there is no second body charge");
+        assert.equal(row.logTokens, tok(PacketWire.renderLog([entries[index]], tok)));
     }
     assert.ok(!("tokensBody" in rows[0]!), "a bodyless row prices nothing to open");
-    assert.ok(!("body" in rows[1]!) && (rows[1]!.tokensBody ?? 0) > 0, "a suppressed row separately reports the cost of retrieving its body");
+    assert.ok(!("body" in rows[1]!) && rows[1]!.logTokens > 0, "suppressed rows charge their metadata");
     for (const row of rows.slice(2)) {
         assert.ok("body" in row, "an open row carries its body");
         assert.ok(
-            row.tokensActive > (row.tokensBody ?? 0),
+            row.logTokens > tok(row.body ?? ""),
             "an open row's active cost covers its rendered body plus its metadata",
         );
     }
 });
 
-test("{§tokenomics-pressure-inventory}: log projection exposes only open reclaimable bodies", () => {
+test("{§tokenomics-pressure-inventory}: every retained log item is a reclaimable context target", () => {
     const entries = [
         { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/largest.md" }, rx: { content: "x".repeat(120), mimetype: "text/plain", startLine: 1 } },
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "y".repeat(200), mimetype: "text/plain", startLine: 1 } },
@@ -1376,16 +1381,16 @@ test("{§tokenomics-pressure-inventory}: log projection exposes only open reclai
 
     assert.equal(projected.content, PacketWire.renderLog(entries, tok), "accounting does not create a second wire projection");
     assert.deepEqual(
-        projected.reclaimableBodies.map(({ path }) => path),
-        ["log:///1/1/1/READ", "log:///1/1/4/READ"],
-        "fully suppressed and bodyless rows cannot enter the recovery index",
+        projected.curationTargets.map(({ path }) => path),
+        ["log:///1/1/1/READ", "log:///1/1/2/READ", "log:///1/1/3/SEND", "log:///1/1/4/READ"],
+        "bodyless and suppressed rows still have reclaimable metadata",
     );
     const rows = parseLogRecords(projected.content);
-    for (const item of projected.reclaimableBodies) {
+    for (const item of projected.curationTargets) {
         const row = rows.find(({ path }) => path === item.path);
         assert.ok(row !== undefined);
-        assert.equal(row.tokensBody, item.tokensBody, "inventory body weight is the rendered row's own accounting");
-        assert.equal(row.tokensActive, item.tokensActive, "inventory active weight is the rendered row's own accounting");
+        assert.equal(row.tokensBody, undefined, "the inventory needs no second body accounting field");
+        assert.equal(row.logTokens, item.logTokens, "inventory active weight is the rendered row's own accounting");
     }
 });
 
@@ -1594,7 +1599,7 @@ test("{§prompt-projection}: prompt rows share one explicit projection-weight al
         { coordinate: "1/1/2", op: "prompt", origin: "_plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
     ], tok, { promptProjectionWeight: budget });
 
-    const weights = [...rendered.matchAll(/"tokensBody":(\d+)/g)].map((match) => Number(match[1]));
+    const weights = parseLogRecords(rendered).map((row) => tok(String(row.body ?? "").replace(/\n$/u, "")));
     assert.equal(weights.length, 2);
     assert.ok(weights.every((weight) => weight > 0), "each arriving frame receives a visible share");
     assert.ok(weights.reduce((sum, weight) => sum + weight, 0) <= budget, "the aggregate prompt body weight stays within the shared allowance");
@@ -1689,8 +1694,9 @@ test("{§log-wire-format}: a suppressed bounded body does not claim to display a
         tx: { body: long },
     }], tok);
 
-    assert.match(rendered, /"tokensBody":\d+/, "suppressed — tokensBody without a body field (#338)");
+    assert.doesNotMatch(rendered, /tokensBody/);
     const [row] = parseLogRecords(rendered);
+    assert.equal(row?.logTokens, tok(rendered), "the retained metadata is the only charge");
     assert.equal(row?.body, undefined, "the suppressed body is absent");
     assert.equal(row?.chunk, undefined, "chunk describes displayed content, not hidden canonical content");
 });

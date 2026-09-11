@@ -109,7 +109,7 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     const visibleRead = projected.find((row) => row.path === `log://${path}`);
     assert.ok(visibleRead, "the first recovery packet retains the READ receipt");
     assert.equal("body" in visibleRead, false, "the oversized body is absent from that packet");
-    assert.equal(visibleRead.overflow, "2 output lines not shown; tokensActiveTotal exceeds tokensActiveMax");
+    assert.equal(visibleRead.overflow, "2 output lines not shown; logTokensTotal exceeds tokensActiveMax");
     assert.match(packetSection(JSON.parse(firstModel.packet), "budget"), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
     assert.ok(!projected.some((row) => String(row.path).endsWith("/TASK") && String(row.body).includes("YOU MUST ONLY")), "the warning is not an invented assignment");
     return {
