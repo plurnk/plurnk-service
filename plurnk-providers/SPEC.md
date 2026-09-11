@@ -781,6 +781,19 @@ When enabled, raw per-token model logprob is canonical; alternatives are
 preserved when returned. Raw body/chunks preserve wire evidence the normalized
 record omits.
 
+§provider-usage-refusal **The provider's bookkeeping is not the exchange.** Usage
+normalization is exact and refuses counters that contradict each other (a
+reasoning detail larger than its output aggregate, a total that disagrees with
+its parts). A refusal is not a request failure: the response is delivered, its
+accounting row carries no `usage` and a cost of kind `unknown` with the reason
+(never an invented, clamped, or zero counter), and the transport record keeps
+`usageRefusal` — the normalizer's reason beside the counters exactly as the
+wire reported them — so the digest can read what the provider said. The same
+holds for the usage inside failure evidence. Before this rule a contradictory
+counter turned a complete response into a retryable `network_failure` and lost
+the response (#580). Covered by `aiSdkTransport.test.ts` and
+`AiSdkProvider.test.ts`.
+
 §provider-encrypted-reasoning **Readable reasoning and encrypted reasoning are
 separate.** Encrypted payload bytes remain opaque and are never decoded. The
 provider boundary distinguishes preserved detail evidence from derived entity

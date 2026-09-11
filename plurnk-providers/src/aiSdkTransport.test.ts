@@ -360,3 +360,59 @@ test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Re
     });
     assert.equal((normalizeRetryAttemptError(bareServerError) as APICallError).isRetryable, false, "a bare 5xx surfaces at once for the engine's recovery");
 });
+
+// {§provider-usage-refusal} (#580) — the provider's counters disagree with themselves; the
+// exchange is not the casualty.
+test("inconsistent usage counters refuse normalization without failing the response, in both shapes", async (t) => {
+    const usage = { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6, completion_tokens_details: { reasoning_tokens: 7 } };
+    await t.test("non-streamed", async () => {
+        const result = await executeOpenAICompatible({
+            ...request,
+            fetch: async () => new Response(JSON.stringify({
+                id: "response-1", object: "chat.completion", created: 1, model: "served-model",
+                choices: [{ index: 0, message: { role: "assistant", content: "answer" }, finish_reason: "stop" }],
+                usage,
+            }), { headers: { "content-type": "application/json" } }),
+        });
+        assert.equal(result.content, "answer", "the model's answer survives the provider's bookkeeping");
+        assert.equal(result.usage, undefined, "no counter is invented, clamped, or zeroed");
+        assert.deepEqual(result.usageRefusal, {
+            reason: "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer",
+            usage,
+        }, "the counters as reported ride beside the refusal");
+        assert.deepEqual(result.chargeEvidence.usage, usage, "charge evidence still carries the wire usage");
+    });
+    await t.test("streamed", async () => {
+        const chunks = [
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { content: "answer" }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage },
+        ];
+        const result = await executeOpenAICompatible({
+            ...request,
+            streaming: true,
+            fetch: async () => new Response(new ReadableStream({
+                start(controller) {
+                    for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                    controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                    controller.close();
+                },
+            }), { headers: { "content-type": "text/event-stream" } }),
+        });
+        assert.equal(result.content, "answer");
+        assert.equal(result.usage, undefined);
+        assert.equal(result.usageRefusal?.reason, "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer");
+        assert.deepEqual(result.usageRefusal?.usage, usage);
+    });
+    await t.test("consistent counters still normalize", async () => {
+        const result = await executeOpenAICompatible({
+            ...request,
+            fetch: async () => new Response(JSON.stringify({
+                id: "response-1", object: "chat.completion", created: 1, model: "served-model",
+                choices: [{ index: 0, message: { role: "assistant", content: "answer" }, finish_reason: "stop" }],
+                usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6, completion_tokens_details: { reasoning_tokens: 2 } },
+            }), { headers: { "content-type": "application/json" } }),
+        });
+        assert.deepEqual(result.usage, { inputTokens: 1, outputTokens: 5, totalTokens: 6, outputTokenDetails: { textTokens: 3, reasoningTokens: 2 } });
+        assert.equal(result.usageRefusal, undefined);
+    });
+});

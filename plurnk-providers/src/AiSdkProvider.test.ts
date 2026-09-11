@@ -2977,3 +2977,29 @@ test("a manual-reasoning model rejects an envelope below its provider minimum be
     );
     assert.equal(calls, 0);
 });
+
+// {§provider-usage-refusal} (#580) — through the provider: the response is delivered, its
+// accounting is an honest unknown, and the refused counters are durable evidence, not a 503.
+test("a response whose usage counters contradict each other is delivered with unknown cost, never retried as a network failure", async () => {
+    const usage = { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6, completion_tokens_details: { reasoning_tokens: 7 } };
+    installFetchJson({
+        id: "response-1", object: "chat.completion", created: 1, model: "served-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "the answer" }, finish_reason: "stop" }],
+        usage,
+    });
+    const p = testProvider({
+        model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: null, repeatPenalty: null, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        streaming: false,
+        estimateCost: (known) => known === undefined
+            ? { kind: "unknown", reason: "the provider response reported no normalized usage" }
+            : { kind: "estimated", amount: { amount: "1", currency: "USD" }, source: "test estimator" },
+    });
+    const response = await p.generate({ workerId: "accounted", messages: [{ role: "user", content: "q" }] });
+    assert.equal(response.assistant.content, "the answer");
+    assert.equal(response.accounting.length, 1);
+    assert.equal(response.accounting[0]?.outcome, "response");
+    assert.equal(response.accounting[0]?.usage, undefined, "no counters are reported as known");
+    assert.deepEqual(response.accounting[0]?.cost, { kind: "unknown", reason: "the provider response reported no normalized usage" });
+    const raw = response.assistantRaw as { usageRefusal?: { reason: string; usage: unknown } };
+    assert.deepEqual(raw.usageRefusal, { reason: "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer", usage }, "the durable response carries the refused counters");
+});

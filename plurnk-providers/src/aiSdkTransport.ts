@@ -89,6 +89,25 @@ const wireUsageOf = (
     return undefined;
 };
 
+// {§provider-usage-refusal} — the provider's bookkeeping is not the exchange. When the reported
+// counters cannot be normalized (a reasoning detail exceeding its output aggregate, a total that
+// contradicts its parts), the response stands, usage is unknown (never invented, clamped, or zero),
+// and the counters as reported ride beside the refusal so forensics can see what the wire said.
+export type UsageRefusal = { readonly reason: string; readonly usage: unknown };
+
+const settledUsage = (
+    values: readonly unknown[],
+    sdkUsage: LanguageModelUsage | undefined,
+): { usage?: ProviderUsage; usageRefusal?: UsageRefusal } => {
+    try {
+        const usage = wireUsageOf(values) ?? (sdkUsage === undefined ? undefined : usageOf(sdkUsage));
+        return usage === undefined ? {} : { usage };
+    } catch (cause) {
+        if (!(cause instanceof TypeError)) throw cause;
+        return { usageRefusal: { reason: cause.message, usage: wireUsageEvidenceOf(values) ?? sdkUsage } };
+    }
+};
+
 const wireUsageEvidenceOf = (values: readonly unknown[]): unknown => {
     for (let index = values.length - 1; index >= 0; index -= 1) {
         const record = recordOf(values[index]);
@@ -180,6 +199,7 @@ export type AiSdkTransportResponse = {
     finishReason: ProviderAttemptFinishReason;
     rawFinishReason?: string;
     usage?: ProviderUsage;
+    usageRefusal?: UsageRefusal;
     metadata: Record<string, unknown>;
     reasoningEncrypted: Array<{
         id: string | null;
@@ -438,7 +458,7 @@ const executeModelOnce = async (
             reasoningProjected: evidence.reasoningProjected,
             finishReason: finishReasonOf(rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-            usage: wireUsageOf(values) ?? usageOf(result.usage),
+            ...settledUsage(values, result.usage),
             metadata: metadataOf(values),
             reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
@@ -508,7 +528,7 @@ const executeModelOnce = async (
         reasoningProjected: evidence.reasoningProjected,
         finishReason: finishReasonOf(rawFinishReason),
         ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-        usage: wireUsageOf(rawChunks) ?? usageOf(await result.usage),
+        ...settledUsage(rawChunks, await result.usage),
         metadata: metadataOf(rawChunks),
         reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
@@ -582,6 +602,7 @@ const responseBodyValues = (error: APICallError): readonly unknown[] => {
 
 export type AiSdkTransportFailureEvidence = {
     readonly usage?: ProviderUsage;
+    readonly usageRefusal?: UsageRefusal;
     readonly chargeEvidence: ProviderChargeEvidence;
     readonly status?: number;
 };
@@ -592,7 +613,7 @@ export const transportFailureEvidence = (
     const values = typeof error === "object" && error !== null
         ? streamFailureValues.get(error) ?? (APICallError.isInstance(error) ? responseBodyValues(error) : [])
         : [];
-    const usage = wireUsageOf(values);
+    const settled = settledUsage(values, undefined);
     const usageEvidence = wireUsageEvidenceOf(values);
     const charge = wireChargeEvidenceOf(values);
     const wireStatus = values
@@ -605,7 +626,7 @@ export const transportFailureEvidence = (
             ? wireStatus as number
             : undefined;
     return {
-        ...(usage === undefined ? {} : { usage }),
+        ...settled,
         chargeEvidence: {
             ...(charge === undefined ? {} : { charge }),
             ...(usageEvidence === undefined ? {} : { usage: usageEvidence }),
