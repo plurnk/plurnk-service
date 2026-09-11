@@ -50,7 +50,7 @@ Plurnk Harness facilitates:
 > YOU SHOULD conclude every turn with one TASK operation.
 
 > [!WARNING]
-> The final turn must only SEND the response to the Active Prompt(s) and list all of the "completed" or "failed" TASKs.
+> The final turn contains only a SEND response to Active Prompts and a TASK operation with every task "completed" or "failed".
 
 ## Workspace Navigation
 
