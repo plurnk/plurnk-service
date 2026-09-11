@@ -126,11 +126,5 @@ collects the same result explicitly. While the child is running it returns
 `425`; the inventory still chooses whether to continue or wait.
 A result does not imply that every task in that worker has finished.
 
-**Concluding with live workers.** A completion TASK is refused (`409`) while you hold a live worker or
-open stream. The packet lists them under `## Active Child Workers` and `## Child Streams`.
-Await them with a waiting inventory or ````` ````KILL (worker://<name>) ````` the ones you no longer need.
-KILL settles before the turn's disposition; other live work or unobserved
-results can still prevent completion.
-
-KILL cancels that worker and its descendants, including queued work and unread
-messages. History remains readable; a later SEND can start new work.
+````` ````KILL (worker://<name>) ````` cancels that worker and its descendants, including
+queued work and unread messages. History remains readable; a later SEND can start new work.
