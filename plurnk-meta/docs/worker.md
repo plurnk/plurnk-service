@@ -41,13 +41,15 @@ its log projection, never the original evidence. No later reasoning is added
 automatically after initialization's example READ.
 
 A READ can retain your current turn's reasoning: the source exists when your
-OPs execute. For example, on loop 1, turn 3:
+OPs execute. The packet's `## Turn` line names the coordinate you are
+producing. For example, on `{"loop":1,"turn":3}`:
 
 ````READ (reasoning:///1/3) <1,-1>
 ````
 
-The ordinary READ receipt appears in subsequent packets. Missing or future
-sources return a missing-source result; READ never requests inference.
+The ordinary READ receipt appears in subsequent packets. A turn that produced
+no reasoning reads empty; a turn that has not happened returns a missing-source
+result. READ never requests inference.
 
 ## Delegation
 

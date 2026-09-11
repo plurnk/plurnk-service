@@ -269,3 +269,34 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource at 
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
     } finally { await db.close(); }
 });
+
+test("{§turn-source-resources}: an existing turn without provider reasoning reads empty; a turn that does not exist is 404", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "reasoning-empty");
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, workerId, 1);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const context = { workspaceId, workerId, loopId };
+        // The provider returns no reasoning for the model's turn (1/2); the initialization turn (1/1) always has its rationale.
+        const silent = await engine.runTurn({ ...context, provider: provider(null,
+            `${PlurnkParser.frame("READ (reasoning:///1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
+        const turn = await db.test_get_turn.get<{ sequence: number }>({ id: silent.turnId });
+        assert.equal(turn?.sequence, 2);
+        assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId })).length, 0, "no substitute source is recorded");
+        const own = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ pathname, turn_id }) => pathname === "/1/2" && turn_id === silent.turnId);
+        assert.ok(own, "the model's READ of its own reasoning coordinate produced a receipt");
+        const look = (source: string) => engine.look({ ...context, statement: statement(source) });
+        const empty = await look("```READ (reasoning:///1/2) <1,-1>```");
+        assert.equal(empty.status, 204, "an existing turn with nothing from the provider reads as the ordinary empty resource");
+        assert.ok("content" in empty);
+        assert.equal(empty.content, "");
+        const program = await look("```READ (ops:///1/2) <1,-1>```");
+        assert.equal(program.status, 200);
+        assert.ok("content" in program && typeof program.content === "string" && program.content.includes("READ (reasoning:///1/2)"), "the same turn's admitted program is present");
+        const future = await look("```READ (reasoning:///1/9) <1,-1>```");
+        assert.equal(future.status, 404, "a turn that has not happened is missing, not empty");
+        assert.equal(future.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/entry-not-found");
+        assert.equal((await look("```READ (reasoning:///2/1) <1,-1>```")).status, 404, "so is a loop that does not exist");
+    } finally { await db.close(); }
+});

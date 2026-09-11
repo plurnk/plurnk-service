@@ -45,13 +45,15 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         if (!this.#local(target) || coordinate === null) return { result: this.#failure(
             400, "coordinate-malformed", `Use ${this.#kind}:///<loop>/<turn>.`,
         ) };
-        const row = await db.turn_source_read.get<{ content: string }>({
+        const row = await db.turn_source_read.get<{ content: string | null }>({
             worker_id: workerId, loop_seq: Number(coordinate[1]), turn_seq: Number(coordinate[2]), kind: this.#kind,
         });
-        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No ${this.#kind} source exists at ${target!.raw}.`) };
+        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No turn exists at ${target!.raw}.`) };
+        // An existing turn without a source of this kind is empty, not missing: the coordinate is
+        // real, the provider simply returned nothing there.
         return {
             identity: `${this.#kind}:///${coordinate[1]}/${coordinate[2]}`,
-            representation: { channels: { body: { content: row.content, mimetype: this.#mimetype, state: "static" } } },
+            representation: { channels: { body: { content: row.content ?? "", mimetype: this.#mimetype, state: "static" } } },
         };
     }
 

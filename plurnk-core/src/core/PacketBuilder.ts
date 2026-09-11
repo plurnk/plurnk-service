@@ -366,6 +366,10 @@ export default class PacketBuilder {
                 header: "Log",
                 content: renderedLog.content,
             },
+            // {§packet-current-turn} — the coordinate this packet's response becomes: first in the
+            // status clump (it changes every turn, so it cannot precede the log), and the one fact the
+            // sources cannot state about themselves — which `reasoning:///L/T` is the model's own.
+            { name: "turn", slot: "user", header: "Turn", content: JSON.stringify({ loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs or KILLs), never advice. {§child-orientation}
