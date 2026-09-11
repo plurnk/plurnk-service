@@ -14,7 +14,7 @@ than SQL. Use their SQL equivalents, such as querying `sqlite_master`.
 a persistent host-mutating database that requires proposal review. With no
 target, it runs against a fresh `:memory:` database that is gone when the
 operation finishes and bypasses proposal review. A directory is not a database.
-Use `{cwd=./data}` on the heading to set the base for a relative database path;
+Use `[{"cwd": "./data"}]` on the heading to set the base for a relative database path;
 it does not change whether the operation uses a file or memory.
 
 ## Query vs mutation

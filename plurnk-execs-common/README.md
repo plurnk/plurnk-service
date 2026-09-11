@@ -32,8 +32,8 @@ literal `\n` separators keeping the invocation on one discovery line.
 
 The table above is the **inline** form: the body is the program. A file in the
 `(target)` slot is instead the script each interpreter reads directly, and the
-body becomes that script's stdin. A `{cwd=<directory>}` block on the heading
-selects the working directory. Script arguments use `{args=["arg",...]}`;
+body becomes that script's stdin. A `[{"cwd": "<directory>"}]` block on the heading
+selects the working directory. Script arguments use `[{"args": ["arg",...]}]`;
 each string is passed literally, without shell expansion ({§executor-metadata}).
 These options work for local, Worker, and Skill script targets alike.
 
@@ -43,7 +43,7 @@ yes
 no
 ````
 
-````python3 (transform.py) {args=["--format","json"]}
+````python3 (transform.py) [{"args": ["--format","json"]}]
 3
 1
 4

@@ -95,8 +95,8 @@ to its tool rather than reconstructing filesystem or scheme policy.
 `prepare(input)` validates the tool's raw header metadata before admission and
 returns the effective cwd. `run(args)` receives that cwd and the original
 metadata, separately from the unchanged body. Source acquisition never inherits
-EXEC metadata. `BaseExecutor` supplies `{cwd=...}`; `SubprocessExecutor` adds
-literal script arguments with `{args=["arg",...]}`. Override preparation for
+EXEC metadata. `BaseExecutor` supplies `[{"cwd": "..."}]`; `SubprocessExecutor` adds
+literal script arguments with `[{"args": ["arg",...]}]`. Override preparation for
 tool-specific options. See {§executor-metadata}.
 
 ### Receive live input
@@ -108,8 +108,8 @@ delivery. The consumer routes SEND to the existing execution address and owns
 ordering, deadlines, permissions, and proposals. This does not expose Worker
 identity or grant access to stored output.
 
-`SubprocessExecutor` supplies this receiver when launched with `{stdin=open}`.
-SEND writes exact UTF-8 input; `{eof=true}` ends stdin. No option means ordinary
+`SubprocessExecutor` supplies this receiver when launched with `[{"stdin": "open"}]`.
+SEND writes exact UTF-8 input; `[{"eof": true}]` ends stdin. No option means ordinary
 batch EOF. See [the live-input contract](SPEC.md#executor-live-input-invocation-local-input).
 
 ### Address output

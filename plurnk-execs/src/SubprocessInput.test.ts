@@ -16,19 +16,19 @@ test("{§executor-stdin}: exact UTF-8 input, explicit EOF, and no empty-body EOF
     assert.deepEqual(await send(""), { status: 200, result: { bytesAccepted: 0, inputClosed: false, detail: "0 bytes delivered to stdin; input open." } });
     assert.equal(stream.writableEnded, false);
     assert.deepEqual(await send("hé\nllo"), { status: 200, result: { bytesAccepted: 7, inputClosed: false, detail: "7 bytes delivered to stdin; input open." } });
-    assert.deepEqual(await send("!", ["eof=true"]), { status: 200, result: { bytesAccepted: 1, inputClosed: true, detail: "1 byte delivered to stdin; input closed." } });
+    assert.deepEqual(await send("!", ['{"eof": true}']), { status: 200, result: { bytesAccepted: 1, inputClosed: true, detail: "1 byte delivered to stdin; input closed." } });
     assert.equal(Buffer.concat(chunks).toString(), "hé\nllo!");
-    const repeat = await send("", ["eof=true"]);
+    const repeat = await send("", ['{"eof": true}']);
     assert.equal(repeat.status, 410);
     assert.match(repeat.problem?.type ?? "", /input-closed$/);
 });
 
 test("{§executor-stdin}: malformed metadata cannot partially write or close input", async () => {
     const { input, chunks, stream, controller } = fixture();
-    for (const metadata of [["eof=false"], ["eof=true", "eof=true"], ["args=[]"], ["cwd=."]]) {
+    for (const metadata of [['{"eof": false}'], ['{"eof": true}', '{"eof": true}'], ['{"args": []}'], ['{"cwd": "."}'], ["eof=true"]]) {
         const result = await input.receive({ body: "not written", metadata, signal: controller.signal });
         assert.equal(result.status, 400);
-        assert.match(result.problem?.type ?? "", /invalid-input-metadata$/);
+        assert.match(result.problem?.type ?? "", /invalid-input-metadata$|metadata-repeated$|metadata-invalid$/);
     }
     assert.equal(chunks.length, 0);
     assert.equal(stream.writableEnded, false);

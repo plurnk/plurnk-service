@@ -1,11 +1,11 @@
 # perl
 
-For continuing input, launch with `{stdin=open}`, then SEND exact text to the
-returned execution address; `{eof=true}` closes stdin. See the
+For continuing input, launch with `[{"stdin": "open"}]`, then SEND exact text to the
+returned execution address; `[{"eof": true}]` closes stdin. See the
 [live-input example](node.md#live-input), including newline framing.
 
 The body is Perl code, run with `perl -e`. A script target runs that file and
-receives the body as stdin; `{args=[...]}` passes literal script arguments.
+receives the body as stdin; `[{"args": [...]}]` passes literal script arguments.
 
 ````perl <!-- the body is the program -->
 use strict; use warnings;
@@ -13,7 +13,7 @@ my %count; $count{$_}++ for qw(a b a c a);
 printf "%s=%d\n", $_, $count{$_} for sort keys %count;
 ````
 
-````perl (tools/rename.pl) {args=["--dry-run"]}
+````perl (tools/rename.pl) [{"args": ["--dry-run"]}]
 ````
 
 stdout streams to `#stdout`, stderr to `#stderr`; `die` or a nonzero `exit`

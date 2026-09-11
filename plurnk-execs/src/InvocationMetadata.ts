@@ -1,53 +1,43 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { MetadataOptions, Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ExecInput, ExecPreparation } from "./types.ts";
 
 type Options = { cwd?: string; args: string[]; stdin?: "open" };
 type Accepted = { args?: boolean; stdin?: boolean };
 type Parsed = { options: Options } | { failure: SchemeResult };
 
-// {§executor-metadata} The executor framework owns these options, not Core.
+// {§executor-metadata} The executor framework owns these options, not Core. The
+// heading's `[metadata]` is one JSON array of option objects ({§scheme-metadata-modifier});
+// the keys this framework knows are `cwd`, `args`, and `stdin`.
 export default class InvocationMetadata {
     static parse(input: ExecInput, accepted: Accepted = {}): Parsed {
-        const options: Options = { args: [] };
-        const fields = new Set<string>();
         const fail = (code: string, detail: string): Parsed => ({
             failure: Results.failure("executor:metadata", code, 400, detail, {}, {
                 runtime: input.runtime, retryable: false,
             }),
         });
-        for (const block of input.metadata ?? []) {
-            const match = /^([a-zA-Z][a-zA-Z0-9_]*)=(.*)$/su.exec(block.trim());
-            if (match === null) return fail("invalid-metadata", "Execution options use `{name=value}`.");
-            const field = match[1]!;
-            const value = match[2]!;
+        const read = MetadataOptions.parse(input.metadata, "executor:metadata", { runtime: input.runtime });
+        if ("failure" in read) return read;
+        const options: Options = { args: [] };
+        for (const [field, value] of Object.entries(read.options)) {
             if (field !== "cwd" && !(accepted.args && field === "args") && !(accepted.stdin && field === "stdin")) {
                 return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`);
             }
-            if (fields.has(field)) return fail("duplicate-metadata", `Execution option '${field}' occurs more than once.`);
-            fields.add(field);
             if (field === "stdin") {
-                if (value !== "open") return fail("invalid-stdin", "Execution stdin accepts only 'open'.");
+                if (value !== "open") return fail("invalid-stdin", 'Execution stdin accepts only "open".');
                 options.stdin = "open";
                 continue;
             }
             if (field === "cwd") {
-                if (value.length === 0 || value.includes("\0")) return fail("invalid-cwd", "Execution cwd must be a nonempty directory path without NUL.");
+                if (typeof value !== "string" || value.length === 0 || value.includes("\0")) return fail("invalid-cwd", "Execution cwd must be a nonempty directory path string without NUL.");
                 options.cwd = value;
                 continue;
             }
-            let args: unknown;
-            try {
-                args = JSON.parse(value);
-            } catch (cause) {
-                if (!(cause instanceof SyntaxError)) throw cause;
+            if (!Array.isArray(value) || !value.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
                 return fail("invalid-args", "Execution args must be a JSON array of strings without NUL.");
             }
-            if (!Array.isArray(args) || !args.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
-                return fail("invalid-args", "Execution args must be a JSON array of strings without NUL.");
-            }
-            options.args = args;
+            options.args = value;
         }
         return { options };
     }

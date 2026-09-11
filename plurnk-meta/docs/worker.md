@@ -27,7 +27,7 @@ console.log(greet("world"));
 ````
 
 Control addresses contain only scheme and authority: no trailing slash,
-userinfo, port, query, fragment, or `{metadata}` modifier.
+userinfo, port, query, fragment, or `[metadata]` modifier.
 
 ## Turn sources
 

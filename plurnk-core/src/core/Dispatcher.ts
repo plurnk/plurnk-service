@@ -754,7 +754,7 @@ export default class Dispatcher {
                 result: Dispatcher.#failure(
                     "scheme-metadata-unsupported",
                     400,
-                    `Scheme '${routedScheme}' does not accept the {metadata} modifier.`,
+                    `Scheme '${routedScheme}' does not accept the [metadata] modifier.`,
                     {},
                     { scheme: routedScheme, retryable: false },
                 ),

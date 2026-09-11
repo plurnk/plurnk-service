@@ -37,6 +37,8 @@ export { default as OutputScheme } from "./OutputScheme.ts";
 export { default as ResourceNames } from "./ResourceNames.ts";
 export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as Results } from "./Results.ts";
+export { default as MetadataOptions } from "./MetadataOptions.ts";
+export type { MetadataOptionsParsed } from "./MetadataOptions.ts";
 export { default as PacketSections } from "./PacketSections.ts";
 export { InvalidOperationResultError } from "./Results.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";

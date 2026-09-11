@@ -1,7 +1,7 @@
 # python3
 
-For continuing input, launch with `{stdin=open}`, then SEND exact text to the
-returned execution address; `{eof=true}` closes stdin. See the
+For continuing input, launch with `[{"stdin": "open"}]`, then SEND exact text to the
+returned execution address; `[{"eof": true}]` closes stdin. See the
 [live-input example](node.md#live-input), including newline framing.
 
 The body is Python code, run with `python3 -c`. A script target instead runs
@@ -13,10 +13,10 @@ import json, sys
 print(json.dumps({"python": list(sys.version_info[:2])}))
 ````
 
-````python3 (tools/report.py) {args=["--help"]}
+````python3 (tools/report.py) [{"args": ["--help"]}]
 ````
 
-Each argument is a literal string, without shell expansion. `{cwd=<directory>}`
+Each argument is a literal string, without shell expansion. `[{"cwd": "<directory>"}]`
 selects the working directory; otherwise it remains the workspace root. The
 same options apply to local and `worker://` script targets. Native skill files
 retain their sibling imports and source-relative assets.

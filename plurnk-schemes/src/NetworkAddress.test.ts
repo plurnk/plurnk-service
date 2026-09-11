@@ -49,7 +49,7 @@ test("render encodes canonical path parentheses without rewriting query spelling
 });
 
 test("fragment, credentials, and request metadata are excluded from identity and transport", () => {
-    const address = network("https://alice:secret@example.com/x?q=1#preview{Authorization: Bearer secret}");
+    const address = network("https://alice:secret@example.com/x?q=1#preview[{\"Authorization\": \"Bearer secret\"}]");
     assert.equal(address.authority, "example.com");
     assert.equal(address.pathname, "/x?q=1");
     assert.equal(address.url, "https://example.com/x?q=1");

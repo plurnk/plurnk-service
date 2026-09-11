@@ -84,14 +84,14 @@ test("{§executor-stdin}: a script's initial body precedes later input without i
     let receiver: ExecInputReceiver | undefined;
     let stdout = "";
     const result = new SubprocessExecutor({ runtime: "node", glyph: "n" }).run({
-        runtime: "node", body: "initial\n", target, cwd: directory, metadata: ["stdin=open"],
+        runtime: "node", body: "initial\n", target, cwd: directory, metadata: ['{"stdin": "open"}'],
         signal: controller.signal, registerInput: (input) => { receiver = input; },
         write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; },
         setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
     });
     t.after(async () => { controller.abort({ signal: "SIGKILL" }); await result; });
     assert.ok(receiver);
-    assert.equal((await receiver({ body: "later", metadata: ["eof=true"], signal: controller.signal })).status, 200);
+    assert.equal((await receiver({ body: "later", metadata: ['{"eof": true}'], signal: controller.signal })).status, 200);
     assert.equal((await result).status, 200);
     assert.equal(stdout, "initial\nlater");
 });

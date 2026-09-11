@@ -2297,7 +2297,7 @@ preparation result and retains its cwd; it neither parses option names nor
 redirects metadata to a source scheme. An executor without preparation accepts
 no metadata. A `script`-kind target ({§executor-invocation}) is the program: core inspects it before
 anything spawns — a file is the script; a directory is refused `400 target-not-a-program`,
-pointing at `{cwd=…}`; an absent path is refused `400 target-not-found`, giving the
+pointing at `[{"cwd": "…"}]`; an absent path is refused `400 target-not-found`, giving the
 applicable accepted form without inferring what the model meant. When the target is a
 registered tool of another executor, recovery gives that tool's exact bracketed
 invocation; otherwise it points at an existing script or a bare shell-command body. A non-file resource

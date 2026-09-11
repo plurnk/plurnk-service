@@ -16,7 +16,7 @@ authored against the DB-free
 | ```` ```SEND (http(s)://…) ```` with body             | POST the body and stream the response                                                     |
 | ```` ```EDIT (http(s)://…) ```` with body             | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
 | ```` ```KILL (http(s)://…) ````                       | Cancel a live acquisition of the address, or forget its stored response                 |
-| ```` ```KILL (http(s)://…) {remote} ````                 | DELETE the remote resource and stream the response                                        |
+| ```` ```KILL (http(s)://…) [{"remote": true}] ````                 | DELETE the remote resource and stream the response                                        |
 
 A path-pattern FIND surveys already-materialized web entries; it does not crawl
 or discover the remote web. Exact matcher FIND shares the standard flat

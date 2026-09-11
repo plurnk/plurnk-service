@@ -7,8 +7,8 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("{§exec-input}: the production loop sends stdin, waits for EOF completion, and observes the real result", async () => {
     const mock = new StreamMock({ contextWindow: 100_000, responses: [
-        makeMockResponse('````node {stdin=open}\nprocess.stdin.on("data", d => process.stdout.write("received:" + d));\n````\n\n````TASK\n[{"content":"Deliver input to the process.","status":"in_progress"}]\n````', 10),
-        makeMockResponse('````SEND ($STREAM) {eof=true}\ninput-witness\n````\n\n````TASK\n[{"content":"Observe the output.","status":"waiting"}]\n````', 10),
+        makeMockResponse('````node [{"stdin": "open"}]\nprocess.stdin.on("data", d => process.stdout.write("received:" + d));\n````\n\n````TASK\n[{"content":"Deliver input to the process.","status":"in_progress"}]\n````', 10),
+        makeMockResponse('````SEND ($STREAM) [{"eof": true}]\ninput-witness\n````\n\n````TASK\n[{"content":"Observe the output.","status":"waiting"}]\n````', 10),
         makeMockResponse('````SEND\nVerified the process response.\n````\n\n````TASK\n[{"content":"Observed input-witness.","status":"completed"}]\n````', 10),
     ] });
     await withDaemon(mock, async (db, _daemon, address) => {
@@ -34,7 +34,7 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
 for (const action of ["cancel", "stop"] as const) {
     test(`{§exec-input}: daemon ${action} reaps a real input-open process without a spurious model wake`, async () => {
         const mock = new StreamMock({ contextWindow: 100_000, responses: [
-            makeMockResponse('````node {stdin=open}\nconsole.log(process.pid); process.stdin.resume();\n````\n\n````TASK\n[{"content":"Await process input.","status":"waiting"}]\n````'),
+            makeMockResponse('````node [{"stdin": "open"}]\nconsole.log(process.pid); process.stdin.resume();\n````\n\n````TASK\n[{"content":"Await process input.","status":"waiting"}]\n````'),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `stdin-${action}` });

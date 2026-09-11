@@ -1,11 +1,11 @@
 # bun
 
-For continuing input, launch with `{stdin=open}`, then SEND exact text to the
-returned execution address; `{eof=true}` closes stdin. See the
+For continuing input, launch with `[{"stdin": "open"}]`, then SEND exact text to the
+returned execution address; `[{"eof": true}]` closes stdin. See the
 [live-input example](node.md#live-input), including newline framing.
 
 The body is TypeScript or JavaScript, run with `bun -e`. A script target runs
-that file and receives the body as stdin; `{args=[...]}` passes literal
+that file and receives the body as stdin; `[{"args": [...]}]` passes literal
 arguments, readable as `Bun.argv` or `process.argv`.
 
 ````bun <!-- the body is the program -->
@@ -13,7 +13,7 @@ const file = Bun.file("package.json");
 console.log((await file.json()).name);
 ````
 
-````bun (scripts/build.ts) {args=["--watch=false"]}
+````bun (scripts/build.ts) [{"args": ["--watch=false"]}]
 ````
 
 `console.log` streams to `#stdout`, `console.error` to `#stderr`; an uncaught

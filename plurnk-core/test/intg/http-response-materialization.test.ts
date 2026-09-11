@@ -53,7 +53,7 @@ const statement = (
 };
 
 const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
-    const modifiers = metadata.map((block) => ` {${block}}`).join("");
+    const modifiers = metadata.map((block) => ` [${block}]`).join("");
     const parsed = PlurnkParser.parse(`
 \`\`\`READ (${target})${modifiers}\`\`\`
 \`\`\`TASK
@@ -395,7 +395,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         const publicRead = parsedRead("https://93.184.216.34/account");
         const privateRead = parsedRead(
             "https://93.184.216.34/account",
-            ["Authorization: Bearer private"],
+            ['{"Authorization": "Bearer private"}'],
         );
 
         assert.equal((await readHttp(http, publicRead, ctx)).status, 200);

@@ -204,7 +204,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
         const statements: ExecStatement[] = [
             execStmt("tool", null, "inline"),
             execStmt("tool", "data.txt", "file input"),
-            { ...execStmt("tool", null, "directory cwd"), metadata: ["cwd=work"] },
+            { ...execStmt("tool", null, "directory cwd"), metadata: ['{"cwd": "work"}'] },
             { ...execStmt("tool", null, ""), executor: "tool", target: schemeTarget },
             { ...execStmt("tool", null, "filter"), executor: "tool", target: schemeTarget },
         ];

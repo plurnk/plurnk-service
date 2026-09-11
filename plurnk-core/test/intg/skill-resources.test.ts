@@ -152,7 +152,7 @@ for (const [proposals, withOptions] of [
         ].join("\n"));
         const provider = new CapturingMock({ contextWindow: 32768, responses: [
             turn("```READ (skill://sample/scripts/main.mjs) <1,-1>```"),
-            turn(PlurnkParser.frame(`node (skill://sample/scripts/main.mjs)${withOptions ? ` {cwd=output folder} {args=${JSON.stringify(argv)}}` : ""}`, withOptions ? stdin : null)),
+            turn(PlurnkParser.frame(`node (skill://sample/scripts/main.mjs)${withOptions ? ` [${JSON.stringify({ cwd: "output folder", args: argv })}]` : ""}`, withOptions ? stdin : null)),
             turn("", true),
         ] });
         await withDaemon(provider, async (_db, _daemon, addr) => {

@@ -15,7 +15,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
         {
             op: "FIND", annotation: "workspace files",
             target: { kind: "local", raw: "*" },
-            metadata: ["trace: one", "shape: {nested}"], lineMarker: { marks: [1, -1] }, body: null, position: UNKNOWN_POSITION,
+            metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, body: null, position: UNKNOWN_POSITION,
         },
         {
             op: "TASK", annotation: null, target: null, metadata: null,
@@ -24,7 +24,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        "````FIND (*) <1,-1> {trace: one} {shape: {nested}} <!-- workspace files -->",
+        "````FIND (*) <1,-1> [{\"trace\": \"one\", \"shape\": {\"nested\": true}}] <!-- workspace files -->",
         "````",
         "",
         "````TASK",
@@ -33,7 +33,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "TASK"]);
-    assert.deepEqual(parsed[0]?.op === "FIND" ? parsed[0].metadata : undefined, ["trace: one", "shape: {nested}"]);
+    assert.deepEqual(parsed[0]?.op === "FIND" ? parsed[0].metadata : undefined, ['{"trace": "one", "shape": {"nested": true}}']);
     assert.deepEqual(parsed[1]?.op === "TASK" ? parsed[1].body : null, statements[1].body);
 });
 

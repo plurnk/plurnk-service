@@ -30,7 +30,7 @@ interface OpSendParams {
     body?: string;
 }
 
-// {§exec-executor-slot} — the fence name selects the executor; `{cwd=…}` names the directory; the body is the program.
+// {§exec-executor-slot} — the fence name selects the executor; `[{"cwd": "…"}]` names the directory; the body is the program.
 interface OpExecParams {
     cwd?: string;
     runtime?: string;
@@ -137,7 +137,7 @@ export default class Dsl {
             op: "EXEC",
             executor: p.runtime ?? "",
             target: "",
-            metadata: p.cwd === undefined ? "" : `{cwd=${p.cwd}}`,
+            metadata: p.cwd === undefined ? "" : `[${JSON.stringify({ cwd: p.cwd })}]`,
             lineMarker: "",
             body: p.command ?? "",
         }));

@@ -446,7 +446,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 return refuse(
                     "target-not-a-program",
                     `${runtime} target '${target}' is a directory, not a program.`,
-                    "Run in a directory with `{cwd=<directory>}` and put the command in the body.",
+                    "Run in a directory with `[{\"cwd\": \"<directory>\"}]` and put the command in the body.",
                     { target },
                 );
             }

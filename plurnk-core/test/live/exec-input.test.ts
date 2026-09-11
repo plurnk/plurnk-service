@@ -7,8 +7,8 @@ test("live executor input: SEND feeds a running Node process", async (t) => {
     try {
         const result = await liveLoop(s, 2, { maxTurns: 8, prompt: [
             "Exercise live input to a running process.",
-            "Launch node with {stdin=open}; its program must collect stdin and, on EOF, print that input reversed.",
-            "In a later turn, SEND the exact text oranges to the returned node execution address with {eof=true}.",
+            "Launch node with [{\"stdin\": \"open\"}]; its program must collect stdin and, on EOF, print that input reversed.",
+            "In a later turn, SEND the exact text oranges to the returned node execution address with [{\"eof\": true}].",
             "Observe the actual process output, then report it and complete the task. Do not use a one-shot program with hardcoded input.",
         ].join("\n") }, { signal: t.signal });
         assert.equal(result.finalStatus, 200);

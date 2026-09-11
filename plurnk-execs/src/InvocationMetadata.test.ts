@@ -15,7 +15,7 @@ const executor = new SubprocessExecutor({ runtime: "node", glyph: "n" });
 
 test("{§executor-metadata} script arguments preserve exact strings without interpreting shell syntax", async () => {
     const args = ["--help", "two words", "", "$(touch forbidden)", "'quoted'", "}", "line\nbreak", "snowman ☃"];
-    const request = input([`args=${JSON.stringify(args)}`]);
+    const request = input([JSON.stringify({ args })]);
     const preparation = await executor.prepare(request);
     assert.equal(preparation.status, 200);
     assert.equal(preparation.cwd, request.cwd);
@@ -23,21 +23,22 @@ test("{§executor-metadata} script arguments preserve exact strings without inte
     assert.equal(request.body, "unchanged stdin");
 });
 
+// Blocks are the inner text of one `[…]` slot: JSON option objects ({§scheme-metadata-modifier}).
 for (const [blocks, code] of [
-    [["args=--help"], "invalid-args"],
-    [['args="--help"'], "invalid-args"],
-    [["args={}"], "invalid-args"],
-    [["args=null"], "invalid-args"],
-    [["args=[1]"], "invalid-args"],
-    [['args=["\\u0000"]'], "invalid-args"],
-    [["args=[]", "args=[]"], "duplicate-metadata"],
-    [["cwd=.", "cwd=.."], "duplicate-metadata"],
-    [["cwd="], "invalid-cwd"],
-    [["cwd=bad\0path"], "invalid-cwd"],
-    [["flag=yes"], "metadata-unsupported"],
-    [["stdin=closed"], "invalid-stdin"],
-    [["stdin=open", "stdin=open"], "duplicate-metadata"],
-    [["--help"], "invalid-metadata"],
+    [['{"args": "--help"}'], "invalid-args"],
+    [['{"args": {}}'], "invalid-args"],
+    [['{"args": null}'], "invalid-args"],
+    [['{"args": [1]}'], "invalid-args"],
+    [['{"args": ["\\u0000"]}'], "invalid-args"],
+    [['{"args": []}', '{"args": []}'], "metadata-repeated"],
+    [['{"cwd": ""}'], "invalid-cwd"],
+    [['{"cwd": 7}'], "invalid-cwd"],
+    [['{"cwd": "bad\\u0000path"}'], "invalid-cwd"],
+    [['{"flag": "yes"}'], "metadata-unsupported"],
+    [['{"stdin": "closed"}'], "invalid-stdin"],
+    [["--help"], "metadata-invalid"],
+    [["42"], "metadata-invalid"],
+    [['"a string"'], "metadata-invalid"],
 ] as const) {
     test(`{§executor-metadata} rejects ${JSON.stringify(blocks)} as ${code}`, async () => {
         const result = await executor.prepare(input(blocks));
@@ -48,19 +49,19 @@ for (const [blocks, code] of [
 }
 
 test("{§executor-metadata} argument support is subprocess-owned, for scripts and inline programs", async () => {
-    const withoutTarget = await executor.prepare(input(["args=[]"], { target: null }));
+    const withoutTarget = await executor.prepare(input(['{"args": []}'], { target: null }));
     assert.equal(withoutTarget.status, 200);
     class Pure extends BaseExecutor {
         get channels() { return { results: { mimetype: "text/plain" } }; }
         async run() { return { status: 200 }; }
     }
     const pure = new Pure({ runtime: "pure", glyph: "p" });
-    const unsupported = await pure.prepare(input(["args=[]"], { runtime: "pure" }));
+    const unsupported = await pure.prepare(input(['{"args": []}'], { runtime: "pure" }));
     assert.equal(unsupported.status, 400);
     assert.match(unsupported.problem?.type ?? "", /metadata-unsupported$/);
     assert.equal((await pure.prepare(input(null))).status, 200);
-    assert.equal((await pure.prepare(input(["stdin=open"]))).status, 400);
-    assert.equal((await executor.prepare(input(["stdin=open"]))).status, 200);
+    assert.equal((await pure.prepare(input(['{"stdin": "open"}']))).status, 400);
+    assert.equal((await executor.prepare(input(['{"stdin": "open"}']))).status, 200);
 });
 
 test("{§executor-metadata} cwd is prepared once from the supplied environment", async (t) => {
@@ -70,12 +71,12 @@ test("{§executor-metadata} cwd is prepared once from the supplied environment",
     await mkdir(directory);
     await writeFile(join(root, "plain-file"), "not a directory");
     for (const cwd of ["directory with spaces", directory]) {
-        const prepared = await executor.prepare(input([`cwd=${cwd}`], { cwd: root }));
+        const prepared = await executor.prepare(input([JSON.stringify({ cwd })], { cwd: root }));
         assert.equal(prepared.status, 200);
         assert.equal(prepared.cwd, directory);
     }
     for (const cwd of ["missing", "plain-file", "plain-file/nested"]) {
-        const failed = await executor.prepare(input([`cwd=${cwd}`], { cwd: root }));
+        const failed = await executor.prepare(input([JSON.stringify({ cwd })], { cwd: root }));
         assert.equal(failed.status, 400);
         assert.match(failed.problem?.type ?? "", /cwd-not-found$/);
     }

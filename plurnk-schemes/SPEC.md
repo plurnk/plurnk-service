@@ -45,7 +45,7 @@ class Notes {
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring EDIT support. |
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. It implies published anchors only on resources authorized for model writes by {§entry-address-resolution}; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
-| §manifest-metadata-modifier `metadataModifier?` | `true` declares that the scheme owns the opaque, ordered `{metadata}` modifier. Absent/false rejects it before handler invocation. |
+| §manifest-metadata-modifier `metadataModifier?` | `true` declares that the scheme owns the `[metadata]` modifier (one JSON array of option objects). Absent/false rejects it before handler invocation. |
 | §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker:///_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |

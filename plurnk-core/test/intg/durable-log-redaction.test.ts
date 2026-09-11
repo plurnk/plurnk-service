@@ -119,7 +119,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
         const read = parseClientStatement(
-            "```READ (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) {Authorization: Bearer primary-header-secret} {X-Api-Key: secondary-header-secret}```",
+            "```READ (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) [{\"Authorization\": \"Bearer primary-header-secret\", \"X-Api-Key\": \"secondary-header-secret\"}]```",
             "READ",
         );
         const copy = parseClientStatement(
@@ -155,8 +155,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
         assert.equal(observedTarget.username, "primary-user");
         assert.equal(observedTarget.password, "primary-password");
         assert.deepEqual(observed.metadata, [
-            "Authorization: Bearer primary-header-secret",
-            "X-Api-Key: secondary-header-secret",
+            '{"Authorization": "Bearer primary-header-secret", "X-Api-Key": "secondary-header-secret"}',
         ]);
         assert.equal(observedTarget.query, "ticket=query-visible");
         assert.equal(urlTarget(read).username, "primary-user", "the durable projection never mutates execution input");
@@ -193,7 +192,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
         assert.equal(durableReadTarget.raw, "credential-probe://__redacted__:__redacted__@example.test/value?ticket=query-visible#body");
         assert.equal(durableReadTarget.username, REDACTED);
         assert.equal(durableReadTarget.password, REDACTED);
-        assert.deepEqual(readTx.metadata, [REDACTED, REDACTED]);
+        assert.deepEqual(readTx.metadata, [REDACTED]);
         assert.equal(durableReadTarget.query, "ticket=query-visible");
 
         for (const op of ["COPY", "MOVE"] as const) {

@@ -20,7 +20,7 @@ are never presented by default.
 | ````` ````SEND (https://…) ````` with body             | POST          | Submit the body and stream the response                                  |
 | ````` ````EDIT (https://…) ````` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
 | ````` ````KILL (https://…) `````                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
-| ````` ````KILL (https://…) {remote} `````              | DELETE        | Delete the remote resource and stream the response                       |
+| ````` ````KILL (https://…) [{"remote": true}] `````              | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. For matched content, READ
@@ -100,13 +100,13 @@ forms therefore have identical selection and scope semantics.
 An unavailable channel returns `404 channel-not-found` with the available
 channels; it does not mean that the containing URL is missing.
 
-Request headers are ordered `{Key: value}` metadata blocks after the complete
+Request headers are ordered `[{"Key": "value"}]` metadata blocks after the complete
 target, one header per block:
 
-````READ (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}
+````READ (https://api.example.com/v1/me) [{"Authorization": "Bearer TOKEN", "Accept": "application/json"}]
 ````
 
-````EDIT (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
+````EDIT (https://api.example.com/v1/thing/42) [{"Authorization": "Bearer TOKEN", "Content-Type": "application/json"}]
 {"done":true}
 ````
 
@@ -121,9 +121,9 @@ GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source. The addressed GitHub URL remains entry
 identity. POST, PUT, and DELETE never use that rewrite.
 
-A `KILL` of an https:// address never reaches the remote unless it carries the `{remote}`
+A `KILL` of an https:// address never reaches the remote unless it carries the `[{"remote": true}]`
 block: while an acquisition is in flight it cancels that acquisition, otherwise it forgets
-the stored response so the next READ must acquire it again. With `{remote}`, any other
+the stored response so the next READ must acquire it again. With `[{"remote": true}]`, any other
 metadata blocks are the DELETE request's headers.
 
 For a persistent bidirectional connection, use `wss://`.

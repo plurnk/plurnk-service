@@ -1,5 +1,5 @@
 import type { Writable } from "node:stream";
-import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { MetadataOptions, Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ExecInputMessage } from "./types.ts";
 
 // {§executor-stdin} The consumer serializes deliveries; the pipe owns framing and EOF.
@@ -22,18 +22,20 @@ export default class SubprocessInput {
     }
 
     receive({ body, metadata, signal }: ExecInputMessage): Promise<SchemeResult> {
-        const blocks = metadata ?? [];
-        if (blocks.length > 1 || (blocks.length === 1 && blocks[0]!.trim() !== "eof=true")) {
+        const read = MetadataOptions.parse(metadata, "executor:input");
+        if ("failure" in read) return Promise.resolve(read.failure);
+        const keys = Object.keys(read.options);
+        if (keys.some((key) => key !== "eof") || (keys.length === 1 && read.options.eof !== true)) {
             return Promise.resolve(Results.failure("executor:input", "invalid-input-metadata", 400,
-                "Stdin SEND accepts only one optional `{eof=true}` block.", {}, { retryable: false }));
+                'Stdin SEND accepts only the optional [{"eof": true}] option.', {}, { retryable: false }));
         }
+        const eof = read.options.eof === true;
         const stream = this.#stream;
         if (stream.destroyed || stream.writableEnded) {
             return Promise.resolve(Results.failure("executor:input", "input-closed", 410,
                 "Execution stdin is closed.", {}, { retryable: false }));
         }
         if (this.#error !== null) return Promise.resolve(this.#failure(this.#error));
-        const eof = blocks.length === 1;
         return new Promise((resolve) => {
             let settled = false;
             const finish = (result: SchemeResult): void => {

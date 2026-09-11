@@ -1,7 +1,7 @@
 # sh
 
-For continuing input, launch with `{stdin=open}`, then SEND exact text to the
-returned execution address; `{eof=true}` closes stdin. See the
+For continuing input, launch with `[{"stdin": "open"}]`, then SEND exact text to the
+returned execution address; `[{"eof": true}]` closes stdin. See the
 [live-input example](node.md#live-input), including newline framing.
 
 The `sh` fence runs the body via `sh -c`, character-perfect including whitespace.
@@ -21,9 +21,9 @@ read plurnk's credentials. The project's environment passes through.
 
 The working directory is the workspace project root — where file operations
 write — or, in a workspace without one, the directory the shell would run in
-anyway. A `{cwd=<directory>}` block on the opening fence line overrides it for its body:
+anyway. A `[{"cwd": "<directory>"}]` block on the opening fence line overrides it for its body:
 
-````sh {cwd=./dir}
+````sh [{"cwd": "./dir"}]
 pwd
 ````
 
@@ -34,7 +34,7 @@ stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
 
-Script arguments go in `{args=["--release","two words"]}`: each string is
+Script arguments go in `[{"args": ["--release","two words"]}]`: each string is
 one literal argument, without shell expansion. The same options apply to
 local, `worker://`, and `skill://` script targets across the common interpreters.
 

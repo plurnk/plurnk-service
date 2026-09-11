@@ -18,7 +18,7 @@ test("{§engine-cycle-evidence} every operational operand distinguishes activity
         ["```COPY (a) <1> (b) <0>```", "```COPY (a) <1> (c) <0>```"],
         ["```MOVE (a) <1> (b) <0>```", "```MOVE (a) <2> (b) <0>```"],
         ["```COPY (a) <1> (b) <0>```", "```COPY (a) <1> (b) <-1>```"],
-        ["```READ (https://example.test/) {accept=text/plain}```", "```READ (https://example.test/) {accept=application/json}```"],
+        ["```READ (https://example.test/) [{\"Accept\": \"text/plain\"}]```", "```READ (https://example.test/) [{\"Accept\": \"application/json\"}]```"],
         ["```SEND (worker://child)\none\n```", "```SEND (worker://child)\ntwo\n```"],
         ["```WORK (worker://child)\none\n```", "```WORK (worker://child)\ntwo\n```"],
         ["```READ (a)```\n```EDIT (b) <1>\nx\n```", "```EDIT (b) <1>\nx\n```\n```READ (a)```"],

@@ -70,7 +70,7 @@ export default class A2a implements SchemeHandler {
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
         if (request.metadata !== null) {
-            return A2a.#problem("metadata-unsupported", 400, "A2A does not accept the {metadata} modifier.", {
+            return A2a.#problem("metadata-unsupported", 400, "A2A does not accept the [metadata] modifier.", {
                 retryable: false,
             });
         }
@@ -145,7 +145,7 @@ export default class A2a implements SchemeHandler {
             return A2a.#passthrough(A2a.#problem(
                 "metadata-unsupported",
                 400,
-                "A2A does not accept the {metadata} modifier.",
+                "A2A does not accept the [metadata] modifier.",
                 { retryable: false },
             ));
         }

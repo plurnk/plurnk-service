@@ -69,10 +69,10 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
 
     try {
         const supported = read(
-            "```READ (opaque:///record) {first: {nested}} {second: duplicate}```",
+            "```READ (opaque:///record) [{\"first\": {\"nested\": true}}] [{\"second\": \"duplicate\"}]```",
         );
         assert.equal(supported.target?.raw, "opaque:///record");
-        assert.deepEqual(supported.metadata, ["first: {nested}", "second: duplicate"]);
+        assert.deepEqual(supported.metadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
         const accepted = await engine.dispatch({
             statement: supported,
             ...env,
@@ -80,19 +80,19 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
             origin: "model",
         });
         assert.equal(accepted.status, 200);
-        assert.deepEqual(supportedMetadata, ["first: {nested}", "second: duplicate"]);
+        assert.deepEqual(supportedMetadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
 
         const routedAlias = await engine.dispatch({
-            statement: read("```READ (http://example.test/record) {Accept: text/plain}```"),
+            statement: read("```READ (http://example.test/record) [{\"Accept\": \"text/plain\"}]```"),
             ...env,
             sequence: 2,
             origin: "model",
         });
         assert.equal(routedAlias.status, 200);
-        assert.deepEqual(routedAliasMetadata, ["Accept: text/plain"]);
+        assert.deepEqual(routedAliasMetadata, ['{"Accept": "text/plain"}']);
 
         const rejected = await engine.dispatch({
-            statement: read("```READ (plain:///record) {anything the scheme might define}```"),
+            statement: read("```READ (plain:///record) [{\"anything\": \"the scheme might define\"}]```"),
             ...env,
             sequence: 3,
             origin: "model",
@@ -102,7 +102,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
             rejected.problem?.type,
             "https://problems.plurnk.xyz/engine/dispatcher/scheme-metadata-unsupported",
         );
-        assert.equal(rejected.problem?.detail, "Scheme 'plain' does not accept the {metadata} modifier.");
+        assert.equal(rejected.problem?.detail, "Scheme 'plain' does not accept the [metadata] modifier.");
         assert.equal(unsupportedInvoked, false);
     } finally {
         await schemes.close();
@@ -134,7 +134,7 @@ for (const op of ["COPY", "MOVE"] as const) {
                 await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname, content });
             }
             const parsed = PlurnkParser.parseStatements(
-                `\`\`\`${op} (opaque:///source) <2> {source: true} (opaque:///destination) <2> {destination: true}\`\`\``,
+                `\`\`\`${op} (opaque:///source) <2> [{"source": "true"}] (opaque:///destination) <2> [{"destination": "true"}]\`\`\``,
             );
             assert.equal(parsed.unparsedTail, undefined);
             assert.equal(parsed.items.length, 1);
@@ -142,10 +142,10 @@ for (const op of ["COPY", "MOVE"] as const) {
             assert.ok(item?.kind === "statement" && item.statement.op === op);
             const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
             assert.equal(result.status, 200);
-            assert.deepEqual(reads, [{ path: "/source", metadata: ["source: true"] }]);
+            assert.deepEqual(reads, [{ path: "/source", metadata: ['{"source": "true"}'] }]);
             assert.deepEqual(writes, [
-                { path: "opaque:///destination", metadata: ["destination: true"] },
-                ...(op === "MOVE" ? [{ path: "opaque:///source", metadata: ["source: true"] }] : []),
+                { path: "opaque:///destination", metadata: ['{"destination": "true"}'] },
+                ...(op === "MOVE" ? [{ path: "opaque:///source", metadata: ['{"source": "true"}'] }] : []),
             ]);
             for (const [pathname, expected] of [
                 ["/source", op === "COPY" ? "first\nselected\nlast" : "first\nlast"],

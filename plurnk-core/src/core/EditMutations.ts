@@ -289,7 +289,7 @@ export default class EditMutations {
         }
         if (statement.metadata !== null && manifest.metadataModifier !== true) {
             return MutationEffects.failure("scheme-metadata-unsupported", 400,
-                `Scheme '${schemeName}' does not accept the {metadata} modifier.`, {},
+                `Scheme '${schemeName}' does not accept the [metadata] modifier.`, {},
                 { scheme: schemeName, operation: "EDIT", retryable: false });
         }
         const addressedScheme = statement.target.kind === "url" ? statement.target.scheme : schemeName;

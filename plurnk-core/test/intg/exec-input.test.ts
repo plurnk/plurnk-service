@@ -78,14 +78,14 @@ test("{§exec-input}: SEND reaches an invocation-local plugin receiver without a
     try {
         assert.equal((await f.dispatch("```dialogue\nstart\n```")).status, 200);
         await executor.started.promise;
-        const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) {custom=exact}\nraw {JSON} and newline\n\n\`\`\``);
+        const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\nraw {JSON} and newline\n\n\`\`\``);
         assert.equal(result.status, 200);
         assert.equal(result.accepted, true);
-        assert.deepEqual(executor.received, [{ body: "raw {JSON} and newline\n", metadata: ["custom=exact"] }]);
+        assert.deepEqual(executor.received, [{ body: "raw {JSON} and newline\n", metadata: ['{"custom": "exact"}'] }]);
         assert.deepEqual(f.schemes.manifestFor("dialogue", f.workspaceId)?.writableBy, ["plugin"]);
         assert.equal((await f.dispatch(`\`\`\`EDIT (${await executionAddress(f.db, f.turnId, 1)})\nnot input\n\`\`\``)).status, 403);
-        assert.equal((await f.dispatch(`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) {custom=exact}\`\`\``)).status, 400);
-        assert.equal((await f.dispatch("```FIND (dialogue:///*) {custom=exact}```")).status, 400);
+        assert.equal((await f.dispatch(`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\`\`\``)).status, 400);
+        assert.equal((await f.dispatch("```FIND (dialogue:///*) [{\"custom\": \"exact\"}]```")).status, 400);
         executor.finished.resolve();
         await (f.schemes.get("exec") as Exec).idle();
         const closed = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\ntoo late\n\`\`\``);
@@ -197,9 +197,9 @@ test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the 
     const f = await fixture(new Common({ runtime: "node", glyph: "n" }));
     try {
         await f.db.engine_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "accept" }) });
-        const start = await f.dispatch("````node {stdin=open}\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
+        const start = await f.dispatch("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
-        const sent = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) {eof=true}\nexact α\n\n\`\`\`\``);
+        const sent = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
         assert.equal(sent.status, 200);
         assert.equal(sent.bytesAccepted, Buffer.byteLength("exact α\n"));
         assert.equal(sent.inputClosed, true);

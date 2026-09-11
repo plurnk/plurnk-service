@@ -775,7 +775,7 @@ test("READ uses canonical authority/query identity while metadata and fragment s
         seenHeaders = init?.headers;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await prepareRepresentation(new Http(), readStmt(target, null, ["Authorization: Bearer example"]), ctx);
+        const result = await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer example\"}"]), ctx);
         assert.equal(result.status, 200);
     });
     assert.equal(seenUrl, "https://example.com:8443/x?b=2&a=1&a=3");
@@ -818,7 +818,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
             (http: Http, ctx: SchemeCtx) => http.send(sendStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["remote"]), ctx),
+            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["{\"remote\":true}"]), ctx),
         ];
         for (const [index, operation] of operations.entries()) {
             const { ctx, inspect } = makeCtx();
@@ -1605,7 +1605,7 @@ test("DONE: POSTs the body and streams the response", async () => {
         });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["Content-Type: text/plain"]), ctx);
+        const r = await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["{\"Content-Type\":\"text/plain\"}"]), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "POST");
@@ -1642,7 +1642,7 @@ test("READ: {metadata} headers are threaded into the fetch", async () => {
     };
     const target = urlTarget("https://api.x/v1/me", "/v1/me");
     await withFetch(probe as typeof fetch, async () => {
-        await prepareRepresentation(new Http(), readStmt(target, null, ["Authorization: Bearer T", "Accept: application/json"]), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\",\"Accept\":\"application/json\"}"]), ctx);
     });
     // The default web identity rides first when the model supplied no UA block.
     assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
@@ -1658,8 +1658,8 @@ test("HTTP rejects malformed metadata without reflecting its contents", async ()
         ctx,
     );
     assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-header-shape");
-    assert.equal(result.problem?.detail, "HTTP metadata block 1 requires a header name and ':' separator.");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-invalid");
+    assert.equal(result.problem?.detail, "[metadata] must be a JSON array of option objects.");
     assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
 });
 
@@ -1673,7 +1673,7 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
         seenAuth = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
     }) as typeof fetch, async () => {
-        await prepareRepresentation(new Http(), readStmt(target, null, ["Authorization: Bearer T"]), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\"}"]), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
     assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes the materializer");
@@ -1694,7 +1694,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
             urlTarget("https://api.x/thing/42", "/thing/42"),
             '{"done":true}',
             null,
-            ["Content-Type: application/json"],
+            ["{\"Content-Type\":\"application/json\"}"],
         ), ctx);
         assert.equal(r.status, 102);
     });
@@ -1742,7 +1742,7 @@ test("KILL {remote} sends DELETE with the authored precondition", async () => {
         const r = await new Http().kill(killStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             null,
-            ["remote", 'If-Match: "revision-7"'],
+            ["{\"remote\": true, \"If-Match\": \"\\\"revision-7\\\"\"}"],
         ), ctx);
         assert.equal(r.status, 102);
     });
@@ -1839,7 +1839,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
         const operations = [
             (http: Http, ctx: SchemeCtx) => http.send(sendStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["remote"]), ctx),
+            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["{\"remote\":true}"]), ctx),
         ];
         for (const operation of operations) {
             const { ctx, inspect } = makeCtx();
@@ -2262,7 +2262,7 @@ for (const { name, requestHeaders, responseHeaders, expectedValues } of [
             await prepareRepresentation(new Http(), readStmt(
                 urlTarget("https://example.com/variant", "/variant"),
                 null,
-                requestHeaders.map(([name, value]) => `${name}: ${value}`),
+                requestHeaders.length === 0 ? null : [JSON.stringify(Object.fromEntries(requestHeaders))],
             ), ctx);
         });
         const header = inspect().storedEntry?.channels.header?.content ?? "";
@@ -2295,7 +2295,7 @@ test("cache variant: explicit request metadata bypasses a TTL-fresh default repr
             await prepareRepresentation(new Http(), readStmt(
                 urlTarget("https://example.com/account", "/account"),
                 null,
-                ["Authorization: Bearer private"],
+                ["{\"Authorization\":\"Bearer private\"}"],
             ), ctx);
         });
     });
@@ -2320,7 +2320,7 @@ test("cache variant: explicit request metadata also bypasses stale validators", 
             await prepareRepresentation(new Http(), readStmt(
                 urlTarget("https://example.com/account", "/account"),
                 null,
-                ["Authorization: Bearer private"],
+                ["{\"Authorization\":\"Bearer private\"}"],
             ), ctx);
         });
     });
@@ -2388,7 +2388,7 @@ test("exact FIND preparation reacquires request metadata through WebFetcher inst
         const result = await prepareExactFind(new Http(), findStmt(
             urlTarget("https://example.com/account", "/account"),
             null,
-            ["Authorization: Bearer private"],
+            ["{\"Authorization\":\"Bearer private\"}"],
         ), ctx);
         assert.equal(result.status, 200);
     });
@@ -3017,7 +3017,7 @@ test("a model-supplied User-Agent metadata block overrides the default identity"
     };
     const target = urlTarget("https://api.example.com/x", "/x");
     await withFetch(probe as typeof fetch, async () => {
-        await prepareRepresentation(new Http(), readStmt(target, null, ["User-Agent: curl/8"]), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, ["{\"User-Agent\":\"curl/8\"}"]), ctx);
     });
     assert.equal(ua, "curl/8");
 });

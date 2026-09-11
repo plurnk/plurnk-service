@@ -47,11 +47,11 @@ preserved exactly.
 | ```` ```SEND (url) ```` with body                 | POST                                  | Stream and persist the response under the addressed URL                                 |
 | ```` ```EDIT (url) ```` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
 | ```` ```KILL (url) ````                           | None                                  | {§http-kill}: cancel the workspace's live acquisitions of the URL, else delete the local stored entry |
-| ```` ```KILL (url) {remote} ````                  | DELETE                                | Delete the remote resource and stream its response; other metadata blocks are its headers |
+| ```` ```KILL (url) [{"remote": true}] ````                  | DELETE                                | Delete the remote resource and stream its response; other metadata blocks are its headers |
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
-headers are ordered scheme metadata: one `{Key: value}` block after the target
+headers are ordered scheme metadata: one `[{"Key": "value"}]` block after the target
 per header. HTTP alone parses those opaque blocks; the resource target remains
 pure. A loop SEND signal is never the remote HTTP status; remote status and
 headers are persisted in `header`.
@@ -429,7 +429,7 @@ later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
 stored GET remain visible to universal FIND as durable evidence; exact HTTP
 preparation applies the policy above. A metadata-less `KILL` deletes the stored entry ({§http-kill}).
 
-§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** ```` ```KILL (url) ```` cancels all live acquisitions of that exact URL within the workspace — GET, SSE, or mutations — by aborting their registered controllers; each initiating operation settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only ```` ```KILL (url) {remote} ```` sends the HTTP DELETE, and its remaining metadata blocks are that request's headers. A KILL never reaches the remote by accident.
+§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** ```` ```KILL (url) ```` cancels all live acquisitions of that exact URL within the workspace — GET, SSE, or mutations — by aborting their registered controllers; each initiating operation settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only ```` ```KILL (url) [{"remote": true}] ```` sends the HTTP DELETE, and its remaining metadata blocks are that request's headers. A KILL never reaches the remote by accident.
 
 ### §sse Server-sent events
 
@@ -523,5 +523,5 @@ transport-close failures under {§handler-lifecycle}.
 | ------------------ | ------------------------------------------------------------------------------------------------------- |
 | Payload projection | String event data only into `text/plain`; binary data terminates with Plurnk `415` and private-use WebSocket code `4003` |
 | Reconnection       | None; READ again after terminal cleanup                                                                 |
-| Handshake metadata | `{metadata}` is unsupported; the default global-WebSocket identity is used                              |
+| Handshake metadata | `[metadata]` is unsupported; the default global-WebSocket identity is used                              |
 | Runtime            | Node ≥26                                                                                                |

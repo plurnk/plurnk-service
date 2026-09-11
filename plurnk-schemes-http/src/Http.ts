@@ -4,7 +4,7 @@
 
 import { createParser, type ParseError } from "eventsource-parser";
 import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState } from "@plurnk/plurnk-schemes";
-import { MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
+import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, { CACHE_VARIANT_HEADER, MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER, cacheVariantEvidence, classifyCacheVariant, WebMaterializationError, type CacheVariant } from "./WebFetcher.ts";
@@ -292,7 +292,7 @@ export default class Http implements SchemeHandler {
 
     // {§http-kill} — KILL follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
-    // spelling, `### KILL_ (https://…) {remote}`; any other metadata blocks are its headers.
+    // spelling, `KILL (https://…) [{"remote": true}]`; any other metadata keys are its headers.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {
@@ -301,11 +301,12 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        const blocks = statement.metadata ?? [];
-        const remote = blocks.some((block) => block.trim() === "remote");
-        if (remote) {
-            const headers = blocks.filter((block) => block.trim() !== "remote");
-            return this.#requester.request(statement.target, headers.length === 0 ? null : headers, ctx, "DELETE", undefined);
+        const read = MetadataOptions.parse(statement.metadata, "scheme:http");
+        if ("failure" in read) return read.failure as PassthroughResult;
+        if (read.options.remote === true) {
+            const { remote: _remote, ...headers } = read.options;
+            const blocks = Object.keys(headers).length === 0 ? null : [JSON.stringify(headers)];
+            return this.#requester.request(statement.target, blocks, ctx, "DELETE", undefined);
         }
         const address = Http.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
@@ -519,33 +520,23 @@ export default class Http implements SchemeHandler {
         return address;
     }
 
+    // {§scheme-metadata-modifier} The request's [metadata] object is its header map:
+    // every key is a header name and every value a header string. `remote` on KILL
+    // is the one non-header key, consumed before the headers are read.
     static #requestHeaders(
         metadata: readonly string[] | null,
     ): Array<[string, string]> | (PassthroughResult & ChannelProducerResult) {
-        if (metadata === null) return [];
+        const read = MetadataOptions.parse(metadata, "scheme:http");
+        if ("failure" in read) return read.failure as PassthroughResult & ChannelProducerResult;
         const headers: Array<[string, string]> = [];
-        for (const [index, block] of metadata.entries()) {
-            const colon = block.indexOf(":");
-            if (colon < 0) {
-                return Http.#bad(
-                    400,
-                    "http",
-                    "metadata-header-shape",
-                    `HTTP metadata block ${index + 1} requires a header name and ':' separator.`,
-                    { block: index + 1, retryable: false },
-                );
-            }
-            const name = block.slice(0, colon).trim();
+        for (const [name, value] of Object.entries(read.options)) {
             if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u.test(name)) {
-                return Http.#bad(
-                    400,
-                    "http",
-                    "metadata-header-name",
-                    `HTTP metadata block ${index + 1} has an invalid header name.`,
-                    { block: index + 1, retryable: false },
-                );
+                return Http.#bad(400, "http", "metadata-header-name", `HTTP metadata key '${name}' is not a valid header name.`, { retryable: false });
             }
-            headers.push([name, block.slice(colon + 1).trim()]);
+            if (typeof value !== "string") {
+                return Http.#bad(400, "http", "metadata-header-shape", `HTTP header '${name}' requires a string value.`, { retryable: false });
+            }
+            headers.push([name, value.trim()]);
         }
         return headers;
     }

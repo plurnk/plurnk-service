@@ -119,7 +119,7 @@ consumer side of {§executor-role}.
 
 ### §executor-metadata Invocation metadata ownership
 
-The invoked executor owns its `{metadata}` for every target kind. The source
+The invoked executor owns its `[metadata]` for every target kind. The source
 scheme supplies the program or data; it does not inherit the invoking tool's
 options. An internal source READ therefore carries no EXEC metadata. An
 authored READ retains its own source-scheme metadata contract.
@@ -127,8 +127,8 @@ authored READ retains its own source-scheme metadata contract.
 | Stage | Contract |
 | ----- | -------- |
 | Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
-| Framework default | `BaseExecutor.prepare` accepts `{cwd=<directory>}`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. Tools can override preparation to own different metadata. |
-| Subprocess options | `SubprocessExecutor` additionally accepts `{stdin=open}` ({§executor-stdin}) and `{args=["arg",...]}`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
+| Framework default | `BaseExecutor.prepare` accepts `[{"cwd": "<directory>"}]`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. Tools can override preparation to own different metadata. |
+| Subprocess options | `SubprocessExecutor` additionally accepts `[{"stdin": "open"}]` ({§executor-stdin}) and `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
 | Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. The subprocess family uses the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
 
@@ -154,14 +154,14 @@ deliver live input. A receiver must honor cancellation at each delivery boundary
 
 #### §executor-stdin Subprocess input
 
-`SubprocessExecutor` accepts `{stdin=open}` at invocation. The initial recipe
+`SubprocessExecutor` accepts `[{"stdin": "open"}]` at invocation. The initial recipe
 input precedes SEND bodies and stdin remains open; without this option, existing
 batch input and EOF behavior is unchanged. The same input adapter serves `jq`.
 
 | SEND input | Effect |
 | --- | --- |
 | Body, no metadata | Write its exact UTF-8 bytes, including authored newlines; no implicit newline. Empty input is a no-op, not EOF. |
-| `{eof=true}` with optional body | Write the body, then close stdin. Later SENDs return `410 input-closed`, including repeated EOF. |
+| `[{"eof": true}]` with optional body | Write the body, then close stdin. Later SENDs return `410 input-closed`, including repeated EOF. |
 | Other or duplicate metadata | `400`, before writing. |
 | Pipe failure | Factual delivery failure with the native error code; no automatic retry. |
 | Delivery cancellation | Stop the pending write and close stdin. The process retains its ordinary lifecycle. |
@@ -589,7 +589,7 @@ interface SpawnArgs {
 With a target, the target is the program and the body is its stdin. Each leaf
 uses its interpreter's file form (`awk -f <target>`, for example). The working
 directory is the consumer's `cwd` — the project root, or the directory a
-`{cwd=<directory>}` block on the heading names ({§exec-executor-slot}); a
+`[{"cwd": "<directory>"}]` block on the heading names ({§exec-executor-slot}); a
 directory is never a target. Data runtimes define their own declared target
 kind and role.
 
