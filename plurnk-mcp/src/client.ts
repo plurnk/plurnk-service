@@ -19,6 +19,11 @@ import {
     type Progress,
     type ReadResourceRequest,
     type ReadResourceResult,
+    type Request,
+    type RequestMethod,
+    type RequestOptions,
+    type ResultTypeMap,
+    type StandardSchemaV1,
     type Tool,
 } from "@modelcontextprotocol/client";
 import {
@@ -327,6 +332,48 @@ const openTransport = (
     });
 };
 
+// {§mcp-catalog-convergence} — a catalog is complete or it is an error. The SDK's aggregating list
+// walk (`listTools`, `listResources`, `listResourceTemplates`, `listPrompts`) stops silently when a
+// server hands back a cursor it already handed back, then drops `nextCursor` and caches the partial
+// aggregate as if it were whole. This client watches the pages the SDK requests and refuses the page
+// that repeats a cursor, so a non-converging server fails the listing loudly and nothing partial is
+// published or cached. Pagination, caching, and the page cap stay the SDK's.
+const LIST_METHODS = new Set(["tools/list", "resources/list", "resources/templates/list", "prompts/list"]);
+
+export class CatalogNonConvergenceError extends Error {
+    readonly method: string;
+    readonly cursor: string;
+    constructor(method: string, cursor: string) {
+        super(`${method}: server pagination did not converge; cursor ${JSON.stringify(cursor)} was returned twice, so the catalog is incomplete`);
+        this.name = "CatalogNonConvergenceError";
+        this.method = method;
+        this.cursor = cursor;
+    }
+}
+
+class ConvergingClient extends Client {
+    // Cursors the server has returned in the current walk of each list method; a walk begins at
+    // the SDK's cursorless first page.
+    readonly #returned = new Map<string, Set<string>>();
+
+    override request<M extends RequestMethod>(request: { method: M; params?: Record<string, unknown> }, options?: RequestOptions): Promise<ResultTypeMap[M]>;
+    override request<T extends StandardSchemaV1>(request: Request, resultSchema: T, options?: RequestOptions): Promise<StandardSchemaV1.InferOutput<T>>;
+    override async request(...args: unknown[]): Promise<unknown> {
+        const result = await (super.request as unknown as (...inner: unknown[]) => Promise<unknown>)(...args);
+        const sent = args[0] as { method?: unknown; params?: { cursor?: unknown } };
+        if (typeof sent.method !== "string" || !LIST_METHODS.has(sent.method)) return result;
+        const cursor = sent.params?.cursor;
+        if (cursor === undefined) this.#returned.set(sent.method, new Set());
+        const returned = this.#returned.get(sent.method) ?? new Set<string>();
+        this.#returned.set(sent.method, returned);
+        const next = (result as { nextCursor?: unknown } | null)?.nextCursor;
+        if (typeof next !== "string") return result;
+        if (next === cursor || returned.has(next)) throw new CatalogNonConvergenceError(sent.method, next);
+        returned.add(next);
+        return result;
+    }
+}
+
 export class AuthorizationRequiredError extends Error {
     readonly authorizationUrl: string;
 
@@ -370,7 +417,7 @@ const openClient = async (
                 : {}),
         },
     } satisfies ClientCapabilities;
-    const client = new Client(
+    const client = new ConvergingClient(
         clientInfo,
         {
             capabilities: clientCapabilities,

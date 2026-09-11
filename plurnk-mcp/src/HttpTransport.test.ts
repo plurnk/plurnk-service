@@ -705,3 +705,46 @@ test("{§mcp-exclusions} OAuth rejects legacy endpoint inference without metadat
     );
     assert.deepEqual(legacyEndpointRequests, []);
 });
+
+// {§mcp-catalog-convergence} — the SDK stops its aggregating walk silently when a server repeats a
+// cursor and would cache the partial catalog as complete; this client refuses the repeated page.
+const pagedHandler = (pages: Array<{ tools: string[]; nextCursor?: string }>): McpHttpHandler => createMcpHandler(() => {
+    const server = new McpServer({ name: "paged-fixture", version: "1.0.0" });
+    server.server.registerCapabilities({ tools: {} });
+    server.server.setRequestHandler("tools/list", (request) => {
+        const cursor = request.params?.cursor;
+        const index = cursor === undefined ? 0 : Number(cursor);
+        const page = pages[index];
+        if (page === undefined) throw new Error(`no page ${index}`);
+        return {
+            tools: page.tools.map((name) => ({ name, description: name, inputSchema: { type: "object" as const } })),
+            ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+        };
+    });
+    return server;
+}, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+
+test("a catalog whose pagination never converges is an error, never a partial listing", async (t) => {
+    const served = await serveMcpHttp(t, pagedHandler([
+        { tools: ["page_0"], nextCursor: "1" },
+        { tools: ["page_1"], nextCursor: "1" },
+    ]));
+    const connection = new ServerConnection({ name: "paged", transport: "http", url: served.url }, floor);
+    t.after(() => connection.close());
+    await assert.rejects(connection.catalog(), {
+        name: "CatalogNonConvergenceError",
+        message: "tools/list: server pagination did not converge; cursor \"1\" was returned twice, so the catalog is incomplete",
+    });
+});
+
+test("a converging paginated catalog aggregates every page", async (t) => {
+    const served = await serveMcpHttp(t, pagedHandler([
+        { tools: ["page_0"], nextCursor: "1" },
+        { tools: ["page_1"], nextCursor: "2" },
+        { tools: ["page_2"] },
+    ]));
+    const connection = new ServerConnection({ name: "paged", transport: "http", url: served.url }, floor);
+    t.after(() => connection.close());
+    const catalog = await connection.catalog();
+    assert.deepEqual(catalog.tools.map(({ name }) => name), ["page_0", "page_1", "page_2"]);
+});

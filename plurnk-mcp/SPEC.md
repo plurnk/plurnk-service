@@ -45,7 +45,7 @@ matrix rows cite.
 | Resources | Negotiated server capability: `resources/list`, `resources/templates/list`, `resources/read` | Publish catalogs, templates, and materialized contents through the server's resource authority |
 | Prompts | Negotiated server capability: `prompts/list`, `prompts/get` | Publish prompt definitions and retrieve prompt messages through the same server authority |
 | Completion | Negotiated server capability: `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument |
-| Pagination | Opaque cursors on list methods | Drain every page with a finite non-convergence guard; never publish a partial catalog as complete |
+| Pagination | Opaque cursors on list methods | Drain every page with a finite non-convergence guard; never publish a partial catalog as complete ({§mcp-catalog-convergence}) |
 | Caching | `server/discover`, list methods, and `resources/read` carry `ttlMs` and `cacheScope` | Honor freshness and notification invalidation; partition private entries by authorization context |
 | Subscriptions | `subscriptions/listen` plus acknowledged filters and correlated notifications | Keep one current filter for list changes, resource URIs read into cache, and active Task IDs; overlap filter replacement, re-listen after loss, and never use the removed resource subscription methods |
 | Progress | Request-scoped `notifications/progress` | Project progress onto the owning Plurnk operation without creating an independent protocol lifecycle |
@@ -53,6 +53,16 @@ matrix rows cite.
 | MRTR | `input_required` on `tools/call`, `resources/read`, or `prompts/get` | Fulfill supported input requests, echo opaque `requestState` byte-for-byte, and retry only the originating request with a fresh JSON-RPC ID |
 | Elicitation | Active client capability carried through MRTR | Advertise supported form/URL modes and route the request through Plurnk's client-owned interaction lifecycle |
 | Authorization | OAuth profile for HTTP transports | Require validated protected-resource and authorization-server metadata; never infer endpoints; use PKCE, issuer validation, resource indicators, refresh, and bounded scope escalation; never apply OAuth to stdio |
+
+§mcp-catalog-convergence **A catalog is complete or it is an error.** The pinned SDK's aggregating
+list walk (`listTools`, `listResources`, `listResourceTemplates`, `listPrompts`) stops silently when
+a server returns a cursor it already returned, drops `nextCursor`, and caches the partial aggregate
+as if it were whole; only its page cap (`listMaxPages`) throws. The host's client watches the pages
+the SDK requests and refuses the page that repeats a cursor with `CatalogNonConvergenceError`
+(method and cursor named), so the listing fails and nothing partial is published or cached.
+Pagination, caching, and the cap remain the SDK's; a converging server's pages aggregate exactly as
+before. This is a host guard over an upstream behavior, not a second paginator; the upstream
+report is #601's to file.
 
 ## §mcp-tasks Tasks extension
 
