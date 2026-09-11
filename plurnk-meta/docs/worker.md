@@ -13,7 +13,7 @@ an entry rather than controlling that worker.
 | `worker://reviewer/notes.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///notes.md` | Shared commons entry | Read and write. |
 
-The packet names your worker and its parent (`null` at a root) under `## Worker`. Addresses are literal and keep
+The packet names your worker, its parent (`null` at a root), and today's date and time zone under `## Worker`. Addresses are literal and keep
 the same meaning when passed to another worker. All scratch belongs to the
 workspace; its namespace does not require a namesake worker. Generated
 references live under `worker:///_plurnk/`; reference

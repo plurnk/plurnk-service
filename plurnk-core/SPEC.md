@@ -723,6 +723,12 @@ EXEC git — never engine machinery.
   notices, and the rest keep that rule. The parent is not a section: the
   `## Worker` identity block carries `"parent": "worker://<name>"`, or
   `"parent": null` at a root, so a worker never infers its rank from silence.
+- §packet-current-date **The packet says what day it is.** The `## Worker` block carries
+  `"date": "YYYY-MM-DD"` and `"timezone": "<IANA zone>"` from the daemon's clock at packet
+  assembly: a calendar date, never a timestamp, so the cached system-and-worker prefix changes
+  once a day rather than once a packet. It is orientation data, not teaching; the model cannot
+  infer the present from its training, and every harness it was trained against supplied it.
+  `PacketBuilder` takes the clock as a dependency so fixtures stay deterministic.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
@@ -3679,7 +3685,7 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
-|     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`, and its `parent` address or `null`. |
+|     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`, its `parent` address or `null`, and the daemon's calendar `date` with its IANA `timezone` ({§packet-current-date}). |
 |     5 | user   | `log`                 | Append-mostly model-visible history. |
 |     6 | user   | `child-streams`        | Per-turn status; always present, `[]` when empty ({§packet-empty-sections}). |
 |     7 | user   | `child-workers`       | Per-turn status; always present, `[]` when empty ({§packet-empty-sections}). |

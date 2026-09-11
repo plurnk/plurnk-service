@@ -52,7 +52,7 @@ flowchart LR
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
 | `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
-| `worker`              | user   | JSON `path` with the literal Worker address and `parent` (address or `null`) | {§packet-cache-monotone} |
+| `worker`              | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `date`, `timezone` | {§packet-cache-monotone} |
 | `log`                 | user   | Markdown H3 records with JSON metadata        | {§log-wire-format}              |
 | `child-streams`       | user   | JSON status/path pointers, `[]` when empty    | {§child-orientation}            |
 | `child-workers`       | user   | JSON status/path pointers, `[]` when empty    | {§child-orientation}            |
