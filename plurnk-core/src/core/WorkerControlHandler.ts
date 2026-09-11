@@ -48,6 +48,12 @@ export default class WorkerControlHandler {
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
         const prompt = statement.body;
+        // {§worker-spawn-prompt-resource} — the schema admits an empty body because a resource may
+        // carry the prompt; by the time the statement reaches here the resource is composed in, so
+        // an empty prompt is a real absence.
+        if (prompt.trim() === "") {
+            return this.#failure("spawn-prompt-empty", 422, `${statement.op} has no prompt text.`, {}, { operation: statement.op, retryable: false });
+        }
 
         const delegationPolicy: LoopPolicy = await LoopPolicyReader.read(this.#db, ctx.loopId);
 

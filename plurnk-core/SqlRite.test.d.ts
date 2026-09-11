@@ -453,6 +453,7 @@ export class SqlRiteSync {
 	test_get_origin: SqlRiteSyncPreparedStatements;
 	test_entries_by_coordinate_workspaces: SqlRiteSyncPreparedStatements;
 	test_first_packet_turn_by_worker_name: SqlRiteSyncPreparedStatements;
+	test_children_of_worker: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -978,6 +979,7 @@ export default class SqlRite {
 	test_get_origin: SqlRitePreparedStatements;
 	test_entries_by_coordinate_workspaces: SqlRitePreparedStatements;
 	test_first_packet_turn_by_worker_name: SqlRitePreparedStatements;
+	test_children_of_worker: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;

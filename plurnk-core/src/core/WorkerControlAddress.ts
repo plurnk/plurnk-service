@@ -15,6 +15,12 @@ export default class WorkerControlAddress {
         return `worker://${authority}`;
     }
 
+    // {§worker-spawn-prompt-resource} — a `worker://` path is always an address attempt on WORK and
+    // FORK; a path of any other scheme is their prompt resource.
+    static isWorkerScheme(target: ParsedPath | null): boolean {
+        return target !== null && target.kind === "url" && target.scheme === "worker";
+    }
+
     static resolve(target: ParsedPath | null, operation: WorkerControlOperation): WorkerControlAddressResolution {
         const authority = WorkerControlAddress.#authorityOf(target);
         if (authority !== null) return { ok: true, authority };

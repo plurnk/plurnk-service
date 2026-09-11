@@ -31,6 +31,7 @@ import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
+import WorkerControlAddress from "./WorkerControlAddress.ts";
 import KillHandler from "./KillHandler.ts";
 import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
 import LogWriter from "./LogWriter.ts";
@@ -493,7 +494,9 @@ export default class Dispatcher {
                     result = curation.result;
                     curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
-                    result = await this.#workerControl.handleWorkerControl(statement, schemeCtx);
+                    // {§worker-spawn-prompt-resource} — a non-address path is the child's prompt resource.
+                    const seeded = await this.#seedSpawnPrompt(statement, schemeCtx);
+                    result = "result" in seeded ? seeded.result : await this.#workerControl.handleWorkerControl(seeded.statement, schemeCtx);
                 } else if (statement.op === "COPY") {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
@@ -1043,6 +1046,33 @@ export default class Dispatcher {
         });
         if (row === undefined) throw new Error("Dispatcher.writeEmissionAttempt: insert returned no row");
         return row.id;
+    }
+
+    // {§worker-spawn-prompt-resource} WORK and FORK overload their slot by scheme: a `worker://`
+    // path is always the child's address (and keeps the address rules); a path of any other scheme
+    // is read whole and becomes the child's prompt, composed with the body as BARE's combined form.
+    // The durable row keeps the authored statement; only the handler sees the composed one, with no
+    // target, so the child is auto-named exactly as when the slot is empty.
+    async #seedSpawnPrompt(
+        statement: WorkStatement | ForkStatement,
+        ctx: PlurnkSchemeContext,
+    ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
+        if (statement.target === null || WorkerControlAddress.isWorkerScheme(statement.target)) return { statement };
+        const read: ReadStatement = { ...statement, op: "READ", body: null, lineMarker: { marks: [1, -1] } };
+        const denial = await this.#checkCapabilities(read, ctx);
+        if (denial !== null) return { result: denial };
+        const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
+        if (result.status !== 200 && result.status !== 204) return { result };
+        if (result.content !== null && typeof result.content !== "string") {
+            throw new InvalidOperationResultError(`${statement.op} prompt resource READ returned non-text content.`);
+        }
+        const prompt = [result.content ?? "", statement.body ?? ""].filter((part) => part !== "").join("\n\n");
+        if (prompt.trim() === "") {
+            return { result: Dispatcher.#failure(
+                "spawn-prompt-empty", 422, `${statement.op} has no prompt text: the resource is empty and there is no body.`, {}, { retryable: false },
+            ) };
+        }
+        return { statement: { ...statement, target: null, body: prompt } };
     }
 
     // {§bare-inference} Reuse exact READ projection without its log/presentation layer.

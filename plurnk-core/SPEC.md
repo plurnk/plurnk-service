@@ -666,6 +666,15 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 | `KILL`    | existing literal name  | Terminate the named worker or caller.   |
 
 - §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. An existing name returns 409; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
+- §worker-spawn-prompt-resource **The spawn slot is overloaded by scheme.** A `worker://` path is
+  the child's address and keeps the address rules ({§worker-control-addressing}). A path of any
+  other scheme is the child's prompt resource: it is read whole (`<1,-1>`) under the caller's read capabilities, composed with
+  the body as BARE's combined form (resource first, then the authored text), and the child is
+  auto-named exactly as when the slot is empty ({§worker-auto-name}). The durable row keeps the
+  authored statement. A read failure is the operation's failure and spawns nothing; an empty
+  resource with no body is `422 spawn-prompt-empty`. Naming the child and giving a resource in one
+  statement is not expressible; the body can READ the resource instead. Taught in the deep
+  reference only.
 - §worker-scheme-irc **irc** — ```` ```SEND (worker://<name>) ```` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. The caller addresses itself by its literal name; a literal name with no worker in the workspace is 404.
 - §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>)? ```` with a task body branches the
   current worker into a **named** sister: its log is deep-copied

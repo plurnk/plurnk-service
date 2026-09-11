@@ -709,3 +709,7 @@ SELECT t.id
 FROM turns t JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
 WHERE w.workspace_id = $workspace_id AND w.name = $name AND t.packet IS NOT NULL
 ORDER BY t.id LIMIT 1;
+
+-- PREP: test_children_of_worker
+-- {§worker-spawn-prompt-resource} tests: every child of a worker, live or concluded, by name.
+SELECT id, name FROM workers WHERE parent_worker_id = $worker_id ORDER BY id;

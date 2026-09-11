@@ -496,8 +496,7 @@
                     "type": "null"
                 },
                 "body": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -533,8 +532,7 @@
                     "type": "null"
                 },
                 "body": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

@@ -412,8 +412,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | MOVE | required source and destination              | optional region after each path | empty                          |
 | EXEC | fence names executor; optional program/tool path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
-| WORK | optional fresh `worker://name`               | none                            | required prompt                |
-| FORK | optional context-inheriting `worker://name`  | none                            | required prompt                |
+| WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
+| FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
 | SEND | optional recipient | optional recipient timing | message |
 | TASK | none | optional timeout and poll for waiting intent | Plurnk Plan JSON array |

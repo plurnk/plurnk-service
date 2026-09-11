@@ -56,6 +56,9 @@ prompt; FORK copies your history and named scratch into its new name, then
 diverges. Embedded addresses are preserved verbatim. Both share the workspace.
 Omit the address to allocate a short worker name, reported in the receipt;
 explicit names cannot replace an existing worker, even after it finishes.
+A path outside the `worker://` scheme is the child's prompt resource, as for
+BARE: ````` ````WORK (specs/feature.md) ````` reads the file whole as the task,
+an inline body follows it after a blank line, and the child is auto-named.
 Use SEND to give an existing worker a follow-up task.
 
 Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
