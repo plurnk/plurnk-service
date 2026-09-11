@@ -343,7 +343,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
+                { idx: 1, op: "prompt" },
                 { idx: 2, op: "EDIT" },
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
@@ -411,7 +411,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overf
             assert.equal(t1.outcomes.length, 4, "3 actions plus the disposition dispatched");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
-            // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
+            // Scope to scheme='worker' to exclude the engine's prompt entry.
             const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
@@ -823,11 +823,7 @@ test("Engine.runTurn: a trusted batch with competing dispositions fails before d
 // {§packet-stored-shape} {§body-projection} — chronological log-section rows.
 
 test("Engine.runTurn: the first turn's log section contains the prompt entry", async () => {
-    // Turn-as-container: turn 1 opens with the prompt written as one
-    // system-origin actionless row against prompt:///<loop>/1. When #buildLog snapshots the log for
-    // THIS turn's packet, the prompt is already there. The 2 model ops
-    // dispatch AFTER the packet builds, so they don't appear in this
-    // turn's snapshot — they'll surface in turn 2's snapshot.
+    // {§prompt-entry}: the prompt is published before the model packet is built.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -837,13 +833,12 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // The prompt is one actionless plurnk-origin row against prompt:///<loop>/1.
-        // Found by its stable identity (origin + target),
-        // robust to the turn-0 initialization at 1/1/1 ({§worker-initialization-entry}) and any
-        // catalog-preview FIND that shifts its coordinate.
-        const promptTarget = `prompt://${await WorkerName.forId(db, workerId)}/1/1`;
+        // Locate the frame by source identity, not its log coordinate.
+        const frame = await db.engine_get_loop_prompt.get<{ prompt_pathname: string }>({ loop_id: loopId });
+        assert.match(frame!.prompt_pathname, /^\/1\/[a-f0-9]{8}$/u);
+        const promptTarget = `prompt://${await WorkerName.forId(db, workerId)}${frame!.prompt_pathname}`;
         const prompt = log.find((e) => e.origin === "_plurnk" && e.target === promptTarget);
-        assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
+        assert.ok(prompt, "first-class prompt row uses the durable source identity");
         assert.equal(prompt.origin, "_plurnk");
         assert.equal(prompt.target, promptTarget);
         assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation delimiter");

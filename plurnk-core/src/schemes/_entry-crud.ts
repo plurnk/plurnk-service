@@ -110,7 +110,7 @@ export default class EntryCrud {
         };
     }
 
-    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, representation: { defaultChannel?: string; output?: boolean } = {}): Promise<WriteEntryResult> {
+    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, representation: { defaultChannel?: string; output?: boolean; createOnly?: boolean } = {}): Promise<WriteEntryResult> {
         const { db, workspaceId, weigh } = ctx;
         const { authority, pathname } = coordinate;
         if (weigh === undefined) throw new Error("writeEntry: ctx.weigh is required for curation-weight accounting");
@@ -132,12 +132,20 @@ export default class EntryCrud {
             workspace_id: workspaceId, scheme, authority, pathname,
             attributes: entry.attributes === undefined ? null : JSON.stringify(entry.attributes),
             default_channel: defaultChannel, output,
+            create_only: representation.createOnly === true ? 1 : 0,
             channels: JSON.stringify(Object.fromEntries(channels.map(({ name, data, content, producerResult }) => [name, {
                 content, mimetype: data.mimetype, weight: weigh(content), content_hash: contentHash(content),
                 state: data.state ?? "static", producer_result: producerResult,
             }]))),
         });
-        if (published === undefined) throw new Error("writeEntry: publication returned no row");
+        if (published === undefined) {
+            if (representation.createOnly === true) return Results.failure(
+                `scheme:${scheme}`, "entry-exists", 409,
+                `An entry already exists at ${renderAddress({ scheme, authority, pathname })}.`,
+                { created: false, entryId: null },
+            ) as WriteEntryResult;
+            throw new Error("writeEntry: publication returned no row");
+        }
         const created = published.created === 1;
         return { status: created ? 201 : 200, created, entryId: published.id };
     }

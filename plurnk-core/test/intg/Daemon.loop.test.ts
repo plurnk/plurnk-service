@@ -370,7 +370,7 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             const rows = await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: result.loopId });
-            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/1");
+            const frame = rows.find((row) => row.op === "prompt" && /^\/1\/[a-f0-9]{8}$/u.test(row.pathname));
             assert.ok(frame, "the initial prompt frame exists");
             assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null)
                 .every((row) => row.turn_id === frame.turn_id),

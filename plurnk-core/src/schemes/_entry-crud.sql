@@ -24,6 +24,10 @@ INSERT INTO entry_publication (workspace_id, scheme, authority, pathname, attrib
 SELECT $workspace_id, $scheme, $authority, $pathname, $attributes, $default_channel, $output, $channels,
        NOT EXISTS (SELECT 1 FROM entries WHERE workspace_id = $workspace_id
            AND scheme = $scheme AND authority = $authority AND pathname = $pathname)
+WHERE $create_only = 0 OR NOT EXISTS (
+    SELECT 1 FROM entries WHERE workspace_id = $workspace_id
+      AND scheme = $scheme AND authority = $authority AND pathname = $pathname
+)
 RETURNING (SELECT id FROM entries WHERE workspace_id = entry_publication.workspace_id
     AND scheme = entry_publication.scheme AND authority = entry_publication.authority
     AND pathname = entry_publication.pathname) AS id, created;

@@ -20,8 +20,6 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Meta, { type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
-import type { EntryData } from "../schemes/_entry-crud.ts";
-import EntryCrud from "../schemes/_entry-crud.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
 import GitState from "./git-state.ts";
@@ -32,7 +30,8 @@ import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { taskTiming } from "./LoopLifecycle.ts";
-import { generatedPathname, promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
+import { generatedPathname, promptLoopPrefix } from "./plurnk-uri.ts";
+import PromptFrames from "./PromptFrames.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 // {§grammar-rail-registration} — bare names are the built-in rail namespace;
@@ -76,8 +75,7 @@ import CapabilityResolver from "./CapabilityResolver.ts";
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
 // {§prompt-address}: the same literal address in every observer's packet.
-const promptTarget = (workerName: string, loopSeq: number, promptOrdinal: number): UrlPath => {
-    const storage = promptPathname(loopSeq, promptOrdinal);
+const promptTarget = (workerName: string, storage: string): UrlPath => {
     return {
         kind: "url", raw: `prompt://${workerName}${storage}`,
         scheme: "prompt", username: null, password: null,
@@ -628,6 +626,7 @@ export default class TurnRunner {
             sequence: number;
             open_paths: string;
             prompt_published: number;
+            prompt_pathname: string | null;
         }>({ loop_id: loopId });
         const priorInference = await this.#db.engine_worker_has_inference_history.get<{ present: number }>({
             worker_id: workerId,
@@ -691,20 +690,14 @@ export default class TurnRunner {
             ? {
                 content: loopRow.prompt,
                 source: loopRow.prompt_source,
-                path: promptTarget(workerName, loopRow.sequence, 1),
+                path: promptTarget(workerName, await PromptFrames.write(systemCtx, {
+                    loopSequence: loopRow.sequence, ordinal: 1, content: loopRow.prompt,
+                    source: loopRow.prompt_source, pathname: loopRow.prompt_pathname,
+                    openPaths: assertOpenPaths(JSON.parse(loopRow.open_paths) as unknown, `Loop ${loopId} open_paths`),
+                })),
                 openPaths: assertOpenPaths(JSON.parse(loopRow.open_paths) as unknown, `Loop ${loopId} open_paths`),
             }
             : null;
-        if (promptPublication !== null) {
-            const entry: EntryData = {
-                channels: { body: { content: promptPublication.content, mimetype: "text/markdown" } },
-                attributes: {
-                    openPaths: promptPublication.openPaths,
-                    ...(promptPublication.source === null ? {} : { source: promptPublication.source }),
-                },
-            };
-            await EntryCrud.writeEntry({ authority: workerName, pathname: promptPublication.path.pathname }, entry, systemCtx, "prompt");
-        }
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and an ordinary TASK.
@@ -986,13 +979,12 @@ export default class TurnRunner {
                 if (attributes.openPaths !== undefined) {
                     turnOpenPaths.push(...assertOpenPaths(attributes.openPaths, `Prompt ${injectedRow.pathname} openPaths`));
                 }
-                const ordinal = Number(injectedRow.pathname.split("/").filter(Boolean).at(-1));
                 const promptLogId = await this.#materialization.writePromptLog({
                     workerId,
                     loopId,
                     turnId,
                     sequence: nextActionIndex++,
-                    target: promptTarget(workerName, loopSeq, ordinal),
+                    target: promptTarget(workerName, injectedRow.pathname),
                     content: injectedRow.content,
                     source: promptSourceFromAttributes(
                         attributes,

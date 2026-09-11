@@ -16,7 +16,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "go");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    // Turn 1 publishes one first-class prompt row at prompt:///1/1.
+    // {§prompt-entry}: the initial frame has one first-class prompt row.
     await engine.runTurn({
         provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
@@ -68,7 +68,7 @@ test("KILL of the prompt remains deliberate curation", async () => {
     } finally { await db.close(); }
 });
 
-test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same coordinate", async () => {
+test("sister workers' initial prompts have independent literal identities", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);
@@ -88,7 +88,7 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
         assert.equal(workerRows.length, 1, "the worker's prompt entry exists at ITS worker-qualified address");
         assert.equal(parentRows[0].content, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
         assert.equal(workerRows[0].content, "the worker task");
-        assert.equal(parentRows[0].pathname, workerRows[0].pathname, "one coordinate — the owner column carries the identity ({§entry-owner})");
+        for (const row of [...parentRows, ...workerRows]) assert.match(row.pathname, /^\/1\/[a-f0-9]{8}$/u);
     } finally { await db.close(); }
 });
 

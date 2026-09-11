@@ -24,7 +24,7 @@ test("a short prompt lands as one first-class prompt row", async () => {
             const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
             const { loopId } = resp as { loopId: number };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
+            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/[a-f0-9]{8}$/.test(r.pathname ?? "") && r.scheme === "prompt");
             assert.ok(prompt, "the first-class prompt row exists");
             assert.equal(prompt!.lineMarker, null, "prompt delivery is not a synthetic scoped retrieval");
             assert.match(prompt!.rx ?? "", /three/, "the complete durable body belongs to the prompt row");
@@ -42,7 +42,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
+            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/[a-f0-9]{8}$/.test(r.pathname ?? "") && r.scheme === "prompt");
             assert.ok(prompt, "the first-class prompt row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
@@ -79,7 +79,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             assert.ok(promptSection, "the prompts section exists");
             assert.equal(promptSection!.slot, "user", "the prompt paths list closes the user-slot status clump");
             assert.equal(promptSection!.header, "Active Prompts");
-            assert.match(promptSection!.content, /^\["prompt:\/\/[^/]+\/1\/1"\]$/, "paths-only, literal prompt address");
+            assert.match(promptSection!.content, /^\["prompt:\/\/[^/]+\/1\/[a-f0-9]{8}"\]$/, "paths-only, literal prompt address");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

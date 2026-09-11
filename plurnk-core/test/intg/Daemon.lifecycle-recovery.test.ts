@@ -294,13 +294,13 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
                 workspaceId,
                 authority: await WorkerName.forId(db, workerId),
                 scheme: "prompt",
-                pathname: `/1/${ordinal + 2}`,
+                pathname: `/1/${["a1b2c3d4", "e5f6a7b8"][ordinal]}`,
                 content,
                 mimetype: "text/markdown",
             });
             await db.test_set_entry_attributes.run({
                 entry_id: entryId,
-                attributes: JSON.stringify({ openPaths: [], source: `worker://sender-${ordinal + 1}` }),
+                attributes: JSON.stringify({ ordinal: ordinal + 2, openPaths: [], source: `worker://sender-${ordinal + 1}` }),
             });
         }
 
@@ -336,8 +336,8 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
                 source: row.source,
             })),
             [
-                { pathname: "/2/1", content: "first orphan", source: "worker://sender-1" },
-                { pathname: "/2/2", content: "second orphan", source: "worker://sender-2" },
+                { pathname: "/2/a1b2c3d4", content: "first orphan", source: "worker://sender-1" },
+                { pathname: "/2/e5f6a7b8", content: "second orphan", source: "worker://sender-2" },
             ],
             "boot completed the existing queued recovery before its drain claimed it",
         );

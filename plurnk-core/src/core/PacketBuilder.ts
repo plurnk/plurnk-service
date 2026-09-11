@@ -240,7 +240,7 @@ export default class PacketBuilder {
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
-        // The prompt section sources the loop's prompt://<worker>/<loop>/<N> entries.
+        // The prompt section sources the loop's prompt://<worker>/<loop>/<id> entries.
         // Inject and turn-1 initialization write them. Bare callers that
         // bypass prompt persistence fall back to messages.user.
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });

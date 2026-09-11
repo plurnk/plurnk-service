@@ -79,11 +79,12 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_next_prompt_ordinal_for_loop
 -- {§prompt-loop-containment} — derive the next per-loop frame ordinal from the
--- greatest materialized ordinal. The initial frame reserves ordinal 1 even
+-- greatest persisted delivery ordinal. The initial frame reserves ordinal 1 even
 -- before turn 1 materializes it, so an injection starts at 2.
-SELECT COALESCE(MAX(CAST(substr(pathname, $prefix_len + 1) AS INTEGER)), 1) + 1 AS next
+SELECT COALESCE(MAX(json_extract(e.attributes, '$.ordinal')), 1) + 1 AS next
 FROM entries e JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-WHERE scheme = 'prompt' AND w.id = $worker_id AND pathname LIKE $pattern;
+WHERE scheme = 'prompt' AND w.id = $worker_id
+  AND substr(pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len);
 
 -- PREP: drain_undelivered_prompts_for_loop
 -- {§prompt-loop-containment} - the prompts the loop contains but has not yet delivered: no
@@ -95,19 +96,19 @@ JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
   AND w.id = $worker_id
-  AND e.pathname LIKE $pattern
+  AND substr(e.pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len)
   AND c.name = 'body'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
       WHERE le.loop_id = $loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
-ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
+ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
 
 -- PREP: drain_get_all_prompt_bodies_for_loop
 -- Sources the Active Prompts section: EVERY prompt entry the
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
--- prompts (multiple prompt://<worker>/<loop>/<N> entries), all shown in order. Same pattern as
+-- prompts (multiple prompt://<worker>/<loop>/<id> entries), all shown in order. Same pattern as
 -- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
 -- each body in its fixed model-facing enclosure.
 SELECT c.content, e.pathname
@@ -116,15 +117,15 @@ JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
   AND w.id = $worker_id
-  AND e.pathname LIKE $pattern
+  AND substr(e.pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len)
   AND c.name = 'body'
-ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
+ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
 
 -- PREP: drain_orphaned_prompts_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
 -- (a wake-on-completion, or a runLoop-while-active prompt that landed on a turn the
--- loop never reached). Engine.inject writes prompt://<worker>/<loop>/<N>;
--- if the loop ended at turn K, an injected prompt at turn > K never ran.
+-- loop never reached). Engine.inject writes prompt://<worker>/<loop>/<id>;
+-- a prompt without a publication row has not been delivered.
 -- Return the complete orphan set oldest-first with the ended loop posture so
 -- one recovery loop can preserve frame cardinality and ordering.
 -- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
@@ -144,14 +145,14 @@ WHERE e.scheme = 'prompt'
   AND l.terminated_by IS NOT 'cancel'
   AND l.sequence > (SELECT cancelled_through_sequence FROM workers WHERE id = l.worker_id)
   AND w.id = $worker_id
-  AND e.pathname LIKE $pattern
+  AND substr(e.pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len)
   AND c.name = 'body'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
       WHERE le.loop_id = $loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
-ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
+ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
 
 -- PREP: drain_enqueue_orphan_recovery_loop
 -- {§prompt-loop-containment}: recovery identity is the concluded source loop.
@@ -176,7 +177,7 @@ RETURNING id, sequence, status;
 WITH orphaned(id, ordinal) AS MATERIALIZED (
     SELECT e.id,
            ROW_NUMBER() OVER (
-               ORDER BY CAST(substr(e.pathname, $source_prefix_len + 1) AS INTEGER) ASC
+               ORDER BY json_extract(e.attributes, '$.ordinal') ASC
            )
     FROM entries e
 JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
@@ -194,9 +195,10 @@ JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
       )
 )
 UPDATE entries
-SET pathname = $target_prefix || (
+SET pathname = $target_prefix || substr(pathname, $source_prefix_len + 1),
+    attributes = json_set(attributes, '$.ordinal', (
     SELECT ordinal FROM orphaned WHERE orphaned.id = entries.id
-)
+))
 WHERE id IN (SELECT id FROM orphaned)
 RETURNING id, pathname;
 

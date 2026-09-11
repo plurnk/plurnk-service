@@ -277,8 +277,9 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
 
             type EntryRow = { scheme: string; pathname: string };
             const entries = await (db as unknown as { test_list_entries_by_workspace_workspace_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_workspace_workspace_pathname.all<EntryRow>({ workspace_id: 1 });
-            const injected = entries.find((e) => e.scheme === "prompt" && /^\/\d+\/[2-9]\d*$/.test(e.pathname));
-            assert.ok(injected, "injected prompt entry exists in a turn slot >1");
+            const prompts = entries.filter((e) => e.scheme === "prompt");
+            assert.equal(prompts.length, 2, "the initial and injected prompts coexist");
+            for (const entry of prompts) assert.match(entry.pathname, /^\/\d+\/[a-f0-9]{8}$/u);
 
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which
             // consumes the injected prompt and ends cleanly.
@@ -295,9 +296,9 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             assert.equal(ended[0].result.status, 200, "loop 1 ends cleanly after consuming the injected prompt");
 
             const rows = await db.test_log_entries_by_loop.all<{
-                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; rx: string;
             }>({ loop_id: ended[0].loopId });
-            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/2");
+            const frame = rows.find((row) => row.op === "prompt" && JSON.parse(row.rx).content === "follow-up");
             const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
             assert.ok(frame, "the injected prompt was published as its own frame");
             assert.ok(contextRead, "the injected prompt's selected path produced a core READ");
@@ -368,9 +369,9 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
                 { timeoutMs: 5000 },
             );
             const rows = await db.test_log_entries_by_loop.all<{
-                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; rx: string;
             }>({ loop_id: loopId });
-            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/2");
+            const frame = rows.find((row) => row.op === "prompt" && JSON.parse(row.rx).content === "resume with this file");
             const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
             assert.ok(frame, "the waking prompt was published as its own frame");
             assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
@@ -436,9 +437,9 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
                 (events) => events.some((event) => event.loopId === loopId),
                 { timeoutMs: 5000 },
             );
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string }>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; rx: string }>({ loop_id: loopId });
             assert.ok(
-                rows.some((row) => row.op === "prompt" && row.pathname === "/1/2"),
+                rows.some((row) => row.op === "prompt" && JSON.parse(row.rx).content === "do not strand this prompt"),
                 "the park-boundary prompt reaches the resumed turn",
             );
         } finally {
@@ -495,6 +496,12 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             assert.ok(r3.result !== undefined, JSON.stringify(r3.error));
             assert.equal((r3.result as { action: string }).action, "injected_next_turn", JSON.stringify(r3.result));
 
+            const sourceLoopId = ((await firstPromise).result as { loopId: number }).loopId;
+            const sourceWorker = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: sourceLoopId });
+            const original = await db.drain_get_all_prompt_bodies_for_loop.all<{ pathname: string; content: string }>({
+                worker_id: sourceWorker!.worker_id, pattern: "/1/%", prefix_len: 3,
+            });
+
             // Release the proposal → turn 1 completes → loop 1 ends; the
             // injected turn 2 never runs (it's now orphaned).
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
@@ -536,8 +543,8 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
                     content: (JSON.parse(row.rx) as { content: string }).content,
                 })),
                 [
-                    { pathname: `/${promotedLoopSequence}/1`, content: "the first orphaned follow-up" },
-                    { pathname: `/${promotedLoopSequence}/2`, content: "the second orphaned follow-up" },
+                    { pathname: `/${promotedLoopSequence}/${original[1]!.pathname.split("/").at(-1)}`, content: "the first orphaned follow-up" },
+                    { pathname: `/${promotedLoopSequence}/${original[2]!.pathname.split("/").at(-1)}`, content: "the second orphaned follow-up" },
                 ],
                 "the complete orphan set remains separate and ordered in one subsequent turn",
             );
@@ -550,12 +557,9 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             assert.ok(contextReads.every((row) => row.turn_id === frames[0]?.turn_id),
                 "all promoted frame paths are read in the turn that publishes the frames");
             const promptPaths = await db.test_prompt_paths_by_worker.all<{ pathname: string }>({ worker_id: (r2.result as { modelWorkerId: number }).modelWorkerId });
-            const firstLoopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
-                loop_id: firstLoopId,
-            }))!.sequence;
             assert.deepEqual(
                 promptPaths.map((row) => row.pathname),
-                [`/${firstLoopSequence}/1`, `/${promotedLoopSequence}/1`, `/${promotedLoopSequence}/2`],
+                [original[0]!.pathname, ...frames.map((row) => row.pathname)],
                 "recovery re-homes each orphan identity instead of retaining duplicate old addresses",
             );
         } finally { ws.close(); }

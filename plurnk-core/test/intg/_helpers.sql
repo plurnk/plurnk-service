@@ -82,7 +82,7 @@ FROM loops WHERE id = $id;
 SELECT pathname FROM entries e JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 WHERE w.id = $worker_id AND scheme = 'prompt'
 ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGER),
-         CAST(substr(pathname, instr(substr(pathname, 2), '/') + 2) AS INTEGER);
+         json_extract(e.attributes, '$.ordinal');
 
 -- PREP: test_get_turn
 SELECT id, loop_id, sequence, producer, kind, status, completed_at,

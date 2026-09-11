@@ -1,6 +1,6 @@
 // Engine.inject — direct surface tests. Deterministic state setup; no
 // daemon, no Mock provider timing races. Verifies the inject mechanics:
-// writes distinct prompt:///<loop>/<N> frames owner-keyed
+// writes distinct prompt://<worker>/<loop>/<id> frames
 // ({§prompt-address}) and returns null when no loop is active.
 
 import test from "node:test";
@@ -9,7 +9,28 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
-test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, the per-loop ordinal), owner-keyed", async () => {
+test("{§prompt-address} prompt IDs are opaque while concurrent delivery order survives a new Engine", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "opaque-prompts");
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, workerId, 1, "initial");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        await Promise.all([engine.injectIntoLoop(loopId, "first"), engine.injectIntoLoop(loopId, "second")]);
+        await new Engine({ db, schemes: new SchemeRegistry() }).injectIntoLoop(loopId, "third");
+        const frames = await db.drain_undelivered_prompts_for_loop.all<{ pathname: string; content: string; attributes: string }>({
+            worker_id: workerId, loop_id: loopId, pattern: "/1/%", prefix_len: 3,
+        });
+        assert.deepEqual(frames.map(({ content }) => content), ["first", "second", "third"]);
+        assert.equal(new Set(frames.map(({ pathname }) => pathname)).size, 3);
+        for (const [index, frame] of frames.entries()) {
+            assert.match(frame.pathname, /^\/1\/[a-f0-9]{8}$/u);
+            assert.equal(JSON.parse(frame.attributes).ordinal, index + 2, "initial prompt reserves ordinal 1 before its materialization");
+        }
+    } finally { await db.close(); }
+});
+
+test("engine.inject: persists an addressed prompt with its ordinal, open paths, and causal source", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -31,14 +52,14 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
         assert.equal(result.loopId, loopId);
         assert.equal(result.turnSeq, 2, "the LANDING turn is 2 (turn 1 already exists) — delivery timing, not the key");
 
-        // The frame keys on the per-loop ORDINAL ({§prompt-loop-containment}). The loop's
-        // initial prompt owns ordinal 1 even before turn 1 materializes its entry, so the
-        // injected frame is /1/2 regardless of the landing turn.
+        const [frame] = await db.test_prompt_paths_by_worker.all<{ pathname: string }>({ worker_id: workerId });
+        assert.match(frame!.pathname, /^\/1\/[a-f0-9]{8}$/u);
         const entry = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
-            workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2",
+            workspace_id: workspaceId, scheme: "prompt", pathname: frame!.pathname,
         });
-        assert.ok(entry, "prompt frame exists at prompt:///1/2, owned by the worker");
+        assert.ok(entry, "the published prompt identity is addressable");
         assert.deepEqual(JSON.parse(entry.attributes), {
+            ordinal: 2,
             openPaths: ["src/context.ts", "README.md"],
             source: "worker://researcher",
         }, "the prompt frame durably owns its selected workspace paths and causal source");
@@ -64,21 +85,24 @@ test("concurrent injects are contained as distinct ordered frames with their own
         ]);
         assert.ok(r1 && r2, "both injects landed in the ACTIVE loop — no new loop while one is live");
 
-        const f1 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2" });
-        const f2 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/3" });
-        assert.ok(f1 && f2, "two frames at consecutive ordinals — the ordinal key cannot collide");
+        const frames = await db.test_prompt_paths_by_worker.all<{ pathname: string }>({ worker_id: workerId });
+        const f1 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: frames[0]!.pathname });
+        const f2 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: frames[1]!.pathname });
+        assert.ok(f1 && f2);
+        assert.notEqual(f1.id, f2.id, "concurrent prompts remain independent resources");
         const b1 = await db.test_get_channel.get<{ content: string }>({ entry_id: f1!.id, name: "body" });
         const b2 = await db.test_get_channel.get<{ content: string }>({ entry_id: f2!.id, name: "body" });
         assert.equal(b1?.content, "first follow-up", "the earlier prompt is CONTAINED, never superseded");
         assert.equal(b2?.content, "second follow-up");
-        assert.deepEqual(JSON.parse(f1.attributes), { openPaths: ["first.ts"] });
-        assert.deepEqual(JSON.parse(f2.attributes), { openPaths: ["second.ts"] });
+        assert.deepEqual(JSON.parse(f1.attributes), { ordinal: 2, openPaths: ["first.ts"] });
+        assert.deepEqual(JSON.parse(f2.attributes), { ordinal: 3, openPaths: ["second.ts"] });
 
         const restarted = new Engine({ db, schemes: new SchemeRegistry() });
         await restarted.injectIntoLoop(loopId, "after restart", ["third.ts"]);
-        const f3 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/4" });
+        const after = await db.test_prompt_paths_by_worker.all<{ pathname: string }>({ worker_id: workerId });
+        const f3 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: after[2]!.pathname });
         assert.ok(f3, "a new engine continues after the durable historical ordinals");
-        assert.deepEqual(JSON.parse(f3.attributes), { openPaths: ["third.ts"] });
+        assert.deepEqual(JSON.parse(f3.attributes), { ordinal: 4, openPaths: ["third.ts"] });
     } finally { await db.close(); }
 });
 

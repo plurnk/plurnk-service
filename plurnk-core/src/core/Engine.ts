@@ -4,8 +4,6 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
-import type { EntryData } from "../schemes/_entry-crud.ts";
-import EntryCrud from "../schemes/_entry-crud.ts";
 import SearchIndex from "../schemes/_search-index.ts";
 import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -14,8 +12,8 @@ import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegis
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
-import WorkerName from "./WorkerName.ts";
-import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
+import { promptLoopPrefix } from "./plurnk-uri.ts";
+import PromptFrames from "./PromptFrames.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -633,7 +631,7 @@ export default class Engine {
     }
 
     // Inject a prompt into the admitted non-terminal loop. Writes the
-    // next prompt://<worker>/<loop>/<N> entry; the next turn publishes it
+    // next prompt://<worker>/<loop>/<id> entry; the next turn publishes it
     // as one actionless prompt row. Prompt-frame writes serialize per loop,
     // so concurrent arrivals retain distinct ordered ordinals.
     //
@@ -669,14 +667,12 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const workspaceRow = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
         if (workspaceRow === undefined) throw new Error(`Engine.injectIntoLoop: worker ${workerId} not found`);
-        // {§prompt-loop-containment} — the frame is the loop's NEXT prompt ordinal, never a turn
-        // slot: rapid arrivals land as N and N+1, both contained, nothing superseded.
+        // {§prompt-loop-containment}: opaque path identity and durable arrival order are separate.
         const prefix = promptLoopPrefix(loopRow.sequence);
         const ordinalRow = await this.#db.drain_next_prompt_ordinal_for_loop.get<{ next: number }>({
             worker_id: workerId,
             pattern: `${prefix}%`,
             prefix_len: prefix.length });
-        const pathname = promptPathname(loopRow.sequence, ordinalRow?.next ?? 2);
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
@@ -686,10 +682,10 @@ export default class Engine {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, workerId, loopId, notice) };
-        const entry: EntryData = {
-            channels: { body: { content: prompt, mimetype: "text/markdown" } },
-            attributes: { openPaths, ...(source === undefined ? {} : { source }) } };
-        await EntryCrud.writeEntry({ authority: await WorkerName.forId(this.#db, workerId), pathname }, entry, ctx, "prompt");
+        await PromptFrames.write(ctx, {
+            loopSequence: loopRow.sequence, ordinal: ordinalRow?.next ?? 2,
+            content: prompt, openPaths, source,
+        });
         return { loopId, turnSeq };
     }
 

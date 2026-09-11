@@ -4,6 +4,7 @@
 
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { NetworkAddress, type EntryCoordinate, type SchemeAuthority } from "@plurnk/plurnk-schemes";
+import { randomBytes } from "node:crypto";
 
 export interface RenderTargetParts {
     readonly scheme: string | null | undefined;
@@ -80,9 +81,9 @@ export function isGeneratedPathname(pathname: string): boolean {
     return pathname === GENERATED_ROOT || pathname.startsWith(`${GENERATED_ROOT}/`);
 }
 
-// {§prompt-address}: literal Worker authority plus the loop/prompt coordinate.
-export function promptPathname(loopSeq: number, promptOrdinal: number): string {
-    return `/${loopSeq}/${promptOrdinal}`;
+// {§prompt-address}: opaque identity is independent of arrival order.
+export function promptPathname(loopSeq: number): string {
+    return `/${loopSeq}/${randomBytes(4).toString("hex")}`;
 }
 
 export function promptLoopPrefix(loopSeq: number): string {
