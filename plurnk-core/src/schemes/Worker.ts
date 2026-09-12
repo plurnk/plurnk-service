@@ -30,7 +30,8 @@ export default class Worker extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "worker",
         authority: "resource",
-        channels: { body: "text/markdown" },
+        // {§readable-channel} — `readable` is the source's derived projection, never written.
+        channels: { body: "text/markdown", readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
         writableBy: ["model", "client", "_plurnk", "plugin"],

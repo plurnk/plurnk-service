@@ -29,6 +29,12 @@ console.log(greet("world"));
 Control addresses contain only scheme and authority: no trailing slash,
 userinfo, port, query, fragment, or `[metadata]` modifier.
 
+An entry whose source has a readable projection (HTML, a notebook) carries it
+beside the source as `#readable`, text/markdown, in its own line coordinates;
+the default channel stays the source. Patterns match the channel they address:
+`page.html` matches the markup, `page.html#readable` the Markdown. The
+projection follows every source write and is never written itself.
+
 ## Turn sources
 
 | Address | Read-only source in your worker's history |

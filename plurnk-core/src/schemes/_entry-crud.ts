@@ -3,6 +3,7 @@
 // cross-scheme orchestration of COPY/MOVE/KILL.
 
 import { contentHash } from "../core/content-hash.ts";
+import EntryReadable from "./_entry-readable.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import type { ChannelProducerResult, ChannelState, EntryCoordinate, EntryData, StoredEntryData } from "@plurnk/plurnk-schemes";
@@ -147,6 +148,12 @@ export default class EntryCrud {
             throw new Error("writeEntry: publication returned no row");
         }
         const created = published.created === 1;
+        // {§readable-channel} — a text source channel lands with its projection beside it.
+        const source = channels.find(({ name }) => name === defaultChannel);
+        if (source !== undefined && source.data.bytes === undefined && ctx.mimetypes !== undefined
+            && !await MimetypeBinary.isBinaryMimetype(source.data.mimetype, ctx.mimetypes)) {
+            await EntryReadable.sync(ctx, published.id, source.name, defaultChannel, source.content, source.data.mimetype);
+        }
         return { status: created ? 201 : 200, created, entryId: published.id };
     }
 
@@ -200,6 +207,11 @@ export default class EntryCrud {
             entry_id: existing.id,
             name: channel,
         });
+        // {§readable-channel} — a projection cannot outlive its source.
+        if (deleted !== undefined && !EntryReadable.isDerived(channel)) {
+            const defaultChannel = ctx.defaultChannelFor?.(scheme) ?? "body";
+            if (channel === defaultChannel) await db.crud_delete_readable_channel.run({ entry_id: existing.id });
+        }
         if (deleted === undefined) {
             const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(

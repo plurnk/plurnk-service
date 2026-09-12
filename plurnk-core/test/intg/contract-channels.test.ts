@@ -472,8 +472,8 @@ test("{§channel-selection-missing} READ and EDIT retain topology facts on chann
         assert.equal(edit.status, 404);
         assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
         assert.equal(edit.problem?.requestedChannel, "nope");
-        assert.deepEqual(edit.problem?.availableChannels, ["body"]);
-        assert.equal(edit.problem?.recovery, "Use one of the available channels: #body.");
+        assert.deepEqual(edit.problem?.availableChannels, ["body", "readable"]);
+        assert.equal(edit.problem?.recovery, "Use one of the available channels: #body, #readable.");
     } finally { await db.close(); }
 });
 

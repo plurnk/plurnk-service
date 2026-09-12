@@ -25,3 +25,12 @@ describe("ipynb structural match evidence", () => {
         assert.equal(out[0].regions, undefined);
     });
 });
+
+// {§mimetype-content} — the readable projection is a channel the consumer stores; regex over the
+// source channel sees the notebook JSON itself, in the JSON's own coordinates.
+it("regex runs over the notebook source, never the Markdown projection", async () => {
+    const heading = await h.query(nb, "regex", "# T");
+    assert.equal(heading.length, 1);
+    const key = await h.query(nb, "regex", "cell_type");
+    assert.equal(key.length, 2, "a JSON key is source text, once per cell");
+});

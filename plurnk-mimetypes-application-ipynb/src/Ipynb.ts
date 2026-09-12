@@ -82,11 +82,6 @@ export default class Ipynb extends BaseHandler {
         JSON.parse(toStr(content));
     }
 
-    // regex/glob run against the readable projection, not json.
-    protected override toText(content: HandlerContent): string {
-        const nb = safeParse(content);
-        return nb ? project(nb).markdown : toStr(content);
-    }
 }
 
 interface NbOutput {

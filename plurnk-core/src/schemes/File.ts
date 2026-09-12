@@ -102,7 +102,9 @@ export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
         storedScheme: "file",  // {§entry-identity-no-null} — durable identity; file addresses still render as bare paths
-        channels: {},  // dynamic mimetype per file extension
+        // body's real mimetype is detected per file path; the declared type is only the
+        // extension-less fallback. readable: the derived projection ({§readable-channel}).
+        channels: { body: "text/markdown", readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
         writableBy: ["model", "client", "plugin", "_plurnk"],

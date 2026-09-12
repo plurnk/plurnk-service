@@ -7,6 +7,7 @@ import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBindi
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
+import EntryReadable from "../schemes/_entry-readable.ts";
 import Results from "./results.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, PrepareDataRepresentation } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
@@ -89,6 +90,16 @@ export default class ResourceSelector {
         }
         const fragment = target.kind === "url" ? target.fragment : null;
         const channel = fragment ?? manifest.defaultChannel;
+        // {§readable-channel} — the projection follows its source; a transfer never writes it.
+        if (access === "write" && EntryReadable.isDerived(channel)) {
+            return MutationEffects.failure(
+                "channel-derived",
+                400,
+                `#${channel} is derived from #${manifest.defaultChannel}; write the source channel and the projection follows.`,
+                {},
+                { scheme, channel, source: manifest.defaultChannel, retryable: false },
+            );
+        }
         if (channel.length === 0 && !readableProjection) {
             return MutationEffects.failure(
                 "channel-required",

@@ -144,3 +144,20 @@ UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id A
 -- PREP: crud_set_origin
 -- Accept-time incorporation may fall back from Git staging to an exact pick.
 UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id;
+
+-- PREP: crud_upsert_readable_channel
+-- {§readable-channel} — the derived `readable` sibling of a source channel lands or refreshes
+-- with the source; it is never written by an operation.
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
+VALUES ($entry_id, 'readable', $content, $mimetype, $weight, $content_hash, 'static', NULL)
+ON CONFLICT (entry_id, name) DO UPDATE SET
+    content = excluded.content,
+    mimetype = excluded.mimetype,
+    weight = excluded.weight,
+    content_hash = excluded.content_hash,
+    state = 'static',
+    producer_result = NULL
+WHERE entry_channels.content_hash IS NOT excluded.content_hash;
+
+-- PREP: crud_delete_readable_channel
+DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = 'readable';

@@ -13,6 +13,7 @@ import Results from "./results.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
+import EntryReadable from "../schemes/_entry-readable.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import PatternEdits from "../content/pattern-edits.ts";
@@ -141,6 +142,14 @@ export default class ResourceTransfers {
 
         const handler = this.#schemes.get(resolvedSource.scheme, ctx.workspaceId);
         if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
+        // {§readable-channel} — a derived projection cannot be moved out of its entry; COPY it.
+        if (EntryReadable.isDerived(resolvedSource.channel)) {
+            return MutationEffects.failure(
+                "channel-derived", 400,
+                `#${resolvedSource.channel} is derived from its source channel and cannot be moved; COPY it instead.`,
+                {}, { scheme: resolvedSource.scheme, channel: resolvedSource.channel, operation: "MOVE", retryable: false },
+            );
+        }
         // {§copy-move-pattern} — a curated source retires rows, not lines of its projection.
         if (selected.matchedLines !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
             return MutationEffects.failure(

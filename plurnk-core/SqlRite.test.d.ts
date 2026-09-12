@@ -81,6 +81,8 @@ export class SqlRiteSync {
 	crud_insert_family_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_stamp_origin: SqlRiteSyncPreparedStatements;
 	crud_set_origin: SqlRiteSyncPreparedStatements;
+	crud_upsert_readable_channel: SqlRiteSyncPreparedStatements;
+	crud_delete_readable_channel: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidates: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRiteSyncPreparedStatements;
 	find_workspace_derivation_candidates: SqlRiteSyncPreparedStatements;
@@ -606,6 +608,8 @@ export default class SqlRite {
 	crud_insert_family_workspace_constraint: SqlRitePreparedStatements;
 	crud_stamp_origin: SqlRitePreparedStatements;
 	crud_set_origin: SqlRitePreparedStatements;
+	crud_upsert_readable_channel: SqlRitePreparedStatements;
+	crud_delete_readable_channel: SqlRitePreparedStatements;
 	find_workspace_entry_candidates: SqlRitePreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRitePreparedStatements;
 	find_workspace_derivation_candidates: SqlRitePreparedStatements;

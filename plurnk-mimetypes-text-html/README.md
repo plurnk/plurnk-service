@@ -13,7 +13,7 @@ npm i @plurnk/plurnk-mimetypes-text-html
 - `content(content)` - the **content channel** ({§mimetype-content}): the page's markup-free reading markdown. Main-content extraction via Readability strips nav, ads, and chrome; turndown renders the article body as markdown. Prose wraps at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line-scoped reads remain useful on dense pages. Non-article pages (apps, forms, fragments, very short HTML) degrade to best-effort markdown of the `<body>` - never raw HTML, never a throw. Empty/whitespace input means absent.
 - `extractRaw(content)` — h1–h6 headings as `heading` symbols (with `level`), `<title>` as an h1 fallback when no headings exist, and code blocks as `module` symbols. Source line numbers come from parse5's location info.
 - `deepJson(content)` — the parse5 DOM as a nested node tree, with source-algebra attributes under the `attrs` convention (framework projects this to the deep-xml channel).
-- `query(content, dialect, pattern)` — overrides xpath to dispatch against the real parsed DOM (XPath 1.0) instead of the projected deep-xml. regex/glob run against the same readable markdown the content channel produces (one projection, shared by `toText`).
+- `query(content, dialect, pattern)` — overrides xpath to dispatch against the real parsed DOM (XPath 1.0) instead of the projected deep-xml. regex/glob run against the markup itself, in its own coordinates; the readable Markdown is `content()`, which the service stores as the entry's `readable` channel and matches separately.
 - `validate(content)` — no-op (HTML is forgiving).
 
 ## two faces, one handler

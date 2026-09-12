@@ -1,4 +1,5 @@
 import EntryCrud from "./_entry-crud.ts";
+import EntryReadable from "./_entry-readable.ts";
 import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
@@ -140,6 +141,16 @@ export default class EntryOps {
         if (targetChannel === null) {
             const miss = EntryOps.#channelMiss(fragment, scheme, authority, pathname, channels, defaultChannel);
             return failure("channel-not-found", 404, miss.detail, { entryId: null, channel: null }, miss.extensions);
+        }
+        // {§readable-channel} — the projection follows its source; it is never written.
+        if (EntryReadable.isDerived(targetChannel)) {
+            return failure(
+                "channel-derived",
+                400,
+                `#${targetChannel} is derived from #${defaultChannel}; EDIT the source channel and the projection follows.`,
+                { entryId: null, channel: targetChannel },
+                { channel: targetChannel, source: defaultChannel, retryable: false },
+            );
         }
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null
@@ -312,9 +323,10 @@ export default class EntryOps {
                 { entryId, channel: targetChannel },
             ) as EditResult;
         }
-        // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body}.
-        // Search derivation is not a write concern. SearchIndex attaches the
-        // updated readable projection before the next model execution.
+        // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body} —
+        // and its derived `readable` sibling follows a source write ({§readable-channel}).
+        // Search derivation is not a write concern; SearchIndex attaches before the next model execution.
+        await EntryReadable.sync(ctx, entryId, targetChannel, defaultChannel, newContent, effectiveMimetype);
 
         // {§edit-receipt-anchored-context} — the same identity the READ projector hashes with.
         const receiptBase = EntryManifest.toPath(scheme, authority, pathname);

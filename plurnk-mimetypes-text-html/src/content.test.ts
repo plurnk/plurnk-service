@@ -96,20 +96,20 @@ describe("TextHtml — content channel ({§mimetype-content})", () => {
     });
 });
 
-describe("TextHtml — toText routes through the same projection", () => {
-    it("toText() returns the same markdown as content() for an article", () => {
-        // toText is protected; reach it via the regex query path is awkward, so
-        // assert the shared projection directly through a typed cast.
+describe("TextHtml — toText is the raw markup, the projection is content()", () => {
+    it("toText() returns the source itself, never the projection", () => {
+        // {§mimetype-content}: the projection is a channel the consumer stores; regex and glob
+        // over the source channel see the markup.
         const toText = (h as unknown as { toText(c: string): string }).toText.bind(h);
-        assert.equal(toText(ARTICLE), h.content(ARTICLE));
+        assert.equal(toText(ARTICLE), ARTICLE);
+        assert.notEqual(h.content(ARTICLE), ARTICLE);
     });
 
-    it("toText() projects to empty string when there is no readable content", () => {
-        // {§mimetype-content}: absence becomes empty matcher text, not raw HTML.
+    it("content() is absent when there is no readable projection, and toText() is still the source", () => {
         const html = "<html><body><!-- TODO: cleanup --></body></html>";
         const toText = (h as unknown as { toText(c: string): string }).toText.bind(h);
         assert.equal(h.content(html), undefined);
-        assert.equal(toText(html), "");
+        assert.equal(toText(html), html);
     });
 });
 
@@ -122,14 +122,16 @@ describe("TextHtml — content channel integration", () => {
         assert.ok(!md.includes("FooterChromeCopyright"));
     });
 
-    it("regex body-matcher scans the markdown, not the raw HTML", async () => {
-        // The class attribute lives only in raw HTML; the readable text lives
-        // only in markdown. A regex for the article text matches; a regex for
-        // a class name does not — proving toText fed the markdown.
-        const html = `<article><h1>FindableHeading</h1><p class="prose">${"body text ".repeat(20)}</p></article>`;
+    it("regex matches the markup it is given, in the markup's own coordinates", async () => {
+        // {§mimetype-content}: the projection is a channel of its own; a regex over the source
+        // channel sees tags and attributes, and its region addresses the source.
+        const html = `<article>\n<h1>FindableHeading</h1>\n<p class="prose">${"body text ".repeat(20)}</p></article>`;
         const found = await h.query(html, "regex", "FindableHeading");
         assert.equal(found.length, 1);
+        assert.deepEqual(found[0]!.regions, [{ startLine: 2, startColumn: 5, endLine: 2, endColumn: 20 }]);
         const cls = await h.query(html, "regex", "prose");
-        assert.equal(cls.length, 0, "raw HTML class attr absent from the markdown projection");
+        assert.equal(cls.length, 1, "the class attribute is source text");
+        const tag = await h.query(html, "regex", "<h[1-6]");
+        assert.equal(tag.length, 1, "the sweep's case: a heading tag is matchable in the source");
     });
 });

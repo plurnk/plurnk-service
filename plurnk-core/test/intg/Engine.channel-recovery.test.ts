@@ -42,10 +42,12 @@ test("{§channel-selection-missing} channel exploration across operation owners 
         const failures = rows.filter(({ status_rx }) => status_rx >= 400);
         assert.deepEqual(failures.map(({ op, status_rx }) => ({ op, status_rx })),
             ["READ", "FIND", "COPY", "COPY", "MOVE", "MOVE", "EDIT", "EDIT"].map((op) => ({ op, status_rx: 404 })));
-        for (const { rx } of failures) {
+        for (const { op, rx } of failures) {
             const problem = JSON.parse(rx).problem;
             assert.match(problem.type, /\/channel-not-found$/);
-            assert.deepEqual(problem.availableChannels, ["body"]);
+            // A READ miss names the channels the entry holds; the other owners name the scheme's
+            // declared channels, which include the derived `readable` ({§readable-channel}).
+            assert.deepEqual(problem.availableChannels, op === "READ" ? ["body"] : ["body", "readable"]);
         }
         const recovered = rows.find(({ op, pathname, status_rx }) => op === "READ" && pathname === "/note" && status_rx === 200);
         assert.ok(recovered);

@@ -14,7 +14,7 @@ const setup = async () => {
 };
 
 test("Worker declares static channels manifest + defaultChannel", () => {
-    assert.deepEqual(Worker.manifest.channels, { body: "text/markdown" });
+    assert.deepEqual(Worker.manifest.channels, { body: "text/markdown", readable: "text/markdown" });
     assert.equal(Worker.manifest.defaultChannel, "body");
 });
 

@@ -95,21 +95,15 @@ export default class TextHtml extends BaseHandler {
     }
 
     // {§mimetype-content} — project HTML into model-readable Markdown; empty or
-    // noise-only input has no readable projection. Bytes decode as UTF-8.
+    // noise-only input has no readable projection. Bytes decode as UTF-8. The
+    // projection is the consumer's `readable` channel; regex and glob run over
+    // whichever channel they address, so this handler keeps the base `toText`
+    // (the raw markup) for them.
     override content(content: HandlerContent): string | undefined {
         const html = typeof content === "string"
             ? content
             : new TextDecoder("utf-8").decode(content);
         return htmlToMarkdown(html);
-    }
-
-    // {§mimetype-content} — regex/glob and content share the readable Markdown
-    // projection. Absence maps to empty text, never raw HTML; XPath uses the DOM.
-    protected override toText(content: HandlerContent): string {
-        const html = typeof content === "string"
-            ? content
-            : new TextDecoder("utf-8").decode(content);
-        return htmlToMarkdown(html) ?? "";
     }
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we

@@ -241,15 +241,16 @@ describe("TextHtml — xpath query", () => {
 });
 
 describe("TextHtml — regex/jsonpath inheritance", () => {
-    it("inherits regex query, scanning the markdown projection", async () => {
-        // {§mimetype-content}: regex scans readable Markdown; noise-only input stays empty.
+    it("inherits regex query over the source markup", async () => {
+        // {§mimetype-content}: the readable projection is a channel of its own; the source
+        // channel matches as the text it is, comments included.
         const article = "<!DOCTYPE html><html><body><article><h1>FindableArticleHeading</h1>"
             + `<p>${"Readable article prose with enough density for extraction. ".repeat(15)}</p>`
             + "</article></body></html>";
         const out = await h.query(article, "regex", "FindableArticleHeading");
         assert.equal(out.length, 1);
         const shell = await h.query("<html><body><!-- TODO: cleanup --></body></html>", "regex", "cleanup");
-        assert.equal(shell.length, 0, "comment-only body projects to empty; nothing to match");
+        assert.equal(shell.length, 1, "a comment is source text and matches in the source channel");
     });
 
     it("{§mimetype-channel-architecture}: jsonpath queries the deep-json DOM tree", async () => {

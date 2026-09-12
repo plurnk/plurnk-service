@@ -236,7 +236,7 @@ test("Mimetypes.process returns metadata plus requested projections", async () =
 // via Mimetypes.detect and must not fire either channel. An explicit content
 // projection does fire content(). Same handler, separate phases.
 
-test("write resolves mimetype without firing the handler; explicit projection fires it", async () => {
+test("write resolves mimetype and derives only the readable projection; never the handler's query", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);
@@ -272,8 +272,8 @@ test("write resolves mimetype without firing the handler; explicit projection fi
         });
         await mimetypes.ready();
 
-        // WRITE phase: Worker.edit on a `.spy` path. Resolves mimetype via
-        // detect; must not touch content/query.
+        // WRITE phase: Worker.edit on a `.spy` path. Resolves mimetype via detect and asks the
+        // handler for its readable projection once ({§readable-channel}); never its query.
         const edited = await new Worker().edit(
             editStmt(urlPath("worker", "/notes.spy"), "alpha\nbeta\ngamma"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
@@ -282,14 +282,15 @@ test("write resolves mimetype without firing the handler; explicit projection fi
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
         const channel = await db.test_get_channel.get<{ mimetype: string; content: string }>({ entry_id: edited.entryId, name: "body" });
         assert.equal(channel?.mimetype, "text/x-spy", "write-time detect resolved the spy mimetype");
-        assert.equal(projectionCalls.length, 0, "{§mimetype}: scheme write did not invoke the handler's content projection");
+        assert.deepEqual(projectionCalls, ["alpha\nbeta\ngamma"], "{§readable-channel}: the write asked the handler for its projection of the stored content, once");
         assert.equal(queryCalls.length, 0, "{§mimetype}: scheme write did NOT invoke the handler's query");
+        assert.equal(await db.test_get_channel.get({ entry_id: edited.entryId, name: "readable" }), undefined, "a handler without a projection leaves no sibling");
 
         await mimetypes.process(
             { content: channel?.content ?? "", hint: channel?.mimetype },
             { channels: ["content"] },
         );
-        assert.deepEqual(projectionCalls, ["alpha\nbeta\ngamma"], "explicit projection passes the stored content to the handler");
+        assert.deepEqual(projectionCalls, ["alpha\nbeta\ngamma", "alpha\nbeta\ngamma"], "explicit projection passes the stored content to the handler");
     } finally { await db.close(); }
 });
 

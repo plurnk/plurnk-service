@@ -32,8 +32,12 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
-        assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
-        assert.equal(rows[0].mimetype, "text/html", "the authored mimetype is preserved");
+        // {§readable-channel} — the source is verbatim; its projection rides beside it, never over it.
+        assert.deepEqual(rows.map((r) => r.name).sort(), ["body", "readable"], "the verbatim source and its readable sibling; no #html archive of an authored file");
+        const body = rows.find((r) => r.name === "body")!;
+        assert.equal(body.mimetype, "text/html", "the authored mimetype is preserved");
+        assert.equal(body.content, ROSTER, "the source channel is exactly what was authored");
+        assert.equal(rows.find((r) => r.name === "readable")?.mimetype, "text/markdown");
 
         const read = await lookThroughScheme("worker", null, readStmt("roster.html"), ctx);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");

@@ -1065,14 +1065,19 @@ only when that representation differs from the raw body:
 
 The channel is in the default set because it performs no model inference. A
 handler is a pure projection of supplied bytes/content and does not infer the
-source scheme. The consumer decides whether to store a derived projection or
-the source body and treats their coordinate spaces separately unless the
-handler supplies an honest mapping.
+source scheme. The consumer stores a derived projection as a channel of its own
+(`readable` in the service, {§readable-channel} in the core specification) and
+treats its coordinate space separately from the source's unless the handler
+supplies an honest mapping.
 
-Regex/glob query uses `toText()`. A handler that implements both `content()`
-and `toText()` for the same readable form
-uses one underlying projection so query evidence and model-visible text do not
-diverge.
+§mimetype-content-query **A projection is a channel, never a hidden matching
+surface.** Regex/glob query runs over the content it is given, in that
+content's own coordinates: on a source channel it matches the source (markup,
+notebook JSON), on a stored `readable` channel it matches the projection. A
+handler must not route regex/glob through its readable projection; `toText()`
+is the binary-to-text seam for handlers whose bytes have a textual form, and
+the default string passthrough otherwise. Query evidence therefore always
+addresses the channel that was queried.
 
 ## §mimetype-tokenizer 19. Tokenizer seam
 
