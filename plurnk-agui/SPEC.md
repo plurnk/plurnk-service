@@ -35,6 +35,10 @@ does not recompute them.
   Process-local bindings use the complete `(workspace, threadId)` identity; equal thread names
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's conversation.
+  `loop.inject` and `loop.cancel` steer a loop already running in a world, so they attach only:
+  a workspace name that does not exist is the client's error, answered 404
+  `workspace-not-found` with nothing created — never a second world minted after the name
+  and answered there. Every other request may bring the world into being.
   `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,

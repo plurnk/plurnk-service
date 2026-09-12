@@ -11,13 +11,15 @@ import { type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure, problemFromError } from "./action-results.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 
+const LOOP_ADDRESSED_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel"]);
+
 export default class RunHandler {
     readonly #seam: () => ApplicationPort;
     readonly #opts: () => ResolvedModuleOptions;
     readonly #portal: () => Portal;
     readonly #requiresWorkspace: (kind: string) => boolean;
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse) => Promise<void>;
-    readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+    readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
     readonly #action: (a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
@@ -28,7 +30,7 @@ export default class RunHandler {
         portal: () => Portal;
         requiresWorkspace: (kind: string) => boolean;
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse) => Promise<void>;
-        envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+        envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
         action: (a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
@@ -118,7 +120,9 @@ export default class RunHandler {
             currentUser = lastUser;
         }
 
-        const { env, reattached } = await this.#envelope(input.threadId, forwarded);
+        // A loop-addressed action steers a loop already running in a world; a world that does not
+        // exist has no loop to steer, so the action never mints one. Everything else may.
+        const { env, reattached } = await this.#envelope(input.threadId, forwarded, { create: action === null || !LOOP_ADDRESSED_ACTIONS.has(action.kind) });
         const workspaceId = env.workspaceId;
         // {§agui-thread-binding} The threadId is the conversation over the
         // world. threadId == workspace name binds the model worker (the default conversation);

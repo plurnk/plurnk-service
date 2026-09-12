@@ -353,6 +353,9 @@ test("a read-only management Run does not duplicate its conversation's model set
 
 test("a management-action AG-UI Run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam, modelQueries } = mockSeam();
+    // loop.inject below addresses a live world; it never mints one.
+    seam.listWorkspaces = async () => [workspaceRow(3, "t1")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "t1", projectRoot: null, workerId: 10, workerName: "client-1" });
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "providers.list" } } } });
@@ -2023,6 +2026,28 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
         assert.equal(body.retryable, false);
         assert.doesNotMatch(body.detail, /world|existence/, "the error states the contract, never the machine-model philosophy");
         assert.equal(created, 0, "NO workspace was forged from the threadId");
+    } finally { await mod.close(); }
+});
+
+// {§agui-thread-binding} — only a conversation Run brings a world into being. The 2026-09-11 dogfood:
+// a client inject aimed at a worker name reached the module as a workspace name, and the module
+// minted a second world named after it and answered the injection there, while the parked loop
+// it was meant for slept on.
+test("an action naming an unknown workspace is a 404 Problem and creates nothing", async () => {
+    let created = 0;
+    const { seam } = mockSeam();
+    seam.listWorkspaces = async () => [];
+    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "designer", workerId: "r1", forwardedProps: { plurnk: { workspace: "designer", action: { kind: "loop.inject", prompt: "what are you waiting on?" } } } })) });
+        assert.equal(res.status, 404, "an action addresses a world that exists");
+        const body = await res.json() as { type: string; workspace: string; recovery: string; retryable: boolean };
+        assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
+        assert.equal(body.workspace, "designer");
+        assert.match(body.recovery, /workspace\.create or a conversation Run/);
+        assert.equal(body.retryable, false);
+        assert.equal(created, 0, "no world was minted on the action's behalf");
     } finally { await mod.close(); }
 });
 

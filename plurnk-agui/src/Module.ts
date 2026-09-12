@@ -274,7 +274,7 @@ export default class Module {
     // The threadId is the CONVERSATION over that world — resolved to a worker by
     // #conversationWorker ({§agui-thread-binding}: the three doors are ensureModelWorker, forkWorker,
     // createConversationWorker).
-    async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+    async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
         if (typeof workspace !== "string" || workspace.length === 0) {
             throw new HttpProblemError(httpProblem(
@@ -297,6 +297,22 @@ export default class Module {
         if (known !== undefined) {
             env = await this.#seam.attachWorkspace({ workspaceId: known.id });
             reattached = true;
+        } else if (options.create === false) {
+            // {§agui-thread-binding} — only a conversation Run may bring a world into being. An
+            // action addresses a world that exists; a name that does not is the client's error,
+            // never a workspace minted on its behalf (the 2026-09-11 dogfood: an inject aimed at a
+            // worker name created a second world named after it and answered there).
+            throw new HttpProblemError(httpProblem(
+                "workspace-not-found",
+                404,
+                `No workspace named ${JSON.stringify(workspace)} exists; an action never creates one.`,
+                {
+                    stage: "request-validation",
+                    workspace,
+                    recovery: "Name the existing workspace in forwardedProps.plurnk.workspace, or create it with workspace.create or a conversation Run.",
+                    retryable: false,
+                },
+            ));
         } else {
             const opts = forwarded ?? {};
             env = await this.#seam.createWorkspace({
