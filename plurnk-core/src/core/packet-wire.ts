@@ -69,6 +69,7 @@ interface RxView {
     content?: unknown;
     matched?: unknown;
     channels?: unknown;
+    recipients?: unknown;
     exitCode?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
@@ -824,6 +825,10 @@ export default class PacketWire {
             // tokens, so the row itself shows the choice a FIND listing would.
             if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
                 meta.channels = rx.channels;
+            }
+            // {§send-response-receipt} — a reply's row names the prompts it answered.
+            if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
+                meta.recipients = rx.recipients;
             }
             if (op === "READ" || op === "FIND") {
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {

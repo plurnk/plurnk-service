@@ -1,5 +1,5 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
-import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, TurnDisposition } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -475,7 +475,7 @@ export default class Dispatcher {
                 if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && (statement.target === null || ownPrompt)) {
-                    result = { status: 200 };
+                    result = await this.#respond(statement, schemeCtx, origin, workerId, loopId);
                 } else if (TurnDisposition.is(statement)) {
                     result = await this.#disposition.handle(statement, {
                         workspaceId,
@@ -1142,6 +1142,60 @@ export default class Dispatcher {
     // {§send-prompt-acceptance} `prompt://<this worker>/<this loop>/<id>` names a prompt the loop
     // contains; a SEND to it is the response, exactly as if untargeted. Another worker's or
     // another loop's prompt is not a recipient and keeps the ordinary refusal.
+    // {§send-response-receipt} — a response names the prompts it answers, so the receipt
+    // says where the text went. {§send-looks-like-operation} — a model response whose first
+    // line is an operation heading is a mis-fenced operation, not a reply: the 2026-09-11
+    // dogfood put four operations on the line after their fences, delivered all four to the
+    // user as 200 replies, then waited fifteen minutes for receipts that could never come.
+    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
+        if (origin === "model") {
+            const heading = this.#operationHeading(statement.body?.raw ?? "", schemeCtx);
+            if (heading !== null) {
+                return Dispatcher.#failure(
+                    "send-looks-like-operation",
+                    400,
+                    `The response begins with the operation heading \`${heading}\`; nothing ran and nothing was delivered.`,
+                    {},
+                    {
+                        heading,
+                        stage: "dispatch",
+                        recovery: `An operation goes on the fence line (\`\`\`\`${heading}); a quoted example goes inside a SEND body.`,
+                        retryable: false,
+                    },
+                );
+            }
+        }
+        return { status: 200, recipients: await this.#activePrompts(workerId, loopId) };
+    }
+
+    // The first non-blank line, when it parses alone as one clean heading naming an operation
+    // this worker could perform: a Plurnk operation, or a registered executor or MCP service.
+    #operationHeading(body: string, schemeCtx: PlurnkSchemeContext): string | null {
+        const line = body.split("\n").find((candidate) => candidate.trim().length > 0)?.trim();
+        if (line === undefined || line.startsWith("`")) return null;
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(line, null));
+        if (parsed.unparsedTail !== undefined || parsed.items.length !== 1 || parsed.items[0].kind !== "statement") return null;
+        const { statement } = parsed.items[0];
+        if (statement.op !== "EXEC") return line;
+        const executor = statement.executor;
+        if (executor === null || schemeCtx.executors?.entry(executor, schemeCtx.workspaceId) === undefined) return null;
+        return line;
+    }
+
+    // The loop's Active Prompts, oldest first, exactly as the packet lists them.
+    async #activePrompts(workerId: number, loopId: number): Promise<string[]> {
+        const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });
+        if (worker === undefined) throw new Error(`worker ${workerId} does not exist`);
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        const prefix = promptLoopPrefix(loopSeq);
+        const rows = await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({
+            worker_id: workerId,
+            pattern: `${prefix}%`,
+            prefix_len: prefix.length,
+        });
+        return rows.map((row) => `prompt://${worker.name}${row.pathname}`);
+    }
+
     async #isOwnPromptAddress(target: ParsedPath | null, workerId: number, loopId: number): Promise<boolean> {
         if (target === null || target.kind !== "url" || target.scheme !== "prompt") return false;
         const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });

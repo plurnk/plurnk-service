@@ -293,6 +293,7 @@ No body text is promoted into a header or recursively parsed as operations.
 This applies in every parser tier and preserves the opening fence's source
 position and exact authored source. It neither supplies a TASK inventory nor
 changes disposition handling. Named malformed blocks retain their diagnostics.
+The engine may still refuse the SEND it selects at dispatch ({§send-looks-like-operation}).
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. TASK normalizes an empty body to `[]`

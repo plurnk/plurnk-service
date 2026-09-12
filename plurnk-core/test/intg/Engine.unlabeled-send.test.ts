@@ -6,6 +6,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
+// {§send-looks-like-operation} — a bare fence whose first line is an operation heading is
+// refused at dispatch, so a quoted example must ride inside a SEND body; the parser itself
+// stays silent and exact, and nothing quoted ever executes.
 const verifyLiteralSends = async (aside: string | null): Promise<void> => {
     const db = await openMigrated();
     try {
@@ -29,14 +32,21 @@ const verifyLiteralSends = async (aside: string | null): Promise<void> => {
             ...bodies.map((body) => `\`\`\`\`${aside === null ? "" : ` <!-- ${aside} -->`}\n${body}\n\`\`\`\``),
             PlurnkParser.frame("TASK", '[{"content":"Show the examples.","status":"completed"}]'),
         ].join("\n\n");
+        const reply = [
+            PlurnkParser.frame("SEND", "```KILL (worker:///notes.md)```"),
+            PlurnkParser.frame("TASK", '[{"content":"Show the examples.","status":"completed"}]'),
+        ].join("\n\n");
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
-            workspaceId, workerId, loopId, maxTurns: 2,
+            provider: new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: source, reasoning: null } },
+                { assistant: { content: reply, reasoning: null } },
+            ] }),
+            workspaceId, workerId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples without executing them." }],
         });
-        assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 2, "initialization and one model turn; no repair turn");
-        const turnId = result.turnIds.at(-1)!;
+        assert.equal(result.result.status, 200, "the quoted example inside a SEND body concludes the loop");
+        assert.equal(result.turnIds.length, 3, "initialization, the refused turn, and the corrected turn");
+        const turnId = result.turnIds.at(-2)!;
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: turnId });
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({ accepted, errors: JSON.parse(parse_errors) })), [{ accepted: 1, errors: [] }]);
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory" || kind === "parse_error"), []);
@@ -46,7 +56,10 @@ const verifyLiteralSends = async (aside: string | null): Promise<void> => {
         const sends = modelRows.filter(({ op }) => op === "SEND");
         assert.deepEqual(sends.map(({ tx }) => JSON.parse(tx).aside), bodies.map(() => aside));
         assert.deepEqual(sends.map(({ tx, status_rx }) => ({ body: JSON.parse(tx).body.raw, target: JSON.parse(tx).target, status: status_rx })),
-            bodies.map((body) => ({ body, target: null, status: 200 })));
+            bodies.map((body, index) => ({ body, target: null, status: index === 1 ? 200 : 400 })),
+            "a body whose first line is an operation heading is refused; a body opening with an inner fence is delivered");
+        assert.deepEqual(sends.filter(({ status_rx }) => status_rx === 400).map(({ rx }) => (JSON.parse(rx) as { problem: { type: string } }).problem.type),
+            ["https://problems.plurnk.xyz/engine/dispatcher/send-looks-like-operation", "https://problems.plurnk.xyz/engine/dispatcher/send-looks-like-operation"]);
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source);
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
@@ -57,5 +70,5 @@ const verifyLiteralSends = async (aside: string | null): Promise<void> => {
 };
 
 for (const aside of [null, "literal examples"]) {
-    test(`{§unlabeled-fence-send}: model examples (${aside ?? "no aside"}) are delivered as SENDs without effects or warnings and /ops stays exact`, () => verifyLiteralSends(aside));
+    test(`{§unlabeled-fence-send}: model examples (${aside ?? "no aside"}) parse as SENDs without warnings, never execute, and /ops stays exact; bare headings are refused`, () => verifyLiteralSends(aside));
 }

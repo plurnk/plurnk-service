@@ -2324,6 +2324,21 @@ violations follow the current admission and strike contracts
   creates no per-prompt result structure; a prompt of another loop or another worker stays
   `400 send-target-not-a-recipient`. An undocumented acceptance in the same spirit as KILL
   in the completion turn, not a recipient.
+- §send-response-receipt **A reply's receipt names its recipients.** A delivered untargeted
+  SEND (and a SEND accepted under {§send-prompt-acceptance}) carries `recipients`: the loop's
+  Active Prompts, oldest first, exactly as the packet lists them. The row shows where the text
+  went, so a model that meant a worker, a stream, or an operation sees the user received it.
+- §send-looks-like-operation **A reply never begins with an operation heading.** When a model's
+  untargeted SEND has, as its first non-blank line, a line that parses alone as one clean
+  heading naming an operation this worker could perform — a Plurnk operation, or a registered
+  executor or MCP service — dispatch refuses it 400 `send-looks-like-operation`, naming the
+  `heading`, and delivers nothing. The parser's {§unlabeled-fence-send} stays silent and exact;
+  this is admission, not promotion: the line is never run as the operation it resembles, and the
+  neutral recovery says only where each intent belongs (an operation on the fence line, a quoted
+  example inside a SEND body). A first line that does not parse alone (prose after the word), a
+  name no registry knows, or an inner fence is an ordinary reply. Origin: the 2026-09-11 dogfood,
+  where four operations on the line after their fences were delivered as four 200 replies and the
+  loop then parked fifteen minutes on receipts that could never arrive.
 - §send-idle-turn **Inventory-only continuation is valid.** An `in_progress` inventory continues whether or not another operation ran, including while children or streams are live. TASK is operational state; neither absence of other operations nor a not-ready READ may replace its intent with an implicit park. Exact repeating activity remains subject to {§engine-cycle-evidence}.
 - §send-premature-terminate **Premature terminate — the pending set.**
   A model's completion turn permits SEND, TASK, and KILL. Every other
