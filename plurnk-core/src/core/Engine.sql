@@ -743,3 +743,34 @@ WHERE pr.model = $model AND pr.state = 'settled' AND pr.outcome = 'response'
   AND t.packet IS NOT NULL AND json_extract(t.packet, '$.weight') > 0
 ORDER BY pr.id DESC
 LIMIT 5;
+
+-- INIT: inference_calls_create_model_specialization
+DROP TRIGGER IF EXISTS inference_calls_create_model_specialization;
+CREATE TRIGGER inference_calls_create_model_specialization
+AFTER INSERT ON inference_calls
+WHEN NEW.kind IN ('emission', 'bare')
+BEGIN
+    INSERT INTO model_calls (id) VALUES (NEW.id);
+END;
+
+-- INIT: model_calls_close_response
+DROP TRIGGER IF EXISTS model_calls_close_response;
+CREATE TRIGGER model_calls_close_response
+AFTER UPDATE OF response ON model_calls
+WHEN NEW.response IS NOT NULL
+BEGIN
+    UPDATE inference_calls
+    SET state = 'response', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id AND state = 'pending';
+END;
+
+-- INIT: model_calls_close_error
+DROP TRIGGER IF EXISTS model_calls_close_error;
+CREATE TRIGGER model_calls_close_error
+AFTER UPDATE OF failure ON model_calls
+WHEN NEW.failure IS NOT NULL AND NEW.response IS NULL
+BEGIN
+    UPDATE inference_calls
+    SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id AND state = 'pending';
+END;

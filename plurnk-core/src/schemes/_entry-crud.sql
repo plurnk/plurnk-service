@@ -161,3 +161,37 @@ WHERE entry_channels.content_hash IS NOT excluded.content_hash;
 
 -- PREP: crud_delete_readable_channel
 DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = 'readable';
+
+-- INIT: entry_channels_invalidate_derivation
+-- A changed channel representation cannot retain search evidence derived from
+-- its predecessor. This trigger is the one invalidation owner for every write
+-- path, including model EDIT, plugin channel capabilities, and streams.
+DROP TRIGGER IF EXISTS entry_channels_invalidate_derivation;
+CREATE TRIGGER entry_channels_invalidate_derivation
+AFTER UPDATE OF content, mimetype ON entry_channels
+WHEN OLD.content IS NOT NEW.content OR OLD.mimetype IS NOT NEW.mimetype
+BEGIN
+    UPDATE entry_channels
+    SET deep_hash = NULL
+    WHERE entry_id = NEW.entry_id AND name = NEW.name AND deep_hash IS NOT NULL;
+END;
+
+-- INIT: entries_touch_on_channel_write
+-- User Note 5 — bump the entry's updated_at on addressable representation or
+-- lifecycle writes so the catalog (ordered by updated_at ASC) keeps recently-
+-- touched entries at the tail and holds the prompt-cache prefix stable across
+-- turns. Content hashes and search attachments are private metadata, not touches.
+DROP TRIGGER IF EXISTS entries_touch_on_channel_write;
+CREATE TRIGGER entries_touch_on_channel_write
+AFTER INSERT ON entry_channels
+BEGIN
+    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
+END;
+
+-- INIT: entries_touch_on_channel_update
+DROP TRIGGER IF EXISTS entries_touch_on_channel_update;
+CREATE TRIGGER entries_touch_on_channel_update
+AFTER UPDATE OF content, mimetype, weight, state, producer_result ON entry_channels
+BEGIN
+    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
+END;

@@ -91,3 +91,96 @@ WHERE e.workspace_id = $workspace_id
   AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC
 LIMIT 1;
+
+-- INIT: subscriptions_wake_revision
+DROP TRIGGER IF EXISTS subscriptions_wake_revision;
+CREATE TRIGGER subscriptions_wake_revision
+AFTER UPDATE OF closed_at ON subscriptions
+WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
+BEGIN
+    UPDATE workers SET wake_revision = wake_revision + 1 WHERE id = NEW.worker_id;
+END;
+
+-- INIT: subscriptions_settle_channels
+-- Subscription settlement is the single atomic transition that closes the
+-- lifecycle and installs current terminal producer evidence on every channel.
+-- Overrides are exact; all other channels inherit the universal result.
+DROP TRIGGER IF EXISTS subscriptions_settle_channels;
+CREATE TRIGGER subscriptions_settle_channels
+AFTER UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions
+WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
+BEGIN
+    UPDATE entry_channels
+    SET producer_result = COALESCE(
+            (
+                SELECT json(channel_result.value)
+                FROM json_each(NEW.channel_results) AS channel_result
+                WHERE channel_result.key = entry_channels.name
+            ),
+            NEW.close_result
+        ),
+        state = CASE WHEN json_extract(
+            COALESCE(
+                (
+                    SELECT json(channel_result.value)
+                    FROM json_each(NEW.channel_results) AS channel_result
+                    WHERE channel_result.key = entry_channels.name
+                ),
+                NEW.close_result
+            ),
+            '$.status'
+        ) >= 400 THEN 'errored' ELSE 'closed' END
+    WHERE entry_id = NEW.entry_id;
+END;
+
+-- INIT: subscriptions_seed_publications
+DROP TRIGGER IF EXISTS subscriptions_seed_publications;
+CREATE TRIGGER subscriptions_seed_publications
+AFTER INSERT ON subscriptions
+BEGIN
+    INSERT INTO subscription_publications (subscription_id, channel)
+    SELECT NEW.id, ec.name
+    FROM entry_channels ec
+    WHERE ec.entry_id = NEW.entry_id
+      AND (NEW.published_channel IS NULL OR ec.name = NEW.published_channel);
+
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM subscription_publications WHERE subscription_id = NEW.id
+    ) THEN RAISE(ABORT, 'subscription has no publishable channel') END;
+END;
+
+-- INIT: log_entries_advance_subscription_publication
+-- The generated READ and its cursor transition are one SQLite statement. A
+-- later log KILL removes evidence from active context without rewinding the
+-- subscription/channel publication state. {§exec-stream}
+DROP TRIGGER IF EXISTS log_entries_advance_subscription_publication;
+CREATE TRIGGER log_entries_advance_subscription_publication
+AFTER INSERT ON log_entries
+WHEN NEW.subscription_publication_id IS NOT NULL
+BEGIN
+    SELECT CASE WHEN
+        NEW.origin != '_plurnk'
+        OR NEW.op != 'READ'
+        OR json_type(NEW.attrs, '$.streamEnd') != 'integer'
+        OR json_extract(NEW.attrs, '$.streamEnd') < 0
+        OR json_type(NEW.attrs, '$.terminal') NOT IN ('true', 'false')
+    THEN RAISE(ABORT, 'subscription publication requires one canonical stream observation') END;
+
+    UPDATE subscription_publications
+    SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
+        terminal_published = json_extract(NEW.attrs, '$.terminal'),
+        version = version + 1
+    WHERE id = NEW.subscription_publication_id
+      AND terminal_published = 0
+      AND (
+          (json_extract(NEW.attrs, '$.terminal') = 0
+              AND json_extract(NEW.attrs, '$.streamEnd') > published_end)
+          OR
+          (json_extract(NEW.attrs, '$.terminal') = 1
+              AND json_extract(NEW.attrs, '$.streamEnd') >= published_end)
+      );
+
+    SELECT CASE WHEN changes() != 1
+        THEN RAISE(ABORT, 'subscription publication transition is stale or already terminal')
+    END;
+END;

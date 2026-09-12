@@ -47,3 +47,15 @@ SET status = 500,
 WHERE id = $id
   AND completed_at IS NULL
 RETURNING id;
+
+-- INIT: turns_capture_wake_revision
+-- {§loop-wake-identity}: each program observes independently, before its packet
+-- is assembled. A completion during that program remains owed through parking.
+DROP TRIGGER IF EXISTS turns_capture_wake_revision;
+CREATE TRIGGER turns_capture_wake_revision
+AFTER INSERT ON turns
+BEGIN
+    UPDATE loops
+    SET observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
+    WHERE id = NEW.loop_id AND status = 102;
+END;

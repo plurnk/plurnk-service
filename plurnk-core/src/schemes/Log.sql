@@ -129,3 +129,156 @@ WHERE id = $log_entry_id AND EXISTS (
     SELECT 1 FROM log_entry_projections
     WHERE log_entry_id = $log_entry_id AND active = 1 AND json(folded) = json($folded)
 );
+
+-- INIT: log_entries_initialize_projection
+DROP TRIGGER IF EXISTS log_entries_initialize_projection;
+CREATE TRIGGER log_entries_initialize_projection
+AFTER INSERT ON log_entries
+BEGIN
+    INSERT INTO log_entry_projections (log_entry_id, active, folded)
+    VALUES (NEW.id, 1, '[]');
+END;
+
+-- INIT: log_entry_projections_invalidate_derivation
+-- {§log-readable-projection} — derived artifacts describe the active body.
+DROP TRIGGER IF EXISTS log_entry_projections_invalidate_derivation;
+CREATE TRIGGER log_entry_projections_invalidate_derivation
+AFTER UPDATE OF folded, active ON log_entry_projections
+WHEN OLD.active != NEW.active OR json(OLD.folded) != json(NEW.folded)
+BEGIN
+    UPDATE log_entries SET deep_hash = NULL WHERE id = NEW.log_entry_id;
+END;
+
+-- INIT: log_entries_apply_curation
+-- One outer INSERT owns the whole landed curation event: exact selected rows,
+-- their before/after projection, and the resulting current
+-- state. Trigger failure rolls the operation row and all effects back together.
+-- The private plan is erased before INSERT returns.
+-- {§log-kill-scope} — a log KILL either retires a row whole (active 1→0, visibility untouched)
+-- or folds a span of its body (active stays 1, visibility changes).
+DROP TRIGGER IF EXISTS log_entries_apply_curation;
+CREATE TRIGGER log_entries_apply_curation
+AFTER INSERT ON log_entries
+WHEN NEW.op = 'KILL'
+ AND NEW.status_rx < 400
+ AND NEW.scheme = 'log'
+ AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
+BEGIN
+    SELECT CASE WHEN
+        COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.targets'), '') != 'array'
+        OR json_array_length(NEW.attrs, '$.__plurnk_curation.targets') = 0
+        OR EXISTS (
+            SELECT 1
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+            WHERE selected.type != 'object'
+               OR COALESCE(json_type(selected.value, '$.id'), '') != 'integer'
+               OR json_extract(selected.value, '$.id') <= 0
+               OR COALESCE(json_type(selected.value, '$.activeBefore'), '') != 'integer'
+               OR json_extract(selected.value, '$.activeBefore') NOT IN (0, 1)
+               OR COALESCE(json_type(selected.value, '$.activeAfter'), '') != 'integer'
+               OR json_extract(selected.value, '$.activeAfter') NOT IN (0, 1)
+               OR COALESCE(json_type(selected.value, '$.foldedBefore'), '') != 'array'
+               OR COALESCE(json_type(selected.value, '$.foldedAfter'), '') != 'array'
+               OR EXISTS (
+                   SELECT 1 FROM json_each(selected.value) field
+                   WHERE field.key NOT IN ('id', 'activeBefore', 'activeAfter', 'foldedBefore', 'foldedAfter')
+               )
+               OR EXISTS (
+                   SELECT 1
+                   FROM (
+                       SELECT 'before' AS side, range.key, range.value, range.type
+                       FROM json_each(json_extract(selected.value, '$.foldedBefore')) range
+                       UNION ALL
+                       SELECT 'after' AS side, range.key, range.value, range.type
+                       FROM json_each(json_extract(selected.value, '$.foldedAfter')) range
+                   ) range
+                   WHERE range.type != 'array'
+                      OR json_array_length(range.value) != 2
+                      OR COALESCE(json_type(range.value, '$[0]'), '') != 'integer'
+                      OR COALESCE(json_type(range.value, '$[1]'), '') != 'integer'
+                      OR json_extract(range.value, '$[0]') < 1
+                      OR (
+                          json_extract(range.value, '$[1]') != -1
+                          AND json_extract(range.value, '$[1]') < json_extract(range.value, '$[0]')
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM json_each(
+                              CASE range.side
+                                  WHEN 'before' THEN json_extract(selected.value, '$.foldedBefore')
+                                  ELSE json_extract(selected.value, '$.foldedAfter')
+                              END
+                          ) previous
+                          WHERE previous.key = range.key - 1
+                            AND (
+                                json_extract(previous.value, '$[1]') = -1
+                                OR json_extract(range.value, '$[0]') <= json_extract(previous.value, '$[1]') + 1
+                            )
+                      )
+               )
+        )
+        OR (
+            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
+        ) != (
+            SELECT COUNT(DISTINCT json_extract(value, '$.id'))
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+            LEFT JOIN log_entries target ON target.id = json_extract(selected.value, '$.id')
+            LEFT JOIN log_entry_projections projection ON projection.log_entry_id = target.id
+            WHERE target.id IS NULL
+               OR projection.log_entry_id IS NULL
+               OR target.worker_id != NEW.worker_id
+               OR target.id = NEW.id
+               OR projection.active != json_extract(selected.value, '$.activeBefore')
+               OR json(projection.folded) != json(json_extract(selected.value, '$.foldedBefore'))
+               OR NOT (
+                   json_extract(selected.value, '$.activeBefore') = 1
+                   AND (
+                       json_extract(selected.value, '$.activeAfter') = 1
+                       OR json(json_extract(selected.value, '$.foldedBefore')) = json(json_extract(selected.value, '$.foldedAfter'))
+                   )
+               )
+        )
+    THEN RAISE(ABORT, 'invalid private log curation payload') END;
+
+    INSERT INTO log_curation_effects (
+        operation_log_entry_id,
+        target_log_entry_id,
+        active_before,
+        active_after,
+        folded_before,
+        folded_after
+    )
+    SELECT
+        NEW.id,
+        target.id,
+        json_extract(selected.value, '$.activeBefore'),
+        json_extract(selected.value, '$.activeAfter'),
+        json_extract(selected.value, '$.foldedBefore'),
+        json_extract(selected.value, '$.foldedAfter')
+    FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+    JOIN log_entries target ON target.id = json_extract(selected.value, '$.id');
+
+    UPDATE log_entry_projections
+    SET active = (
+        SELECT json_extract(selected.value, '$.activeAfter')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+        WHERE json_extract(selected.value, '$.id') = log_entry_projections.log_entry_id
+    ),
+        folded = (
+        SELECT json_extract(selected.value, '$.foldedAfter')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+        WHERE json_extract(selected.value, '$.id') = log_entry_projections.log_entry_id
+    )
+    WHERE log_entry_id IN (
+        SELECT json_extract(value, '$.id')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
+    );
+
+    UPDATE log_entries
+    SET attrs = json_remove(attrs, '$.__plurnk_curation')
+    WHERE id = NEW.id;
+END;

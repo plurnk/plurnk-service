@@ -180,14 +180,6 @@ CREATE INDEX IF NOT EXISTS ambient_events_parent_id
 CREATE UNIQUE INDEX IF NOT EXISTS ambient_events_source_identity
     ON ambient_events (producer_worker_id, kind, source_record_id);
 
-CREATE TRIGGER IF NOT EXISTS ambient_child_wake_revision
-AFTER INSERT ON ambient_events
-WHEN NEW.kind = 'loop_termination'
-BEGIN
-    UPDATE workers SET wake_revision = wake_revision + 1
-    WHERE id = NEW.target_parent_worker_id;
-END;
-
 CREATE TRIGGER IF NOT EXISTS ambient_events_structural_audience
 BEFORE INSERT ON ambient_events
 WHEN NOT EXISTS (
@@ -202,21 +194,6 @@ WHEN NOT EXISTS (
 )
 BEGIN
     SELECT RAISE(ABORT, 'ambient event audience must be the producer direct parent in the same workspace');
-END;
-
--- A worker begins after the history that predates its existence. This trigger
--- runs in the worker INSERT statement, so an occurrence is either in the
--- baseline or after it. Fork INSERTs supply their own cursor/boundary and skip
--- this ordinary-worker baseline. {§env-delta-log-pull}
-CREATE TRIGGER IF NOT EXISTS workers_capture_ambient_baseline
-AFTER INSERT ON workers
-WHEN NEW.ambient_event_cursor IS NULL
-BEGIN
-    UPDATE workers
-    SET ambient_event_cursor = COALESCE((
-        SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = NEW.workspace_id
-    ), 0)
-    WHERE id = NEW.id;
 END;
 
 -- loops
@@ -327,75 +304,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_live_recurrence
 ON loops (COALESCE(recurrence_root_loop_id, id))
 WHERE repeat_interval_ms IS NOT NULL AND status IN (100, 102, 202);
 
--- {§worker-scheduled-send}: settlement and successor admission are one mutation.
--- Claims coalesce elapsed cadence slots; neither prompts nor effects are replayed.
-CREATE TRIGGER IF NOT EXISTS loops_schedule_successor
-AFTER UPDATE OF status ON loops
-WHEN NEW.status = 200 AND OLD.status IN (100, 102, 202)
-  AND NEW.repeat_interval_ms IS NOT NULL
-BEGIN
-    INSERT INTO loops (
-        worker_id, sequence, status, prompt, prompt_source, policy,
-        model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
-        execution_budget_ms, open_paths, scheduled_at, repeat_interval_ms, recurrence_root_loop_id
-    )
-    SELECT NEW.worker_id,
-           (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = NEW.worker_id),
-           100, seed.prompt, seed.prompt_source, seed.policy,
-           seed.model_route_id, seed.spawn_model_route_id, seed.reasoning_policy, seed.max_turns,
-           seed.execution_budget_ms, seed.open_paths,
-           NEW.scheduled_at + NEW.repeat_interval_ms, NEW.repeat_interval_ms, seed.id
-    FROM loops seed
-    WHERE seed.id = COALESCE(NEW.recurrence_root_loop_id, NEW.id);
-END;
--- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
--- workers pull the termination as a folded ambient delta — caught uniformly across every
--- death-path (SEND, overflow recovery, max-turns, strike, KILL). The stamp updates terminated_at,
--- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
--- 429 turn-ceiling · 499 cancel · 500 fail · 504 execution timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
-CREATE TRIGGER IF NOT EXISTS loops_stamp_terminated_at
-AFTER UPDATE OF status ON loops
-WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
-BEGIN
-    UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
-END;
-
--- A child terminal transition is an occurrence addressed only to its direct
--- parent. Directly inserted fork history never crosses this transition and
--- therefore cannot fabricate a new conclusion event. The occurrence carries no
--- target: it is a message from the child, and a commons-shaped
--- `worker:///name` would name an entry the child never wrote (#567).
-CREATE TRIGGER IF NOT EXISTS loops_append_ambient_event
-AFTER UPDATE OF status ON loops
-WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
-BEGIN
-    INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, target_parent_worker_id,
-        workspace_broadcast, kind, source_record_id, source,
-        op, scheme, pathname,
-        tx, mimetype_tx, rx, mimetype_rx, status_rx, state, terminated_by
-    )
-    SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
-           0, 'loop_termination', NEW.id, NULL,
-           'SEND', NULL, NULL,
-           '', 'text/plain', NEW.terminal_result, 'application/json',
-           json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by
-    FROM workers w
-    WHERE w.id = NEW.worker_id
-      AND w.parent_worker_id IS NOT NULL
-      -- {§env-delta-child-termination}: runtime administrative work is not a
-      -- delegated conclusion. A spawn failing before its first turn still is.
-      AND (
-          NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = NEW.id)
-          OR EXISTS (
-              SELECT 1
-              FROM turns t
-              WHERE t.loop_id = NEW.id
-                AND NOT (t.producer = '_plurnk' AND t.kind IN ('operation', 'maintenance'))
-          )
-      );
-END;
-
 -- turns
 -- finish_reason / model: accepted provider-call metadata from the provider
 -- response contract. Physical request accounting is normalized beneath the
@@ -471,6 +379,12 @@ CREATE TABLE IF NOT EXISTS turns (
 
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 
+-- {§actor-boundary-doc-injection}: derived observation only; no durable row is rewritten.
+CREATE VIEW IF NOT EXISTS work_loops AS
+SELECT l.* FROM loops l
+WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind = 'maintenance')
+   OR EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind <> 'maintenance');
+
 -- {§turn-source-resources}: immutable source facts belong to their turn, not
 -- its curatable log. Derivation attachments are replaceable, source bytes are not.
 CREATE TABLE IF NOT EXISTS turn_sources (
@@ -496,16 +410,6 @@ BEFORE DELETE ON turn_sources
 WHEN EXISTS (SELECT 1 FROM turns WHERE id = OLD.turn_id)
 BEGIN
     SELECT RAISE(ABORT, 'turn source evidence belongs to its retained turn');
-END;
-
--- {§loop-wake-identity}: each program observes independently, before its packet
--- is assembled. A completion during that program remains owed through parking.
-CREATE TRIGGER IF NOT EXISTS turns_capture_wake_revision
-AFTER INSERT ON turns
-BEGIN
-    UPDATE loops
-    SET observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
-    WHERE id = NEW.loop_id AND status = 102;
 END;
 
 -- {§turn-record} Producer and purpose never change beneath execution history.
@@ -647,37 +551,12 @@ BEGIN
     SELECT RAISE(ABORT, 'model call specialization cannot be deleted independently');
 END;
 
-CREATE TRIGGER IF NOT EXISTS inference_calls_create_model_specialization
-AFTER INSERT ON inference_calls
-WHEN NEW.kind IN ('emission', 'bare')
-BEGIN
-    INSERT INTO model_calls (id) VALUES (NEW.id);
-END;
-
 CREATE TRIGGER IF NOT EXISTS model_calls_observation_pending
 BEFORE UPDATE OF native_inputs, response, failure, capacity, finish_reason, response_model
 ON model_calls
 WHEN COALESCE((SELECT state FROM inference_calls WHERE id = OLD.id), '') != 'pending'
 BEGIN
     SELECT RAISE(ABORT, 'model call observation is immutable');
-END;
-
-CREATE TRIGGER IF NOT EXISTS model_calls_close_response
-AFTER UPDATE OF response ON model_calls
-WHEN NEW.response IS NOT NULL
-BEGIN
-    UPDATE inference_calls
-    SET state = 'response', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = NEW.id AND state = 'pending';
-END;
-
-CREATE TRIGGER IF NOT EXISTS model_calls_close_error
-AFTER UPDATE OF failure ON model_calls
-WHEN NEW.failure IS NOT NULL AND NEW.response IS NULL
-BEGIN
-    UPDATE inference_calls
-    SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = NEW.id AND state = 'pending';
 END;
 
 -- Emission admission specializes one model call without re-owning its response,
@@ -1020,34 +899,6 @@ BEGIN
       AND e.authority = NEW.authority AND e.pathname = NEW.pathname;
 END;
 
--- A changed channel representation cannot retain search evidence derived from
--- its predecessor. This trigger is the one invalidation owner for every write
--- path, including model EDIT, plugin channel capabilities, and streams.
-CREATE TRIGGER IF NOT EXISTS entry_channels_invalidate_derivation
-AFTER UPDATE OF content, mimetype ON entry_channels
-WHEN OLD.content IS NOT NEW.content OR OLD.mimetype IS NOT NEW.mimetype
-BEGIN
-    UPDATE entry_channels
-    SET deep_hash = NULL
-    WHERE entry_id = NEW.entry_id AND name = NEW.name AND deep_hash IS NOT NULL;
-END;
-
--- User Note 5 — bump the entry's updated_at on addressable representation or
--- lifecycle writes so the catalog (ordered by updated_at ASC) keeps recently-
--- touched entries at the tail and holds the prompt-cache prefix stable across
--- turns. Content hashes and search attachments are private metadata, not touches.
-CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_write
-AFTER INSERT ON entry_channels
-BEGIN
-    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
-END;
-
-CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_update
-AFTER UPDATE OF content, mimetype, weight, state, producer_result ON entry_channels
-BEGIN
-    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
-END;
-
 -- symbol_defs
 -- &graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'
@@ -1321,21 +1172,6 @@ BEGIN
     SELECT RAISE(ABORT, 'model call native inputs must be unique successful READ coordinates owned by its worker');
 END;
 
-CREATE TRIGGER IF NOT EXISTS log_entries_initialize_projection
-AFTER INSERT ON log_entries
-BEGIN
-    INSERT INTO log_entry_projections (log_entry_id, active, folded)
-    VALUES (NEW.id, 1, '[]');
-END;
-
--- {§log-readable-projection} — derived artifacts describe the active body.
-CREATE TRIGGER IF NOT EXISTS log_entry_projections_invalidate_derivation
-AFTER UPDATE OF folded, active ON log_entry_projections
-WHEN OLD.active != NEW.active OR json(OLD.folded) != json(NEW.folded)
-BEGIN
-    UPDATE log_entries SET deep_hash = NULL WHERE id = NEW.log_entry_id;
-END;
-
 -- Individual execution events are append-only. Containing-history teardown is
 -- the one removal owner: a cascading delete has already removed at least one
 -- ancestor in the workspace→worker→loop→turn chain. A direct row delete while
@@ -1604,138 +1440,6 @@ BEGIN
     SELECT RAISE(ABORT, 'private log curation payload requires a successful log curation row');
 END;
 
--- One outer INSERT owns the whole landed curation event: exact selected rows,
--- their before/after projection, and the resulting current
--- state. Trigger failure rolls the operation row and all effects back together.
--- The private plan is erased before INSERT returns.
--- {§log-kill-scope} — a log KILL either retires a row whole (active 1→0, visibility untouched)
--- or folds a span of its body (active stays 1, visibility changes).
-CREATE TRIGGER IF NOT EXISTS log_entries_apply_curation
-AFTER INSERT ON log_entries
-WHEN NEW.op = 'KILL'
- AND NEW.status_rx < 400
- AND NEW.scheme = 'log'
- AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
-BEGIN
-    SELECT CASE WHEN
-        COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.targets'), '') != 'array'
-        OR json_array_length(NEW.attrs, '$.__plurnk_curation.targets') = 0
-        OR EXISTS (
-            SELECT 1
-            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-            WHERE selected.type != 'object'
-               OR COALESCE(json_type(selected.value, '$.id'), '') != 'integer'
-               OR json_extract(selected.value, '$.id') <= 0
-               OR COALESCE(json_type(selected.value, '$.activeBefore'), '') != 'integer'
-               OR json_extract(selected.value, '$.activeBefore') NOT IN (0, 1)
-               OR COALESCE(json_type(selected.value, '$.activeAfter'), '') != 'integer'
-               OR json_extract(selected.value, '$.activeAfter') NOT IN (0, 1)
-               OR COALESCE(json_type(selected.value, '$.foldedBefore'), '') != 'array'
-               OR COALESCE(json_type(selected.value, '$.foldedAfter'), '') != 'array'
-               OR EXISTS (
-                   SELECT 1 FROM json_each(selected.value) field
-                   WHERE field.key NOT IN ('id', 'activeBefore', 'activeAfter', 'foldedBefore', 'foldedAfter')
-               )
-               OR EXISTS (
-                   SELECT 1
-                   FROM (
-                       SELECT 'before' AS side, range.key, range.value, range.type
-                       FROM json_each(json_extract(selected.value, '$.foldedBefore')) range
-                       UNION ALL
-                       SELECT 'after' AS side, range.key, range.value, range.type
-                       FROM json_each(json_extract(selected.value, '$.foldedAfter')) range
-                   ) range
-                   WHERE range.type != 'array'
-                      OR json_array_length(range.value) != 2
-                      OR COALESCE(json_type(range.value, '$[0]'), '') != 'integer'
-                      OR COALESCE(json_type(range.value, '$[1]'), '') != 'integer'
-                      OR json_extract(range.value, '$[0]') < 1
-                      OR (
-                          json_extract(range.value, '$[1]') != -1
-                          AND json_extract(range.value, '$[1]') < json_extract(range.value, '$[0]')
-                      )
-                      OR EXISTS (
-                          SELECT 1
-                          FROM json_each(
-                              CASE range.side
-                                  WHEN 'before' THEN json_extract(selected.value, '$.foldedBefore')
-                                  ELSE json_extract(selected.value, '$.foldedAfter')
-                              END
-                          ) previous
-                          WHERE previous.key = range.key - 1
-                            AND (
-                                json_extract(previous.value, '$[1]') = -1
-                                OR json_extract(range.value, '$[0]') <= json_extract(previous.value, '$[1]') + 1
-                            )
-                      )
-               )
-        )
-        OR (
-            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
-        ) != (
-            SELECT COUNT(DISTINCT json_extract(value, '$.id'))
-            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
-        )
-        OR EXISTS (
-            SELECT 1
-            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-            LEFT JOIN log_entries target ON target.id = json_extract(selected.value, '$.id')
-            LEFT JOIN log_entry_projections projection ON projection.log_entry_id = target.id
-            WHERE target.id IS NULL
-               OR projection.log_entry_id IS NULL
-               OR target.worker_id != NEW.worker_id
-               OR target.id = NEW.id
-               OR projection.active != json_extract(selected.value, '$.activeBefore')
-               OR json(projection.folded) != json(json_extract(selected.value, '$.foldedBefore'))
-               OR NOT (
-                   json_extract(selected.value, '$.activeBefore') = 1
-                   AND (
-                       json_extract(selected.value, '$.activeAfter') = 1
-                       OR json(json_extract(selected.value, '$.foldedBefore')) = json(json_extract(selected.value, '$.foldedAfter'))
-                   )
-               )
-        )
-    THEN RAISE(ABORT, 'invalid private log curation payload') END;
-
-    INSERT INTO log_curation_effects (
-        operation_log_entry_id,
-        target_log_entry_id,
-        active_before,
-        active_after,
-        folded_before,
-        folded_after
-    )
-    SELECT
-        NEW.id,
-        target.id,
-        json_extract(selected.value, '$.activeBefore'),
-        json_extract(selected.value, '$.activeAfter'),
-        json_extract(selected.value, '$.foldedBefore'),
-        json_extract(selected.value, '$.foldedAfter')
-    FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-    JOIN log_entries target ON target.id = json_extract(selected.value, '$.id');
-
-    UPDATE log_entry_projections
-    SET active = (
-        SELECT json_extract(selected.value, '$.activeAfter')
-        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-        WHERE json_extract(selected.value, '$.id') = log_entry_projections.log_entry_id
-    ),
-        folded = (
-        SELECT json_extract(selected.value, '$.foldedAfter')
-        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-        WHERE json_extract(selected.value, '$.id') = log_entry_projections.log_entry_id
-    )
-    WHERE log_entry_id IN (
-        SELECT json_extract(value, '$.id')
-        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
-    );
-
-    UPDATE log_entries
-    SET attrs = json_remove(attrs, '$.__plurnk_curation')
-    WHERE id = NEW.id;
-END;
-
 -- Column-scoped immutability: the original action's identity, target, and
 -- initial projection never change. Proposal lifecycle may mutate its outcome;
 -- curation state lives outside the event row. Keep attrs separate so the
@@ -1846,84 +1550,6 @@ FROM (
 ) candidate
 WHERE target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1;
 
--- Every final op-bearing child row is parent activity. A successful operation
--- whose landed effects touch worker:/// additionally acquires the workspace
--- audience. Observer rows and copied fork history cannot republish themselves.
-CREATE TRIGGER IF NOT EXISTS log_entries_append_ambient_event_insert
-AFTER INSERT ON log_entries
-WHEN NEW.state != 'proposed'
-BEGIN
-    INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, target_parent_worker_id,
-        workspace_broadcast, kind, source_record_id, at, source,
-        op, signal,
-        scheme, username, password, hostname, port, pathname, query, fragment,
-        line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-        state, outcome, attrs
-    )
-    SELECT workspace_id, producer_worker_id, target_parent_worker_id,
-           workspace_broadcast, 'activity', source_record_id, at, source,
-           op, signal,
-           scheme, username, password, hostname, port, pathname, query, fragment,
-           line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-           state, outcome, attrs
-    FROM ambient_activity_candidates
-    WHERE source_record_id = NEW.id;
-
-    UPDATE log_entries
-    SET ambient_event_id = (
-        SELECT id FROM ambient_events
-        WHERE producer_worker_id = NEW.worker_id
-          AND kind = 'activity'
-          AND source_record_id = NEW.id
-    )
-    WHERE id = NEW.id
-      AND EXISTS (
-          SELECT 1 FROM ambient_events
-          WHERE producer_worker_id = NEW.worker_id
-            AND kind = 'activity'
-            AND source_record_id = NEW.id
-      );
-END;
-
--- A proposed operation becomes activity only when its lifecycle settles.
-CREATE TRIGGER IF NOT EXISTS log_entries_append_ambient_event_resolve
-AFTER UPDATE OF state, status_rx, rx, outcome ON log_entries
-WHEN OLD.state = 'proposed' AND NEW.state != 'proposed'
-BEGIN
-    INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, target_parent_worker_id,
-        workspace_broadcast, kind, source_record_id, at, source,
-        op, signal,
-        scheme, username, password, hostname, port, pathname, query, fragment,
-        line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-        state, outcome, attrs
-    )
-    SELECT workspace_id, producer_worker_id, target_parent_worker_id,
-           workspace_broadcast, 'activity', source_record_id, at, source,
-           op, signal,
-           scheme, username, password, hostname, port, pathname, query, fragment,
-           line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-           state, outcome, attrs
-    FROM ambient_activity_candidates
-    WHERE source_record_id = NEW.id;
-
-    UPDATE log_entries
-    SET ambient_event_id = (
-        SELECT id FROM ambient_events
-        WHERE producer_worker_id = NEW.worker_id
-          AND kind = 'activity'
-          AND source_record_id = NEW.id
-    )
-    WHERE id = NEW.id
-      AND EXISTS (
-          SELECT 1 FROM ambient_events
-          WHERE producer_worker_id = NEW.worker_id
-            AND kind = 'activity'
-            AND source_record_id = NEW.id
-      );
-END;
-
 -- {§client-interactions}: the durable discoverable half of a client-owned
 -- interaction. The process-local lifecycle owner holds the awaiting callable;
 -- this row holds only presentation and routing facts. Settlement deletes the
@@ -2008,13 +1634,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
 CREATE INDEX IF NOT EXISTS subscriptions_worker_id ON subscriptions (worker_id) WHERE worker_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS subscriptions_entry_id  ON subscriptions (entry_id);
 
-CREATE TRIGGER IF NOT EXISTS subscriptions_wake_revision
-AFTER UPDATE OF closed_at ON subscriptions
-WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
-BEGIN
-    UPDATE workers SET wake_revision = wake_revision + 1 WHERE id = NEW.worker_id;
-END;
-
 CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_insert
 BEFORE INSERT ON subscriptions
 WHEN NEW.closed_at IS NOT NULL
@@ -2088,36 +1707,6 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription channel result violates the channel producer contract');
 END;
 
--- Subscription settlement is the single atomic transition that closes the
--- lifecycle and installs current terminal producer evidence on every channel.
--- Overrides are exact; all other channels inherit the universal result.
-CREATE TRIGGER IF NOT EXISTS subscriptions_settle_channels
-AFTER UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions
-WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
-BEGIN
-    UPDATE entry_channels
-    SET producer_result = COALESCE(
-            (
-                SELECT json(channel_result.value)
-                FROM json_each(NEW.channel_results) AS channel_result
-                WHERE channel_result.key = entry_channels.name
-            ),
-            NEW.close_result
-        ),
-        state = CASE WHEN json_extract(
-            COALESCE(
-                (
-                    SELECT json(channel_result.value)
-                    FROM json_each(NEW.channel_results) AS channel_result
-                    WHERE channel_result.key = entry_channels.name
-                ),
-                NEW.close_result
-            ),
-            '$.status'
-        ) >= 400 THEN 'errored' ELSE 'closed' END
-    WHERE entry_id = NEW.entry_id;
-END;
-
 -- One durable publication cursor per selected subscription channel. Log rows
 -- are curated model context and therefore cannot own this lifecycle fact.
 -- The row survives KILLing any generated observation and disappears only with
@@ -2135,54 +1724,6 @@ CREATE TABLE IF NOT EXISTS subscription_publications (
 
 CREATE INDEX IF NOT EXISTS subscription_publications_pending
     ON subscription_publications (subscription_id, terminal_published);
-
-CREATE TRIGGER IF NOT EXISTS subscriptions_seed_publications
-AFTER INSERT ON subscriptions
-BEGIN
-    INSERT INTO subscription_publications (subscription_id, channel)
-    SELECT NEW.id, ec.name
-    FROM entry_channels ec
-    WHERE ec.entry_id = NEW.entry_id
-      AND (NEW.published_channel IS NULL OR ec.name = NEW.published_channel);
-
-    SELECT CASE WHEN NOT EXISTS (
-        SELECT 1 FROM subscription_publications WHERE subscription_id = NEW.id
-    ) THEN RAISE(ABORT, 'subscription has no publishable channel') END;
-END;
-
--- The generated READ and its cursor transition are one SQLite statement. A
--- later log KILL removes evidence from active context without rewinding the
--- subscription/channel publication state. {§exec-stream}
-CREATE TRIGGER IF NOT EXISTS log_entries_advance_subscription_publication
-AFTER INSERT ON log_entries
-WHEN NEW.subscription_publication_id IS NOT NULL
-BEGIN
-    SELECT CASE WHEN
-        NEW.origin != '_plurnk'
-        OR NEW.op != 'READ'
-        OR json_type(NEW.attrs, '$.streamEnd') != 'integer'
-        OR json_extract(NEW.attrs, '$.streamEnd') < 0
-        OR json_type(NEW.attrs, '$.terminal') NOT IN ('true', 'false')
-    THEN RAISE(ABORT, 'subscription publication requires one canonical stream observation') END;
-
-    UPDATE subscription_publications
-    SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
-        terminal_published = json_extract(NEW.attrs, '$.terminal'),
-        version = version + 1
-    WHERE id = NEW.subscription_publication_id
-      AND terminal_published = 0
-      AND (
-          (json_extract(NEW.attrs, '$.terminal') = 0
-              AND json_extract(NEW.attrs, '$.streamEnd') > published_end)
-          OR
-          (json_extract(NEW.attrs, '$.terminal') = 1
-              AND json_extract(NEW.attrs, '$.streamEnd') >= published_end)
-      );
-
-    SELECT CASE WHEN changes() != 1
-        THEN RAISE(ABORT, 'subscription publication transition is stale or already terminal')
-    END;
-END;
 
 -- (worker_watermarks removed — {§env-delta} is now pull-from-log, no per-worker snapshot.)
 
@@ -2207,10 +1748,3 @@ CREATE TABLE IF NOT EXISTS workspace_constraints (
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
-
--- INIT: work_loop_observation
--- {§actor-boundary-doc-injection}: derived observation only; no durable row is rewritten.
-CREATE VIEW IF NOT EXISTS work_loops AS
-SELECT l.* FROM loops l
-WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind = 'maintenance')
-   OR EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind <> 'maintenance');
