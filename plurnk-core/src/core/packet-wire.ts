@@ -68,6 +68,7 @@ interface StatementTx {
 interface RxView {
     content?: unknown;
     matched?: unknown;
+    channels?: unknown;
     exitCode?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
@@ -818,6 +819,11 @@ export default class PacketWire {
             if (patterned) {
                 meta.matcher = (tx as { matcher: { raw: string } }).matcher.raw;
                 if (op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
+            }
+            // {§channel-selection-visibility} — a READ names the resource's other channels with their
+            // tokens, so the row itself shows the choice a FIND listing would.
+            if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
+                meta.channels = rx.channels;
             }
             if (op === "READ" || op === "FIND") {
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {

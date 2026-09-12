@@ -469,6 +469,7 @@ export default class EntryOps {
             identity,
             representation: stored.entry,
             mimetypes: ctx.mimetypes,
+            ...(ctx.weigh === undefined ? {} : { weigh: ctx.weigh }),
             ...(effectiveBytes === undefined ? {} : { bytes: effectiveBytes }),
             retainNative: (content) => NativeContent.retain(ctx.db, content),
         }) as Promise<ReadResult>;

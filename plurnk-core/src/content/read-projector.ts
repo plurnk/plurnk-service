@@ -63,6 +63,9 @@ interface ReadProjectionOptions {
     readonly bytes?: ByteSource;
     readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
     readonly retainNative?: (bytes: Uint8Array) => Promise<string>;
+    // {§channel-selection-visibility} — the curation ruler the catalog weighed channels with, so a
+    // READ receipt names the resource's other channels with the same `tokens` FIND shows.
+    readonly weigh?: (text: string) => number;
 }
 
 // {§universal-read-composition} Core's one exact-resource projection over a complete canonical
@@ -381,9 +384,15 @@ export default class ReadProjector {
             );
         }
 
+        // {§channel-selection-visibility} — first contact carries the choice: a READ of a resource
+        // with other channels names them with their tokens, exactly as a FIND listing does.
+        const siblings = Object.entries(representation.channels)
+            .filter(([name]) => name !== selected)
+            .map(([name, data]) => [name, opts.weigh!(data.content)] as const);
         const projected = {
             ...resolved,
             channel,
+            ...(opts.weigh === undefined || siblings.length === 0 ? {} : { channels: Object.fromEntries(siblings) }),
             ...(resolved.mimetype === selectedRepresentation.mimetype ? {} : { sourceMimetype: selectedRepresentation.mimetype }),
             ...(matched === undefined ? {} : { matched }),
             ...(image === null ? {} : { image }),

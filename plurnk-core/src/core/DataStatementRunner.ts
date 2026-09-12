@@ -184,6 +184,7 @@ export default class DataStatementRunner {
                 representation: resolved.representation,
                 ...(resolved.visibleLines === undefined ? {} : { visibleLines: resolved.visibleLines }),
                 mimetypes: ctx.mimetypes,
+                ...(ctx.weigh === undefined ? {} : { weigh: ctx.weigh }),
             }));
         }
         if (statement.op === "READ" && manifest.category === "data") {

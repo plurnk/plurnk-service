@@ -138,3 +138,22 @@ test("a tracked .html member materializes with its readable projection beside th
         assert.match(String(projection?.content), /Team Roster/);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+// {§channel-selection-visibility} — first contact carries the choice: a READ names the resource's
+// other channels with their tokens, so the model reaches for `#readable` from the receipt itself.
+test("a READ names the resource's other channels with their tokens; a single-channel entry names none", async () => {
+    const { db, dispatch } = await setup();
+    try {
+        await dispatch(editStmt(page, HTML));
+        const source = await dispatch(readStmt(page, { marks: [1, -1] }));
+        assert.equal(source.status, 200, JSON.stringify(source));
+        const channels = source.channels as Record<string, number>;
+        assert.deepEqual(Object.keys(channels), ["readable"], "the sibling is named");
+        assert.ok(Number.isSafeInteger(channels.readable) && channels.readable > 0, "with its tokens");
+        const projection = await dispatch(readStmt(readable, { marks: [1, -1] }));
+        assert.deepEqual(Object.keys(projection.channels as Record<string, number>), ["body"], "and the source is named from the projection");
+        await dispatch(editStmt(urlPath("worker", "/notes.md"), "plain"));
+        const plain = await dispatch(readStmt(urlPath("worker", "/notes.md"), { marks: [1, -1] }));
+        assert.equal(plain.channels, undefined, "a single-channel entry names no siblings");
+    } finally { await db.close(); }
+});

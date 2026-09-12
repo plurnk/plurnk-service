@@ -713,6 +713,20 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
 
+// {§channel-selection-visibility} — a READ row names the resource's other channels with tokens.
+test("log render: a READ row carries its sibling channels", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/2",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "worker", pathname: "/page.html" },
+        tx: { target: { scheme: "worker", pathname: "/page.html" }, lineMarker: null, matcher: null, body: null },
+        rx: { content: "<html></html>", mimetype: "text/html", startLine: 1, channels: { readable: 812 }, range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] } },
+    }], tok);
+    assert.match(out, /"channels":\{"readable":812\}/);
+});
+
 // {§retrieval-packet-metadata} {§edit-pattern} — a pattern mutation names its matcher and count.
 test("log render: a pattern EDIT carries its matcher and matched count beside the receipt", () => {
     const out = PacketWire.renderLog([{
