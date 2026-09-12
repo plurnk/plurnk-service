@@ -52,7 +52,6 @@ export class SqlRiteSync {
 	static open(options?: SqlRiteOptions): Promise<SqlRiteSync>;
 	close(): void;
 	[Symbol.dispose](): void;
-	lifecycle_cancel_worker_tree(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_read_entry: SqlRiteSyncPreparedStatements;
@@ -271,6 +270,8 @@ export class SqlRiteSync {
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
+	lifecycle_checkpoint_executions: SqlRiteSyncPreparedStatements;
+	lifecycle_cancel_workers: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
 	native_content_retain: SqlRiteSyncPreparedStatements;
@@ -311,7 +312,6 @@ export default class SqlRite {
 	ready(): Promise<SqlRite>;
 	close(): Promise<void>;
 	[Symbol.asyncDispose](): Promise<void>;
-	lifecycle_cancel_worker_tree(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_read_entry: SqlRitePreparedStatements;
@@ -530,6 +530,8 @@ export default class SqlRite {
 	lifecycle_loop_turns: SqlRitePreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
+	lifecycle_checkpoint_executions: SqlRitePreparedStatements;
+	lifecycle_cancel_workers: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
 	native_content_retain: SqlRitePreparedStatements;

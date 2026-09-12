@@ -221,9 +221,9 @@ export default class LoopLifecycle {
             workerIds.has(execution.workerId)
                 ? [{ loop_id: loopId, elapsed_ms: this.#stopExecution(loopId) }]
                 : []);
-        await this.#db.lifecycle_cancel_worker_tree({
-            worker_ids, result: JSON.stringify(cancellation), executions: JSON.stringify(executions),
-        });
+        if (executions.length > 0) await this.#db.lifecycle_checkpoint_executions.run({ executions: JSON.stringify(executions) });
+        // {§worker-cancel-trigger} — one bound statement; the trigger retires the live loops inside it.
+        await this.#db.lifecycle_cancel_workers.run({ worker_ids, result: JSON.stringify(cancellation) });
         const loops = await this.#db.lifecycle_cancelled_loops.all<{
             loop_id: number;
             worker_id: number;

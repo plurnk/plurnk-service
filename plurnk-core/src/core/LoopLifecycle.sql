@@ -89,35 +89,25 @@ FROM tree CROSS JOIN workers ON workers.id = tree.id
 WHERE $include_root = 1 OR tree.id <> $worker_id
 ORDER BY tree.depth DESC, tree.id;
 
--- TX: lifecycle_cancel_worker_tree
--- {§worker-causal-admission}: the cutoff and cancellation are one durable decision.
+-- PREP: lifecycle_checkpoint_executions
+-- Consumption measured by the process-local monotonic timers ({§loop-execution-allowance}) lands
+-- before the cutoff, so the cancellation trigger finds every live loop's charge already durable.
+UPDATE loops
+SET execution_elapsed_ms = (
+    SELECT json_extract(value, '$.elapsed_ms') FROM json_each($executions)
+    WHERE json_extract(value, '$.loop_id') = loops.id
+)
+WHERE id IN (SELECT json_extract(value, '$.loop_id') FROM json_each($executions));
+
+-- PREP: lifecycle_cancel_workers
+-- {§worker-causal-admission}: the cutoff and the cancellation are one durable decision — this
+-- statement writes both onto the worker, and workers_cancel_live_loops retires the loops inside it.
 UPDATE workers
 SET cancelled_through_sequence = MAX(cancelled_through_sequence, COALESCE(
-    (SELECT MAX(sequence) FROM loops WHERE worker_id = workers.id), 0
-))
+        (SELECT MAX(sequence) FROM loops WHERE worker_id = workers.id), 0
+    )),
+    cancellation = $result
 WHERE id IN (SELECT value FROM json_each($worker_ids));
-
-UPDATE loops
-SET status = 499,
-    execution_elapsed_ms = COALESCE((
-        SELECT json_extract(value, '$.elapsed_ms') FROM json_each($executions)
-        WHERE json_extract(value, '$.loop_id') = loops.id
-    ), execution_elapsed_ms),
-    wait_deadline_at = NULL,
-    wait_poll_interval = NULL,
-    wait_poll_at = NULL,
-    terminal_result = json_set(
-        CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
-            THEN json_set($result,
-                '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
-                '$.mimetype', 'text/markdown')
-            ELSE $result END,
-        '$.problem.instance',
-        'loop:///' || id
-    ),
-    terminated_by = 'cancel'
-WHERE worker_id IN (SELECT value FROM json_each($worker_ids))
-  AND status IN (100, 102, 202);
 
 -- PREP: lifecycle_cancelled_loops
 SELECT loops.id AS loop_id, loops.worker_id, loops.terminal_result FROM loops
@@ -162,4 +152,32 @@ AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+-- INIT: workers_cancel_live_loops
+-- {§worker-cancel-trigger}: writing a worker's cancellation retires its live loops in the same
+-- statement — 499, waits cleared, the delivered response kept as the result's content, the
+-- Problem instanced per loop. Loops already terminal keep their own outcome.
+DROP TRIGGER IF EXISTS workers_cancel_live_loops;
+CREATE TRIGGER workers_cancel_live_loops
+AFTER UPDATE OF cancellation ON workers
+WHEN NEW.cancellation IS NOT NULL
+BEGIN
+    UPDATE loops
+    SET status = 499,
+        wait_deadline_at = NULL,
+        wait_poll_interval = NULL,
+        wait_poll_at = NULL,
+        terminal_result = json_set(
+            CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
+                THEN json_set(NEW.cancellation,
+                    '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
+                    '$.mimetype', 'text/markdown')
+                ELSE NEW.cancellation END,
+            '$.problem.instance',
+            'loop:///' || id
+        ),
+        terminated_by = 'cancel'
+    WHERE worker_id = NEW.id
+      AND status IN (100, 102, 202);
 END;

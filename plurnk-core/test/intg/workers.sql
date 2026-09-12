@@ -67,3 +67,6 @@ SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin != '_plurnk
 
 -- EXEC: test_workers_insert_default_values
 INSERT INTO workers DEFAULT VALUES;
+
+-- PREP: test_get_worker_cancellation
+SELECT cancellation FROM workers WHERE id = $id;

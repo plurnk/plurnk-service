@@ -60,7 +60,6 @@ export class SqlRiteSync {
 	test_make_historical_actionless_rows(params?: Record<string, unknown>): SqlRiteResult;
 	test_workers_insert_default_values(params?: Record<string, unknown>): SqlRiteResult;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): SqlRiteResult;
-	lifecycle_cancel_worker_tree(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_read_entry: SqlRiteSyncPreparedStatements;
@@ -279,6 +278,8 @@ export class SqlRiteSync {
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
+	lifecycle_checkpoint_executions: SqlRiteSyncPreparedStatements;
+	lifecycle_cancel_workers: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
 	native_content_retain: SqlRiteSyncPreparedStatements;
@@ -559,6 +560,7 @@ export class SqlRiteSync {
 	test_workers_list_by_workspace: SqlRiteSyncPreparedStatements;
 	test_workers_index_exists: SqlRiteSyncPreparedStatements;
 	test_workers_root_lookup: SqlRiteSyncPreparedStatements;
+	test_get_worker_cancellation: SqlRiteSyncPreparedStatements;
 	test_workspaces_table_sql: SqlRiteSyncPreparedStatements;
 	test_workspaces_insert_name_only: SqlRiteSyncPreparedStatements;
 	test_workspaces_get_by_name: SqlRiteSyncPreparedStatements;
@@ -587,7 +589,6 @@ export default class SqlRite {
 	test_make_historical_actionless_rows(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workers_insert_default_values(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): Promise<SqlRiteResult>;
-	lifecycle_cancel_worker_tree(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_read_entry: SqlRitePreparedStatements;
@@ -806,6 +807,8 @@ export default class SqlRite {
 	lifecycle_loop_turns: SqlRitePreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
+	lifecycle_checkpoint_executions: SqlRitePreparedStatements;
+	lifecycle_cancel_workers: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
 	native_content_retain: SqlRitePreparedStatements;
@@ -1086,6 +1089,7 @@ export default class SqlRite {
 	test_workers_list_by_workspace: SqlRitePreparedStatements;
 	test_workers_index_exists: SqlRitePreparedStatements;
 	test_workers_root_lookup: SqlRitePreparedStatements;
+	test_get_worker_cancellation: SqlRitePreparedStatements;
 	test_workspaces_table_sql: SqlRitePreparedStatements;
 	test_workspaces_insert_name_only: SqlRitePreparedStatements;
 	test_workspaces_get_by_name: SqlRitePreparedStatements;

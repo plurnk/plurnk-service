@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS workers (
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
     -- {§worker-causal-admission}: cancellation retires unread arrivals without rewriting history.
     cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),
+    -- The Problem the latest cancellation delivered to this worker's live loops; writing it is
+    -- the cancellation ({§worker-cancel-trigger}). NULL until the worker's scope is first cancelled.
+    cancellation TEXT CHECK (cancellation IS NULL OR (json_valid(cancellation) AND json_extract(cancellation, '$.status') = 499)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
     -- Creation captures the workspace high-water; a fork instead copies its
     -- parent's cursor and records the closed event boundary of its snapshot.

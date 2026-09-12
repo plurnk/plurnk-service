@@ -72,6 +72,14 @@ test("structured cancellation atomically claims the unresolved descendant tree",
             assert.equal(loop.result.problem?.stage, "loop");
             assert.equal(loop.result.problem?.retryable, false);
         }
+        // {§worker-cancel-trigger} — the worker row carries the cancellation that retired its loops;
+        // an untouched worker carries none.
+        const cancellation = async (id: number): Promise<unknown> =>
+            JSON.parse((await db.test_get_worker_cancellation.get<{ cancellation: string | null }>({ id }))?.cancellation ?? "null");
+        assert.equal((await cancellation(child) as { problem: { reason: string } }).problem.reason, "scope abandoned");
+        assert.equal((await cancellation(grandchild) as { status: number }).status, 499);
+        assert.equal(await cancellation(sibling), null);
+        assert.equal(await cancellation(root), null, "includeRoot=false leaves the root's cancellation unwritten");
     } finally {
         await db.close();
     }

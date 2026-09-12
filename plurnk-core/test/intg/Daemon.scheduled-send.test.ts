@@ -360,9 +360,11 @@ test("{§worker-scheduled-send}: cancellation reports a successor admitted after
         });
         await db.drain_claim_next_loop.get({ worker_id: workerId, now: Date.parse(accepted.scheduledAt!) });
         const lifecycle = new LoopLifecycle(db);
-        const cancel = db.lifecycle_cancel_worker_tree;
+        // {§worker-cancel-trigger} — the cutoff statement is the one durable decision; a loop that
+        // finishes after the tree was sampled but before it lands is still owned by it.
+        const cancel = db.lifecycle_cancel_workers.run.bind(db.lifecycle_cancel_workers);
         let finishDuringCancellation = true;
-        t.mock.method(db, "lifecycle_cancel_worker_tree", async (...args: Parameters<typeof cancel>) => {
+        t.mock.method(db.lifecycle_cancel_workers, "run", async (...args: Parameters<typeof cancel>) => {
             if (finishDuringCancellation) {
                 finishDuringCancellation = false;
                 assert.equal((await lifecycle.finish(accepted.loopId, { status: 200, content: "complete" }))?.status, 200);
