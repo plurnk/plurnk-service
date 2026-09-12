@@ -887,7 +887,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     url: fetchAddress?.url ?? "http://localhost",
                     body: content,
                     mimetype: opts.mimetype as string,
-                    allowTavily: false,
+                    allowConfiguredMaterializer: false,
                 });
             }
             const op = async (): Promise<string> => {
