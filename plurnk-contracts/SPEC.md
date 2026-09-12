@@ -676,7 +676,7 @@ matching.
   error at the second paren stating the one-slot rule and that a pattern belongs in the
   `[{"pattern": …}]` option; the statement is dropped and its siblings run.
 
-| Prefix    | Dialect  | Canonical body                       | Typed admission                   | Runtime owner       |
+| Prefix    | Dialect  | Canonical form                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|
 | `//`      | XPath    | `//selector`                         | XPath 1.0 `xpath.parse()`         | Mimetype projection |
 | `/`       | Regex    | `/pattern/flags`                     | ECMAScript `RegExp` construction  | Mimetype projection |
@@ -693,17 +693,19 @@ and non-whitespace symbol before runtime. Every other leading character remains
 in the fallback glob/literal dialect; `@(...)` is therefore an extglob group and
 bare `@text` remains literal matcher text. Rendered READ coordinates are
 structural output rows, not a reserved matcher prefix. FIND scope selects result
-positions without changing the matcher body.
+positions without changing the matcher.
 
 AstBuilder validation is compile-only and never evaluates a document. Matcher
 evaluation belongs to the runtime's selected mimetype, FTS5, or symbol
 implementation. A matcher admission error is local to its statement; later
 statements remain recoverable when their boundaries are trustworthy.
 
-- §pattern-body-single-line Every matcher body is one physical line. AstBuilder
-  rejects multiline bodies before dialect classification. A regex that matches
-  a newline uses the two-character `\n` escape. Non-matcher operation bodies
-  remain multiline.
+- §pattern-body-single-line Every matcher is one physical line. On the protocol
+  operations it is the `pattern` option's JSON string ({§matcher-option}), one line by
+  construction; the client-tier LOOK still carries its matcher as a body, and AstBuilder
+  rejects a multiline one before dialect classification. A regex that matches a
+  newline uses the two-character `\n` escape. Non-matcher operation bodies remain
+  multiline.
 
 ## §scope-slot 7. Scope markers
 
@@ -1268,12 +1270,12 @@ diagnostics are:
   diagnostic, with or without flags, without assuming what the extra text was
   intended to represent. Invalid patterns or flags retain the native
   regex failure; no branch silently removes or executes trailing content.
-- §matcher-body-redirect **Matcher body in the slot region.** When the
-  post-target modifier region begins with `$`, `~`, or `@` with no whitespace
-  before it, the lexer redirects the unambiguous matcher to body content below the
-  OP heading instead of returning the generic slot list (after whitespace it is
-  already the inline body, {§heading-inline-body}). Slash-led regex and XPath are
-  excluded because `/` can be target data.
+- §matcher-body-redirect **Matcher text after the target.** Text that follows the
+  target on a FIND, READ or KILL heading, or sits below it, is a body, and those
+  operations take none: the builder refuses it by name (`READ takes no body; a
+  matcher belongs in the heading as [{"pattern": "…"}]`) and drops the statement,
+  its siblings unaffected ({§matcher-option}). Nothing is promoted into a matcher
+  from a body or a slot region.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
@@ -1292,7 +1294,8 @@ diagnostics are:
   with no body, and raises one warning-severity advisory stating that observed
   normalization; the parser places the advisory right after its statement and
   the service delivers it as a `parse_advisory` notice with its position. A body
-  with any other content is a matcher, as before.
+  with any other content is refused as the body these operations do not take
+  ({§matcher-body-redirect}).
 
 §error-shape The diagnostic class determines how much guidance the parser may
 provide:
