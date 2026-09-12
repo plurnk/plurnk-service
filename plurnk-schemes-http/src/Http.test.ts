@@ -312,7 +312,7 @@ test("manifest: name https (plain http folds in, #340), default channel body, we
     assert.deepEqual(Http.manifest.traits, ["web"]);
     assert.equal(Http.manifest.volatile, true);
     assert.equal(Http.manifest.metadataModifier, true);
-    assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
+    assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "readable"]);
 });
 
 test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
@@ -358,7 +358,7 @@ test("exact FIND preparation materializes an exact URL through the checked reada
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
-test("exact FIND preparation preserves a provider-only page's unavailable HTML channel", async () => {
+test("exact FIND preparation preserves a provider-only page's unavailable source channel", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -379,15 +379,18 @@ test("exact FIND preparation preserves a provider-only page's unavailable HTML c
         assert.equal(prepared.status, 200);
     });
 
-    assert.equal(inspect().wrote?.entry.channels.body?.content, "provider body");
-    const html = inspect().wrote?.entry.channels.html;
-    assert.equal(html?.content, "");
-    assert.equal(html?.mimetype, "text/html");
-    assert.equal(html?.state, "errored");
-    assert.equal(html?.producerResult?.status, 502);
+    // {§readable-channel} — the materializer's text is `readable`; the page's source is `body`,
+    // errored here because the origin never answered.
+    assert.equal(inspect().wrote?.entry.channels.readable?.content, "provider body");
+    const source = inspect().wrote?.entry.channels.body;
+    assert.equal(source?.content, "");
+    assert.equal(source?.mimetype, "text/html");
+    assert.equal(source?.state, "errored");
+    assert.equal(source?.producerResult?.status, 502);
     assert.equal(
-        html?.producerResult?.problem?.type,
-        "https://problems.plurnk.xyz/scheme/http/html-unavailable",
+        source?.producerResult?.problem?.type,
+        "https://problems.plurnk.xyz/scheme/http/fetch-failed",
+        "the source channel carries the origin's own failure",
     );
 });
 
@@ -494,14 +497,14 @@ test("exact FIND preparation treats XHTML and a present empty projection as succ
             assert.equal(result.status, 200);
         },
     );
-    assert.deepEqual(inspect().wrote?.entry.channels.body, { content: "", mimetype: "text/markdown" });
-    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+    assert.deepEqual(inspect().wrote?.entry.channels.readable, { content: "", mimetype: "text/markdown" });
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
         content: "<html><body></body></html>",
         mimetype: "application/xhtml+xml",
     });
 });
 
-test("exact FIND preparation persists an absent final HTML projection as the body channel's exact 422", async () => {
+test("exact FIND preparation persists an absent final HTML projection as the readable channel's exact 422", async () => {
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     await withFetch(
@@ -514,12 +517,13 @@ test("exact FIND preparation persists an absent final HTML projection as the bod
             assert.equal(result.status, 200);
         },
     );
-    const body = inspect().wrote?.entry.channels.body;
-    assert.equal(body?.content, "");
-    assert.equal(body?.state, "errored");
-    assert.equal(body?.producerResult?.status, 422);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body><div></div></body></html>", "the source is whole");
+    const readable = inspect().wrote?.entry.channels.readable;
+    assert.equal(readable?.content, "");
+    assert.equal(readable?.state, "errored");
+    assert.equal(readable?.producerResult?.status, 422);
     assert.equal(
-        body?.producerResult?.problem?.type,
+        readable?.producerResult?.problem?.type,
         "https://problems.plurnk.xyz/scheme/http/no-readable-projection",
     );
 });
@@ -674,10 +678,10 @@ test("finite GET materializes complete channels without opening a subscription",
     const { wrote, seq } = inspect();
     assert.deepEqual(seq, ["write"]);
     assert.equal(wrote?.pathname, "/robots.txt");
-    assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header", "html"]);
+    // {§readable-channel} — a plain-text response has no projection: body and header, nothing else.
+    assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header"]);
     assert.deepEqual(wrote!.entry.channels.body, { content: "x", mimetype: "text/plain" });
     assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
-    assert.equal(wrote!.entry.channels.html?.state, "errored");
 });
 
 test("DONE: also materializes the entry before subscribing (shares #fetchStream)", async () => {
@@ -1208,17 +1212,17 @@ test("READ SSE: cancellation after acquisition settles the retained stream at 49
     });
 });
 
-test("HTML preparation archives server HTML while body carries the model-facing projection", async () => {
+test("HTML preparation keeps the server source as body while readable carries the projection", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html><body><h1>Hello</h1></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
         assert.equal(r.status, 200);
     });
-    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+    assert.deepEqual(inspect().wrote?.entry.channels.readable, {
         content: "Hello",
         mimetype: "text/markdown",
     });
-    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
         content: "<html><body><h1>Hello</h1></body></html>",
         mimetype: "text/html",
     });
@@ -1247,11 +1251,11 @@ test("READ: a present empty HTML projection succeeds and retains its HTML eviden
             assert.equal(result.status, 200);
         },
     );
-    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+    assert.deepEqual(inspect().wrote?.entry.channels.readable, {
         content: "",
         mimetype: "text/markdown",
     });
-    assert.equal(inspect().wrote?.entry.channels.html?.content, html);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, html);
     assert.equal(inspect().closed, null);
 });
 
@@ -1285,11 +1289,11 @@ test("READ: public HTML uses the materializer Markdown and retains origin, reque
         );
         assert.equal(result.status, 200);
     });
-    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+    assert.deepEqual(inspect().wrote?.entry.channels.readable, {
         content: "# Stub body",
         mimetype: "text/markdown",
     });
-    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
         content: html,
         mimetype: "application/xhtml+xml",
     });
@@ -1300,22 +1304,16 @@ test("READ: public HTML uses the materializer Markdown and retains origin, reque
     assert.match(header, /^x-plurnk-stub-credits: 0\.2$/m);
 });
 
-test("READ: negotiated origin Markdown is authoritative and acquires auxiliary server HTML without the materializer", async () => {
+test("READ: negotiated origin Markdown is the source itself, one request, no projection, no materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { ctx, inspect } = makeCtx();
     const accepts: string[] = [];
-    await withFetch((async (input, init) => {
-        const accept = new Headers(init?.headers).get("accept") ?? "";
-        accepts.push(accept);
-        return accept === "text/html"
-            ? new Response("<html><body>Origin source</body></html>", {
-                status: 200,
-                headers: { "content-type": "text/html" },
-            })
-            : new Response("# Origin Markdown", {
-                status: 200,
-                headers: { "content-type": "text/markdown", vary: "Accept" },
-            });
+    await withFetch((async (_input, init) => {
+        accepts.push(new Headers(init?.headers).get("accept") ?? "");
+        return new Response("# Origin Markdown", {
+            status: 200,
+            headers: { "content-type": "text/markdown", vary: "Accept" },
+        });
     }) as typeof fetch, async () => {
         const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/markdown", "/markdown")),
@@ -1323,17 +1321,17 @@ test("READ: negotiated origin Markdown is authoritative and acquires auxiliary s
         );
         assert.equal(result.status, 200);
     });
-    assert.match(accepts[0] ?? "", /^text\/markdown/);
-    assert.equal(accepts[1], "text/html");
+    // {§readable-channel} — the origin sent readable text; nothing to project, no HTML variant to chase.
+    assert.deepEqual(accepts.map((accept) => accept.split(",")[0]), ["text/markdown"], "exactly one request");
+    assert.deepEqual(Object.keys(inspect().wrote?.entry.channels ?? {}).sort(), ["body", "header"]);
     assert.equal(inspect().wrote?.entry.channels.body?.content, "# Origin Markdown");
-    assert.equal(inspect().wrote?.entry.channels.html?.content, "<html><body>Origin source</body></html>");
+    assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "text/markdown");
     const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: origin-markdown:v1$/m);
-    assert.match(header, /^x-plurnk-html-status: 200$/m);
     assert.equal(inspect().closed, null);
 });
 
-for (const selected of ["body", "html", "header"] as const) {
+for (const selected of ["body", "readable", "header"] as const) {
     test(`preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
         process.env[MATERIALIZER_ENV] = "stub";
         const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
@@ -1364,9 +1362,10 @@ for (const selected of ["body", "html", "header"] as const) {
             );
             assert.equal(result.status, 200);
         });
-        assert.equal(inspect().wrote?.entry.channels.body?.state, "errored");
-        assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 502);
-        assert.equal(inspect().wrote?.entry.channels.html?.content, "<html><body>Durable source</body></html>");
+        // {§readable-channel} — the hard materializer failure is the readable channel's; the source lands whole.
+        assert.equal(inspect().wrote?.entry.channels.readable?.state, "errored");
+        assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 502);
+        assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body>Durable source</body></html>");
         assert.equal(inspect().closed, null);
     });
 }
@@ -1404,14 +1403,15 @@ test("READ: recoverable materializer outcome uses the local floor with explicit 
         );
         assert.equal(result.status, 200);
     });
-    assert.equal(inspect().wrote?.entry.channels.body?.content, "local floor");
-    assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 203);
+    assert.equal(inspect().wrote?.entry.channels.readable?.content, "local floor");
+    assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 203);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body>Origin</body></html>");
     const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-stub-request-id: req-recover$/m);
 });
 
-for (const selected of ["body", "html"] as const) {
-    test(`READ #${selected}: the materializer body may survive admitted origin transport failure`, async () => {
+for (const selected of ["body", "readable"] as const) {
+    test(`READ #${selected}: the materializer text may survive admitted origin transport failure`, async () => {
         process.env[MATERIALIZER_ENV] = "stub";
         const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
         __stub.set({
@@ -1431,15 +1431,15 @@ for (const selected of ["body", "html"] as const) {
                 readStmt(urlTarget(
                     "https://example.com/provider-only",
                     "/provider-only",
-                    selected === "body" ? null : "html",
+                    selected === "body" ? null : "readable",
                 )),
                 ctx,
             );
             assert.equal(result.status, 200);
         });
-        assert.equal(inspect().wrote?.entry.channels.body?.content, "provider-only body");
-        assert.equal(inspect().wrote?.entry.channels.html?.state, "errored");
-        assert.equal(inspect().wrote?.entry.channels.html?.producerResult?.status, 502);
+        assert.equal(inspect().wrote?.entry.channels.readable?.content, "provider-only body");
+        assert.equal(inspect().wrote?.entry.channels.body?.state, "errored");
+        assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 502);
         assert.equal(inspect().closed, null);
     });
 }
@@ -1459,8 +1459,8 @@ test("READ: an absent HTML projection returns 422 and retains its HTML evidence"
         },
     );
     assert.equal(result?.status, 200);
-    assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 422);
-    assert.equal(inspect().wrote?.entry.channels.html?.content, html);
+    assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 422);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, html);
     assert.match(inspect().wrote?.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
 
@@ -1723,7 +1723,7 @@ test("{§channel-selection-missing} an absent HTTP response channel is a 404 wit
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "unknown");
-        assert.deepEqual(result.problem?.availableChannels, ["body", "header", "html"]);
+        assert.deepEqual(result.problem?.availableChannels, ["body", "header", "readable"]);
     });
     assert.equal(requests, 0);
     assert.equal(inspect().wrote, null);
@@ -1857,17 +1857,18 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
 });
 
 // ── conditional revalidation {§revalidation} ──────────────────────────────
+// {§readable-channel} — body is the response as served; a page's curated Markdown is `readable`.
 const priorEntry = (
     body: string,
     mimetype: string,
     header: string,
-    html?: string,
+    readable?: string,
     state: ChannelState = "closed",
 ): StoredEntryData => ({
     channels: {
         body: { content: body, mimetype, state },
         header: { content: header, mimetype: "text/plain", state },
-        ...(html === undefined ? {} : { html: { content: html, mimetype: "text/html", state } }),
+        ...(readable === undefined ? {} : { readable: { content: readable, mimetype: "text/markdown", state } }),
     },
 });
 
@@ -1985,10 +1986,10 @@ test("stale materializer HTML-page materialization performs full reacquisition w
         }),
     });
     const { ctx, inspect } = makeCtx(priorEntry(
-        "cached page",
-        "text/markdown",
-        `${stampedHeader(500_000, '\ncontent-type: text/html\netag: "v1"')}\n${MATERIALIZER_ID_HEADER}: stub-extract:v1\nx-plurnk-stub-request-id: req-cached`,
         "<html>cached page</html>",
+        "text/html",
+        `${stampedHeader(500_000, '\ncontent-type: text/html\netag: "v1"')}\n${MATERIALIZER_ID_HEADER}: stub-extract:v1\nx-plurnk-stub-request-id: req-cached`,
+        "cached page",
     ));
     let conditional = false;
     const probe = async (input: string | URL | Request, init?: RequestInit) => {
@@ -2004,8 +2005,8 @@ test("stale materializer HTML-page materialization performs full reacquisition w
         assert.equal(r.status, 200);
     });
     assert.equal(conditional, false);
-    assert.equal(inspect().storedEntry?.channels.body?.content, "fresh page");
-    assert.equal(inspect().storedEntry?.channels.html?.content, "<html>fresh page</html>");
+    assert.equal(inspect().storedEntry?.channels.readable?.content, "fresh page");
+    assert.equal(inspect().storedEntry?.channels.body?.content, "<html>fresh page</html>");
     const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: stub-extract:v1$/m);
     assert.match(header, /^x-plurnk-stub-request-id: req-fresh$/m);
@@ -2028,10 +2029,10 @@ test("TTL: enabling a materializer invalidates a locally materialized HTML body 
         '\ncontent-type: text/html\netag: "local-v1"',
     )}\n${MATERIALIZER_ID_HEADER}: local-projection:v1\nx-plurnk-projection-id: test:text/html`;
     const { ctx, inspect } = makeCtx(priorEntry(
-        "old local body",
-        "text/markdown",
-        storedHeader,
         "<html>old source</html>",
+        "text/html",
+        storedHeader,
+        "old local body",
     ));
     let originFetched = false;
     let conditional = false;
@@ -2052,7 +2053,8 @@ test("TTL: enabling a materializer invalidates a locally materialized HTML body 
     });
     assert.equal(originFetched, true);
     assert.equal(conditional, false, "old validators cannot certify a different materializer route");
-    assert.equal(inspect().storedEntry?.channels.body?.content, "# Current stub body");
+    assert.equal(inspect().storedEntry?.channels.readable?.content, "# Current stub body");
+    assert.equal(inspect().storedEntry?.channels.body?.content, "<html>current source</html>");
 });
 
 for (const {

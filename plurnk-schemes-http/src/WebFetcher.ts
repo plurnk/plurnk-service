@@ -76,8 +76,6 @@ export interface WebFetchResult {
     readonly response?: Response;
     readonly header?: string;
     readonly requestHeaders?: ReadonlyArray<readonly [string, string]>;
-    readonly html?: { readonly content: string; readonly mimetype: string };
-    readonly htmlFailure?: WebChannelFailure;
     readonly originFailure?: WebChannelFailure;
     readonly allowConfiguredMaterializer?: boolean;
     readonly originUnavailable?: boolean;
@@ -120,16 +118,6 @@ const safeEvidence = (value: string): string => value.replace(/[\r\n]+/g, " ").t
 const hasHeader = (headers: ReadonlyArray<readonly [string, string]>, name: string): boolean => headers.some(
     ([candidate]) => candidate.toLowerCase() === name,
 );
-
-const replaceHeader = (
-    headers: ReadonlyArray<readonly [string, string]>,
-    name: string,
-    value: string,
-): Array<[string, string]> => [
-    ...headers.filter(([candidate]) => candidate.toLowerCase() !== name)
-        .map(([candidate, member]): [string, string] => [candidate, member]),
-    [name, value],
-];
 
 export default class WebFetcher {
     static validateConfiguration(): void {
@@ -183,50 +171,69 @@ export default class WebFetcher {
         };
     }
 
+    // {§readable-channel} — a page's server source is its `body`; the curated text (the selected
+    // materializer's Markdown, or the installed local projection) is `readable`. A response that is
+    // not an HTML page has no projection: its `body` is the response text, or the readable text of a
+    // binary body under {§mimetype-binary-input}.
     static materializedChannels(
         materialized: WebMaterializedResult,
         source?: { readonly url: string; readonly method: string },
     ): EntryData["channels"] {
         const channels: EntryData["channels"] = {};
-        if (materialized.body !== undefined) {
+        const page = materialized.html !== undefined || materialized.htmlOutcome !== undefined;
+        const curated = materialized.body;
+        const curatedOutcome = materialized.bodyOutcome;
+        if (page) {
+            if (materialized.html !== undefined) {
+                channels.body = {
+                    ...materialized.html,
+                    ...(materialized.htmlOutcome?.failure === undefined ? {} : { state: "errored" }),
+                };
+            } else if (materialized.htmlOutcome?.failure !== undefined) {
+                channels.body = { content: "", mimetype: "text/html", state: "errored" };
+            }
+            if (curated !== undefined) {
+                channels.readable = {
+                    ...curated,
+                    ...(curatedOutcome.failure === undefined ? {} : { state: "errored" }),
+                };
+            } else if (curatedOutcome.failure !== undefined) {
+                channels.readable = { content: "", mimetype: "text/markdown", state: "errored" };
+            }
+        } else if (curated !== undefined) {
             channels.body = {
-                ...materialized.body,
-                ...(materialized.bodyOutcome.failure === undefined ? {} : { state: "errored" }),
+                ...curated,
+                ...(curatedOutcome.failure === undefined ? {} : { state: "errored" }),
             };
-        } else if (materialized.bodyOutcome.failure !== undefined) {
+        } else if (curatedOutcome.failure !== undefined) {
             channels.body = { content: "", mimetype: "text/markdown", state: "errored" };
         }
         if (materialized.header !== undefined) {
             channels.header = { content: materialized.header, mimetype: "text/plain" };
         }
-        if (materialized.html !== undefined) {
-            channels.html = {
-                ...materialized.html,
-                ...(materialized.htmlOutcome?.failure === undefined ? {} : { state: "errored" }),
-            };
-        } else if (materialized.htmlOutcome?.failure !== undefined) {
-            channels.html = { content: "", mimetype: "text/html", state: "errored" };
-        }
         if (source === undefined) return channels;
 
-        const outcomes: Readonly<Record<string, WebChannelOutcome>> = {
-            body: materialized.bodyOutcome,
-            header: materialized.header === undefined
-                ? failure(502, "header-unavailable", `Acquisition evidence for ${source.url} was unavailable.`, true)
-                : success(),
-            html: materialized.htmlOutcome ?? (materialized.html === undefined
-                ? failure(502, "html-unavailable", `Server-source HTML for ${source.url} was unavailable.`, true)
-                : success()),
-        };
-        const defaults = {
-            body: "text/markdown",
+        const headerOutcome = materialized.header === undefined
+            ? failure(502, "header-unavailable", `Acquisition evidence for ${source.url} was unavailable.`, true)
+            : success();
+        const outcomes: Readonly<Record<string, WebChannelOutcome>> = page
+            ? {
+                body: materialized.htmlOutcome ?? (materialized.html === undefined
+                    ? failure(502, "html-unavailable", `Server-source HTML for ${source.url} was unavailable.`, true)
+                    : success()),
+                header: headerOutcome,
+                readable: curatedOutcome,
+            }
+            : { body: curatedOutcome, header: headerOutcome };
+        const defaults: Readonly<Record<string, string>> = {
+            body: page ? "text/html" : "text/markdown",
             header: "text/plain",
-            html: "text/html",
-        } as const;
+            readable: "text/markdown",
+        };
         for (const [channel, outcome] of Object.entries(outcomes)) {
             const existing = channels[channel] ?? {
                 content: "",
-                mimetype: defaults[channel as keyof typeof defaults],
+                mimetype: defaults[channel]!,
             };
             const producerResult = WebFetcher.#producerResult(source, outcome);
             channels[channel] = {
@@ -266,7 +273,7 @@ export default class WebFetcher {
 
     static async materialize(
         fetched: Pick<WebFetchResult,
-            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "html" | "htmlFailure" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
+            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
         projection: ProjectionCaps,
         signal?: AbortSignal,
     ): Promise<WebMaterializedResult | null> {
@@ -290,7 +297,6 @@ export default class WebFetcher {
                 );
                 if (projected === null) return null;
                 return WebFetcher.#materialized(projected, {
-                    html: fetched.html,
                     header: fetched.header,
                     bodyOutcome: originOutcome,
                 });
@@ -298,29 +304,20 @@ export default class WebFetcher {
             const content = WebFetcher.readableText(await fetched.body.text(), fetched.mimetype);
             return {
                 body: { content, mimetype: fetched.mimetype },
-                ...(fetched.html === undefined ? {} : { html: fetched.html }),
                 ...(fetched.header === undefined ? {} : { header: fetched.header }),
                 bodyOutcome: originOutcome,
-                ...(fetched.html === undefined ? {} : { htmlOutcome: success() }),
             };
         }
         if (fetched.mimetype === "text/markdown") {
+            // {§readable-channel} — an origin that negotiates Markdown has sent the readable source
+            // itself: it is the body, and no projection or HTML variant rides beside it.
             const materializedHeader = WebFetcher.#appendEvidence(fetched.header, [
                 WebFetcher.materializerEvidence(ORIGIN_MARKDOWN_MATERIALIZER_ID),
             ]);
             return {
                 body: { content: fetched.body, mimetype: "text/markdown" },
-                ...(fetched.html === undefined ? {} : { html: fetched.html }),
                 ...(materializedHeader === undefined ? {} : { header: materializedHeader }),
                 bodyOutcome: originOutcome,
-                htmlOutcome: fetched.html === undefined
-                    ? { status: fetched.htmlFailure?.status ?? 502, failure: fetched.htmlFailure ?? {
-                        status: 502,
-                        code: "html-variant-unavailable",
-                        detail: `The HTML variant of ${fetched.url} was unavailable.`,
-                        retryable: true,
-                    } }
-                    : success(),
             };
         }
         if (!MimetypeClassifier.isHtml(fetched.mimetype)) {
@@ -366,9 +363,7 @@ export default class WebFetcher {
                     ...(html === undefined ? {} : { html }),
                     ...(header === undefined ? {} : { header }),
                     bodyOutcome: success(),
-                    htmlOutcome: html === undefined
-                        ? failure(502, "html-unavailable", `Server-source HTML for ${fetched.url} was unavailable.`, true)
-                        : originOutcome,
+                    htmlOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
                 };
             }
             if (result.outcome === "hard" || html === undefined) {
@@ -393,9 +388,7 @@ export default class WebFetcher {
                         problem.detail,
                         problem.retryable,
                     ),
-                    htmlOutcome: html === undefined
-                        ? failure(502, "html-unavailable", `Server-source HTML for ${fetched.url} was unavailable.`, true)
-                        : originOutcome,
+                    htmlOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
                 };
             }
             const projected = await WebFetcher.#project(html, projection);
@@ -435,12 +428,13 @@ export default class WebFetcher {
         }
 
         if (html === undefined) {
+            // {§readable-channel} — no source, nothing to project: both channels carry the origin's
+            // own failure, the source first.
+            const unavailable = WebFetcher.#sourceUnavailable(fetched);
             return {
                 ...(fetched.header === undefined ? {} : { header: fetched.header }),
-                bodyOutcome: fetched.originFailure === undefined
-                    ? failure(502, "origin-unavailable", `The origin ${fetched.url} was unavailable.`, true)
-                    : { status: fetched.originFailure.status, failure: fetched.originFailure },
-                htmlOutcome: failure(502, "html-unavailable", `Server-source HTML for ${fetched.url} was unavailable.`, true),
+                bodyOutcome: unavailable,
+                htmlOutcome: unavailable,
             };
         }
         const projected = await WebFetcher.#project(html, projection);
@@ -472,6 +466,14 @@ export default class WebFetcher {
                 htmlOutcome: originOutcome,
             },
         );
+    }
+
+    // The source channel's outcome when the origin supplied nothing: its own recorded failure,
+    // or the generic unavailability when the transport left none.
+    static #sourceUnavailable(fetched: Pick<WebFetchResult, "url" | "originFailure">): WebChannelOutcome {
+        return fetched.originFailure === undefined
+            ? failure(502, "origin-unavailable", `The origin ${fetched.url} was unavailable.`, true)
+            : { status: fetched.originFailure.status, failure: fetched.originFailure };
     }
 
     static #originOutcome(
@@ -624,7 +626,6 @@ export default class WebFetcher {
         opts?.signal?.throwIfAborted();
         const target = rewriteAcquisitionTarget(url);
         const requestHeaders = opts?.headers ?? [];
-        const authoredAccept = hasHeader(requestHeaders, "accept");
         const conditionalHeaders = opts?.conditionalHeaders ?? [];
         let transportHeaders: Array<[string, string]> = requestHeaders.map(
             ([name, value]): [string, string] => [name, value],
@@ -717,43 +718,7 @@ export default class WebFetcher {
         if (MimetypeClassifier.isHtml(mimetype)) {
             return { ...common, body: pageBody! };
         }
-        if (mimetype === "text/markdown") {
-            const markdown = pageBody!;
-            if (authoredAccept) return { ...common, body: markdown };
-            let html: WebFetchResult["html"];
-            let htmlFailure: WebChannelFailure | undefined;
-            const variantHeaders = replaceHeader(transportHeaders, "accept", "text/html");
-            try {
-                const variant = await request(target, variantHeaders);
-                const variantMimetype = responseMimetype(variant.headers.get("content-type"));
-                if (variant.ok && MimetypeClassifier.isHtml(variantMimetype)) {
-                    html = { content: await variant.text(), mimetype: variantMimetype };
-                    common.header = WebFetcher.#appendEvidence(common.header, WebFetcher.#htmlVariantEvidence(variant, url))!;
-                } else {
-                    await variant.body?.cancel();
-                    htmlFailure = {
-                        status: 502,
-                        code: "html-variant-unavailable",
-                        detail: `The origin did not provide an HTML variant of ${url}.`,
-                        retryable: true,
-                    };
-                }
-            } catch (cause) {
-                if (opts?.signal?.aborted === true) throw opts.signal.reason;
-                htmlFailure = {
-                    status: 502,
-                    code: "html-variant-unavailable",
-                    detail: `The HTML variant of ${url} could not be acquired: ${ErrorDetail.preview(cause, ErrorDetail.configuredLimit())}`,
-                    retryable: true,
-                };
-            }
-            return {
-                ...common,
-                body: markdown,
-                ...(html === undefined ? {} : { html }),
-                ...(htmlFailure === undefined ? {} : { htmlFailure }),
-            };
-        }
+        if (mimetype === "text/markdown") return { ...common, body: pageBody! };
         if (response.body === null) return { ...common, body: "" };
         const responseBody = response.body;
         return {
@@ -780,15 +745,5 @@ export default class WebFetcher {
             `x-plurnk-response-url: ${safeEvidence(response.url || addressedUrl)}`,
             cacheVariantEvidence(classifyCacheVariant(requestHeaders, responseHeaders)),
         ].join("\n");
-    }
-
-    static #htmlVariantEvidence(response: Response, addressedUrl: string): string[] {
-        return [
-            `x-plurnk-html-status: ${response.status}`,
-            `x-plurnk-html-response-url: ${safeEvidence(response.url || addressedUrl)}`,
-            `x-plurnk-html-fetched-at: ${new Date().toISOString()}`,
-            ...[...response.headers].map(([name, value]) =>
-                `x-plurnk-html-response-header: ${safeEvidence(name)}: ${safeEvidence(value)}`),
-        ];
     }
 }

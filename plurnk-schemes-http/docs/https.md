@@ -9,14 +9,14 @@ Read and modify web resources through addressable HTTP(S) entries.
 
 Use a web URL as an addressable entry. Every exact READ acquires or refreshes a
 complete representation when needed, then core selects the channel and applies
-the requested text scope. HTML becomes a readable model-facing body (normally
-Markdown); original server source is retained separately. Auxiliary channels
-are never presented by default.
+the requested text scope. An HTML page's `body` is the server source; its
+readable Markdown (a materializer's or the local reader's) is `#readable`, and
+every READ names the page's other channels with their tokens.
 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
 | ````` ````READ (https://…) <scope?> `````              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
-| ````` ````FIND (https://…) ````` with matcher body     | GET if needed | Return matching text regions for a scoped READ                           |
+| ````` ````FIND (https://…) [{"pattern": …}] ````` | GET if needed | Return matching text regions for a scoped READ                           |
 | ````` ````SEND (https://…) ````` with body             | POST          | Submit the body and stream the response                                  |
 | ````` ````EDIT (https://…) ````` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
 | ````` ````KILL (https://…) `````                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
@@ -32,24 +32,24 @@ Caller cancellation of an exact acquisition returns `499 cancelled`.
 
 | Response                             | `body`                                              | Other channel                                  |
 | ------------------------------------ | --------------------------------------------------- | ---------------------------------------------- |
-| Negotiated origin Markdown           | Exact origin Markdown                               | Independently requested server HTML in `#html` |
-| GET HTML                             | Materializer Markdown or local HTML-reader projection | Original server HTML in `#html`                |
+| Negotiated origin Markdown           | Exact origin Markdown                               | Status and headers in `#header`; nothing else  |
+| GET HTML                             | Original server HTML                                | Materializer Markdown or local HTML-reader projection in `#readable` |
 | GET `text/event-stream`              | Event `data` chunks after READ `102`                 | Initial response in `#header`                  |
 | Configured textual response          | Complete Fetch-decoded text under its declared type | Status and headers in `#header`                |
 | Origin HTTP `4xx`/`5xx`              | Preserve available origin or independently produced text | Exact status on each origin-backed channel |
 | Binary with a readable projection    | Derived Unicode under the projection output type    | Origin type and projection ID in `#header`     |
 | Binary without a readable projection | No fabricated text representation                   | Exact `415` Problem                            |
 
-Generic public HTML uses the selected materializer as its body producer. A recoverable
+Generic public HTML uses the selected materializer as its `#readable` producer. A recoverable
 timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
-local HTML reader and records terminal body status `203`. Authentication,
+local HTML reader and records terminal `#readable` status `203`. Authentication,
 provider rejection, and malformed provider responses are hard failures and do
 not silently switch producers. Any authored request metadata makes HTML use the
 local reader directly. Origin Markdown always wins without the materializer.
 
 Projection presence is structural: a returned projection is accepted even
-when its content is empty. `422 no-readable-projection` means the local route
-produced no model-facing body. An internal projection exception returns
+when its content is empty. `422 no-readable-projection` on `#readable` means the
+local route produced no readable text. An internal projection exception returns
 non-retryable `500 projection-failed`.
 
 A binary response uses the installed mimetype reader when one supplies a
@@ -62,10 +62,11 @@ retrieve its binary body.
 
 `#header` contains origin and package acquisition evidence. A materializer attempt
 adds its route, status, timing, any reported request ID and credits, and bounded
-failure evidence. `body`, `header`, and `html` carry independent durable
-producer outcomes; the selected channel determines success. Thus `#html` or
-`#header` can remain readable after a body failure, while a materializer body can
-succeed without fabricating unavailable server HTML. A SEND signal is never the
+failure evidence. `body`, `header`, and `readable` carry independent durable
+producer outcomes; the selected channel determines success. Thus `#readable` or
+`#header` can remain readable after a source failure, while a materializer's
+Markdown can succeed without fabricating unavailable server HTML. A READ of the
+source names `#readable` and its tokens, so the curated page is one fragment away. A SEND signal is never the
 remote HTTP status. A direct non-success origin response is still materialized:
 origin-backed channels carry its exact durable `http-response-status` Problem,
 while independently produced materializer content and acquisition headers retain

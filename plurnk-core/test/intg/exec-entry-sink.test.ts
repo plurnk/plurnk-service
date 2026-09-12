@@ -530,10 +530,12 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         });
         assert.ok(live !== undefined, "content:null triggered the fetch and materialized the exact resource authority");
         assert.equal(live.scheme, "https");
-        // The complete HTML family stores its readable projection as the decisive text/markdown body.
+        // {§readable-channel} — the fetched page's source is its body; its Markdown is #readable.
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
-        assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
-        assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
+        assert.equal(body?.mimetype, "application/xhtml+xml", "the body is the server source under its served type");
+        const readable = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "readable" });
+        assert.equal(readable?.mimetype, "text/markdown", "the fetched html projected to #readable");
+        assert.match(readable?.content ?? "", /fetched live turkeys/, "the projection carries the fetched content, not the raw markup alone");
         const header = await db.test_get_channel.get<{ content: string }>({ entry_id: live.id, name: "header" });
         const projectionEvidence = [
             ...(header?.content ?? "").matchAll(/^x-plurnk-projection-id:[ \t]*(.*)$/gim),
@@ -631,7 +633,7 @@ test("entry(content:null) admits only HTTP acquisition targets", async () => {
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§html-materialization}: server HTML materializes Markdown projection", async () => {
+test("{§html-materialization}: server HTML keeps its source as body and materializes #readable", async () => {
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {
             url,
@@ -657,8 +659,13 @@ test("{§html-materialization}: server HTML materializes Markdown projection", a
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({
             entry_id: live.id, name: "body",
         });
-        assert.equal(body?.mimetype, "text/markdown");
-        assert.match(body?.content ?? "", /useful article/);
-        assert.ok(!(body?.content ?? "").includes("<html>"), "raw HTML never becomes the decisive model/embed body");
+        assert.equal(body?.mimetype, "text/html", "the source is the body");
+        assert.ok((body?.content ?? "").includes("<html>"));
+        const readable = await db.test_get_channel.get<{ content: string; mimetype: string }>({
+            entry_id: live.id, name: "readable",
+        });
+        assert.equal(readable?.mimetype, "text/markdown");
+        assert.match(readable?.content ?? "", /useful article/);
+        assert.ok(!(readable?.content ?? "").includes("<html>"), "the projection carries no markup");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });

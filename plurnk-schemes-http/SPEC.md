@@ -20,9 +20,9 @@ the DB-free `SchemeCtx` author contract.
 
 | Channel  | Seed type                   | Meaning                                                                        |
 | -------- | --------------------------- | ------------------------------------------------------------------------------ |
-| `body`   | `application/octet-stream`  | Source text, derived Unicode, binary marker, SSE data, or HTML-page Markdown   |
-| `header` | `text/plain`                | Origin, acquisition, materializer, projection, provider, and usage evidence   |
-| `html`   | `text/html`                 | Original server-source HTML when an HTML representation can be acquired       |
+| `body`     | `application/octet-stream`  | The response as served: source text, an HTML page's server source, derived Unicode for binary, SSE data |
+| `header`   | `text/plain`                | Origin, acquisition, materializer, projection, provider, and usage evidence   |
+| `readable` | `text/markdown`             | An HTML page's curated Markdown: the selected materializer's, or the installed local projection ({§readable-channel} in the core specification) |
 
 `package.json#plurnk.schemes` registers `http` through the default export and
 `wss` through `Ws`.
@@ -95,8 +95,8 @@ but cold and warm representations pass through the same core projection.
 
 | Response                                | `body`                                                   | Auxiliary materialization                                 | Completion                                  |
 | --------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- |
-| Negotiated origin Markdown              | Exact origin Markdown                                    | Independently acquired server source in `html` when found | Static representation, then core projection |
-| HTML-page production                    | Materializer Markdown, local Markdown, or independent error | Exact server source in `html` when origin supplied it     | Static representation, then core projection |
+| Negotiated origin Markdown              | Exact origin Markdown                                    | None: readable text is the source itself; one request     | Static representation, then core projection |
+| HTML-page production                    | Exact server source when the origin supplied it          | Materializer Markdown, local Markdown, or independent error in `readable` | Static representation, then core projection |
 | `text/event-stream`                     | One `data` value plus newline per `text/plain` chunk     | Initial response in `header`                              | `102`; origin close settles subscription    |
 | No response body                        | Present empty text                                       | Response and package metadata in `header`                 | Static representation; body READ is `204`   |
 | Origin HTTP `4xx`/`5xx`                 | Preserve available origin or independently produced text | Exact response evidence; origin-backed channels errored   | Selected channel's durable outcome          |
@@ -148,12 +148,12 @@ mutation responses retain incremental streaming.
 | Configured binary with reader               | Apply the bounded byte projection           | Derived Unicode plus source type and identity                       |
 | Configured binary without reader            | Cancel without retaining bytes              | `null`; the consumer applies its absence policy                    |
 | Binary input exceeds the common bound       | Cancel and preserve the typed cause         | `WebMaterializationError` caused by `ProjectionInputLimitError`     |
-| Negotiated origin `text/markdown`           | Accept it without the materializer          | Exact Markdown in `body`; independently requested source in `html`  |
-| Eligible HTML with a materializer selected  | Use the materializer as the body producer   | Materializer Markdown in `body`; origin server source in `html`     |
-| Ineligible HTML or no materializer selected | Use the installed HTML projection           | Local Markdown in `body`; origin server source in `html`            |
-| Recoverable materializer failure with HTML  | Use the installed projection as recovery    | Local Markdown in `body` with terminal `203`; source in `html`       |
-| Hard materializer failure                   | Preserve evidence; do not run local recovery | `body` errored; independently successful `html`/`header` survive    |
-| Materializer success after origin loss      | Preserve provider body and origin failure   | `body` static; `html` errored                                       |
+| Negotiated origin `text/markdown`           | Accept it without the materializer          | Exact Markdown in `body`; no `readable`, no second request          |
+| Eligible HTML with a materializer selected  | Use the materializer as the readable producer | Origin server source in `body`; materializer Markdown in `readable` |
+| Ineligible HTML or no materializer selected | Use the installed HTML projection           | Origin server source in `body`; local Markdown in `readable`        |
+| Recoverable materializer failure with HTML  | Use the installed projection as recovery    | Source in `body`; local Markdown in `readable` with terminal `203`  |
+| Hard materializer failure                   | Preserve evidence; do not run local recovery | `readable` errored; independently successful `body`/`header` survive |
+| Materializer success after origin loss      | Preserve provider text and origin failure   | `readable` static; `body` errored with the origin's own failure     |
 | Projection implementation throws            | Stop and preserve the cause                 | `WebMaterializationError` with stage `projection`                   |
 
 A projection object is present even when its content is `""`; only `null`
@@ -191,19 +191,21 @@ a silent fallback. A selected id with no installed provider fails hard rather
 than degrading silently.
 
 Without server HTML, no local recovery input exists. A materializer success can
-still close `body`, but every materializer failure remains the body failure and
-`html` closes errored.
+still close `readable`, but every materializer failure remains the readable
+failure, and `body` closes errored with the origin's own failure.
 
 #### §http-channel-outcomes Channel outcomes
 
-For finite HTML-page production, `body`, `header`, and `html` have independent
+For finite HTML-page production, `body`, `header`, and `readable` have independent
 durable outcomes and are written atomically. The selected channel alone
-determines the projected operation result: successful `#html` or `#header` can
+determines the projected operation result: successful `#readable` or `#header` can
 be read when `body` failed, and a successful default `body` is not invalidated
-by unavailable `html`. Unselected failures remain `errored` channels carrying
-their exact `producerResult`. A recoverable local body remains a static readable
-channel with producer status `203`, so cold and warm READ both return its
-content with that same status.
+by an errored `readable`. Unselected failures remain `errored` channels carrying
+their exact `producerResult`. A recoverable local projection remains a static
+`readable` channel with producer status `203`, so cold and warm READ both return
+its content with that same status. Every READ names the page's other channels
+with their tokens ({§channel-selection-visibility}), so a READ of the source
+shows that `#readable` exists before the model has ever listed the page.
 
 Exact READ, exact FIND, and executor materialization preserve the same channel
 representation. A missing source variant is an explicit empty `errored`
@@ -255,8 +257,8 @@ an origin is first being read.
 An HTTP error status is still a successfully acquired direct response: its
 content and response evidence are preserved, and origin-backed channels carry
 that exact status as durable producer evidence. HTML still enters page
-production, so a successful materializer `body` can remain readable while the
-origin `html` records the HTTP error. Automatic WebFetcher acquisition instead treats
+production, so a successful materializer `readable` can remain readable while the
+origin `body` records the HTTP error. Automatic WebFetcher acquisition instead treats
 a non-2xx response as unavailable. Handler failures use RFC 9457 Problem Details.
 Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete

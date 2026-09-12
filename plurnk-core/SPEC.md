@@ -1405,7 +1405,10 @@ turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream},
   landing, a member materialized from disk — and its mimetype handler owns a readable
   projection that differs from the source ({§mimetype-content}), that projection lands beside
   it as the `readable` channel, `text/markdown`, in its own line coordinates; a source without
-  a projection keeps no sibling, and a source channel's deletion takes the sibling with it.
+  a projection keeps no sibling, and a source channel's deletion takes the sibling with it. A
+  scheme that supplies `readable` in its own write owns it — a fetched page's curated Markdown
+  arrives with its producer outcome ({§html-materialization} in the http scheme) — and core
+  derives the sibling only for a write that supplies none.
   Worker and file entries declare `readable`. Every operation addresses the channel it names
   and matches in that channel's own text ({§mimetype-content-query}): a regex or glob on
   `page.html` sees the markup and reports the markup's lines, on `page.html#readable` it sees

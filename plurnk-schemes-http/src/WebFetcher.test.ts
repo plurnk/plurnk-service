@@ -339,7 +339,7 @@ test("a materializer extraction throw surfaces as the scheme failure, not a sile
     });
 });
 
-test("the materializer may produce the body after admitted origin transport failure while HTML stays failed", async () => {
+test("the materializer may produce the readable text after admitted origin transport failure while the source carries the origin's failure", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -361,12 +361,13 @@ test("the materializer may produce the body after admitted origin transport fail
         assert.equal(materialized?.body?.content, "# Provider-only body");
         assert.equal(materialized?.bodyOutcome.status, 200);
         assert.equal(materialized?.html, undefined);
-        assert.equal(materialized?.htmlOutcome?.failure?.code, "html-unavailable");
+        // {§readable-channel} — the source channel's failure is the origin's own, not a generic one.
+        assert.equal(materialized?.htmlOutcome?.failure?.code, "fetch-failed");
         assert.match(materialized?.header ?? "", /x-plurnk-origin-error: origin reset/);
     });
 });
 
-test("origin Markdown is authoritative, negotiates one HTML variant, and never consults the materializer", async () => {
+test("origin Markdown is the source itself: one request, no variant, never the materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
     __stub.set({
@@ -377,21 +378,19 @@ test("origin Markdown is authoritative, negotiates one HTML variant, and never c
     await withFetch((async (input, init) => {
         const accept = new Headers(init?.headers).get("accept") ?? "";
         calls.push({ url: String(input), accept });
-        return accept === "text/html"
-            ? resp("<html><body>Source</body></html>", 200, { "content-type": "text/html" })
-            : resp("# Origin Markdown", 200, { "content-type": "text/markdown", vary: "Accept" });
+        return resp("# Origin Markdown", 200, { "content-type": "text/markdown", vary: "Accept" });
     }) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         assert.equal(fetched.body, "# Origin Markdown");
         const materialized = await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "# Origin Markdown");
-        assert.equal(materialized?.html?.content, "<html><body>Source</body></html>");
+        assert.equal(materialized?.html, undefined, "{§readable-channel}: readable text needs no projection and no HTML variant");
+        assert.equal(materialized?.htmlOutcome, undefined);
         assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: origin-markdown:v1/);
         assert.equal(materialized?.bodyOutcome.status, 200);
-        assert.equal(materialized?.htmlOutcome?.status, 200);
     });
-    assert.deepEqual(calls.map(({ accept }) => accept), [MARKDOWN_ACCEPT, "text/html"]);
+    assert.deepEqual(calls.map(({ accept }) => accept), [MARKDOWN_ACCEPT], "exactly one request");
     assert.equal(__stub.calls.length, 0, "origin Markdown never consults the materializer");
 });
 
@@ -409,7 +408,7 @@ test("an authored Accept value is honored exactly", async () => {
     assert.equal(observed, "application/json");
 });
 
-test("an authored Markdown Accept does not authorize a package-generated HTML variant request", async () => {
+test("an authored Markdown Accept is honored and yields the Markdown as the body", async () => {
     const observed: string[] = [];
     await withFetch((async (_input, init) => {
         observed.push(new Headers(init?.headers).get("accept") ?? "");
@@ -422,7 +421,7 @@ test("an authored Markdown Accept does not authorize a package-generated HTML va
         const materialized = await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "# Authored representation");
         assert.equal(materialized?.html, undefined);
-        assert.equal(materialized?.htmlOutcome?.failure?.code, "html-variant-unavailable");
+        assert.equal(materialized?.htmlOutcome, undefined);
     });
     assert.deepEqual(observed, ["text/markdown"]);
 });

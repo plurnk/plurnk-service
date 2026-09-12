@@ -44,7 +44,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
     } finally { await db.close(); }
 });
 
-test("a FETCHED html page (via the exec sink) projects: decisive markdown body + raw #html archive", async () => {
+test("a FETCHED html page (via the exec sink) keeps its source as body and its Markdown as #readable", async () => {
     const rawHtml = `<html><head><script>ads()</script></head><body><h1>Headline</h1><p>${"the body text remains readable ".repeat(20)}</p></body></html>`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -86,15 +86,16 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         assert.ok(entry !== undefined, "the fetched page materialized");
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string; weight: number }>({ entry_id: entry.id });
         const byName = new Map(rows.map((r) => [r.name, r]));
-        assert.equal(byName.get("body")?.mimetype, "text/markdown", "the decisive body is the projection");
-        assert.match(byName.get("body")!.content, /Headline/, "the readable text survives");
-        assert.ok(!byName.get("body")!.content.includes("<script>"), "the markup does not");
+        // {§readable-channel} — one rule for pages and files: the source is the body, the projection rides beside it.
+        assert.equal(byName.get("body")?.content, rawHtml, "the body is the server source, byte-for-byte");
+        assert.equal(byName.get("readable")?.mimetype, "text/markdown", "the projection is #readable");
+        assert.match(byName.get("readable")!.content, /Headline/, "the readable text survives");
+        assert.ok(!byName.get("readable")!.content.includes("<script>"), "the markup does not");
         assert.ok(
-            byName.get("body")!.content.split("\n").every((line) => line.length <= 100),
-            "the decisive Markdown projection has bounded prose lines",
+            byName.get("readable")!.content.split("\n").every((line) => line.length <= 100),
+            "the Markdown projection has bounded prose lines",
         );
-        assert.equal(byName.get("html")?.content, rawHtml, "the raw #html archive remains byte-for-byte faithful");
-        assert.ok(byName.get("body")!.weight < byName.get("html")!.weight, "the curation weight is the projection's, not the scaffolding's");
+        assert.ok(byName.get("readable")!.weight < byName.get("body")!.weight, "the projection weighs less than the scaffolding");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 

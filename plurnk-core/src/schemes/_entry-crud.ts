@@ -148,9 +148,12 @@ export default class EntryCrud {
             throw new Error("writeEntry: publication returned no row");
         }
         const created = published.created === 1;
-        // {§readable-channel} — a text source channel lands with its projection beside it.
+        // {§readable-channel} — a text source channel lands with its projection beside it, unless
+        // the writer supplied `readable` itself (a fetched page's curated Markdown carries its own
+        // producer outcome and is the scheme's to own).
         const source = channels.find(({ name }) => name === defaultChannel);
         if (source !== undefined && source.data.bytes === undefined && ctx.mimetypes !== undefined
+            && !Object.hasOwn(entry.channels, EntryReadable.CHANNEL)
             && !await MimetypeBinary.isBinaryMimetype(source.data.mimetype, ctx.mimetypes)) {
             await EntryReadable.sync(ctx, published.id, source.name, defaultChannel, source.content, source.data.mimetype);
         }

@@ -113,7 +113,7 @@ for (const pretty of [false, true]) {
     }
 }
 
-test("#283: a scoped READ of a materialized https entry's html channel returns exactly the window", async () => {
+test("#283: a scoped READ of a materialized https page's source returns exactly the window", async () => {
     const { db, engine, ids } = await setup();
     const originalFetch = globalThis.fetch;
     try {
@@ -132,14 +132,17 @@ test("#283: a scoped READ of a materialized https entry's html channel returns e
         const acquired = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped)\`\`\``));
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        const scoped = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped#html) <3,16>\`\`\``));
-        assert.equal(scoped.status, 200, "scoped channel read succeeds");
+        // {§readable-channel} — a page's server source is its default channel.
+        const scoped = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped) <3,16>\`\`\``));
+        assert.equal(scoped.status, 200, "scoped source read succeeds");
         const result = await readContent(db, ids, sequence);
         assert.equal(
             result.content,
             windowOf(page, 3, 16),
-            "the #html channel read returns exactly lines 3..16 — not the complete page",
+            "the source read returns exactly lines 3..16 — not the complete page",
         );
+        const projection = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped#readable) <1,-1>\`\`\``));
+        assert.equal(projection.status, 200, "the readable projection is one fragment away");
     } finally {
         globalThis.fetch = originalFetch;
         await db.close();
@@ -255,12 +258,12 @@ test("#287: matcher FIND locations name the channel they address", async () => {
             assert.equal(location.channel, "body", "a default-channel match names the body channel");
         }
 
-        await dispatch("```FIND (https://93.184.216.34/channel-facts#html) [{\"pattern\":\"/v[0-9.]+/i\"}]```");
-        const htmlFind = await readContent(db, ids, sequence);
-        const htmlLocations = JSON.parse(String(htmlFind.content ?? "[]")) as Array<{ channel?: string }>;
-        assert.ok(htmlLocations.length > 0, "the #html-channel FIND reports match locations");
-        for (const location of htmlLocations) {
-            assert.equal(location.channel, "html", "an #html-channel match names the html channel");
+        await dispatch("```FIND (https://93.184.216.34/channel-facts#readable) [{\"pattern\":\"/v[0-9.]+/i\"}]```");
+        const readableFind = await readContent(db, ids, sequence);
+        const readableLocations = JSON.parse(String(readableFind.content ?? "[]")) as Array<{ channel?: string }>;
+        assert.ok(readableLocations.length > 0, "the #readable-channel FIND reports match locations");
+        for (const location of readableLocations) {
+            assert.equal(location.channel, "readable", "a #readable-channel match names the readable channel");
         }
     } finally {
         globalThis.fetch = originalFetch;

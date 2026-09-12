@@ -197,7 +197,9 @@ export default class Http implements SchemeHandler {
         // response Content-Type or the configured readable projection type;
         // octet-stream is the honest "unknown until fetched". header is always the status
         // line + headers (text/plain).
-        channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", html: "text/html" },
+        // {§readable-channel} — body is the response as served (a page's server source); readable
+        // is a page's curated Markdown, materializer or local projection; header is evidence.
+        channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", readable: "text/markdown" },
         defaultChannel: BODY,
         category: "data",
         writableBy: ["model", "client"],

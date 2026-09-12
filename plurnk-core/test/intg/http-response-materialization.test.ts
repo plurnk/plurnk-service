@@ -220,7 +220,7 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
     }
 });
 
-test("{§http-channel-outcomes}: a hard page-body failure preserves readable server HTML", async () => {
+test("{§http-channel-outcomes}: a hard materializer failure is the readable channel's; the source reads whole", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalMaterializer = process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
@@ -260,33 +260,35 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const pathname = "/hard.html";
 
+        // {§readable-channel} — the page's source is its body and reads whole; the materializer's
+        // hard failure is the readable channel's own.
         const acquired = await readHttp(http, statement(null, "/hard.html"), ctx);
-        assert.equal(acquired.status, 502);
-        assert.equal(
-            acquired.problem?.type,
-            "https://problems.plurnk.xyz/scheme/http/stub-authentication-failed",
-        );
+        assert.equal(acquired.status, 200, JSON.stringify(acquired).slice(0, 300));
+        assert.equal(acquired.content, source, "the source is the default channel");
+        assert.deepEqual(Object.keys(acquired.channels as Record<string, number>), ["#header", "#readable"], "the READ names the page's other channels");
 
         const stored = await handlerCtx.entries.read(pathname);
-        assert.equal(stored.entry?.channels.body.state, "errored");
+        assert.equal(stored.entry?.channels.body.state, "static");
+        assert.equal(stored.entry?.channels.body.content, source);
         assert.equal(stored.entry?.channels.header.state, "static");
-        assert.equal(stored.entry?.channels.html.state, "static");
-        assert.equal(stored.entry?.channels.html.content, source);
+        assert.equal(stored.entry?.channels.readable.state, "errored");
 
-        const scoped = statement({ marks: [1] }, "/hard.html");
+        const scoped = statement(null, "/hard.html");
         if (scoped.target?.kind !== "url") throw new Error("HTTP test helper produced a non-URL target");
-        const htmlRead: ReadStatement = {
+        const readableRead: ReadStatement = {
             ...scoped,
             target: {
                 ...scoped.target,
-                raw: `${scoped.target.raw}#html`,
-                fragment: "html",
+                raw: `${scoped.target.raw}#readable`,
+                fragment: "readable",
             },
         };
-        const reread = await readHttp(http, htmlRead, ctx);
-        assert.equal(reread.status, 200);
-        assert.equal(reread.content, source, "universal text scope preserves the exact source characters");
-        assert.equal(reread.mimetype, "text/markdown", "scoped text follows the universal text-primitive contract");
+        const projection = await readHttp(http, readableRead, ctx);
+        assert.equal(projection.status, 502);
+        assert.equal(
+            projection.problem?.type,
+            "https://problems.plurnk.xyz/scheme/http/stub-authentication-failed",
+        );
     } finally {
         globalThis.fetch = originalFetch;
         if (originalMaterializer === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
@@ -343,11 +345,10 @@ test("an empty finite GET materializes atomically and remains reusable through 3
 
         const completed = await handlerCtx.entries.read(pathname);
         assert.equal(completed.entry?.channels.body.content, "");
-        assert.equal(Object.keys(completed.entry?.channels ?? {}).length, 3);
+        // {§readable-channel} — a plain-text response has no projection: body and header only.
+        assert.deepEqual(Object.keys(completed.entry?.channels ?? {}).sort(), ["body", "header"]);
         assert.equal(completed.entry?.channels.body.state, "static");
         assert.equal(completed.entry?.channels.header.state, "static");
-        assert.equal(completed.entry?.channels.html.state, "errored");
-        assert.equal(completed.entry?.channels.html.producerResult?.status, 502);
 
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
         assert.equal((await readHttp(http, emptyStatement(), ctx)).status, 204);

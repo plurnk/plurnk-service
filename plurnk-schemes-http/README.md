@@ -48,10 +48,10 @@ projection ceiling returns `413`.
   `body`; otherwise the installed HTML reader is the local route. Recoverable
   materializer failures use that same reader as a `203` recovery floor. Hard
   provider failures do not silently change producers.
-- `body`, `header`, and `html` settle independently. The selected channel
-  determines operation success, so raw server source and evidence remain usable
-  when body production fails, and a provider body can survive origin transport
-  failure without fabricating HTML.
+- `body`, `header`, and `readable` settle independently. The selected channel
+  determines operation success, so the raw server source and evidence remain
+  usable when the projection fails, and a provider's Markdown can survive origin
+  transport failure without fabricating HTML.
 - GET representations carry method, acquisition-time, and single-variant cache
   metadata; HTML adds materializer-route evidence, and local derivation adds
   projection identity. Request metadata, `Vary`, `no-store`, expired freshness,
@@ -83,7 +83,7 @@ To select a page-materializer plugin for generic public HTML materialization,
 install it and set `PLURNK_SCHEMES_HTTP_MATERIALIZER=<id>` in `.env` (the
 `@plurnk/plurnk-schemes-http-tavily` showcase plugin supplies `tavily-extract`).
 Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local
-body.
+`readable` projection.
 
 ## Verify
 
