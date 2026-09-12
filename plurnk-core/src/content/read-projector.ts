@@ -385,10 +385,11 @@ export default class ReadProjector {
         }
 
         // {§channel-selection-visibility} — first contact carries the choice: a READ of a resource
-        // with other channels names them with their tokens, exactly as a FIND listing does.
+        // with other channels names them with their tokens, exactly as a FIND listing does, keyed
+        // by the `#channel` the model appends to the path.
         const siblings = Object.entries(representation.channels)
             .filter(([name]) => name !== selected)
-            .map(([name, data]) => [name, opts.weigh!(data.content)] as const);
+            .map(([name, data]) => [`#${name}`, opts.weigh!(data.content)] as const);
         const projected = {
             ...resolved,
             channel,

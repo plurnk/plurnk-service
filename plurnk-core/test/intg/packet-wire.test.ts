@@ -722,9 +722,9 @@ test("log render: a READ row carries its sibling channels", () => {
         status: 200,
         target: { scheme: "worker", pathname: "/page.html" },
         tx: { target: { scheme: "worker", pathname: "/page.html" }, lineMarker: null, matcher: null, body: null },
-        rx: { content: "<html></html>", mimetype: "text/html", startLine: 1, channels: { readable: 812 }, range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] } },
+        rx: { content: "<html></html>", mimetype: "text/html", startLine: 1, channels: { "#readable": 812 }, range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] } },
     }], tok);
-    assert.match(out, /"channels":\{"readable":812\}/);
+    assert.match(out, /"channels":\{"#readable":812\}/);
 });
 
 // {§retrieval-packet-metadata} {§edit-pattern} — a pattern mutation names its matcher and count.
