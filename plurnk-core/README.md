@@ -34,7 +34,7 @@ reports the choices shared by a worker's selected model and spawn override.
 
 ```sh
 npm install -g @plurnk/plurnk-service
-plurnk-service migrate    # apply the disposable version-1 schema baseline
+plurnk-service migrate    # apply the disposable schema baseline (its chapters, in order)
 plurnk-service start      # daemon
 ```
 

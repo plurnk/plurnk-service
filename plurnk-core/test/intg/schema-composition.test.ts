@@ -26,11 +26,22 @@ const sqlFiles = async (dir: string): Promise<string[]> => {
     return out;
 };
 
+// The baseline is the chapters of `migrations/`, each one MIGRATE block whose version is the
+// file's numeric prefix, so the chapter a reader opens is the version sqlrite applies.
 const baselineTriggers = async (): Promise<Array<{ name: string; when: string; writes: boolean }>> => {
-    const text = await readFile(resolve(PROJECT_ROOT, "migrations/001_schema.sql"), "utf8");
-    assert.equal((text.match(/^-- MIGRATE: /gm) ?? []).length, 1, "one MIGRATE block, the baseline");
-    assert.equal((text.match(/^-- INIT: /gm) ?? []).length, 0, "the baseline holds shape only; processes live beside their owners");
-    return [...text.matchAll(TRIGGER)].map((m) => ({ name: m[1]!, when: m[2]!, writes: WRITES.test(body(m[0])) }));
+    const dir = resolve(PROJECT_ROOT, "migrations");
+    const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).sort();
+    assert.ok(chapters.length > 1, "the baseline is chaptered");
+    const triggers: Array<{ name: string; when: string; writes: boolean }> = [];
+    for (const [index, chapter] of chapters.entries()) {
+        const text = await readFile(join(dir, chapter), "utf8");
+        const version = Number(chapter.split("_")[0]);
+        assert.equal(version, index + 1, `${chapter}: chapters are numbered consecutively from 1`);
+        assert.deepEqual(text.match(/^-- MIGRATE: (\d+)/gm), [`-- MIGRATE: ${version}`], `${chapter}: one MIGRATE block, its version is the file's prefix`);
+        assert.equal((text.match(/^-- (INIT|PREP|EXEC|TX): /gm) ?? []).length, 0, `${chapter}: a chapter holds shape only; processes live beside their owners`);
+        triggers.push(...[...text.matchAll(TRIGGER)].map((m) => ({ name: m[1]!, when: m[2]!, writes: WRITES.test(body(m[0])) })));
+    }
+    return triggers;
 };
 
 const initTriggers = async (): Promise<Array<{ file: string; init: string; name: string; dropsFirst: boolean; writes: boolean }>> => {
