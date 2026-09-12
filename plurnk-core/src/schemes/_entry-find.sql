@@ -45,3 +45,14 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
 ORDER BY e.id, ec.name;
+
+-- PREP: find_selected_channels
+-- {§find-result-projection}: the selected channel of every matched entry in one statement —
+-- $selections is a JSON array of {key, authority, pathname, channel}; a missing channel is a
+-- missing row the caller names.
+SELECT json_extract(sel.value, '$.key') AS key, ec.content, ec.mimetype
+FROM json_each($selections) AS sel
+JOIN entries e ON e.workspace_id = $workspace_id AND e.scheme = $scheme
+              AND e.authority = json_extract(sel.value, '$.authority')
+              AND e.pathname = json_extract(sel.value, '$.pathname')
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = json_extract(sel.value, '$.channel');

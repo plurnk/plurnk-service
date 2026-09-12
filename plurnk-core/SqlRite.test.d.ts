@@ -82,6 +82,7 @@ export class SqlRiteSync {
 	crud_delete_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_delete_family_workspace_constraints: SqlRiteSyncPreparedStatements;
 	crud_insert_family_workspace_constraint: SqlRiteSyncPreparedStatements;
+	crud_insert_family_workspace_constraints: SqlRiteSyncPreparedStatements;
 	crud_stamp_origin: SqlRiteSyncPreparedStatements;
 	crud_set_origin: SqlRiteSyncPreparedStatements;
 	crud_upsert_readable_channel: SqlRiteSyncPreparedStatements;
@@ -89,6 +90,7 @@ export class SqlRiteSync {
 	find_workspace_entry_candidates: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRiteSyncPreparedStatements;
 	find_workspace_derivation_candidates: SqlRiteSyncPreparedStatements;
+	find_selected_channels: SqlRiteSyncPreparedStatements;
 	fts_delete: SqlRiteSyncPreparedStatements;
 	fts_insert: SqlRiteSyncPreparedStatements;
 	fts_rank_candidates: SqlRiteSyncPreparedStatements;
@@ -101,8 +103,7 @@ export class SqlRiteSync {
 	derivation_complete: SqlRiteSyncPreparedStatements;
 	graph_referrers_candidates: SqlRiteSyncPreparedStatements;
 	graph_defs_candidates: SqlRiteSyncPreparedStatements;
-	graph_resolve_def_candidates: SqlRiteSyncPreparedStatements;
-	graph_refs_from_source: SqlRiteSyncPreparedStatements;
+	graph_referents: SqlRiteSyncPreparedStatements;
 	engine_list_catalog_entries: SqlRiteSyncPreparedStatements;
 	ops_insert_workspace_entry_if_absent: SqlRiteSyncPreparedStatements;
 	ops_insert_channel_if_absent: SqlRiteSyncPreparedStatements;
@@ -253,7 +254,7 @@ export class SqlRiteSync {
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_parent_worker: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
-	engine_stream_reported: SqlRiteSyncPreparedStatements;
+	engine_streams_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_admit_log_outputs: SqlRiteSyncPreparedStatements;
@@ -617,6 +618,7 @@ export default class SqlRite {
 	crud_delete_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_delete_family_workspace_constraints: SqlRitePreparedStatements;
 	crud_insert_family_workspace_constraint: SqlRitePreparedStatements;
+	crud_insert_family_workspace_constraints: SqlRitePreparedStatements;
 	crud_stamp_origin: SqlRitePreparedStatements;
 	crud_set_origin: SqlRitePreparedStatements;
 	crud_upsert_readable_channel: SqlRitePreparedStatements;
@@ -624,6 +626,7 @@ export default class SqlRite {
 	find_workspace_entry_candidates: SqlRitePreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRitePreparedStatements;
 	find_workspace_derivation_candidates: SqlRitePreparedStatements;
+	find_selected_channels: SqlRitePreparedStatements;
 	fts_delete: SqlRitePreparedStatements;
 	fts_insert: SqlRitePreparedStatements;
 	fts_rank_candidates: SqlRitePreparedStatements;
@@ -636,8 +639,7 @@ export default class SqlRite {
 	derivation_complete: SqlRitePreparedStatements;
 	graph_referrers_candidates: SqlRitePreparedStatements;
 	graph_defs_candidates: SqlRitePreparedStatements;
-	graph_resolve_def_candidates: SqlRitePreparedStatements;
-	graph_refs_from_source: SqlRitePreparedStatements;
+	graph_referents: SqlRitePreparedStatements;
 	engine_list_catalog_entries: SqlRitePreparedStatements;
 	ops_insert_workspace_entry_if_absent: SqlRitePreparedStatements;
 	ops_insert_channel_if_absent: SqlRitePreparedStatements;
@@ -788,7 +790,7 @@ export default class SqlRite {
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_parent_worker: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
-	engine_stream_reported: SqlRitePreparedStatements;
+	engine_streams_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_admit_log_outputs: SqlRitePreparedStatements;

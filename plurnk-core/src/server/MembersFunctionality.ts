@@ -372,8 +372,11 @@ export default class MembersFunctionality implements FunctionalityAdapter {
 
     async #apply(workspaceId: number, rows: readonly OverlayRow[]): Promise<void> {
         await this.#db.crud_delete_family_workspace_constraints.run({ workspace_id: workspaceId });
-        for (const { effect, glob, source } of rows) {
-            await this.#db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect, glob, source });
+        if (rows.length > 0) {
+            await this.#db.crud_insert_family_workspace_constraints.run({
+                workspace_id: workspaceId,
+                rows: JSON.stringify(rows.map(({ effect, glob, source }) => ({ effect, glob, source }))),
+            });
         }
         // One owner reconciles membership after a constraint change: the workspace warm, which
         // coalesces with any pass already in flight and rescans once more after it — a detached

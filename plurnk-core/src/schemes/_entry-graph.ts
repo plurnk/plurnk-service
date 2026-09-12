@@ -118,19 +118,13 @@ export default class EntryGraph {
         candidates: readonly SearchCandidate[],
         name: string,
     ): Promise<GraphMatch[]> {
-        const defs = await db.graph_resolve_def_candidates.all<{ derivation_id: number; container: string | null }>({
-            candidates: JSON.stringify(universe),
+        // One statement walks definitions → referenced targets → their defining candidates.
+        const rows = await db.graph_referents.all<{ key: string; line: number; end_line: number }>({
+            universe: JSON.stringify(universe),
+            candidates: JSON.stringify(candidates),
             name,
         });
-        const targets = new Set<string>();
-        for (const d of defs) {
-            const qualified = d.container === null ? name : `${d.container}.${name}`;
-            const refs = await db.graph_refs_from_source.all<{ name: string }>({ derivation_id: d.derivation_id, container: qualified });
-            for (const r of refs) targets.add(r.name);
-        }
-        const out: GraphMatch[] = [];
-        for (const t of targets) out.push(...await EntryGraph.#defs(db, candidates, t));
-        return EntryGraph.#dedupe(out);
+        return EntryGraph.#dedupe(rows.map((r) => ({ key: r.key, lineStart: r.line, lineEnd: r.end_line })));
     }
 }
 

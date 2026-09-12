@@ -45,11 +45,15 @@ JOIN entry_channels ec ON ec.entry_id = s.entry_id AND ec.name = sp.channel
 WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
 ORDER BY e.pathname, ec.name;
 
--- PREP: engine_stream_reported
--- {§child-orientation} — the publication cursor now records the size last reported to the
--- model by the Delegation stream pointer, so the next packet can say how much the stream grew.
-UPDATE subscription_publications SET published_end = $reported
-WHERE id = $publication_id AND published_end < $reported;
+-- PREP: engine_streams_reported
+-- {§child-orientation} — every publication cursor a packet's Delegation pointers reported lands
+-- in one statement ($observations is a JSON array of {publication_id, bytes}), so the next packet
+-- can say how much each stream grew. A cursor only advances.
+UPDATE subscription_publications
+SET published_end = json_extract(observation.value, '$.bytes')
+FROM json_each($observations) AS observation
+WHERE subscription_publications.id = json_extract(observation.value, '$.publication_id')
+  AND subscription_publications.published_end < json_extract(observation.value, '$.bytes');
 
 -- PREP: engine_render_errors
 -- SPEC {§operation-results}: 4xx/5xx log rows are indexed in the packet's errors as

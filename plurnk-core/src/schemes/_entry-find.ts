@@ -626,20 +626,20 @@ export default class EntryFind {
             return [...new Set(matches.map(({ key }) => key))].map((pathname) => ({ pathname, matches: [] }));
         }
         const scheme = EntryCrud.identityScheme(manifest);
-        const candidates: Array<{ key: string; content: string; mimetype: string }> = [];
-        for (const pathname of new Set(matches.filter(({ span }) => span !== null).map(({ key }) => key))) {
-            const channel = channelOf(pathname);
+        const selections = [...new Set(matches.filter(({ span }) => span !== null).map(({ key }) => key))].map((pathname) => {
             const coordinate = coordinates.get(pathname);
             if (coordinate === undefined) throw new Error(`FIND graph result lost coordinate ${pathname}`);
-            const row = await ctx.db.ops_read_channel.get<{ content: string; mimetype: string }>({
-                workspace_id: ctx.workspaceId,
-                scheme,
-                ...coordinate,
-                channel,
-            });
-            if (row === undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${pathname} has no selected channel ${channel}`);
-            candidates.push({ key: pathname, ...row });
-        }
+            return { key: pathname, ...coordinate, channel: channelOf(pathname) };
+        });
+        // One statement reads every matched entry's selected channel.
+        const candidates = await ctx.db.find_selected_channels.all<{ key: string; content: string; mimetype: string }>({
+            workspace_id: ctx.workspaceId,
+            scheme,
+            selections: JSON.stringify(selections),
+        });
+        const found = new Set(candidates.map(({ key }) => key));
+        const missing = selections.find(({ key }) => !found.has(key));
+        if (missing !== undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${missing.key} has no selected channel ${missing.channel}`);
         const resolved = Matcher.addTextRegions(matches, candidates);
         // {§find-result-projection} — every addressable finding names the channel
         // it was located in, so line coordinates cannot be mis-attributed across

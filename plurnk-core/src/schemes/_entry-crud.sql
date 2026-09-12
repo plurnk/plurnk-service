@@ -171,10 +171,20 @@ DELETE FROM workspace_constraints
 WHERE workspace_id = $workspace_id AND source IN ('members', 'model');
 
 -- PREP: crud_insert_family_workspace_constraint
--- A projected row never overwrites a creation record ({§fs-create-masked}); the family deleted its
--- own rows first, so that record is the only conflict left.
+-- One projected row; the plural form below is the family's own write path.
 INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
 VALUES ($workspace_id, $effect, $glob, $source)
+ON CONFLICT (workspace_id, effect, glob)
+DO NOTHING;
+
+-- PREP: crud_insert_family_workspace_constraints
+-- The family's projected rows land as one set ($rows is a JSON array of {effect, glob, source}). A
+-- projected row never overwrites a creation record ({§fs-create-masked}); the family deleted its
+-- own rows first, so that record is the only conflict left.
+INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
+SELECT $workspace_id, json_extract(row.value, '$.effect'), json_extract(row.value, '$.glob'), json_extract(row.value, '$.source')
+FROM json_each($rows) AS row
+WHERE true
 ON CONFLICT (workspace_id, effect, glob)
 DO NOTHING;
 

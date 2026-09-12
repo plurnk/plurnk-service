@@ -70,21 +70,35 @@ JOIN candidates c ON c.deep_hash = x.deep_hash
 WHERE d.name = $name
 ORDER BY c.key, d.line;
 
--- PREP: graph_resolve_def_candidates
--- sym → its definition artifacts in the caller's relationship universe.
-WITH candidates AS (
+-- PREP: graph_referents
+-- &>sym in one statement — sym's definitions in the relationship universe, the target names
+-- their reference rows carry (keyed on each definition's fully qualified container), and the
+-- defining candidate keys + def spans of those targets. {§graph-relations}
+WITH universe AS (
     SELECT json_extract(value, '$.deepHash') AS deep_hash
+    FROM json_each($universe)
+),
+candidates AS (
+    SELECT json_extract(value, '$.key') AS key,
+           json_extract(value, '$.deepHash') AS deep_hash
     FROM json_each($candidates)
+),
+sources AS (
+    SELECT DISTINCT d.derivation_id,
+           CASE WHEN d.container IS NULL THEN $name ELSE d.container || '.' || $name END AS qualified
+    FROM symbol_defs d
+    JOIN derivations x ON x.id = d.derivation_id
+    JOIN universe u ON u.deep_hash = x.deep_hash
+    WHERE d.name = $name
+),
+targets AS (
+    SELECT DISTINCT r.name
+    FROM symbol_refs r
+    JOIN sources s ON s.derivation_id = r.derivation_id AND r.container IS s.qualified
 )
-SELECT DISTINCT d.derivation_id, d.container
-FROM symbol_defs d
+SELECT DISTINCT c.key, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
+FROM targets t
+JOIN symbol_defs d ON d.name = t.name
 JOIN derivations x ON x.id = d.derivation_id
 JOIN candidates c ON c.deep_hash = x.deep_hash
-WHERE d.name = $name;
-
--- PREP: graph_refs_from_source
--- &>sym step — the target names referenced by sym's definition, whose own
--- reference rows key on the source definition's fully qualified container.
--- {§graph-relations}
-SELECT DISTINCT name FROM symbol_refs
-WHERE derivation_id = $derivation_id AND container IS $container;
+ORDER BY c.key, d.line;

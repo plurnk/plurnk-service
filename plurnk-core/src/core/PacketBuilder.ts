@@ -436,9 +436,10 @@ export default class PacketBuilder {
     async recordObservations(packet: RequestPacket): Promise<void> {
         const observations = this.#streamObservations.get(packet.sections);
         if (observations === undefined) throw new Error("Cannot acknowledge an unbuilt request packet.");
-        for (const channel of observations) {
-            await this.#db.engine_stream_reported.run({ publication_id: channel.publication_id, reported: channel.bytes });
-        }
+        if (observations.length === 0) return;
+        await this.#db.engine_streams_reported.run({
+            observations: JSON.stringify(observations.map(({ publication_id, bytes }) => ({ publication_id, bytes }))),
+        });
     }
 
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
