@@ -38,7 +38,7 @@ export default class PatternSelection {
         operation: PatternOperation;
     }): Promise<{ evidence: readonly MatchEvidence[]; bounds: PatternBounds } | { result: DispatchResult }> {
         if (ctx.mimetypes === undefined) throw new Error("a pattern operation requires the mimetypes capability");
-        const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(matcher), content, mimetype, ctx.mimetypes);
+        const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(matcher), content, PatternEdits.matchMimetype(matcher, mimetype), ctx.mimetypes);
         if (match.status >= 400 || match.status === 203) {
             return { result: match.problem === undefined
                 ? PatternSelection.refuse("pattern-unapplicable", 422, match.reason ?? "The pattern could not be applied to the resource.", scheme, operation)

@@ -1771,8 +1771,10 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   neighborhoods against its exact snapshot, and atomic identity/channel claims
   and storage predicates close the remaining races.
 - §edit-pattern **A pattern replaces every selected span with the literal body.**
-  ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under
-  the channel's own mimetype, matches, and expands into one atomic batch
+  ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once,
+  matches — a regex or glob over the source text itself, since the splices land
+  on source coordinates, and a node dialect under the channel's own handler —
+  and expands into one atomic batch
   ({§edit-batch}) of four-coordinate splices, all relative to the same original
   content: a regex span is its evidence region; a literal (a glob without
   metacharacters) is each of its occurrences on every matched line; a glob with
@@ -1822,8 +1824,10 @@ selection or fan-out path.
   handlers over a whole-resource `<1,-1>` read.
 - §read-pattern **A pattern selects the lines a READ renders.** With a heading
   matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
-  READ: the matcher runs over the channel's text line by line — a regex anchors
-  each line, so `^` and `$` are the line's ends — and every line a match touches,
+  READ: a regex or glob runs over the source text the READ renders, line by line
+  — never a handler's readable projection, so on HTML the markup itself matches —
+  and a regex anchors each line, so `^` and `$` are the line's ends; a node
+  dialect runs under the channel's handler. Every line a match touches,
   in source order, is the visible selection. The scope still bounds it: a scoped
   READ renders exactly the selected lines the scope holds; a whole-resource one
   pages through the selected lines under the ordinary preview bound, never showing

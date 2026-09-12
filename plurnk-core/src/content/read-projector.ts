@@ -328,7 +328,7 @@ export default class ReadProjector {
                 );
             }
             if (mimetypes === undefined) throw new Error("ReadProjector: a READ pattern requires the mimetypes capability");
-            const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(statement.matcher), selectedRepresentation.content, selectedRepresentation.mimetype, mimetypes);
+            const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(statement.matcher), selectedRepresentation.content, PatternEdits.matchMimetype(statement.matcher, selectedRepresentation.mimetype), mimetypes);
             if (match.status >= 400 || match.status === 203) {
                 return Results.assertReadResult({
                     ...(match.problem === undefined

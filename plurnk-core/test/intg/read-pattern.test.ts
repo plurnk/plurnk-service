@@ -9,11 +9,11 @@ import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt } from "./_dsl.ts";
 
-const setup = async (content = "alpha\nTODO one\nbeta\nTODO two\ngamma") => {
+const setup = async (content = "alpha\nTODO one\nbeta\nTODO two\ngamma", pathname = "/notes.md") => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), content), makeSchemeCtx({ db, workspaceId: env.workspaceId, workerId: env.workerId }));
+    await new Worker().edit(editStmt(urlPath("worker", pathname), content), makeSchemeCtx({ db, workspaceId: env.workspaceId, workerId: env.workerId }));
     let sequence = 0;
     const dispatch = (statement: ReadStatement) => {
         sequence += 1;
@@ -75,5 +75,19 @@ test("a resource-selecting dialect on a READ is refused", async () => {
         const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "fts", raw: "~TODO" }));
         assert.equal(r.status, 400, JSON.stringify(r));
         assert.match(String(r.problem?.type), /\/pattern-dialect-unsupported$/);
+    } finally { await db.close(); }
+});
+
+// {§read-pattern} — a regex runs over the source lines the READ renders, never a handler's readable
+// projection: on HTML the tags are there to match (the rtx5070 sweep of 2026-09-11 found `/<h[1-6]/i`
+// matching nothing because the html handler ran it over its Markdown projection).
+test("a regex pattern on an HTML file matches the source markup the READ shows", async () => {
+    const { db, dispatch } = await setup("<html>\n  <body>\n    <h1>Team Roster</h1>\n    <p>hello</p>\n  </body>\n</html>", "/users.html");
+    try {
+        const r = await dispatch(readStmt(urlPath("worker", "/users.html"), null, { dialect: "regex", raw: "/<h[1-6]/i", pattern: "<h[1-6]", flags: "i" }));
+        assert.equal(r.status, 200, JSON.stringify(r));
+        assert.equal(r.matched, 1);
+        assert.deepEqual(r.lineOrdinals, [3]);
+        assert.equal(r.content, "    <h1>Team Roster</h1>");
     } finally { await db.close(); }
 });

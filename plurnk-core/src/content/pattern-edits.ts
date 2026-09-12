@@ -1,6 +1,7 @@
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
 import { assertEditBatchReceipt, projectEditReceipt } from "./edit-receipt.ts";
 import type { DispatchResult } from "../core/mutation-types.ts";
 
@@ -14,6 +15,14 @@ export type PatternEdit = { readonly marker: { readonly marks: [number] | [numbe
 export type PatternSpan = { readonly line: number; readonly startColumn: number; readonly endLine: number; readonly endColumn: number };
 
 export default class PatternEdits {
+    // A pattern operation addresses source coordinates, so a regex or glob runs over the source
+    // text itself — the lines a READ renders and an EDIT splices — never a handler's readable
+    // projection (HTML's Markdown, a notebook's cells), whose lines are not the source's. Node
+    // dialects need the channel's handler to find their nodes.
+    static matchMimetype(matcher: MatcherBody, channelMimetype: string): string {
+        return matcher.dialect === "regex" || matcher.dialect === "glob" ? TEXT_PRIMITIVE_MIMETYPE : channelMimetype;
+    }
+
     // A pattern operation works line by line, so a regex anchors each line: `^` and `$` mean the
     // line's ends, as they do in a FIND over one line.
     static lineLimited(matcher: MatcherBody): MatcherBody {
