@@ -11,6 +11,8 @@ export interface TurnRow {
 
 export interface InferenceEvidence {
     readonly packet: string;
+    // {§packet-items} — the sections as StoredPacket.sections renders them for the write view.
+    readonly sections: string;
     readonly usageCurationBudget: number | null;
     readonly finishReason: string | null;
     readonly model: string;
@@ -34,18 +36,18 @@ export default class Turn {
         return turn;
     }
 
+    // {§packet-items} — one statement through the turn_inference_evidence view: the bag, the
+    // sections as items, and the provider metadata land together, or the view's trigger refuses.
     static async recordInference(db: Db, id: number, evidence: InferenceEvidence): Promise<void> {
-        const turn = await db.turn_record_inference.get<{ id: number }>({
-            id,
+        await db.turn_record_inference.run({
+            turn_id: id,
             packet: evidence.packet,
+            sections: evidence.sections,
             usage_curation_budget: evidence.usageCurationBudget,
             finish_reason: evidence.finishReason,
             model: evidence.model,
             meta: evidence.meta,
         });
-        if (turn === undefined) {
-            throw new Error(`Turn.recordInference: turn ${id} is not an open model inference turn`);
-        }
     }
 
     static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning", content: string, options: {

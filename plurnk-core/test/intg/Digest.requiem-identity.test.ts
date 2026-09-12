@@ -9,7 +9,8 @@ import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from 
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity } from "./_helpers.ts";
+import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
 class WitnessMock extends Mock {
@@ -22,7 +23,7 @@ class WitnessMock extends Mock {
     }
 }
 
-const MODEL_PACKET = (worker: string) => JSON.stringify({
+const MODEL_PACKET = (worker: string): DurablePacket => ({
     weight: 0,
     sections: [
         { name: "system", slot: "system", header: null, content: `system for ${worker}`, weight: 1 },
@@ -106,7 +107,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
         const worker = await insertWorker(db, workspaceId, null, "witness");
         const loopId = await insertLoop(db, worker, 1, "go");
         // A turn carrying a MODEL packet (non-empty sections) so the requiem picks this worker up.
-        const turn = await db.test_insert_turn.get<{ id: number }>({ loop_id: loopId, sequence: 1, status: 200, packet: MODEL_PACKET("witness") });
+        const turn: { id: number } = { id: await insertPacketTurn(db, loopId, 1, MODEL_PACKET("witness"), 200) };
         assert.ok(turn);
         await recordResponseAttempt(db, {
             turnId: turn.id,
@@ -269,12 +270,7 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
         const workspaceId = await insertWorkspace(db, "requiem-failure");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
-        await db.test_insert_turn.get({
-            loop_id: loopId,
-            sequence: 1,
-            status: 500,
-            packet: MODEL_PACKET("failed-witness"),
-        });
+        await insertPacketTurn(db, loopId, 1, MODEL_PACKET("failed-witness"), 500);
     } finally {
         await db.close();
     }

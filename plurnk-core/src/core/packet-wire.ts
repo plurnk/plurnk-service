@@ -129,6 +129,8 @@ interface ReclaimableLogItem {
 
 export interface RenderedLog {
     readonly content: string;
+    // {§packet-items} — the records `content` joins with one blank line, in order.
+    readonly records: readonly string[];
     readonly curationTargets: readonly ReclaimableLogItem[];
     // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
@@ -247,10 +249,12 @@ export default class PacketWire {
     // accounting come from one render pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", curationTargets: [], attachments: [], unadmittedOutput: [], newOverflow: false };
+        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], unadmittedOutput: [], newOverflow: false };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
+        const records = rows.map(({ content }) => content);
         return {
-            content: rows.map(({ content }) => content).join("\n\n"),
+            content: records.join("\n\n"),
+            records,
             curationTargets: rows.flatMap(({ curationTarget }) =>
                 curationTarget === null ? [] : [curationTarget]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),

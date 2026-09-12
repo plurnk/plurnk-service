@@ -16,7 +16,6 @@ VALUES (
     200,
     json_object(
         'weight', CAST($curation_weight AS INTEGER),
-        'sections', json('[]'),
         'attributions', json('[]'),
         'assistant', json('{"content":"fixture","ops":[],"reasoning":null}'),
         'assistantRaw', json('null')

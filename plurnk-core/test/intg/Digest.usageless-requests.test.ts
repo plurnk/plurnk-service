@@ -9,9 +9,10 @@ import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity } from "./_helpers.ts";
+import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
-const MODEL_PACKET = JSON.stringify({
+const MODEL_PACKET: DurablePacket = {
     weight: 0,
     sections: [
         { name: "system", slot: "system", header: null, content: "system", weight: 1 },
@@ -20,7 +21,7 @@ const MODEL_PACKET = JSON.stringify({
     attributions: [],
     assistant: { content: "emission", ops: [], reasoning: null },
     assistantRaw: null,
-});
+};
 
 const TMP_DIR = fileURLToPath(new URL(".tmp/", import.meta.url));
 
@@ -61,7 +62,7 @@ test("{§digest-forensic-fidelity}: a settled request without usage is named on 
         const workspaceId = await insertWorkspace(db, "usage-less");
         const worker = await insertWorker(db, workspaceId, null, "biller");
         const loopId = await insertLoop(db, worker, 1, "go");
-        const turnOne = await db.test_insert_turn.get<{ id: number }>({ loop_id: loopId, sequence: 1, status: 200, packet: MODEL_PACKET });
+        const turnOne: { id: number } = { id: await insertPacketTurn(db, loopId, 1, MODEL_PACKET, 200) };
         assert.ok(turnOne);
         await recordAttempt(db, turnOne.id, {
             provider: "provider:mock",
@@ -76,7 +77,7 @@ test("{§digest-forensic-fidelity}: a settled request without usage is named on 
             },
             cost: { kind: "estimated", amount: { amount: "0.01", currency: "USD" }, source: "fixture" },
         }, false);
-        const turnTwo = await db.test_insert_turn.get<{ id: number }>({ loop_id: loopId, sequence: 2, status: 200, packet: MODEL_PACKET });
+        const turnTwo: { id: number } = { id: await insertPacketTurn(db, loopId, 2, MODEL_PACKET, 200) };
         assert.ok(turnTwo);
         // The aborted/errored exchange: settled, no usage reported at all.
         await recordAttempt(db, turnTwo.id, {

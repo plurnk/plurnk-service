@@ -51,7 +51,8 @@ const seedWorkerEvidence = async (
     const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
     const turnId = turn.id;
     await Turn.recordInference(db, turnId, {
-        packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
+        packet: JSON.stringify({ weight: 0, attributions: [] }),
+        sections: "[]",
         usageCurationBudget: null,
         finishReason: "stop",
         model: `model-${marker}`,

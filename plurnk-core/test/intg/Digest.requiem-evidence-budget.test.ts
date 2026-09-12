@@ -9,7 +9,8 @@ import type { ChatMessage, ProviderRequestAccounting } from "@plurnk/plurnk-prov
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity } from "./_helpers.ts";
+import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 class WitnessMock extends Mock {
     calls: Array<{ messages: readonly ChatMessage[] }> = [];
@@ -19,7 +20,7 @@ class WitnessMock extends Mock {
     }
 }
 
-const MODEL_PACKET = JSON.stringify({
+const MODEL_PACKET: DurablePacket = {
     weight: 0,
     sections: [
         { name: "system", slot: "system", header: null, content: "system for budget", weight: 1 },
@@ -28,7 +29,7 @@ const MODEL_PACKET = JSON.stringify({
     attributions: [],
     assistant: { content: "final emission", ops: [], reasoning: null },
     assistantRaw: null,
-});
+};
 
 const TMP_DIR = fileURLToPath(new URL(".tmp/", import.meta.url));
 
@@ -90,12 +91,7 @@ test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest att
             const worker = await insertWorker(db, workspaceId, null, "budgeted");
             const loopId = await insertLoop(db, worker, 1, "go");
             for (let sequence = 1; sequence <= 6; sequence += 1) {
-                const turn = await db.test_insert_turn.get<{ id: number }>({
-                    loop_id: loopId,
-                    sequence,
-                    status: 200,
-                    packet: MODEL_PACKET,
-                });
+                const turn: { id: number } = { id: await insertPacketTurn(db, loopId, sequence, MODEL_PACKET, 200) };
                 assert.ok(turn);
                 await recordFatAttempt(db, turn.id, `attempt-marker-${sequence}`);
             }

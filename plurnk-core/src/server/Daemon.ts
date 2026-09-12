@@ -1613,6 +1613,8 @@ export default class Daemon implements ApplicationPort {
         const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
         // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
+        // {§packet-items} — items no composition references are collected before the statistics.
+        const collectResult = await settle("packet items collect", () => this.#db.maintenance_collect_packet_items.run({}));
         const optimizeResult = await settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [
             moduleResult,
@@ -1620,6 +1622,7 @@ export default class Daemon implements ApplicationPort {
             drainResult,
             streamingResult,
             derivationResult,
+            collectResult,
             ...(mimetypeResult === null ? [] : [mimetypeResult]),
             schemeResult,
             wakeResult,

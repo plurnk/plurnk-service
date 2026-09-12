@@ -3,6 +3,9 @@ import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 
 export interface StoredPacketSection extends PacketSectionDraft {
     readonly weight: number;
+    // {§packet-items} — the blocks `content` is joined from (one blank line between them); present
+    // on a packet assembled for storage, absent on one read back through turn_packets.
+    readonly items?: readonly string[];
 }
 
 export type PacketAssistant = {
@@ -54,12 +57,26 @@ export default class StoredPacket {
         return packet;
     }
 
+    // {§packet-items} — the bag turns.packet stores: everything but the sections.
     static stringify(packet: DurablePacket): string {
-        const value = StoredPacket.assert(packet, "packet write");
-        const encoded = JSON.stringify(value);
+        const { sections: _sections, ...record } = StoredPacket.assert(packet, "packet write");
+        const encoded = JSON.stringify(record);
         if (encoded === undefined) throw new TypeError("packet write is not JSON-serializable");
-        StoredPacket.parse(encoded, "packet write");
+        StoredPacket.assert(JSON.parse(encoded), "packet write", { sections: "absent" });
         return encoded;
+    }
+
+    // {§packet-items} — the sections as the write view takes them: `[{name, slot, header, weight,
+    // items}]`, each section's items joining back to its exact content.
+    static sections(packet: DurablePacket): string {
+        const sections = StoredPacket.assert(packet, "packet write").sections.map((section) => {
+            const items = section.items ?? [section.content];
+            if (items.join("\n\n") !== section.content) {
+                throw new TypeError(`packet write: section '${section.name}' items do not join to its content`);
+            }
+            return { name: section.name, slot: section.slot, header: section.header, weight: section.weight, items };
+        });
+        return JSON.stringify(sections);
     }
 
     static parse(raw: string | null, subject = "stored packet"): DurablePacket | null {
@@ -96,19 +113,22 @@ export default class StoredPacket {
         return own(packet, "assistant");
     }
 
-    static assert(value: unknown, subject = "packet"): DurablePacket {
+    // `sections: "absent"` validates the stored bag ({§packet-items}); the default is a complete
+    // packet, in memory or assembled back through turn_packets.
+    static assert(value: unknown, subject = "packet", options: { readonly sections?: "present" | "absent" } = {}): DurablePacket {
         const packet = StoredPacket.#record(value, subject);
+        const absent = options.sections === "absent";
         StoredPacket.#keys(
             packet,
-            ["weight", "sections", "attributions"],
-            ["weight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
+            absent ? ["weight", "attributions"] : ["weight", "sections", "attributions"],
+            absent ? ["weight", "attributions", "attachments", "assistant", "assistantRaw"] : ["weight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
             subject,
         );
         if (own(packet, "attachments")) StoredPacket.#attachments(packet.attachments, `${subject}.attachments`);
         StoredPacket.#nonnegativeInteger(packet.weight, `${subject}.weight`);
-        if (!Array.isArray(packet.sections)) throw new TypeError(`${subject}.sections must be an array`);
+        if (!absent && !Array.isArray(packet.sections)) throw new TypeError(`${subject}.sections must be an array`);
 
-        const sections = packet.sections.map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
+        const sections = absent ? [] : (packet.sections as unknown[]).map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
         const attributions = StoredPacket.#attributions(packet.attributions, `${subject}.attributions`);
         const attachments = own(packet, "attachments")
             ? packet.attachments as PacketAttachment[]
@@ -156,7 +176,10 @@ export default class StoredPacket {
 
     static #section(value: unknown, subject: string): StoredPacketSection {
         const section = StoredPacket.#record(value, subject);
-        StoredPacket.#keys(section, ["name", "slot", "header", "content", "weight"], ["name", "slot", "header", "content", "weight"], subject);
+        StoredPacket.#keys(section, ["name", "slot", "header", "content", "weight"], ["name", "slot", "header", "content", "weight", "items"], subject);
+        if (own(section, "items") && (!Array.isArray(section.items) || !section.items.every((item) => typeof item === "string"))) {
+            throw new TypeError(`${subject}.items must be an array of strings`);
+        }
         if (typeof section.name !== "string" || section.name.length === 0) {
             throw new TypeError(`${subject}.name must be a non-empty string`);
         }
@@ -174,6 +197,7 @@ export default class StoredPacket {
             header: section.header,
             content: section.content,
             weight: section.weight as number,
+            ...(own(section, "items") ? { items: section.items as string[] } : {}),
         };
     }
 

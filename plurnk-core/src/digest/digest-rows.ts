@@ -39,7 +39,7 @@ export interface TurnRow {
     meta: string | null;  // {§meta-passthrough}, {§operator-grammar}
     program: string | null;
 }
-export type StoredTurnRow = Omit<TurnRow, "packet" | "packetFailure"> & { packet: string | null };
+export type StoredTurnRow = Omit<TurnRow, "packet" | "packetFailure"> & { packet: string | null; packet_bag: string | null };
 export interface TurnAttemptRow {
     id: number; model_call_id: number; turn_id: number; sequence: number; kind: "emission";
     state: "pending" | "response" | "error"; accepted: number | null;

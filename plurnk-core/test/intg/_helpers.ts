@@ -12,6 +12,8 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import GitMembership from "../../src/core/git-membership.ts";
+import Turn from "../../src/core/Turn.ts";
+import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 import Engine from "../../src/core/Engine.ts";
@@ -196,6 +198,7 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
         functions: [
             resolve(PROJECT_ROOT, "src/core/content_weight.ts"),
             resolve(PROJECT_ROOT, "src/core/glob_match.ts"),
+            resolve(PROJECT_ROOT, "src/core/sha256.ts"),
         ],
     })) as unknown as Db;
     return db;
@@ -279,13 +282,30 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
     return row.id;
 };
 
+// {§packet-items} — the stored bag carries no sections; an empty composition reads back as [].
 const MIN_PACKET = JSON.stringify({
     weight: 0,
-    sections: [],
     attributions: [],
     assistant: { content: "", ops: [], reasoning: null },
     assistantRaw: null,
 });
+
+// {§packet-items} — store a complete packet the way the engine does: an open inference turn,
+// the bag and its sections through the write view, then the turn's terminal status.
+export const insertPacketTurn = async (db: Db, loopId: number, sequence: number, packet: DurablePacket, status: number = 200): Promise<number> => {
+    const row = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: loopId, sequence });
+    if (row === undefined) throw new Error("insertPacketTurn: insert returned no row");
+    await Turn.recordInference(db, row.id, {
+        packet: StoredPacket.stringify(packet),
+        sections: StoredPacket.sections(packet),
+        usageCurationBudget: null,
+        finishReason: null,
+        model: "test",
+        meta: "{}",
+    });
+    await Turn.complete(db, row.id, status);
+    return row.id;
+};
 
 // Read one section's rendered content off a stored (parsed) packet by name —
 // the test-side mirror of the wire/digest read path (PacketWire.sectionContent).

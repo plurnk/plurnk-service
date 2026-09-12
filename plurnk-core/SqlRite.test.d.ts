@@ -246,6 +246,7 @@ export class SqlRiteSync {
 	engine_loop_sequence: SqlRiteSyncPreparedStatements;
 	engine_get_loop_policy: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
+	maintenance_collect_packet_items: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -304,6 +305,9 @@ export class SqlRiteSync {
 	test_insert_worker: SqlRiteSyncPreparedStatements;
 	test_insert_loop: SqlRiteSyncPreparedStatements;
 	test_insert_turn: SqlRiteSyncPreparedStatements;
+	test_open_inference_turn: SqlRiteSyncPreparedStatements;
+	test_turn_items: SqlRiteSyncPreparedStatements;
+	test_packet_item_count: SqlRiteSyncPreparedStatements;
 	test_insert_operation_turn: SqlRiteSyncPreparedStatements;
 	test_count_log_entries_by_turn: SqlRiteSyncPreparedStatements;
 	test_log_sequencees_by_turn: SqlRiteSyncPreparedStatements;
@@ -448,6 +452,7 @@ export class SqlRiteSync {
 	test_fork_log_entries: SqlRiteSyncPreparedStatements;
 	test_fork_scratch_entries: SqlRiteSyncPreparedStatements;
 	test_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
+	test_bag_of_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -768,6 +773,7 @@ export default class SqlRite {
 	engine_loop_sequence: SqlRitePreparedStatements;
 	engine_get_loop_policy: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
+	maintenance_collect_packet_items: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;
@@ -826,6 +832,9 @@ export default class SqlRite {
 	test_insert_worker: SqlRitePreparedStatements;
 	test_insert_loop: SqlRitePreparedStatements;
 	test_insert_turn: SqlRitePreparedStatements;
+	test_open_inference_turn: SqlRitePreparedStatements;
+	test_turn_items: SqlRitePreparedStatements;
+	test_packet_item_count: SqlRitePreparedStatements;
 	test_insert_operation_turn: SqlRitePreparedStatements;
 	test_count_log_entries_by_turn: SqlRitePreparedStatements;
 	test_log_sequencees_by_turn: SqlRitePreparedStatements;
@@ -970,6 +979,7 @@ export default class SqlRite {
 	test_fork_log_entries: SqlRitePreparedStatements;
 	test_fork_scratch_entries: SqlRitePreparedStatements;
 	test_insert_log_curation_effect: SqlRitePreparedStatements;
+	test_bag_of_turn: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;

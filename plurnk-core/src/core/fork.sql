@@ -46,6 +46,25 @@ BEGIN
     WHERE ol.worker_id = NEW.parent_worker_id
     ORDER BY t.id;
 
+    -- {§packet-items}: a turn's composition is copied; the items are shared by hash.
+    INSERT INTO turn_sections (turn_id, position, name, slot, header, weight)
+    SELECT nt.id, ts.position, ts.name, ts.slot, ts.header, ts.weight
+    FROM turn_sections ts
+    JOIN turns ot ON ot.id = ts.turn_id
+    JOIN loops ol ON ol.id = ot.loop_id
+    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+    JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
+    WHERE ol.worker_id = NEW.parent_worker_id;
+
+    INSERT INTO turn_section_items (turn_id, section, position, item_hash)
+    SELECT nt.id, tsi.section, tsi.position, tsi.item_hash
+    FROM turn_section_items tsi
+    JOIN turns ot ON ot.id = tsi.turn_id
+    JOIN loops ol ON ol.id = ot.loop_id
+    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+    JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
+    WHERE ol.worker_id = NEW.parent_worker_id;
+
     INSERT INTO turn_sources (turn_id, kind, content, deep_hash)
     SELECT nt.id, s.kind, s.content, s.deep_hash
     FROM turn_sources s

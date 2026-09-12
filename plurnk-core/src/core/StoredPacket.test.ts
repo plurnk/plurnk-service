@@ -12,9 +12,21 @@ test("StoredPacket: NULL is the singular no-request representation", () => {
     assert.equal(StoredPacket.parse(null), null);
 });
 
+// {§packet-items} — storage splits a packet into the bag (turns.packet) and its sections (rows);
+// the two halves rejoin to the exact measured request.
 test("StoredPacket: request-only round trip preserves the exact measured request", () => {
     const packet = request();
-    assert.deepEqual(StoredPacket.parse(StoredPacket.stringify(packet)), packet);
+    const bag = JSON.parse(StoredPacket.stringify(packet)) as Record<string, unknown>;
+    assert.equal(bag.sections, undefined, "the bag carries no sections");
+    const sections = (JSON.parse(StoredPacket.sections(packet)) as Array<{ name: string; slot: string; header: string | null; weight: number; items: string[] }>)
+        .map(({ items, ...section }) => ({ ...section, content: items.join("\n\n") }));
+    assert.deepEqual(StoredPacket.parse(JSON.stringify({ ...bag, sections })), packet);
+});
+
+test("StoredPacket: a section's items must join back to its content", () => {
+    const packet = request();
+    const broken = { ...packet, sections: packet.sections.map((section) => ({ ...section, items: ["not", "the content"] })) };
+    assert.throws(() => StoredPacket.sections(broken), /items do not join to its content/);
 });
 
 test("StoredPacket: admission extends the request without changing its weight", () => {

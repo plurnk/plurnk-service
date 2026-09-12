@@ -162,6 +162,7 @@ export default class Service {
                 functions: [
                     resolve(Service.#codeDir, `core/content_weight${Service.#ext}`),
                     resolve(Service.#codeDir, `core/glob_match${Service.#ext}`),
+                    resolve(Service.#codeDir, `core/sha256${Service.#ext}`),
                 ],
                 ...tuning,
             });

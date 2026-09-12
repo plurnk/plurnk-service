@@ -15,10 +15,13 @@ SELECT id, worker_id, sequence, status, prompt, policy, terminated_by, terminal_
 FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
-SELECT id, loop_id, sequence, producer, kind, status, completed_at, packet,
-       finish_reason, model, meta, timestamp,
-       (SELECT content FROM turn_sources WHERE turn_id = turns.id AND kind = 'ops') AS program
-FROM turns ORDER BY loop_id, sequence;
+-- {§packet-items}: turn_packets assembles each packet's sections back into its bag; the bag as
+-- stored rides beside it, the exact text a malformed-packet artifact preserves.
+SELECT tp.id, tp.loop_id, tp.sequence, tp.producer, tp.kind, tp.status, tp.completed_at, tp.packet,
+       t.packet AS packet_bag,
+       tp.finish_reason, tp.model, tp.meta, tp.timestamp,
+       (SELECT content FROM turn_sources WHERE turn_id = tp.id AND kind = 'ops') AS program
+FROM turn_packets tp JOIN turns t ON t.id = tp.id ORDER BY tp.loop_id, tp.sequence;
 
 -- PREP: digest_turn_attempts
 SELECT a.id, mc.id AS model_call_id, ic.turn_id, ic.sequence, ic.kind,

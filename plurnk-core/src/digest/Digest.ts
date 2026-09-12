@@ -87,15 +87,17 @@ const errorEvidence = (value: unknown, seen = new Set<unknown>()): ErrorEvidence
     if (value.cause !== undefined) evidence.cause = errorEvidence(value.cause, seen);
     return evidence;
 };
-const readStoredPacket = (raw: string | null, subject: string): {
+// {§packet-items} — `assembled` is the packet with its sections read back through turn_packets;
+// `bag` is the text turns.packet stores, preserved exactly when the packet does not parse.
+const readStoredPacket = (assembled: string | null, bag: string | null, subject: string): {
     packet: DurablePacket | null;
     packetFailure: PacketFailure | null;
 } => {
-    if (raw === null) return { packet: null, packetFailure: null };
+    if (assembled === null) return { packet: null, packetFailure: null };
     try {
-        return { packet: StoredPacket.parse(raw, subject), packetFailure: null };
+        return { packet: StoredPacket.parse(assembled, subject), packetFailure: null };
     } catch (cause) {
-        return { packet: null, packetFailure: { raw, error: errorEvidence(cause) } };
+        return { packet: null, packetFailure: { raw: bag ?? assembled, error: errorEvidence(cause) } };
     }
 };
 export default class Digest {
@@ -137,8 +139,9 @@ export default class Digest {
         let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
         let turns = (db.digest_turns as SyncPrep<StoredTurnRow>).all()
             .map((turn): TurnRow => {
-                const packetEvidence = readStoredPacket(turn.packet, `digest turn ${turn.id}`);
-                return { ...turn, ...packetEvidence };
+                const { packet_bag, ...stored } = turn;
+                const packetEvidence = readStoredPacket(stored.packet, packet_bag, `digest turn ${turn.id}`);
+                return { ...stored, ...packetEvidence };
             });
         let inferenceCalls = (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all();
         let modelCalls = (db.digest_model_calls as SyncPrep<ModelCallRow>).all();

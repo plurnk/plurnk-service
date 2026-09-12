@@ -16,7 +16,7 @@ INSERT INTO turns (loop_id, sequence, producer, kind, status, packet, usage_cura
 VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet, $curation_budget);
 
 -- PREP: test_turns_get_full
-SELECT * FROM turns WHERE loop_id = $loop_id LIMIT 1;
+SELECT * FROM turn_packets WHERE loop_id = $loop_id LIMIT 1;
 
 -- PREP: test_turns_get_curation_budget
 SELECT usage_curation_budget FROM turns WHERE loop_id = $loop_id;

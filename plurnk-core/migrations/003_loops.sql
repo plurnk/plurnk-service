@@ -140,7 +140,9 @@ CREATE TABLE IF NOT EXISTS turns (
     usage_curation_budget INTEGER                CHECK (usage_curation_budget IS NULL OR usage_curation_budget >= 1),
     -- {§packet-stored-shape}: NULL means no model request was assembled. A
     -- present packet is either the measured request or that request extended
-    -- by the paired admitted-response fields.
+    -- by the paired admitted-response fields. Its sections are rows
+    -- ({§packet-items}), never in this bag: the bag holds weight, attributions,
+    -- attachments, and the admitted response.
     packet           TEXT                       CHECK (
         CASE
             WHEN packet IS NULL THEN 1
@@ -149,7 +151,7 @@ CREATE TABLE IF NOT EXISTS turns (
                 json_type(packet) = 'object'
                 AND json_type(packet, '$.weight') = 'integer'
                 AND json_extract(packet, '$.weight') >= 0
-                AND json_type(packet, '$.sections') = 'array'
+                AND json_type(packet, '$.sections') IS NULL
                 AND json_type(packet, '$.attributions') = 'array'
                 AND (
                     (
@@ -196,6 +198,94 @@ CREATE VIEW IF NOT EXISTS work_loops AS
 SELECT l.* FROM loops l
 WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind = 'maintenance')
    OR EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind <> 'maintenance');
+
+-- {§packet-items}: a packet's sections are rows over content-addressed items. Every rendered
+-- block — one log row's record, one non-log section's content — is stored once by its hash;
+-- a turn stores the ordered composition. A row whose rendering did not change between turns
+-- hashes to the same item, so a turn's durable cost is its new and changed items.
+CREATE TABLE IF NOT EXISTS packet_items (
+    hash TEXT NOT NULL PRIMARY KEY CHECK (length(hash) = 64),
+    text TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS turn_sections (
+    turn_id  INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    name     TEXT    NOT NULL CHECK (length(name) > 0),
+    slot     TEXT    NOT NULL CHECK (slot IN ('system', 'user')),
+    header   TEXT,
+    weight   INTEGER NOT NULL CHECK (weight >= 0),
+    PRIMARY KEY (turn_id, position),
+    UNIQUE (turn_id, name)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS turn_section_items (
+    turn_id   INTEGER NOT NULL,
+    section   INTEGER NOT NULL,
+    position  INTEGER NOT NULL CHECK (position >= 0),
+    item_hash TEXT    NOT NULL REFERENCES packet_items(hash),
+    PRIMARY KEY (turn_id, section, position),
+    FOREIGN KEY (turn_id, section) REFERENCES turn_sections(turn_id, position) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+-- {§db-fk-indexes}: item collection and the packet_items foreign-key check path.
+CREATE INDEX IF NOT EXISTS turn_section_items_item_hash ON turn_section_items (item_hash);
+
+-- {§packet-items}: the one write of inference evidence — the packet bag, its sections as items,
+-- and the provider metadata land in one statement through this view.
+CREATE VIEW IF NOT EXISTS turn_inference_evidence AS
+SELECT NULL AS turn_id, NULL AS packet, NULL AS sections,
+       NULL AS usage_curation_budget, NULL AS finish_reason, NULL AS model, NULL AS meta
+WHERE 0;
+
+CREATE TRIGGER IF NOT EXISTS turn_inference_evidence_insert
+INSTEAD OF INSERT ON turn_inference_evidence
+BEGIN
+    SELECT RAISE(ABORT, 'turn is not an open model inference turn')
+    WHERE NOT EXISTS (
+        SELECT 1 FROM turns
+        WHERE id = NEW.turn_id AND producer = 'model' AND kind = 'inference'
+          AND completed_at IS NULL AND packet IS NULL
+    );
+    SELECT RAISE(ABORT, 'packet sections must be a JSON array of {name, slot, header, weight, items}')
+    WHERE json_type(NEW.sections) IS NOT 'array';
+    INSERT OR IGNORE INTO packet_items (hash, text)
+    SELECT sha256(item.value), item.value
+    FROM json_each(NEW.sections) AS section, json_each(section.value, '$.items') AS item;
+    INSERT INTO turn_sections (turn_id, position, name, slot, header, weight)
+    SELECT NEW.turn_id, section.key,
+           json_extract(section.value, '$.name'), json_extract(section.value, '$.slot'),
+           json_extract(section.value, '$.header'), json_extract(section.value, '$.weight')
+    FROM json_each(NEW.sections) AS section;
+    INSERT INTO turn_section_items (turn_id, section, position, item_hash)
+    SELECT NEW.turn_id, section.key, item.key, sha256(item.value)
+    FROM json_each(NEW.sections) AS section, json_each(section.value, '$.items') AS item;
+    UPDATE turns
+    SET packet = NEW.packet,
+        usage_curation_budget = NEW.usage_curation_budget,
+        finish_reason = NEW.finish_reason,
+        model = NEW.model,
+        meta = NEW.meta
+    WHERE id = NEW.turn_id;
+END;
+
+-- {§packet-items}: a turn as its readers know it — the packet bag with its sections assembled
+-- back into it, byte for byte: a section's content is its items joined by one blank line.
+CREATE VIEW IF NOT EXISTS turn_packets AS
+SELECT t.id, t.loop_id, t.sequence, t.timestamp, t.producer, t.kind, t.status, t.completed_at,
+       t.usage_curation_budget, t.finish_reason, t.model, t.meta, t.version,
+       CASE WHEN t.packet IS NULL THEN NULL ELSE json_set(t.packet, '$.sections', json((
+           SELECT COALESCE(json_group_array(json_object(
+               'name', ts.name, 'slot', ts.slot, 'header', ts.header, 'weight', ts.weight,
+               'content', COALESCE((
+                   SELECT group_concat(pi.text, char(10) || char(10) ORDER BY tsi.position)
+                   FROM turn_section_items tsi JOIN packet_items pi ON pi.hash = tsi.item_hash
+                   WHERE tsi.turn_id = ts.turn_id AND tsi.section = ts.position
+               ), '')
+           ) ORDER BY ts.position), '[]')
+           FROM turn_sections ts WHERE ts.turn_id = t.id
+       ))) END AS packet
+FROM turns t;
 
 -- {§turn-source-resources}: immutable source facts belong to their turn, not
 -- its curatable log. Derivation attachments are replaceable, source bytes are not.

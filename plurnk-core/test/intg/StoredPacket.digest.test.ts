@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 import { urlPath } from "./_dsl.ts";
 
 test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence without hiding turn programs", async () => {
@@ -315,23 +315,21 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
     const dir = await mkdtemp(join(tmpdir(), "plurnk-malformed-packet-digest-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
-    const malformedPacket = JSON.stringify({
-        weight: 0,
-        sections: [{ name: "", slot: "user", header: null, content: "historic", weight: 0 }],
-        attributions: [],
-    });
-    const healthyPacket = StoredPacket.stringify({
-        weight: 0,
-        sections: [{ name: "prompt", slot: "user", header: null, content: "later", weight: 0 }],
-        attributions: [],
-    });
+    // {§packet-items} — the bag's CHECK admits this (attributions is an array); the packet shape does
+    // not (an attribution is a non-empty string). Historical evidence, stored straight into the bag.
+    const malformedPacket = JSON.stringify({ weight: 0, attributions: [""] });
     const db = await openMigrated(dbPath);
+    let malformedTurnId: number | undefined;
     try {
         const workspaceId = await insertWorkspace(db, "malformed-packet");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "retain the complete history");
-        await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 500, packet: malformedPacket });
-        await db.test_turns_insert.run({ loop_id: loopId, sequence: 2, status: 502, packet: healthyPacket });
+        malformedTurnId = (await db.test_insert_turn.get<{ id: number }>({ loop_id: loopId, sequence: 1, status: 500, packet: malformedPacket }))!.id;
+        await insertPacketTurn(db, loopId, 2, {
+            weight: 0,
+            sections: [{ name: "prompt", slot: "user", header: null, content: "later", weight: 0 }],
+            attributions: [],
+        }, 502);
     } finally {
         await db.close();
     }
@@ -344,9 +342,9 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
             "the diagnostic artifact preserves the stored text exactly",
         );
         const diagnostic = JSON.parse(await readFile(join(digestDir, "packet000.packet.invalid.json"), "utf8"));
-        assert.equal(diagnostic.turnId, 1);
-        assert.match(diagnostic.error.message, /digest turn 1 has an invalid packet shape/);
-        assert.match(diagnostic.error.cause.message, /sections\[0\]\.name must be a non-empty string/);
+        assert.equal(diagnostic.turnId, malformedTurnId);
+        assert.match(diagnostic.error.message, new RegExp(`digest turn ${malformedTurnId} has an invalid packet shape`));
+        assert.match(diagnostic.error.cause.message, /attributions\[0\] must be a non-empty string/);
 
         await access(join(digestDir, "packet001.system.md"));
         assert.equal(await readFile(join(digestDir, "packet001.user.md"), "utf8"), "later");
@@ -360,7 +358,7 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
         assert.equal(json.turns.length, 2);
         assert.equal(json.turns[0].packet_failure.raw, malformedPacket);
-        assert.match(json.turns[0].packet_failure.error.cause.message, /name must be a non-empty string/);
+        assert.match(json.turns[0].packet_failure.error.cause.message, /attributions\[0\] must be a non-empty string/);
         assert.equal(json.turns[1].packet_failure, null);
     } finally {
         await rm(dir, { recursive: true, force: true });

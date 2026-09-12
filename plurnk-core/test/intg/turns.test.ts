@@ -4,9 +4,9 @@ import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
+// {§packet-items} — the stored bag carries no sections; they are rows.
 const MIN_PACKET = JSON.stringify({
     weight: 0,
-    sections: [],
     attributions: [],
     assistant: { content: "", ops: [], reasoning: null },
     assistantRaw: null,
@@ -50,7 +50,8 @@ test("turns: insert with required fields — defaults populate", async () => {
         assert.match(row?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.status, 200);
         assert.equal(row?.usage_curation_budget, null);
-        assert.equal(row?.packet, MIN_PACKET);
+        // {§packet-items} — read back through turn_packets, the bag carries its (empty) sections.
+        assert.deepEqual(JSON.parse(row?.packet ?? "null"), { ...JSON.parse(MIN_PACKET), sections: [] });
     } finally { await db.close(); }
 });
 
@@ -145,6 +146,8 @@ test("turns: packet CHECK enforces the request/admitted-response root algebra", 
             JSON.stringify({ tokens: 0 }),
             JSON.stringify({ tokens: 0, sections: [], assistant: { content: "", ops: [], reasoning: null } }),
             JSON.stringify({ tokens: 0, sections: [], assistantRaw: null }),
+            // {§packet-items} — sections never ride in the bag
+            JSON.stringify({ weight: 0, sections: [], attributions: [] }),
         ];
         for (const [index, packet] of invalid.entries()) {
             await assert.rejects(
@@ -237,6 +240,7 @@ test("Turn: producer is immutable and model calls require inference", async () =
         await assert.rejects(
             () => Turn.recordInference(db, operation.id, {
                 packet: MIN_PACKET,
+                sections: "[]",
                 usageCurationBudget: null,
                 finishReason: null,
                 model: "mock/model",

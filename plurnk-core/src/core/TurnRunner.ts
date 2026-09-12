@@ -1365,6 +1365,7 @@ export default class TurnRunner {
                     workspaceId, workerId, loopId, turnId,
                     evidence: {
                         packet: StoredPacket.stringify(requestPacket),
+                        sections: StoredPacket.sections(requestPacket),
                         usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
                         finishReason: splitResponse?.callMetadata.finishReason ?? null,
                         model: splitResponse?.callMetadata.model ?? provider.model,
@@ -1390,6 +1391,7 @@ export default class TurnRunner {
                 workspaceId, workerId, loopId, turnId,
                 evidence: {
                     packet: StoredPacket.stringify(requestPacket),
+                        sections: StoredPacket.sections(requestPacket),
                     usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
                     finishReason: splitResponse?.callMetadata.finishReason ?? null,
                     model: splitResponse?.callMetadata.model ?? provider.model,
@@ -1514,6 +1516,7 @@ export default class TurnRunner {
                 workspaceId, workerId, loopId, turnId,
                 evidence: {
                     packet: StoredPacket.stringify(requestPacket),
+                        sections: StoredPacket.sections(requestPacket),
                     usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
                     finishReason: splitResponse.callMetadata.finishReason,
                     model: splitResponse.callMetadata.model,
@@ -1591,6 +1594,7 @@ export default class TurnRunner {
             workspaceId, workerId, loopId, turnId,
             evidence: {
                 packet: StoredPacket.stringify(packet),
+                sections: StoredPacket.sections(packet),
                 usageCurationBudget: this.#packets.curationBudgetFor(requestPacket), // {§tokenomics-client-gauge}
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,

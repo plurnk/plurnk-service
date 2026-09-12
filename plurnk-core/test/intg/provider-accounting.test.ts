@@ -88,7 +88,8 @@ const openRequest = async (
         });
     }
     await Turn.recordInference(db, turn.id, {
-        packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
+        packet: JSON.stringify({ weight: 0, attributions: [] }),
+        sections: "[]",
         usageCurationBudget: null,
         finishReason: accounting.outcome === "response" ? "stop" : null,
         model: accounting.model,

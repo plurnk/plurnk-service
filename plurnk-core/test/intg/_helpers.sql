@@ -20,6 +20,23 @@ INSERT INTO turns (loop_id, sequence, producer, kind, status, packet)
 VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet)
 RETURNING id;
 
+-- PREP: test_open_inference_turn
+-- {§packet-items}: an open model inference turn at a chosen sequence, ready for
+-- Turn.recordInference — the only path that stores a packet with its sections.
+INSERT INTO turns (loop_id, sequence, producer, kind, status, completed_at, packet)
+VALUES ($loop_id, $sequence, 'model', 'inference', 102, NULL, NULL)
+RETURNING id;
+
+-- PREP: test_turn_items
+-- {§packet-items}: the items a turn's sections reference, in composition order.
+SELECT tsi.section, tsi.position, tsi.item_hash, pi.text
+FROM turn_section_items tsi JOIN packet_items pi ON pi.hash = tsi.item_hash
+WHERE tsi.turn_id = $turn_id
+ORDER BY tsi.section, tsi.position;
+
+-- PREP: test_packet_item_count
+SELECT COUNT(*) AS n FROM packet_items;
+
 -- PREP: test_insert_operation_turn
 INSERT INTO turns (loop_id, sequence, producer, kind, status)
 VALUES ($loop_id, $sequence, $producer, 'operation', $status)
@@ -85,9 +102,10 @@ ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGE
          json_extract(e.attributes, '$.ordinal');
 
 -- PREP: test_get_turn
+-- {§packet-items}: the packet assembled, as every whole-packet reader sees it.
 SELECT id, loop_id, sequence, producer, kind, status, completed_at,
        finish_reason, model, packet
-FROM turns WHERE id = $id;
+FROM turn_packets WHERE id = $id;
 
 -- PREP: test_turn_attempts
 SELECT a.id, ic.sequence, ic.state, a.accepted, mc.response,
@@ -226,20 +244,20 @@ INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, state)
 VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
 
 -- PREP: test_get_packet
-SELECT packet FROM turns WHERE id = $id;
+SELECT packet FROM turn_packets WHERE id = $id;
 
 -- PREP: test_get_turn_status
 SELECT status FROM turns WHERE id = $id;
 
 -- PREP: test_list_turns_in_loop
 SELECT id, sequence, producer, kind, status, completed_at, packet
-FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
+FROM turn_packets WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_latest_model_turn_in_loop
 -- Packetless chronology is a turn but not a model turn. A logical model call
 -- identifies the latest inference turn even while its packet is still open.
 SELECT t.id, t.sequence, t.status, t.packet, t.finish_reason, t.model, t.meta
-FROM turns t
+FROM turn_packets t
 WHERE t.loop_id = $loop_id
   AND EXISTS (SELECT 1 FROM inference_calls ic WHERE ic.turn_id = t.id AND ic.kind = 'emission')
 ORDER BY t.sequence DESC
@@ -458,7 +476,7 @@ SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' O
 
 -- PREP: test_all_packets
 -- {§strikes-first-party-metadata} — every stored packet, to prove no section carries strike state.
-SELECT packet FROM turns WHERE packet IS NOT NULL;
+SELECT packet FROM turn_packets WHERE packet IS NOT NULL;
 
 -- PREP: test_deep_hash
 -- A workspace body's stamped deep hash (any body: the warm-completion proof).
@@ -601,7 +619,7 @@ SELECT id, name, origin, parent_worker_id, default_conversation
 FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
 
 -- PREP: test_first_turn_for_loop
-SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
+SELECT packet FROM turn_packets WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
 
 -- PREP: test_prompt_folded
 SELECT projection.folded
@@ -757,3 +775,7 @@ VALUES (
     $operation_log_entry_id, $target_log_entry_id,
     $active_before, $active_after, $folded_before, $folded_after
 );
+
+-- PREP: test_bag_of_turn
+-- {§packet-items}: the bag exactly as turns.packet stores it, sections not assembled.
+SELECT packet FROM turns WHERE id = $id;

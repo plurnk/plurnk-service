@@ -404,10 +404,13 @@ export default class PacketBuilder {
             }, curationTargets, renderedLog.newOverflow);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
-        // Core alone turns validated drafts into measured durable sections.
+        // Core alone turns validated drafts into measured durable sections. {§packet-items} — the
+        // log section's items are its records when no transformer touched it; any other section,
+        // or a transformed log, is one item.
         const sections = drafts.map((section): StoredPacketSection => ({
             ...section,
             weight: weighContent(PacketWire.renderSection(section)),
+            items: section.name === "log" && section.content === renderedLog.content ? renderedLog.records : [section.content],
         }));
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
         // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries.

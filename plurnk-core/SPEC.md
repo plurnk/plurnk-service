@@ -4323,16 +4323,35 @@ leaves the request-only record, while rejected exchanges remain in their
 `inference_calls`/`model_calls` evidence with classification in
 `turn_attempts`.
 
-| Turn state                    | `turns.packet`                                  |
+| Turn state                    | `turns.packet` (the bag) + `turn_sections` rows  |
 | ----------------------------- | ----------------------------------------------- |
-| No admitted model request (including initialization and local capacity rejection) | SQL `NULL` |
-| Request assembled             | `{ weight, sections }`                         |
-| Response admitted             | `{ weight, sections, assistant, assistantRaw }` |
+| No admitted model request (including initialization and local capacity rejection) | SQL `NULL`, no rows |
+| Request assembled             | `{ weight, attributions }` + the sections as items |
+| Response admitted             | `{ weight, attributions, assistant, assistantRaw }` + the sections as items |
+
+§packet-items **Sections are rows over content-addressed items; the bag never holds them.**
+Every rendered block — one log row's record, one non-log section's content — is stored once in
+`packet_items` under the SHA-256 of its text (`sha256`, a registered function), and a turn stores
+its composition in `turn_sections` and `turn_section_items`: the ordered sections and, per
+section, the ordered item hashes. A section's content is its items joined by one blank line, so a
+log row whose rendering did not change between turns hashes to the same item and a turn's durable
+cost is its new and changed items — the copied prefix of the previous packet is transient data and
+is never written. The write is one statement: an INSERT into the `turn_inference_evidence` view,
+whose INSTEAD OF trigger refuses a turn that is not an open model inference turn and lands the
+items, the composition, the bag, and the provider metadata together. Readers of a whole packet
+select from `turn_packets`, which assembles `sections` back into the bag byte for byte (the digest,
+and every test that inspects a stored packet); statements that need one field read the bag
+directly with `json_extract`. A packet transformed by a plugin, or any non-log section, is one
+item. Items no composition references are transient data: `maintenance_collect_packet_items`
+collects them at shutdown ({§db-maintenance-optimize}), which is how a deleted worker's or
+workspace's packets release their space while shared items survive. A fork copies the composition
+and shares the items ({§worker-fork-trigger}). A database written before this shape has no
+`turn_packets` view and is recreated, never read, under {§db-schema-baseline}.
 
 | Field                   | Presence                         | Contract                                                                                                                                                                      |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `weight`                | Every assembled model request    | Curation weight of both rendered request slots. Admission does not change its meaning; it is never response weight or provider usage.                                          |
-| `sections`              | Every assembled model request    | Ordered post-transform request sections. `PacketWire.renderSlot` groups them into system and user messages, and the digest re-renders those stored sections byte-for-byte.     |
+| `sections`              | Every assembled model request, as rows ({§packet-items}); assembled back into the bag by `turn_packets` | Ordered post-transform request sections. `PacketWire.renderSlot` groups them into system and user messages, and the digest re-renders those stored sections byte-for-byte.     |
 | `sections[].weight`     | Every stored section             | Independently measured curation weight of that section. Their sum is not the rendered request weight because slot separators and independent rounding remain outside each row. |
 | `assistant.content`     | Admitted response only           | Accepted model content from which operations were parsed.                                                                                                                     |
 | `assistant.ops`         | Admitted response only           | Parsed operations admitted from that content.                                                                                                                                |
