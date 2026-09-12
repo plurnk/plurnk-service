@@ -118,13 +118,13 @@ const setPolicies = async (
     policy: ReturnType<typeof policies>,
 ): Promise<void> => {
     await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: policy.capabilities }) });
-    await db.engine_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: policy.proposals }) });
+    await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: policy.proposals }) });
 };
 
 test("invalid persisted loop policy fails at its durable owner before dispatch", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await db.engine_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "sometimes" }) });
+        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "sometimes" }) });
         await assert.rejects(
             engine.dispatch({
                 statement: editStmt(urlPath("write-test", "x"), "body"),

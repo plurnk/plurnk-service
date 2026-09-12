@@ -143,7 +143,7 @@ test("packet assembly surfaces contract-invalid persisted loop policy at the sam
         const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await db.engine_set_loop_policy.run({
+        await db.test_set_loop_policy.run({
             loop_id: loopId,
             policy: JSON.stringify({ proposals: "sometimes" }),
         });

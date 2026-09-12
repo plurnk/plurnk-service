@@ -31,3 +31,7 @@ SELECT prompt FROM loops WHERE worker_id = $worker_id LIMIT 1;
 
 -- EXEC: test_loops_insert_no_worker_id
 INSERT INTO loops (sequence, prompt) VALUES (1, 'x');
+
+-- PREP: test_set_loop_policy
+-- Stores the loop's complete immutable policy at creation/setup time.
+UPDATE loops SET policy = $policy WHERE id = $loop_id;

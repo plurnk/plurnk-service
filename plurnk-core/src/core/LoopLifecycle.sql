@@ -1,5 +1,6 @@
 -- Durable loop lifecycle transitions. LoopLifecycle is the only TypeScript owner
--- of these statements; callers request transitions rather than writing status.
+-- of the transitions; callers request them rather than writing status. The loop's
+-- identity read (engine_loop_sequence) is shared by every coordinate renderer.
 
 -- PREP: lifecycle_execution_budget
 UPDATE loops SET execution_budget_ms = COALESCE(execution_budget_ms, $budget_ms)
@@ -181,3 +182,9 @@ BEGIN
     WHERE worker_id = NEW.id
       AND status IN (100, 102, 202);
 END;
+
+-- PREP: engine_loop_sequence
+-- The loop's per-worker sequence — the model-facing coordinate (prompt/<worker>/<loop-seq>/<turn-seq>,
+-- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
+-- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
+SELECT sequence FROM loops WHERE id = $loop_id;

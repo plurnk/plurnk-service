@@ -342,7 +342,7 @@ test("proposal: loop acceptance is core-owned and needs no daemon listener", asy
         const ctx = await setupEngine(db);
         // Persist canonical loop acceptance. Engine owns settlement; no
         // Daemon listener is needed to make the policy effective.
-        await db.engine_set_loop_policy.run({
+        await db.test_set_loop_policy.run({
             loop_id: ctx.loopId,
             policy: JSON.stringify({ proposals: "accept" }),
         });
@@ -368,7 +368,7 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        await db.engine_set_loop_policy.run({
+        await db.test_set_loop_policy.run({
             loop_id: ctx.loopId,
             policy: JSON.stringify({ proposals: "accept" }),
         });
@@ -397,7 +397,7 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
     try {
         let loopId = 0;
         const ctx = await setupEngine(db, new ProposingTest(async () => {
-            await db.engine_set_loop_policy.run({
+            await db.test_set_loop_policy.run({
                 loop_id: loopId,
                 policy: JSON.stringify({ proposals: "sometimes" }),
             });

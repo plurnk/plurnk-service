@@ -67,7 +67,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
             const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working", policy: { proposals: "review" } });
             const { loopId, modelWorkerId } = started.result as { loopId: number; modelWorkerId: number };
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            await db.engine_set_loop_policy.run({
+            await db.test_set_loop_policy.run({
                 loop_id: loopId,
                 policy: JSON.stringify({ proposals: "sometimes" }),
             });
@@ -82,7 +82,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
                 },
             );
 
-            await db.engine_set_loop_policy.run({
+            await db.test_set_loop_policy.run({
                 loop_id: loopId,
                 policy: JSON.stringify({ proposals: "review" }),
             });

@@ -196,7 +196,7 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
 test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the dispatcher", async () => {
     const f = await fixture(new Common({ runtime: "node", glyph: "n" }));
     try {
-        await f.db.engine_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "accept" }) });
+        await f.db.test_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "accept" }) });
         const start = await f.dispatch("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
         const sent = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"eof": true}]\nexact α\n\n\`\`\`\``);

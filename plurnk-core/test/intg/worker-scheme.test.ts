@@ -275,7 +275,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
         const parentId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, parentId, 1, "delegate");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await db.engine_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "accept" }) });
+        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "accept" }) });
         const seed = await engine.dispatch({
             statement: editStmt(workerEntry("", "note.md"), "shared source"),
             workspaceId, workerId: parentId, loopId, turnId, sequence: 1, origin: "model",
@@ -689,7 +689,7 @@ test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sende
             settings: JSON.stringify({ capabilities: { deny: [{ operation: "EXEC" }] } }),
         });
         const loopId = await insertLoop(db, workerId, 1, "delegate");
-        await db.engine_set_loop_policy.run({
+        await db.test_set_loop_policy.run({
             loop_id: loopId,
             policy: JSON.stringify({
                 proposals: "accept",
@@ -724,7 +724,7 @@ test("worker IRC rejects contract-invalid delegator policy before inheritance (#
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
         await insertWorker(db, workspaceId, null, "worker");
-        await db.engine_set_loop_policy.run({
+        await db.test_set_loop_policy.run({
             loop_id: loopId,
             policy: JSON.stringify({ proposals: "sometimes" }),
         });

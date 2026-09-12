@@ -59,3 +59,11 @@ BEGIN
     SET observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
     WHERE id = NEW.loop_id AND status = 102;
 END;
+
+-- PREP: engine_loop_turn_seqs
+-- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
+-- #writeLog when an op needs to address itself or its output by log
+-- coordinate (e.g. a shell stream at sh:///<loop_seq>/<turn_seq>/<sequence>/sh).
+SELECT l.sequence AS loop_seq, t.sequence AS turn_seq
+FROM loops l, turns t
+WHERE l.id = $loop_id AND t.id = $turn_id;
