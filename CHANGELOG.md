@@ -27,6 +27,8 @@ Language and teaching:
   READ stays READ; node dialects replace whole regions on EDIT.
 - A reply that opens with an operation heading is refused (`send-looks-like-operation`);
   delivered replies name the prompts they answered.
+- An explicit empty `TASK` is a soft 409 receipt and never a strike; only a refused
+  completion (pending work, unobserved failures, deferred receipts) strikes the review contract.
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.

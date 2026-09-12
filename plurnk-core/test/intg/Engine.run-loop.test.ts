@@ -289,8 +289,10 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "strike out");
+        // A bounded matcher failure is a hard 400 (an empty TASK is soft); distinct paths keep
+        // the failures out of cycle detection.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
-            `\`\`\`EDIT (worker:///note-${i})\nx\n\`\`\`\n\`\`\`TASK\n[]\n\`\`\``,
+            `\`\`\`FIND (worker:///note-${i}) [{"pattern":"$fC"}]\`\`\`\n\`\`\`TASK\n[{"content":"going","status":"in_progress"}]\n\`\`\``,
         )) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");

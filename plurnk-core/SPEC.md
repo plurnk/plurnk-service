@@ -118,7 +118,7 @@ These are the complete strike sources:
 | Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
 | Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
-| Inventory steering  | An empty TASK or a refused completion at 409 sets the turn's steering ruling ({§send}). | The TASK receipt. |
+| Inventory steering  | A refused completion at 409 sets the turn's steering ruling ({§send}); an empty TASK is a soft 409 receipt, never a strike. | The TASK receipt. |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
 
 `EXEC` results remain exact model-visible evidence but are always soft: an
@@ -173,7 +173,7 @@ The contracts, and the violation of each that strikes:
 | Contract | Violation that strikes |
 |---|---|
 | operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
-| review contract | a refused final disposition (turntrieval steer) |
+| review contract | a refused completion (turntrieval steer); every other TASK 409 — empty inventory, already-terminal loop — is soft |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period) |
 | frame contract | emission attempts exhausted with no admissible turn |
 | provider response contract | the provider returned an invalid response |
@@ -2288,7 +2288,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | Inventory intent | Runtime condition | Outcome | Model-facing feedback |
 |---|---|---|---|
 | TASK omitted | At least one authored operation | 102; no synthetic TASK, warning, or strike | None |
-| explicit empty inventory | Always | 409 receipt; continue with one strike | `No tasks were supplied. Submit a nonempty TASK inventory.` |
+| explicit empty inventory | Always | 409 receipt; continue, no strike (operator, 2026-09-12) | `No tasks were supplied. Submit a nonempty TASK inventory.` |
 | continue | Always | 102; no implicit join or idle strike | None |
 | pending | Always | 102 | `Pending tasks remain. Review their dependencies.` |
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
@@ -2319,7 +2319,7 @@ the loop continue; repeated offenses terminate through the engine's 500.
 
 | state               | model-facing evidence                                      | accounting |
 |---------------------|------------------------------------------------------------|------------|
-| Explicit empty inventory | The TASK's 409 row; preceding valid operations remain executed | One strike |
+| Explicit empty inventory | The TASK's 409 row; preceding valid operations remain executed | No strike (soft 409) |
 | Refused disposition | The disposition's 409 row with its exact Problem Detail   | One strike |
 
 Executor results are evidence, never strikes: a command's nonzero exit — surfaced

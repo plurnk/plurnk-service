@@ -38,7 +38,7 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
             await rpcCall(ws, 1, "workspace.create", { name: "strikes-meta" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 8 });
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
-            assert.deepEqual(mock.seen, [0, 1, 2, 0], "raw admitted turns carry 0 → explicit empty inventory strike → bounded-parse strike → clean reset");
+            assert.deepEqual(mock.seen, [0, 0, 1, 0], "raw admitted turns carry 0 → explicit empty inventory is soft → bounded-parse strike → clean reset");
             const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             assert.equal(rows.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length, 1,
                 "the TASK-less turn retains its actual matcher failure");

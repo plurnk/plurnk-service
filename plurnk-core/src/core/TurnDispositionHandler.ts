@@ -21,6 +21,13 @@ export interface CompletionEvidence {
 }
 
 export default class TurnDispositionHandler {
+    // {§engine-rails} review contract: only a refused completion (turntrieval steer) is a
+    // strike. Every other TASK 409 — an empty inventory, an already-terminal loop — is a
+    // soft receipt the model answers on the next turn.
+    static refusedCompletion(result: DispatchResult): boolean {
+        return result.status === 409 && (result.problem as { stage?: unknown } | undefined)?.stage === "completion";
+    }
+
     readonly #db: Db;
     readonly #cancelDescendants: CancelDescendantsNotify | undefined;
     readonly #lifecycle: LoopLifecycle;

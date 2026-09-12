@@ -1,4 +1,5 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import TurnDispositionHandler from "./TurnDispositionHandler.ts";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import type { BareStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -266,7 +267,7 @@ export default class AdmittedTurnExecutor {
                 });
             }
             if (statement === finalOp) {
-                steerStruck = result.status === 409;
+                steerStruck = TurnDispositionHandler.refusedCompletion(result);
                 turnStatus = result.status >= 400 && result.status !== 499
                     ? TURN_STATUS_IMPLICIT_CONTINUE : result.status;
             }

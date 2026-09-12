@@ -19,8 +19,8 @@ for (const [name, first, detail, strikes] of [
     ["pending-only inventory", task("pending"), "Pending tasks remain. Review their dependencies.", 0],
     ["empty untimed wait", task("waiting"), "Nothing is in flight and no timed or polled wait is set. Continuing.", 0],
     ["missing inventory", send("First message."), null, 0],
-    ["empty inventory", "```TASK\n[]\n```", "No tasks were supplied. Submit a nonempty TASK inventory.", 1],
-    ["blank inventory", "```TASK```", "No tasks were supplied. Submit a nonempty TASK inventory.", 1],
+    ["empty inventory", "```TASK\n[]\n```", "No tasks were supplied. Submit a nonempty TASK inventory.", 0],
+    ["blank inventory", "```TASK```", "No tasks were supplied. Submit a nonempty TASK inventory.", 0],
     ["non-waiting timing", task("in_progress", " <60>"), "Wait timing was not applied because no waiting intent was selected.", 0],
     ["plain task text", "```TASK\nConsider the next step.\n```", null, 0],
 ] as const) {

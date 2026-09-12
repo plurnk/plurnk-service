@@ -1155,8 +1155,9 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid(PlurnkParser.frame("TASK", "[]")),
-                invalid(PlurnkParser.frame("TASK", "[]")),
+                // Two admitted turns each struck by a bounded matcher failure (an empty TASK is soft).
+                invalid("```READ (worker:///absent)```\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```"),
+                invalid("```READ (worker:///absent)```\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```"),
                 invalid(rejected), invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],

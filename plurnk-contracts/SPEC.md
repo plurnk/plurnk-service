@@ -791,7 +791,7 @@ results, obligations and timing:
 | Intent | Nominal status | Meaning |
 |---|---|---|
 | TASK omitted | 102 | Continue silently, without a receipt or strike for omission |
-| empty, continue, pending | 102 | Continue or recover; an explicit empty inventory earns one strike |
+| empty, continue, pending | 102 | Continue or recover; an explicit empty inventory is refused with a soft 409 receipt, no strike |
 | wait | 202 | Park when a live obligation or explicit timing exists |
 | complete | 200 | Conclude once execution results permit completion |
 | fail | 499 | End unsuccessfully and cancel unresolved descendant scope |
