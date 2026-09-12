@@ -313,6 +313,19 @@ name, except for the heading rule above:
 | At least the block's backticks with any other delimiter | Body |
 | Four or more backticks naming a native operation or known executor | A heading: ends the block, opens the next statement |
 
+§inline-chain A closer on a heading line, or on a body's closing line, may be
+followed on that same line by the next opener; the closer still closes, and the
+opener opens. This absorbs the habit of writing several operations in one
+paragraph after prose. Prose after a closer on its line ends the chain.
+
+§anchor-digits In a text scope, `@` followed by one to four digits cannot be a
+hash and is read as that line number, with one warning-severity advisory naming
+the five-character anchor form. Five characters after `@` are always an anchor.
+
+§unclosed-aside A heading whose aside opens with `<!--` and never closes on its
+line takes the rest of the line as the aside, with one warning-severity advisory.
+A closed aside followed by more text is unchanged.
+
 §interstitial-fence A fence line that names no native operation and no known
 executor opens nothing: unlabeled, or tagged like a code block (`ts`, `json`),
 outside a block it is prose and ignored like every other outside line
@@ -917,8 +930,11 @@ and wire types come from generated schemas; the small hand-maintained parser
 types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
-§turn-shape `PlurnkParser.parse` accepts one operation-bearing model turn.
-An explicit disposition may sit anywhere in it ({§disposition-anywhere}). Omitted TASK
+§turn-shape `PlurnkParser.parse` accepts one model turn. A turn without any
+operation is reported by one hard diagnostic (`no valid Plurnk operation was
+found.`), which the host may admit as an empty turn rather than reject
+(plurnk-core `§empty-turn`). An explicit disposition may sit anywhere in it
+({§disposition-anywhere}). Omitted TASK
 means silent continuation: no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Explicit empty or malformed inventories retain their own handling.

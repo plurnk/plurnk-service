@@ -44,6 +44,11 @@ Language and teaching:
   so the implicit unlabeled-fence SEND is gone. A heading written outside any fence draws one
   advisory naming the fence form. `FIND (path) /regex/` lifts the bare matcher into
   `pattern`. `PlurnkParser.parse` takes `{ executors }`.
+- Five tolerances from the first dumbox run on the anchored parser: an opener may follow a
+  closer on the same line; `@` with one to four digits reads as that line number; an aside
+  that never closes reads to the end of its line; an option a scheme does not take is dropped
+  with a `metadata_ignored` notice; and a response with no operation is an admitted empty turn
+  with a `turn_no_operations` notice and one strike, never a private resample.
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.

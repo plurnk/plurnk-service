@@ -177,6 +177,7 @@ type SplitProviderResponse = {
     recoverableParseErrors: ParseErrorInfo[];
     parseNotices: Notice[];
     emissionValid: boolean;
+    emptyTurn: boolean;
 };
 
 type MaterializedModelRequest = {
@@ -195,6 +196,7 @@ type EngineTurnResult = {
     providerParked: boolean;
     providerFailure?: SchemeResult;
     steerStruck: boolean;
+    emptyTurn: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
@@ -223,6 +225,7 @@ export type AdmittedTurnResult = {
     readonly outcomes: StrikeOutcome[];
     readonly fingerprint: string;
     readonly steerStruck: boolean;
+    readonly emptyTurn: boolean;
 };
 
 const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit.";
@@ -999,6 +1002,7 @@ export default class TurnRunner {
                 capacityHardStop: false,
                 providerParked: false,
                 steerStruck: false,
+                emptyTurn: false,
                 emissionAttempts: 0,
                 emissionExhausted: false,
                 curationFailure,
@@ -1419,6 +1423,7 @@ export default class TurnRunner {
                     capacityHardStop: false, providerParked: true,
                     providerFailure: recorded.result,
                     steerStruck: false,
+                emptyTurn: false,
                     emissionAttempts,
                     emissionExhausted: false,
                 };
@@ -1436,6 +1441,7 @@ export default class TurnRunner {
                     providerParked: false,
                     capacityFailure: recorded.result,
                     steerStruck: false,
+                emptyTurn: false,
                     emissionAttempts,
                     emissionExhausted: false,
                 };
@@ -1458,6 +1464,7 @@ export default class TurnRunner {
                     providerParked: false,
                     providerFailure: recorded.result,
                     steerStruck: false,
+                emptyTurn: false,
                     emissionAttempts,
                     emissionExhausted: false,
                 };
@@ -1535,6 +1542,7 @@ export default class TurnRunner {
                 capacityHardStop: false,
                 providerParked: false,
                 steerStruck: false,
+                emptyTurn: false,
                 emissionAttempts,
                 emissionExhausted: true,
                 ...(rejectedModelEntryId === undefined ? {} : { rejectedModelEntryId }),
@@ -1551,6 +1559,19 @@ export default class TurnRunner {
         } = splitResponse; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, workerId, loopId, notice);
+        }
+        // {§empty-turn} — a response cut at the output allowance with nothing admitted names the
+        // cut, so the model reads the ceiling, never a parser symptom (#478).
+        if (splitResponse.emptyTurn && callMetadata.finishReason === "length") {
+            const cut = allowanceCutMessage(callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
+            if (cut !== null) {
+                this.#notices.push(workspaceId, workerId, loopId, {
+                    source: "engine:turn",
+                    kind: "output_truncated",
+                    level: "warn",
+                    message: `${cut}; no operations were performed`,
+                });
+            }
         }
 
         // Non-fatal provider transport notices on an accepted turn. Forward each
@@ -1621,6 +1642,7 @@ export default class TurnRunner {
             maxCommands,
             allowUnobservedRetrievalCompletion,
             recoverableParseErrors,
+            emptyTurn: splitResponse.emptyTurn,
             bare: {
                 provider: childProvider,
                 primaryWorkerId,
@@ -1643,6 +1665,7 @@ export default class TurnRunner {
             capacityHardStop: false,
                 providerParked: false,
             steerStruck: executed.steerStruck,
+            emptyTurn: executed.emptyTurn,
             emissionAttempts,
             emissionExhausted: false,
         };
@@ -1687,7 +1710,6 @@ export default class TurnRunner {
         const parseErrors: ParseErrorInfo[] = [];
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
-        const bareHeadings: PlurnkParseError[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
         } else {
@@ -1708,7 +1730,6 @@ export default class TurnRunner {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
                         if (err.severity === "warning") {
-                            if (/outside any fence/u.test(err.message)) bareHeadings.push(err);
                             parseNotices.push({
                                 source: "grammar",
                                 kind: "parse_advisory",
@@ -1739,14 +1760,6 @@ export default class TurnRunner {
             }
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
-        // {§bare-heading-advisory} — an emission whose only operations sit outside fences has
-        // nothing to admit; its advisories become the rejection's own diagnostics, so the informed
-        // recovery packet names the fence form instead of a bare "no valid operation".
-        if (sourceStatementCount === 0) {
-            for (const advisory of bareHeadings) {
-                parseErrors.push({ message: advisory.message, line: advisory.line, column: advisory.column, source: advisory.source });
-            }
-        }
         const dispositions = ops.filter(TurnDisposition.is);
         const trustworthyBoundary = dispositions.length <= 1 && !hasUnparsedTail;
         // {§turn-shape} — bounded operation errors are recoverable and ride with the
@@ -1757,7 +1770,14 @@ export default class TurnRunner {
                     error.code !== "invalid-turn-structure",
             ).toSorted(comparePosition)
             : [];
+        // {§empty-turn} — no operation and no other hard error: admitted as an empty turn, never
+        // resampled; its advisories ({§bare-heading-advisory}) ride as notices.
+        const emptyTurn = preParsedOps === undefined
+            && trustworthyBoundary
+            && sourceStatementCount === 0
+            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION);
         const emissionValid = preParsedOps !== undefined
+            || emptyTurn
             || (
                 trustworthyBoundary
                 && sourceStatementCount > 0
@@ -1769,7 +1789,8 @@ export default class TurnRunner {
             sourceBacked: preParsedOps === undefined,
             callMetadata: { finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
-            recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
+            recoverableParseErrors: emissionValid && !emptyTurn ? recoverableParseErrors : [],
+            emptyTurn,
             parseNotices,
             // The ANTLR model-turn parser is authoritative. At least one source
             // operation is required; TASK omission continues silently. Bounded

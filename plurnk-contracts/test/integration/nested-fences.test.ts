@@ -161,3 +161,39 @@ test("{§statement-rendering}: frame adds a numeric delimiter exactly when the b
     assert.deepEqual(statements(reparsed).map(({ op }) => op), ["EDIT"]);
     assert.equal(bodyText(statements(reparsed)[0]), "````READ (b.md)\n````");
 });
+
+test("{§inline-chain}: a closer followed by the next opener on the same line closes and opens", () => {
+    const source = "Reviewing the state. ````READ (a.ts) <1,30> <!-- imports --> ```` ````READ (a.ts) <140,245> <!-- picker --> ```` ````READ (b.ts) <1,-1> ````\n" + task;
+    const result = PlurnkParser.parse(source);
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(errors(result).filter(({ severity }) => severity === "error"), []);
+    assert.deepEqual(statements(result).map(({ op }) => op), ["READ", "READ", "READ", "TASK"]);
+    const marks = statements(result).slice(0, 3).map((op) => (op as { lineMarker?: { marks: unknown[] } | null }).lineMarker?.marks);
+    assert.deepEqual(marks, [[1, 30], [140, 245], [1, -1]]);
+});
+
+test("{§anchor-digits}: `@` with one to four digits is that line, with one advisory; five characters stay an anchor", () => {
+    const result = PlurnkParser.parseStatements("````EDIT (a.ts) <@210,@211>\nx\n````\n````EDIT (a.ts) <@ab12c>\ny\n````");
+    const ops = statements(result);
+    assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "EDIT"]);
+    assert.deepEqual((ops[0] as { lineMarker: { marks: unknown[] } }).lineMarker.marks, [210, 211]);
+    assert.deepEqual((ops[1] as { lineMarker: { marks: unknown[] } }).lineMarker.marks, ["@ab12c"]);
+    const advisories = errors(result);
+    assert.equal(advisories.length, 2);
+    assert.ok(advisories.every(({ severity }) => severity === "warning"));
+    assert.match(advisories[0].message, /`@210` was read as line 210; an anchor is five characters/u);
+});
+
+test("{§unclosed-aside}: an aside that never closes on its line is the aside to the end of the line, with one advisory", () => {
+    const result = PlurnkParser.parseStatements("````EDIT (a.rs) <1,-1> <!-- full rewrite: ErrorInner{kind,cored}\nbody\n````");
+    const ops = statements(result);
+    assert.deepEqual(ops.map(({ op }) => op), ["EDIT"]);
+    assert.equal((ops[0] as { aside: string | null }).aside, "full rewrite: ErrorInner{kind,cored}");
+    assert.equal((ops[0] as { body: string | null }).body, "body");
+    const advisories = errors(result);
+    assert.deepEqual(advisories.map(({ severity }) => severity), ["warning"]);
+    assert.match(advisories[0].message, /not closed with `-->`; it was read to the end of the line/u);
+    const closed = PlurnkParser.parseStatements("````READ (a.rs) <!-- ok --> ````");
+    assert.deepEqual(errors(closed), []);
+    assert.equal((statements(closed)[0] as { aside: string | null }).aside, "ok");
+});

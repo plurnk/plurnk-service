@@ -274,6 +274,7 @@ export default class LoopDriver {
                     fingerprint: turn.fingerprint,
                     outcomes: turn.outcomes,
                     steerStruck: turn.steerStruck,
+                    emptyTurn: turn.emptyTurn,
                     minCycles, maxCyclePeriod, maxStrikes });
                 if (verdict.thresholdCrossed) {
                     // {§engine-rails} — the source on the crossing turn classifies

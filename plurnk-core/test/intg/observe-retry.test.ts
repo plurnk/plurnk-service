@@ -21,7 +21,7 @@ test("observe: an invalid first emission retries under the turn without failing 
                 {
                     assistant: {
                         // No executable operation or TASK inventory.
-                        content: "this is not a plurnk turn",
+                        content: "````READ (worker:///not-a-plurnk-turn",
                         reasoning: null,
                     },
                 },

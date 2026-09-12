@@ -110,16 +110,20 @@ export default class PlurnkParser {
         return result;
     }
 
-    // {§turn-shape} — no source operation is an admission failure, not missing TASK.
+    // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic
+    // that explains it: a host admits a turn whose only diagnostic is this one as an empty turn
+    // ({§empty-turn}) and rejects one that also carries a malformed heading.
     static #requireSourceOperation(items: ParseItem<PlurnkStatement>[]): void {
         if (items.some((item) => item.kind === "statement")) return;
-        const isStructErr = (i: ParseItem<any>) => i.kind === "error" && i.error.source === "parser" && i.error.severity === "error";
-        const structErrors = items.filter(isStructErr);
-        const anchor = (structErrors[0] as { error: PlurnkParseError } | undefined)?.error;
-        // Lexer and visitor diagnostics remain intact.
-        const kept = items.filter((item) => !isStructErr(item));
+        // The grammar's end-of-input complaint only restates the absence; specific diagnostics
+        // (an unclosed slot, a stray character) stay, so the host can tell prose from a malformed heading.
+        const restatesAbsence = (item: ParseItem<PlurnkStatement>): boolean =>
+            item.kind === "error" && item.error.source === "parser" && /^unexpected end of input/u.test(item.error.message);
+        const kept = items.filter((item) => !restatesAbsence(item));
         items.length = 0;
-        items.push(...kept, {
+        items.push(...kept);
+        const anchor = (items.find((i) => i.kind === "error" && i.error.severity === "error") as { error: PlurnkParseError } | undefined)?.error;
+        items.push({
             kind: "error",
             error: new PlurnkParseError(
                 anchor?.line ?? 1,
@@ -225,6 +229,14 @@ export default class PlurnkParser {
                 && (unparsedTail === undefined || PlurnkParser.#isBefore(err, unparsedTail.from))) {
                 items.push({ kind: "error", error: err });
             }
+        }
+        // {§unclosed-aside} — the aside ran to the end of the line; say so once.
+        for (const note of lexer.takeUnclosedAsides()) {
+            items.push({
+                kind: "error",
+                error: new PlurnkParseError(note.line, note.column, "parser",
+                    "The aside was not closed with `-->`; it was read to the end of the line.", "warning"),
+            });
         }
         // {§interstitial-fence} — a tagged fence that opened nothing is prose; say so once, as a
         // warning, so a misspelled executor is never a silent loss.

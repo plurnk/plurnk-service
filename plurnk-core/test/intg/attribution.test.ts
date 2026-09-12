@@ -19,7 +19,7 @@ const response = (content: string): MockResponse => ({
     assistantRaw: null,
 });
 
-const invalid = response("unframed prose");
+const invalid = response("````READ (worker:///unframed-prose");
 const valid = response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
 

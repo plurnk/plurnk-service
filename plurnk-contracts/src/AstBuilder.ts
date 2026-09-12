@@ -546,13 +546,22 @@ export default class AstBuilder {
     static #textLineMarkerFromCtx(ctx: LineMarkerContext | null): TextLineMarker | null {
         if (ctx === null) return null;
         const text = ctx.L_MARKER()?.getText() ?? "";
-        return AstBuilder.#parseTextLineMarker(text);
+        return AstBuilder.#parseTextLineMarker(text, AstBuilder.#positionOf(ctx));
     }
 
-    static #parseTextLineMarker(text: string): TextLineMarker {
+    static #parseTextLineMarker(text: string, position?: Position): TextLineMarker {
         if (!text.includes("@")) return AstBuilder.#parseLineMarker(text);
-        const marks = text.slice(1, -1).split(/, ?/).map((component) =>
-            component.startsWith("@") ? component : Number.parseFloat(component));
+        const marks = text.slice(1, -1).split(/, ?/).map((component) => {
+            // {§anchor-digits} — `@210` is the line number 210 with the anchor's sigil, not a hash.
+            if (/^@[0-9]{1,4}$/u.test(component)) {
+                if (position !== undefined) {
+                    AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
+                        `\`${component}\` was read as line ${component.slice(1)}; an anchor is five characters (\`@abcde\`).`, "warning"));
+                }
+                return Number.parseInt(component.slice(1), 10);
+            }
+            return component.startsWith("@") ? component : Number.parseFloat(component);
+        });
         return { marks: marks as [number | string, ...(number | string)[]] };
     }
 
@@ -563,7 +572,9 @@ export default class AstBuilder {
 
     static #asideOf(ctx: ParserRuleContext): string | null {
         const token = AstBuilder.#findToken(ctx, plurnkLexer.ASIDE);
-        return token === null ? null : token.slice("<!--".length, -"-->".length).trim();
+        if (token === null) return null;
+        const inner = token.endsWith("-->") ? token.slice("<!--".length, -"-->".length) : token.slice("<!--".length);
+        return inner.trim();
     }
 
     // {§closer-fallback} — without a real closer (the block ended at the next heading or at the end

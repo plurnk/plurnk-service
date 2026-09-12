@@ -184,7 +184,7 @@ test("{§packet-attachment-parts} repeating READ creates a new native delivery f
 test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materialized native request", async () => {
     const requests = await runLoop(["image"], "```READ (logo.png)```", false, [
         mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
-        { assistant: { content: "not a Plurnk emission", reasoning: null }, assistantRaw: null },
+        { assistant: { content: "````READ (worker:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
         mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
         mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ]);

@@ -306,7 +306,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("prose without a turn", requestUsage(10, 2, 1, 4)),
+                invalid("````READ (worker:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
                 invalid("```READ (worker:///broken", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
@@ -983,8 +983,8 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("first private invalid response"),
-                invalid("second private invalid response"),
+                invalid("````READ (worker:///first-private-invalid"),
+                invalid("````READ (worker:///second-private-invalid"),
                 invalid(latestRejected),
                 continuing("recovered"),
                 valid("finished"),
@@ -1115,7 +1115,8 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
 test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike out at three; a clean turn clears", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const cut = { assistant: { content: "no ops here at all", reasoning: null } };
+        // {§unparsed-tail-boundary} — an unfinished target at the end of the input is the exhaustion shape now that prose is an empty turn.
+        const cut = { assistant: { content: "````READ (worker:///no-ops-here", reasoning: null } };
         const good = (body: string) => ({ assistant: { content: `
 \`\`\`FIND (log:///**) <1,1>\`\`\`
 \`\`\`TASK
@@ -1181,7 +1182,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
-    const rejected = "😀rejected bytes";
+    const rejected = "````READ (worker:///😀rejected bytes";
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -1216,8 +1217,8 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         ) as Array<{ line?: number; column?: number; source?: string }>;
         assert.deepEqual(
             { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
-            { line: 1, column: 15, source: "parser" },
-            "the persisted digest evidence retains parser code-point coordinates",
+            { line: 1, column: 0, source: "grammar" },
+            "the persisted digest evidence retains the boundary's coordinates",
         );
         assert.equal(
             await readFile(join(digestDir, "packet001.assistant.md"), "utf8"),
@@ -1229,7 +1230,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
         assert.match(reasoning, /Attempt 1 - rejected/);
         assert.match(reasoning, /rejected reasoning/);
-        assert.match(reasoning, /no valid Plurnk operation was found/);
+        assert.match(reasoning, /never closed - add `\)`/, "the rejected attempt's own diagnostic is in the reasoning chronology");
         assert.match(reasoning, /Attempt 2 - admitted/);
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             turn_attempts: Array<{ accepted: boolean }>;
@@ -1246,7 +1247,7 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("rejected before outage", requestUsage(10, 2)),
+                invalid("````READ (worker:///rejected-before-outage", requestUsage(10, 2)),
                 valid("done", requestUsage(10, 2)),
             ],
         });
@@ -1698,7 +1699,7 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
         const cut = { assistant: { content: "I will now write the module cache implementa", reasoning: null, finishReason: "length" as const } };
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [cut, cut, cut, continuing("split the write"), valid("finished")],
+            responses: [cut, continuing("split the write"), valid("finished")],
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1706,15 +1707,15 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
             messages: [{ role: "user", content: "do the task" }],
         });
         assert.equal(result.result.status, 200);
-        // Exhausting the attempt budget opens the informed recovery turn
-        // ({§invalid-emission-attempts}); packets[3] is its rendered request.
-        assert.equal(provider.packets.length, 5);
+        // {§empty-turn} — the cut response is an admitted empty turn, never a private resample;
+        // packets[1] is the next request and carries the engine's own reading of the cut.
+        assert.equal(provider.packets.length, 3);
         assert.match(
-            provider.packets[3]!,
+            provider.packets[1]!,
             /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no operations were performed/,
-            "the recovery names the engine's cut and the recovery fact",
+            "the next packet names the engine's cut and the recovery fact",
         );
-        assert.doesNotMatch(provider.packets[3]!, /emit in smaller pieces/, "the fact rides without steering");
-        assert.doesNotMatch(provider.packets[3]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
+        assert.doesNotMatch(provider.packets[1]!, /emit in smaller pieces/, "the fact rides without steering");
+        assert.doesNotMatch(provider.packets[1]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
 });

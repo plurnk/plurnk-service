@@ -247,14 +247,14 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource at 
         assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), []);
         const source = "```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "invalid program", reasoning: "Private rejected reasoning." } },
+            { assistant: { content: "````READ (worker:///invalid-program", reasoning: "Private rejected reasoning." } },
             { assistant: { content: source, reasoning: "Admitted reasoning." } },
         ] }) });
         assert.equal(admitted.emissionAttempts, 2);
         const failed = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "first invalid program", reasoning: "First private reasoning." } },
-            { assistant: { content: "second invalid program", reasoning: "Second private reasoning." } },
-            { assistant: { content: "last invalid program", reasoning: "Final rejected reasoning." } },
+            { assistant: { content: "````READ (worker:///first-invalid-program", reasoning: "First private reasoning." } },
+            { assistant: { content: "````READ (worker:///second-invalid-program", reasoning: "Second private reasoning." } },
+            { assistant: { content: "````READ (worker:///last-invalid-program", reasoning: "Final rejected reasoning." } },
         ] }) });
         assert.equal(failed.emissionExhausted, true);
         const rows = await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId });

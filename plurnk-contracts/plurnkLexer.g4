@@ -17,6 +17,48 @@ private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceDelimiter: string = "";
 private started: boolean = false;
+// {§inline-chain} — a closer on the heading line may be followed by the next opener on the same line.
+private inlineChain: boolean = false;
+private unclosedAsides: Array<{ line: number; column: number }> = [];
+
+// After a closer's text, does an opener (backticks, digits, a known name) follow on the same line?
+private openerFollows(): boolean {
+    let cursor = 1;
+    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
+    let ticks = 0;
+    while (this.inputStream.LA(cursor) === 0x60) { ticks++; cursor++; }
+    if (ticks < 3) return false;
+    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
+    let name = "";
+    for (;;) {
+        const c = this.inputStream.LA(cursor);
+        if (c <= 0) break;
+        const ch = String.fromCharCode(c);
+        if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
+        name += ch; cursor++;
+    }
+    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutors.has(name));
+}
+
+private noteUnclosedAside(): void {
+    this.unclosedAsides.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn });
+}
+
+public takeUnclosedAsides(): Array<{ line: number; column: number }> {
+    const taken = this.unclosedAsides;
+    this.unclosedAsides = [];
+    return taken;
+}
+
+private asideClosesOnLine(): boolean {
+    let cursor = 1;
+    for (;;) {
+        const c = this.inputStream.LA(cursor);
+        if (c <= 0 || c === 0x0A || c === 0x0D) return false;
+        if (c === 0x2D && this.inputStream.LA(cursor + 1) === 0x2D && this.inputStream.LA(cursor + 2) === 0x3E) return true;
+        cursor++;
+    }
+}
 // {§fence-heading-in-body} - tags that end an open block from inside it; the host adds executors.
 public knownExecutors: Set<string> = new Set(["sh"]);
 private slotReady: boolean = false;
@@ -63,6 +105,7 @@ private open(implicitName?: string): void {
     const native = Object.hasOwn(plurnkLexer.OPERATIONS, name) ? plurnkLexer.OPERATIONS[name] : undefined;
     this.openOp = native === undefined ? "EXEC" : name;
     this.type = native ?? plurnkLexer.OPEN_EXEC;
+    this.inlineChain = false;
     this.openHeading = this.text;
     this.openHeadingLine = (this as any).currentTokenStartLine;
     this.openHeadingColumn = (this as any).currentTokenColumn;
@@ -92,7 +135,22 @@ private closingAt(offset: number): boolean {
     }
     if (digits !== this.fenceDelimiter) return false;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
-    return this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null;
+    if (this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null) return true;
+    // {§inline-chain} — a closer followed on its line by the next opener still closes.
+    let ticks = 0;
+    while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
+    if (ticks < 3) return false;
+    let at = cursor + ticks;
+    while (this.inputStream.LA(at) >= 0x30 && this.inputStream.LA(at) <= 0x39) at++;
+    let name = "";
+    for (;;) {
+        const c = this.inputStream.LA(at);
+        if (c <= 0) break;
+        const ch = String.fromCharCode(c);
+        if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
+        name += ch; at++;
+    }
+    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutors.has(name));
 }
 
 // {§fence-heading-in-body} - a fence line of four or more backticks naming an operation or a known
@@ -173,7 +231,9 @@ fragment NAME : [A-Za-z0-9_.+-]+ ;
 fragment NUM : '-'? [0-9]+ ('.' [0-9]+)? ;
 fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 fragment LINE_ANCHOR : '@' [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] ;
-fragment TEXT_COORD : NUM | LINE_ANCHOR ;
+// {§anchor-digits} — `@` with one to four digits cannot be a hash: it is read as that line.
+fragment DIGIT_ANCHOR : '@' [0-9] [0-9]? [0-9]? [0-9]? ;
+fragment TEXT_COORD : NUM | LINE_ANCHOR | DIGIT_ANCHOR ;
 fragment TEXT_L_PATTERN : '<' TEXT_COORD (',' ' '? TEXT_COORD)* '>' ;
 fragment COMBINED_LINE_COORD : LINE_ANCHOR (':' | ' ') [1-9] [0-9]* ;
 fragment COMBINED_TEXT_COORD : TEXT_COORD | COMBINED_LINE_COORD ;
@@ -182,15 +242,15 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.column === 0 || !this.started }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.column === 0 || !this.started || this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 UNKNOWN_TAG : { this.column === 0 || !this.started }? FENCE [0-9]* NAME { this.noteUnknownTag(); } -> type(TEXT), channel(HIDDEN) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
 THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT), channel(HIDDEN) ;
-TEXT_RUN : ~[ \t\r\n`]+ -> type(TEXT), channel(HIDDEN) ;
-TEXT_TICK : '`' -> type(TEXT), channel(HIDDEN) ;
+TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
+TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
 mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
@@ -200,13 +260,15 @@ SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
 SLOTS_ASIDE : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ASIDE) ;
-SLOTS_END : { this.closingAt(1) }? FENCE [0-9]* [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
+// {§unclosed-aside} — an aside that never closes on its line is the aside to the end of the line.
+SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\n]* { this.noteUnclosedAside(); } -> type(ASIDE) ;
+SLOTS_END : { this.closingAt(1) }? FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
 SLOTS_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
 
 mode TARGET;
-TARGET_FENCE : { this.closingAt(1) }? FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
+TARGET_FENCE : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // An unclosed slot ends with its heading line: the statement is one bounded error and the next
 // line lexes fresh, so siblings survive ({§closer-fallback}); only EOF inside the slot is a tail.
 TARGET_BODY_OPEN : EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
@@ -221,7 +283,7 @@ TARGET_TICK : '`' -> type(TARGET_TEXT) ;
 TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; } -> type(RPAREN), mode(SLOTS) ;
 
 mode METADATA;
-METADATA_FENCE : { this.closingAt(1) }? FENCE [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
+METADATA_FENCE : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 METADATA_BODY_OPEN : EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 METADATA_STRING : '"' ('\\' ~[\r\n] | ~["\\\r\n])* '"' -> type(METADATA_TEXT) ;
 METADATA_INNER : ~[[\]"`\r\n]+ -> type(METADATA_TEXT) ;
@@ -234,8 +296,8 @@ METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type
 mode BODY;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
 // the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§closer-fallback}).
-B_END : { this.closingAfterEol() }? EOL FENCE [0-9]* [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
-B_EMPTY_END : { (this.column === 0 || this.inlineBody) && this.closingAt(1) }? FENCE [0-9]* [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_END : { this.closingAfterEol() }? EOL FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_EMPTY_END : { (this.column === 0 || this.inlineBody) && this.closingAt(1) }? FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;
 B_TICK : '`' -> type(BODY_TEXT) ;

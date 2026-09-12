@@ -174,7 +174,7 @@ The contracts, and the violation of each that strikes:
 |---|---|
 | operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
 | review contract | a refused completion (turntrieval steer); every other TASK 409 — empty inventory, already-terminal loop — is soft |
-| progress contract | a detected operation cycle (`MIN_CYCLES` × period) |
+| progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
 | provider response contract | the provider returned an invalid response |
 
@@ -1087,7 +1087,7 @@ Three current entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one final TASK. Omitted TASK continues silently under {§turn-shape}, without a synthesized inventory, receipt, diagnostic, warning, or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after TASK are admitted in authored order and the disposition is scheduled last ({§disposition-anywhere}). A duplicate TASK, an unfinished heading slot at the end of the input, or no source operation rejects the exchange; no recovered prefix dispatches. A missing closer never rejects ({§closer-fallback}), and an exchange whose only operations stand outside fences carries their {§bare-heading-advisory} diagnostics into its rejection, so the informed recovery names the fence form. Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one final TASK. Omitted TASK continues silently under {§turn-shape}, without a synthesized inventory, receipt, diagnostic, warning, or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after TASK are admitted in authored order and the disposition is scheduled last ({§disposition-anywhere}). A duplicate TASK or an unfinished heading slot at the end of the input rejects the exchange; no recovered prefix dispatches. A missing closer never rejects ({§closer-fallback}). An exchange with no operation and no other hard error is not rejected: it is admitted as an empty turn ({§empty-turn}). Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order at that operation's position under {§op-execution-order}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -2349,6 +2349,20 @@ violations follow the current admission and strike contracts
   SEND (and a SEND accepted under {§send-prompt-acceptance}) carries `recipients`: the loop's
   Active Prompts, oldest first, exactly as the packet lists them. The row shows where the text
   went, so a model that meant a worker, a stream, or an operation sees the user received it.
+- §empty-turn **A response with no operation is a turn, not a retry.** When the parser finds
+  no operation and no other hard error (prose, bare headings outside fences, an empty
+  response), the emission is admitted as an empty turn (operator, 2026-09-12): its text and
+  reasoning are stored like any turn's (`ops:///`, `reasoning:///`), the model's own message
+  stays in the next packet's history, that packet carries one `turn_no_operations` notice and
+  any {§bare-heading-advisory} notices, the turn continues at 102, and the strike rail counts
+  one progress-contract strike, so a model that only talks strikes out at the ordinary
+  threshold instead of being resampled three times on an identical packet. Its fingerprint is
+  the empty program, so repeated empty turns also trip cycle detection.
+- §metadata-ignored **Options a scheme does not take are dropped, not refused.** A READ, FIND,
+  EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
+  and the packet carries one `metadata_ignored` notice naming the scheme (operator,
+  2026-09-12: a gentle warning, never a refusal). The `pattern` option never reaches this
+  path; it is lifted into the matcher at parse time ({§matcher-option}).
 - §send-looks-like-operation **A reply never begins with an operation heading.** When a model's
   untargeted SEND has, as its first non-blank line, a line that parses alone as one clean
   heading naming an operation this worker could perform — a Plurnk operation, or a registered
@@ -2356,7 +2370,7 @@ violations follow the current admission and strike contracts
   `heading`, and delivers nothing. Since the fences chapter's unlabeled-fence SEND was retired
   ({§interstitial-fence}), this guards only an explicit `SEND` block; a heading written outside
   any fence is prose with the parser's own advisory ({§bare-heading-advisory}), and an emission
-  made only of such lines is rejected carrying those advisories ({§emission-admission}). This is
+  made only of such lines is an empty turn carrying those advisories ({§empty-turn}). This is
   admission, not promotion: the line is never run as the operation it resembles, and the neutral
   recovery says only where each intent belongs (an operation on the fence line, a quoted example
   inside a delimited SEND body). A first line that does not parse alone (prose after the word), a

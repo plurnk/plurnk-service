@@ -73,3 +73,58 @@ test("{§bare-heading-advisory}: a heading outside any fence draws a parse_advis
         assert.equal(note?.content, "Keep this note.");
     } finally { await db.close(); }
 });
+
+// {§empty-turn} — a prose-only response is admitted as an empty turn: kept, noticed, struck once.
+test("{§empty-turn}: a prose-only response is an admitted turn with a turn_no_operations notice and one strike, never a resample", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
+        const notices: Array<{ kind: string; message?: string }> = [];
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "The findings give me precise integration points. Now I'll implement it.", reasoning: "thinking about it" } },
+            { assistant: { content: PlurnkParser.frame("SEND", "Done.") + "\n" + task, reasoning: null } },
+        ] });
+        const seen: Array<number | undefined> = [];
+        const generate = provider.generate.bind(provider);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const result = await engine.runLoop({
+            provider: Object.assign(provider, { generate: (args: Parameters<Mock["generate"]>[0]) => { seen.push(args.strikes); return generate(args); } }),
+            workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
+            messages: [{ role: "user", content: "Do the thing." }],
+        });
+        assert.equal(result.result.status, 200);
+        assert.equal(result.turnIds.length, 3, "initialization, the empty turn, the concluding turn: no private resample");
+        assert.deepEqual(seen, [0, 1], "the empty turn cost one strike, visible as provider metadata on the next request");
+        const emptyTurn = result.turnIds[1]!;
+        const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, "The findings give me precise integration points. Now I'll implement it.");
+        assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, "thinking about it");
+        assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "the packet says the turn emitted no operations");
+    } finally { await db.close(); }
+});
+
+// {§metadata-ignored} — an option a scheme does not take is dropped with one notice; the operation runs.
+test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and the READ still runs", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `metadata-ignored-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Read the note.");
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
+        const notices: Array<{ kind: string; message?: string }> = [];
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const source = ['````READ (worker:///notes.md) [{"lines": "1-2"}]', "````", task].join("\n");
+        const result = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+            workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read the note." }],
+        });
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "READ").map(({ op, status }) => [op, status]), [["READ", 200]], "the READ ran without its metadata");
+        const notice = notices.find(({ kind }) => kind === "metadata_ignored");
+        assert.ok(notice, "one metadata_ignored notice");
+        assert.match(notice!.message ?? "", /takes no \[metadata\]; the READ ran without it/u);
+    } finally { await db.close(); }
+});

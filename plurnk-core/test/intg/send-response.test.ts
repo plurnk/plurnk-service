@@ -17,7 +17,7 @@ const MISFENCED = [
     "````\nTASK\n[{\"content\": \"Research positioning\", \"status\": \"in_progress\"}]\n````",
 ].join("\n\n");
 
-test("{§bare-heading-advisory}: operations on the line after a bare fence are prose; the rejection names the fence form and nothing runs", async () => {
+test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
         makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
@@ -26,21 +26,18 @@ test("{§bare-heading-advisory}: operations on the line after a bare fence are p
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
-            const { finalStatus, loopId, result } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
-            assert.equal(finalStatus, 200, "the corrected second attempt concludes");
+            const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
+            assert.equal(finalStatus, 200, "the corrected second turn concludes");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["SEND", "TASK"], "only the corrected attempt produced operations");
+            assert.deepEqual(model.map(({ op }) => op), ["SEND", "TASK"], "only the corrected turn produced operations");
             assert.ok(!model.some((r) => r.op === "EXEC" || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
-            const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: model[0]!.turn_id });
-            assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1], "the misfenced attempt was rejected, the corrected one admitted");
-            const messages = (JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string }>).map(({ message }) => message);
-            assert.ok(messages.some((m) => /no valid Plurnk operation/u.test(m)), "the rejection names the absence");
-            for (const heading of ["sh", "READ", "TASK"]) {
-                assert.ok(messages.some((m) => m.startsWith(`\`${heading}\` on line`) && /outside any fence, so it is prose and nothing ran; an operation opens with ````/u.test(m)), heading);
-            }
-            assert.equal((result as { content?: string } | undefined)?.content, "the answer", "only the real reply is the loop's response");
+            const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
+            assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: modelWorkerId! });
+            assert.ok(sources.some((row) => row.kind === "ops" && row.content === MISFENCED), "the empty turn's text is stored as its ops source");
+            assert.equal((result as { content?: string } | undefined)?.content, "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
             assert.equal(shells, undefined, "no shell spawned");
         } finally { ws.close(); }

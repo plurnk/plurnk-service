@@ -96,6 +96,7 @@ export default class StrikeRail {
         fingerprint: string;
         outcomes: ReadonlyArray<StrikeOutcome>;
         steerStruck: boolean;
+        emptyTurn?: boolean;
         minCycles: number;
         maxCyclePeriod: number;
         maxStrikes: number;
@@ -118,7 +119,8 @@ export default class StrikeRail {
                 && !SOFT_FAILURE_STATUSES.has(outcome.status)
                 && !isExecutorEvidence(outcome),
         );
-        const struck = recordedFailed || turn.steerStruck || cycle.detected;
+        // {§empty-turn} — a turn with no operation is one progress-contract strike.
+        const struck = recordedFailed || turn.steerStruck || cycle.detected || turn.emptyTurn === true;
         const streak = struck ? state.strike_streak + 1 : 0;
         const saved = await this.#db.strike_rail_assess.run({
             loop_id: loopId,

@@ -65,6 +65,7 @@ export default class AdmittedTurnExecutor {
         allowUnobservedRetrievalCompletion = false,
         failOnOperationError = false,
         recoverableParseErrors = [],
+        emptyTurn = false,
         bare,
         signal,
         onDispatch,
@@ -83,6 +84,7 @@ export default class AdmittedTurnExecutor {
         allowUnobservedRetrievalCompletion?: boolean;
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
+        emptyTurn?: boolean;
         bare?: BareExecution;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -91,8 +93,21 @@ export default class AdmittedTurnExecutor {
         // {§turn-shape} — continuation is the default; TASK is explicit intent.
         const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions[0];
-        if (statements.length === 0 || dispositions.length > 1) {
+        if ((statements.length === 0 && !emptyTurn) || dispositions.length > 1) {
             throw new Error("an admitted operation batch must contain operations and at most one disposition");
+        }
+        // {§empty-turn} — a model response with no operation is a turn all the same: its text and
+        // reasoning are kept, the packet says so, and the strike rail counts it once.
+        if (statements.length === 0) {
+            if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn",
+                kind: "turn_no_operations",
+                level: "warn",
+                message: "This turn emitted no operations; its text was kept and nothing ran. An operation opens with four backticks and its name on the fence line.",
+            });
+            await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
+            return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintTurn([]), steerStruck: false, emptyTurn: true };
         }
         const dispositionSignal = finalOp === undefined ? TURN_STATUS_IMPLICIT_CONTINUE : TurnDisposition.status(finalOp);
         let turnStatus: number = dispositionSignal;
@@ -173,8 +188,25 @@ export default class AdmittedTurnExecutor {
             );
         };
 
-        for (const [index, statement] of scheduled.entries()) {
-            if (statement === finalOp) await settleTurn();
+        for (const [index, scheduledStatement] of scheduled.entries()) {
+            // {§metadata-ignored} — a scheme that takes no [metadata] gets the operation without it,
+            // and the model gets one notice, never a refusal (operator, 2026-09-12).
+            let statement = scheduledStatement;
+            if ("metadata" in statement && statement.metadata !== null && statement.op !== "EXEC") {
+                const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
+                const schemeName = target === null || target === undefined ? null : target.kind === "url" ? target.scheme ?? null : "file";
+                const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);
+                if (manifest !== undefined && manifest.metadataModifier !== true) {
+                    this.#notices.push(workspaceId, workerId, loopId, {
+                        source: "engine:dispatcher",
+                        kind: "metadata_ignored",
+                        level: "warn",
+                        message: `Scheme '${schemeName}' takes no [metadata]; the ${statement.op} ran without it.`,
+                    });
+                    statement = { ...statement, metadata: null } as typeof statement;
+                }
+            }
+            if (scheduledStatement === finalOp) await settleTurn();
             const result = await observed(
                 "op.dispatch",
                 { op: statement.op },
@@ -266,7 +298,7 @@ export default class AdmittedTurnExecutor {
                     message: `EDIT resolution applied: ${merge.rule} - the row's merged fact has the coordinates; verify before building on it.`,
                 });
             }
-            if (statement === finalOp) {
+            if (scheduledStatement === finalOp) {
                 steerStruck = TurnDispositionHandler.refusedCompletion(result);
                 turnStatus = result.status >= 400 && result.status !== 499
                     ? TURN_STATUS_IMPLICIT_CONTINUE : result.status;
@@ -306,6 +338,7 @@ export default class AdmittedTurnExecutor {
             outcomes,
             fingerprint: StrikeRail.fingerprintTurn(scheduled, results),
             steerStruck,
+            emptyTurn: false,
         };
     }
 

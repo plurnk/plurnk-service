@@ -197,7 +197,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
             await recordSamples(f);
             const factor = await TokenCalibration.forModel(f.db, "mock");
             const rejected: MockResponse = {
-                assistant: { content: "not an operation", reasoning: null },
+                assistant: { content: "````READ (worker:///not-an-operation", reasoning: null },
                 usage: { inputTokens: 17_000, totalTokens: 17_000 },
             };
             const responses = scenario === "invalid emissions"
