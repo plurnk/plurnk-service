@@ -1,7 +1,7 @@
 import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { Paths } from "../../src/index.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -181,7 +181,26 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 // created by the current run ({§test-artifact-retention}). A bare `node --test
 // <file>` bypasses that boundary; use `npm run artifacts:clean` first when
 // invoking the integration tests directly.
+// {§test-artifact-retention} — the runner clears the directory once per suite; a direct
+// `node --test <file>` run bypasses it, so each test process also prunes artifacts older than a
+// day, once, without touching the current run's. A prune racing another process is harmless.
+const STALE_ARTIFACT_MS = 24 * 3_600_000;
+let pruned: Promise<void> | null = null;
+const pruneStaleArtifacts = (): Promise<void> => {
+    pruned ??= (async () => {
+        await mkdir(TMP_DIR, { recursive: true });
+        const cutoff = Date.now() - STALE_ARTIFACT_MS;
+        for (const name of await readdir(TMP_DIR)) {
+            const path = join(TMP_DIR, name);
+            const age = await stat(path).then((s) => s.mtimeMs, () => null);
+            if (age !== null && age < cutoff) await rm(path, { recursive: true, force: true });
+        }
+    })();
+    return pruned;
+};
+
 export const openMigrated = async (atPath?: string): Promise<Db> => {
+    await pruneStaleArtifacts();
     const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
     await mkdir(dirname(dbPath), { recursive: true });
     const db = (await SqlRite.open({

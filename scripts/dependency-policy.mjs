@@ -12,6 +12,7 @@ const run = promisify(execFile);
 const leanFrameworks = new Map([
     ["plurnk-mimetypes/package.json", "@plurnk/plurnk-mimetypes-"],
     ["plurnk-execs/package.json", "@plurnk/plurnk-execs-"],
+    ["plurnk-schemes/package.json", "@plurnk/plurnk-schemes-"],
 ]);
 
 export const installScriptViolations = (report) => {

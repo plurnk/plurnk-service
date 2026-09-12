@@ -103,8 +103,7 @@
         "@plurnk/plurnk-mimetypes-grammar-typescript": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-yaml": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-zig": "1.16.1",
-        "@types/picomatch": "^4.0.3",
-        "antlr4ng": "^3.0.16"
+        "@types/picomatch": "^4.0.3"
     },
     "dependencies": {
         "@plurnk/plurnk-contracts": "1.16.5",

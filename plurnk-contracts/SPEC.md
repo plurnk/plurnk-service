@@ -654,8 +654,8 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
 FIND, READ, KILL, EDIT, and the COPY/MOVE operands accept an optional matcher
-through the `pattern` option ({§matcher-option}); the client-tier LOOK and
-BUFF still carry theirs as a body. AstBuilder assigns the dialect from the
+through the `pattern` option ({§matcher-option}); the client-tier LOOK still
+carries its matcher as a body. AstBuilder assigns the dialect from the
 matcher's leading characters. A leading prefix claims its dialect. Invalid
 claimed syntax is a positioned visitor error and never falls back to glob
 matching.
@@ -907,7 +907,7 @@ the executable blocks themselves are the program.
 | `PlurnkParser.parse`           | One operation-bearing model turn; optional final TASK | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
-| `PlurnkParser.parseClient`     | Executable blocks, including read-shaped LOOK/BUFF commands      | `ClientStatement`     |
+| `PlurnkParser.parseClient`     | Executable blocks, including the read-shaped LOOK command        | `ClientStatement`     |
 
 Every entry point ignores outside text under {§whitespace-contract} and returns
 ordered `statement` and `error` items. When present, {§unparsed-tail-boundary} governs the result's item

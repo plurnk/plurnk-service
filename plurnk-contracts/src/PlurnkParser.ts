@@ -50,7 +50,7 @@ export default class PlurnkParser {
         return statements.map((statement) => {
             const name = statement.op === "EXEC" ? statement.executor ?? "EXEC" : statement.op;
             if (statement.op === "EXEC" && statement.executor !== null
-                && [...PLURNK_OPS, "LOOK", "BUFF"].includes(name)) {
+                && [...PLURNK_OPS, "LOOK"].includes(name)) {
                 throw new TypeError(`Executor name ${JSON.stringify(name)} is reserved for a Plurnk operation.`);
             }
             const modifiers: string[] = [];
@@ -204,8 +204,8 @@ export default class PlurnkParser {
     }
 
     // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
-    // ops LOOK and BUFF. The topmost subset (one above Script); never used for model output. The
-    // protocol entry points reject LOOK/BUFF, so a client op only parses here.
+    // op LOOK. The topmost subset (one above Script); never used for model output. The
+    // protocol entry points reject LOOK, so a client op only parses here.
     static parseClient(input: string): ParseResult<ClientStatement> {
         return PlurnkParser.#run<ClientStatement>(
             input,

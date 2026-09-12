@@ -4,7 +4,7 @@ tokens {
     OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
     OPEN_SEND, OPEN_TASK,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
-    OPEN_LOOK, OPEN_BUFF,
+    OPEN_LOOK,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
     TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE
 }
@@ -30,7 +30,7 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     SEND: plurnkLexer.OPEN_SEND, EXEC: plurnkLexer.OPEN_EXEC, BARE: plurnkLexer.OPEN_BARE,
     TASK: plurnkLexer.OPEN_TASK,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
-    LOOK: plurnkLexer.OPEN_LOOK, BUFF: plurnkLexer.OPEN_BUFF,
+    LOOK: plurnkLexer.OPEN_LOOK,
 };
 
 private open(implicitName?: string): void {
@@ -170,7 +170,7 @@ TARGET_BACKSLASH : '\\' -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
 TARGET_TEXT_SCOPE : { this.isTextCoordinateOp() }? TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
-TARGET_SCOPE : { this.openOp === "FIND" || this.openOp === "BUFF" || this.openOp === "EXEC" || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
+TARGET_SCOPE : { this.openOp === "FIND" || this.openOp === "EXEC" || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_TICK : '`' -> type(TARGET_TEXT) ;
 TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; } -> type(RPAREN), mode(SLOTS) ;
 

@@ -6,7 +6,7 @@ const clientStatementsOf = (input: string) =>
     PlurnkParser.parseClient(input).items.filter((i) => i.kind === "statement");
 
 // -------------------------------------------------------------------------
-// parseClient admits LOOK / BUFF (read-shaped) and protocol statements
+// parseClient admits LOOK (read-shaped) and protocol statements
 // -------------------------------------------------------------------------
 
 test("client: parseClient parses a bare LOOK", () => {
@@ -15,16 +15,10 @@ test("client: parseClient parses a bare LOOK", () => {
     assert.equal(stmts[0].statement.op, "LOOK");
 });
 
-test("client: parseClient parses a bare BUFF", () => {
-    const stmts = clientStatementsOf("```BUFF (known://drafts/letter)```");
-    assert.equal(stmts.length, 1);
-    assert.equal(stmts[0].statement.op, "BUFF");
-});
-
 test("client: parseClient admits protocol statements alongside client ops", () => {
-    const input = "```READ (known://a)```\n```LOOK (known://b)```\n```BUFF (known://c)```";
+    const input = "```READ (known://a)```\n```LOOK (known://b)```";
     const ops = clientStatementsOf(input).map((i) => i.statement.op);
-    assert.deepEqual(ops, ["READ", "LOOK", "BUFF"]);
+    assert.deepEqual(ops, ["READ", "LOOK"]);
 });
 
 test("client: LOOK is read-shaped — target, lineMarker, matcher body", () => {
@@ -37,29 +31,26 @@ test("client: LOOK is read-shaped — target, lineMarker, matcher body", () => {
     assert.equal(s.body.dialect, "fts");
 });
 
-test("client: LOOK accepts line anchors while BUFF result positions remain numeric", () => {
+test("client: LOOK accepts line anchors", () => {
     const result = PlurnkParser.parseClient("```LOOK (worker:///notes.md) <@aZ09b>```");
     const item = result.items.find((candidate) => candidate.kind === "statement");
     assert.equal(item?.kind, "statement");
     if (item?.kind !== "statement") return;
     assert.equal(item.statement.op, "LOOK");
     assert.deepEqual(item.statement.lineMarker, { marks: ["@aZ09b"] });
-
-    const buff = PlurnkParser.parseClient("```BUFF (worker:///notes.md) <@aZ09b>```");
-    assert.ok(buff.items.some((candidate) => candidate.kind === "error"));
 });
 
-test("client: BUFF carries a matcher body (filter on the way in)", () => {
-    const stmts = clientStatementsOf("```BUFF (file://draft.md)\n/TODO/i\n```");
-    const s: any = stmts[0].statement;
-    assert.equal(s.op, "BUFF");
-    assert.equal(s.body.dialect, "regex");
-    assert.equal(s.body.pattern, "TODO");
-    assert.equal(s.body.flags, "i");
+// BUFF left the language with #625: a retired client op is an ordinary fence name, which the
+// grammar reads as an executor tag, never as a client statement.
+test("client: BUFF is no longer a client op", () => {
+    const stmts = clientStatementsOf("```BUFF (known://drafts/letter)```");
+    assert.equal(stmts.length, 1);
+    assert.equal(stmts[0].statement.op, "EXEC");
+    assert.equal((stmts[0].statement as { executor: string | null }).executor, "BUFF");
 });
 
-test("client: LOOK and BUFF share single-line matcher admission", () => {
-    for (const op of ["LOOK", "BUFF"] as const) {
+test("client: LOOK has single-line matcher admission", () => {
+    for (const op of ["LOOK"] as const) {
         const result = PlurnkParser.parseClient(PlurnkParser.frame(`${op} (known://notes)`, "first line\nsecond line"));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1, op);
@@ -70,8 +61,8 @@ test("client: LOOK and BUFF share single-line matcher admission", () => {
 });
 
 // {§empty-section}
-test("client: empty LOOK and BUFF sections normalize to null bodies", () => {
-    for (const op of ["LOOK", "BUFF"] as const) {
+test("client: an empty LOOK section normalizes to a null body", () => {
+    for (const op of ["LOOK"] as const) {
         const statements = clientStatementsOf(PlurnkParser.frame(`${op} (known://x)`, null));
         assert.equal(statements.length, 1, op);
         const statement = statements[0]?.statement;
@@ -97,9 +88,10 @@ test("client: parseStatements (protocol) rejects LOOK", () => {
     assert.equal(stmts.length, 0);
 });
 
-test("client: parseStatements (protocol) rejects BUFF", () => {
+test("client: parseStatements (protocol) reads a retired client op name as an executor tag", () => {
     const stmts = PlurnkParser.parseStatements("```BUFF (p)```").items.filter((i) => i.kind === "statement");
-    assert.equal(stmts.length, 0);
+    assert.equal(stmts.length, 1);
+    assert.equal(stmts[0]?.kind === "statement" ? stmts[0].statement.op : null, "EXEC");
 });
 
 test("client: a LOOK mid-turn breaks parse() (not a protocol op)", () => {
@@ -121,12 +113,6 @@ test("client: ordinary Markdown headings are ignored, not operations", () => {
 
 test("Validator: ClientStatement accepts a LOOK statement", () => {
     const s = clientStatementsOf("```LOOK (known://x)\n~q\n```")[0].statement;
-    const { valid, errors } = Validator.validateClientStatement(s);
-    assert.equal(valid, true, JSON.stringify(errors));
-});
-
-test("Validator: ClientStatement accepts a BUFF statement", () => {
-    const s = clientStatementsOf("```BUFF (known://x)```")[0].statement;
     const { valid, errors } = Validator.validateClientStatement(s);
     assert.equal(valid, true, JSON.stringify(errors));
 });

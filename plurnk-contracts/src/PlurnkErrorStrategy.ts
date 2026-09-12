@@ -37,7 +37,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_FORK]: "operation fence header",
         [plurnkParser.OPEN_KILL]: "operation fence header",
         [plurnkParser.OPEN_LOOK]: "client operation fence header",
-        [plurnkParser.OPEN_BUFF]: "client operation fence header",
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
         [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
         [plurnkParser.LBRACKET]: "`[` (`[metadata]` modifier opener)",
@@ -173,7 +172,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE,
         plurnkParser.OPEN_SEND, plurnkParser.OPEN_TASK,
         plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
-        plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK, plurnkParser.OPEN_BUFF,
+        plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK,
     ]);
 
     // The entry rules end with EOF; an error raised there means the document expected its end.

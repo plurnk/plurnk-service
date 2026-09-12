@@ -4,7 +4,6 @@ import { ParserRuleContext, TerminalNode } from "antlr4ng";
 import * as xpath from "xpath";
 import { JSONPathEnvironment } from "json-p3/dist/json-p3.esm.js";
 import type {
-    BuffStatement,
     BareStatement,
     ClientStatement,
     CopyStatement,
@@ -30,7 +29,6 @@ import type {
     UrlPath,
 } from "./types.ts";
 import type {
-    BuffStatementContext,
     BareStatementContext,
     ClientStatementContext,
     CopyStatementContext,
@@ -193,31 +191,17 @@ export default class AstBuilder {
     static buildClient(ctx: ClientStatementContext): ClientStatement {
         const statement = ctx.statement(); if (statement) return AstBuilder.build(statement);
         const look = ctx.lookStatement(); if (look) return AstBuilder.#buildLook(look);
-        const buff = ctx.buffStatement(); if (buff) return AstBuilder.#buildBuff(buff);
         throw new Error("clientStatement context has no recognized alternative");
     }
 
-    // LOOK / BUFF are client-tier matcher observations. They share the tag slots
-    // and parse matcher bodies directly for their client-owned lifecycles.
+    // LOOK is the client-tier matcher observation. It shares the tag slots and parses
+    // its matcher body directly for its client-owned lifecycle.
     static #buildLook(ctx: LookStatementContext): LookStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "LOOK",
-            aside: AstBuilder.#asideOf(ctx),
-            ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
-            position,
-        };
-    }
-
-    static #buildBuff(ctx: BuffStatementContext): BuffStatement {
-        const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
-        return {
-            op: "BUFF",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,

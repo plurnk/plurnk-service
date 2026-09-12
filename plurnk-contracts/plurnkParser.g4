@@ -40,7 +40,6 @@ clientStatementSeq
 clientStatement
     : statement
     | lookStatement
-    | buffStatement
     ;
 
 statement
@@ -89,7 +88,6 @@ forkStatement : OPEN_FORK targetWithMetadata? opAside? statementEnd ;
 // KILL takes a scope ({§kill-scope}): lines of a log body or of an entry.
 killStatement : OPEN_KILL slotModifiers? opAside? statementEnd ;
 lookStatement : OPEN_LOOK slotModifiers? opAside? statementEnd ;
-buffStatement : OPEN_BUFF slotModifiers? opAside? statementEnd ;
 
 opAside : ASIDE ;
 

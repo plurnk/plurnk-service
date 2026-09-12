@@ -67,7 +67,7 @@ export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, col
 
 // Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
 // stays closed and client ops never widen the model-facing type.
-export type ClientOp = "LOOK" | "BUFF";
+export type ClientOp = "LOOK";
 
 // Parameterized over the statement type so the protocol entry points keep the closed
 // PlurnkStatement (the default), while parseClient returns ParseResult<ClientStatement>.

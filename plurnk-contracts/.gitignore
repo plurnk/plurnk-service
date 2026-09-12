@@ -1,6 +1,5 @@
 node_modules/
 src/generated/
-src/types.generated.ts
 dist/
 *.tokens
 *.interp

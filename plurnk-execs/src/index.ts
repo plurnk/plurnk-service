@@ -24,10 +24,6 @@ export const discover = Discover.scan;
 // cascade is byte-identical at both tiers.
 export { default as Policy } from "./policy.ts";
 
-// Frozen 1.x compatibility export ({§executor-advertise-compat}). It has no
-// production consumer and owns no capability filtering or presentation.
-export { default as Advertise } from "./advertise.ts";
-
 // Universal operation-result helpers. Executors return the same result shape as
 // schemes; the consuming daemon validates it at the plugin boundary.
 export { Results } from "@plurnk/plurnk-schemes";

@@ -53,7 +53,7 @@ The parser entry points deliberately accept different document tiers:
 | `PlurnkParser.parse`           | One operation-bearing model turn; omitted TASK continues silently |
 | `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
 | `PlurnkParser.parseLog`        | Consecutive disposition-ended turns                    |
-| `PlurnkParser.parseClient`     | Protocol statements plus client-only LOOK and BUFF    |
+| `PlurnkParser.parseClient`     | Protocol statements plus the client-only LOOK         |
 | `parsePath`                    | One path or URI using parser-equivalent decomposition |
 
 See SPEC {§turn-shape} and {§tier-entrypoints} for the tier boundaries. All

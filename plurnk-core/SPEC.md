@@ -275,7 +275,8 @@ stable ones, never with weakened assertions.
 §test-artifact-retention **File-backed test databases use lane-local current-run
 retention.** Each workspace's normal intg runner clears its own
 `test/intg/.tmp/` once before the suite, reports that forensic directory, and
-retains every artifact the current run creates. A cross-package test may reuse
+retains every artifact the current run creates; a direct `node --test <file>` run bypasses that
+runner, so each test process prunes artifacts older than a day once, and never the current run's. A cross-package test may reuse
 Core's migration fixture only by passing a path inside the caller's artifact
 directory; independently scheduled lanes never share a reset target. A failed
 suite therefore leaves its own evidence intact, and the next normal run of that

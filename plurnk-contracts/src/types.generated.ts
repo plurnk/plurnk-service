@@ -279,7 +279,7 @@ payload?: unknown
 status: "cancelled"
 })
 
-export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
+export type ClientStatement = (PlurnkStatement | LookStatement)
 /**
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
@@ -310,8 +310,6 @@ export type PathOrNull = (ParsedPath | null)
 export type TextLineMarkerOrNull = (TextLineMarker | null)
 
 export type MatcherBodyOrNull = (MatcherBody | null)
-
-export type LineMarkerOrNull = (LineMarker | null)
 
 export interface FindStatement {
 op: "FIND"
@@ -640,16 +638,6 @@ aside: AsideOrNull
 metadata: SchemeMetadataOrNull
 target: PathOrNull
 lineMarker: TextLineMarkerOrNull
-body: MatcherBodyOrNull
-position: Position
-}
-
-export interface BuffStatement {
-op: "BUFF"
-aside: AsideOrNull
-metadata: SchemeMetadataOrNull
-target: PathOrNull
-lineMarker: LineMarkerOrNull
 body: MatcherBodyOrNull
 position: Position
 }
@@ -1130,6 +1118,11 @@ total: number
 requested: RequestedRange
 returned?: ReturnedRange
 }
+
+export type LineMarkerOrNull = (LineMarker | null)
+/**
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ */
 
 export type SendBodyOrNull = (SendBody | null)
 /**

@@ -46,14 +46,13 @@ const packedExecInventory = (env = {}) => {
         const nodeModules = resolve("node_modules");
         const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
         const { default: ExecutorRegistry } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/ExecutorRegistry.js")));
-        const { Advertise, discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
+        const { discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
         const files = await EnvDefaults.collect(serviceRoot, nodeModules);
         const merged = EnvDefaults.merge(files);
         EnvDefaults.apply(merged);
         const discovery = await discover({ cwd: process.cwd() });
         const executors = await ExecutorRegistry.build({ cwd: process.cwd() });
         process.stdout.write(JSON.stringify({
-            advertise: typeof Advertise,
             owners: Object.fromEntries([...discovery.registry].map(([tag, info]) => [tag, info.packageName])),
             advertised: executors.availableRuntimes(),
         }));
@@ -769,7 +768,6 @@ try {
 
 process.stdout.write("-- executor inventory --\n");
 const packedExecs = packedExecInventory();
-ok(packedExecs.advertise === "function", "the packed executor framework retains its frozen 1.x Advertise export");
 for (const packageName of defaultExecPackages) {
     const manifest = installedManifest(packageName);
     for (const runtime of manifest.plurnk?.runtimes ?? []) {

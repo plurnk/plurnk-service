@@ -2,16 +2,13 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/ClientStatement.json",
     "title": "ClientStatement",
-    "description": "The client-tier AST returned by PlurnkParser.parseClient: the closed protocol PlurnkStatement union plus read-shaped LOOK and BUFF utility statements.",
+    "description": "The client-tier AST returned by PlurnkParser.parseClient: the closed protocol PlurnkStatement union plus the read-shaped LOOK utility statement.",
     "oneOf": [
         {
             "$ref": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json"
         },
         {
             "$ref": "#/$defs/LookStatement"
-        },
-        {
-            "$ref": "#/$defs/BuffStatement"
         }
     ],
     "$defs": {
@@ -104,42 +101,6 @@
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/TextLineMarkerOrNull"
-                },
-                "body": {
-                    "$ref": "#/$defs/MatcherBodyOrNull"
-                },
-                "position": {
-                    "$ref": "#/$defs/PositionRef"
-                }
-            }
-        },
-        "BuffStatement": {
-            "type": "object",
-            "required": [
-                "op",
-                "aside",
-                "metadata",
-                "target",
-                "lineMarker",
-                "body",
-                "position"
-            ],
-            "additionalProperties": false,
-            "properties": {
-                "op": {
-                    "const": "BUFF"
-                },
-                "aside": {
-                    "$ref": "#/$defs/AsideOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "target": {
-                    "$ref": "#/$defs/PathOrNull"
-                },
-                "lineMarker": {
-                    "$ref": "#/$defs/LineMarkerOrNull"
                 },
                 "body": {
                     "$ref": "#/$defs/MatcherBodyOrNull"
