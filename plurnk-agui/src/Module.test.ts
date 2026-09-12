@@ -9,7 +9,6 @@ import Module from "./Module.ts";
 import type {
     ApplicationActionContext,
     ApplicationPort,
-    PlurnkStatement,
     ProposalProjection,
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
@@ -703,9 +702,12 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(calls.length, 1);
         const expected = PlurnkParser.parseClient(source).items.find((item) => item.kind === "statement")?.statement;
         assert.ok(expected !== undefined);
-        const { op: _look, ...expectedReadShape } = expected;
-        const { op, ...actualReadShape } = calls[0].statement as PlurnkStatement;
+        // {§read-pattern} — LOOK's matcher body becomes the READ's heading pattern; nothing else moves.
+        const { op: _look, body: expectedMatcher, ...expectedReadShape } = expected as unknown as { op: string; body: unknown; [key: string]: unknown };
+        const { op, matcher, body, ...actualReadShape } = calls[0].statement as unknown as { op: string; matcher: unknown; body: unknown; [key: string]: unknown };
         assert.equal(op, "READ");
+        assert.deepEqual(matcher, expectedMatcher, "the LOOK matcher is the READ pattern");
+        assert.equal(body, null, "a READ takes no body");
         assert.deepEqual(actualReadShape, expectedReadShape, "the projection changes only LOOK to READ");
 
         const missing = await invoke(" \n\t");

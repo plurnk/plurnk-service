@@ -336,7 +336,10 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Use LOOK as the observation operation." },
                         );
                     }
-                    const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
+                    // LOOK is the client's observation with a matcher body; on the seam it is a READ whose
+                    // heading pattern is that matcher ({§read-pattern}): the matching lines, no log row.
+                    const { body: matcher, ...look } = item.statement;
+                    const statement = { ...look, op: "READ", matcher, body: null } as unknown as PlurnkStatement;
                     return operationOutcome(await this.#seam().look({
                         workspaceId: world.workspaceId,
                         workerId: world.workerId,
