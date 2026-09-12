@@ -46,6 +46,27 @@ ON CONFLICT (workspace_id, scheme, authority, pathname)
 DO UPDATE SET membership_origin = excluded.membership_origin
 RETURNING id;
 
+-- PREP: crud_register_workspace_members
+-- {§membership-reconcile-sets}: the desired file members land as one set — $members is a JSON
+-- array of {pathname, origin} — with the same idempotent provenance update as the single form.
+INSERT INTO entries (workspace_id, scheme, authority, pathname, membership_origin)
+SELECT $workspace_id, 'file', '', json_extract(member.value, '$.pathname'), json_extract(member.value, '$.origin')
+FROM json_each($members) AS member
+WHERE EXISTS (SELECT 1 FROM workspaces WHERE id = $workspace_id)
+ON CONFLICT (workspace_id, scheme, authority, pathname)
+DO UPDATE SET membership_origin = excluded.membership_origin;
+
+-- PREP: crud_unregister_stale_members
+-- {§membership-reconcile-sets}: every overlay-owned file member outside the desired set leaves in
+-- one statement. The row's body content rides out with it, so a path that also left disk truth
+-- (not a candidate at all) reports its prior content as a divergence; a mere exclusion is silent.
+DELETE FROM entries
+WHERE workspace_id = $workspace_id AND scheme = 'file' AND authority = ''
+  AND membership_origin IN ('git', 'constraint')
+  AND pathname NOT IN (SELECT value FROM json_each($desired))
+RETURNING id, pathname,
+          (SELECT content FROM entry_channels c WHERE c.entry_id = entries.id AND c.name = 'body') AS prior;
+
 -- PREP: crud_get_member_sig
 -- SPEC {§membership-change-gated-sync} — the member's last-synced disk signature
 -- (mtime:size), read before materializing so an unchanged file short-circuits
@@ -94,16 +115,6 @@ WHERE entry_id = $entry_id
 
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;
-
--- PREP: crud_list_reconcilable_members
--- Every file member is overlay-owned (membership_origin IN git, constraint).
--- The reconciliation set: resolveGitMembership compares this against the desired
--- ((git ls-files ∪ add) − ignore) and un-registers the difference, so entries ==
--- members.
-SELECT e.id, e.pathname
-FROM entries e
-WHERE e.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = ''
-  AND e.membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_generated_workspace_constraint
 -- {§fs-create-record}: an accepted creation is incorporated by an exact record row; a projected

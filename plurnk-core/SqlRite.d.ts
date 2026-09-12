@@ -57,6 +57,8 @@ export class SqlRiteSync {
 	crud_read_entry: SqlRiteSyncPreparedStatements;
 	crud_publish_entry: SqlRiteSyncPreparedStatements;
 	crud_register_workspace_member: SqlRiteSyncPreparedStatements;
+	crud_register_workspace_members: SqlRiteSyncPreparedStatements;
+	crud_unregister_stale_members: SqlRiteSyncPreparedStatements;
 	crud_get_member_sig: SqlRiteSyncPreparedStatements;
 	crud_set_synced_sig: SqlRiteSyncPreparedStatements;
 	crud_mark_member_absent: SqlRiteSyncPreparedStatements;
@@ -64,7 +66,6 @@ export class SqlRiteSync {
 	crud_delete_channel: SqlRiteSyncPreparedStatements;
 	crud_attach_channel_derivation: SqlRiteSyncPreparedStatements;
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
-	crud_list_reconcilable_members: SqlRiteSyncPreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_list_workspace_constraints: SqlRiteSyncPreparedStatements;
 	crud_delete_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
@@ -300,6 +301,8 @@ export default class SqlRite {
 	crud_read_entry: SqlRitePreparedStatements;
 	crud_publish_entry: SqlRitePreparedStatements;
 	crud_register_workspace_member: SqlRitePreparedStatements;
+	crud_register_workspace_members: SqlRitePreparedStatements;
+	crud_unregister_stale_members: SqlRitePreparedStatements;
 	crud_get_member_sig: SqlRitePreparedStatements;
 	crud_set_synced_sig: SqlRitePreparedStatements;
 	crud_mark_member_absent: SqlRitePreparedStatements;
@@ -307,7 +310,6 @@ export default class SqlRite {
 	crud_delete_channel: SqlRitePreparedStatements;
 	crud_attach_channel_derivation: SqlRitePreparedStatements;
 	crud_delete_entry: SqlRitePreparedStatements;
-	crud_list_reconcilable_members: SqlRitePreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_list_workspace_constraints: SqlRitePreparedStatements;
 	crud_delete_generated_workspace_constraint: SqlRitePreparedStatements;

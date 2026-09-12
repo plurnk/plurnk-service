@@ -454,47 +454,32 @@ export default class GitMembership {
         // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
         // so they match the parser's pathname the shared read helper queries by.
         const desired = [...desiredGit, ...desiredIncluded]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
-        const desiredSet = new Set(desired);
         const candidateSet = new Set([...members, ...included, ...masked]);
 
         // Reconcile so entries == members (the constitutive invariant): register the
         // desired with their origin, then un-register any overlay-owned member ('git'
         // or 'constraint') no longer desired — untracked, unmatched, or newly excluded.
-        for (const pathname of desiredGit) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname, membership_origin: "git" });
+        // {§membership-reconcile-sets} — two set statements: the desired land with their origin;
+        // every overlay-owned member outside the desired set leaves, its prior body riding out.
+        if (desired.length > 0) {
+            await db.crud_register_workspace_members.run({
+                workspace_id: workspaceId,
+                members: JSON.stringify([
+                    ...desiredGit.map((pathname) => ({ pathname, origin: "git" })),
+                    ...desiredIncluded.map((pathname) => ({ pathname, origin: "constraint" })),
+                ]),
+            });
         }
-        for (const pathname of desiredIncluded) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname, membership_origin: "constraint" });
-        }
-        const registered = await db.crud_list_reconcilable_members.all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
-        const removed: FsDivergence[] = [];
-        for (const m of registered) {
-            if (!desiredSet.has(m.pathname)) {
-                // A path that left Git/include membership also left disk truth (for
-                // example an untracked deletion or staged rename). An exclusion is
-                // policy, not a filesystem occurrence, and is therefore silent.
-                if (!candidateSet.has(m.pathname)) {
-                    const prior = await db.ops_read_channel.get<{ content: string }>({
-                        workspace_id: workspaceId,
-
-                        scheme: "file",
-                        authority: "",
-                        pathname: m.pathname,
-                        channel: "body",
-                    });
-                    if (prior !== undefined) {
-                        removed.push({
-                            pathname: m.pathname,
-                            entryId: m.id,
-                            channel: "body",
-                            before: prior.content,
-                            after: "",
-                        });
-                    }
-                }
-                await db.crud_delete_entry.run({ entry_id: m.id });
-            }
-        }
+        const gone = await db.crud_unregister_stale_members.all<{ id: number; pathname: string; prior: string | null }>({
+            workspace_id: workspaceId,
+            desired: JSON.stringify(desired),
+        });
+        // A path that left Git/include membership also left disk truth (for example an untracked
+        // deletion or staged rename). An exclusion is policy, not a filesystem occurrence, and is
+        // therefore silent.
+        const removed: FsDivergence[] = gone
+            .filter(({ pathname, prior }) => prior !== null && !candidateSet.has(pathname))
+            .map(({ id, pathname, prior }) => ({ pathname, entryId: id, channel: "body", before: prior as string, after: "" }));
         return { members: desired, removed, ...(refusedFilter === null ? {} : { refusedFilter }) };
     }
 
