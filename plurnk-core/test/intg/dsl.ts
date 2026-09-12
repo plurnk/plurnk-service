@@ -1,3 +1,4 @@
+import { fixtureExecutors } from "./_helpers.ts";
 // Test fixture builders route clean parameters through the contracts-owned
 // statement parser so Core receives production AST shapes. {§tier-entrypoints}
 // {§methods-op-mirror}
@@ -65,7 +66,7 @@ export default class Dsl {
     }
 
     static parseSingleStatement(text: string): PlurnkStatement {
-        const result = PlurnkParser.parseStatements(text);
+        const result = PlurnkParser.parseStatements(text, { executors: fixtureExecutors(text) });
         const statements: PlurnkStatement[] = [];
         const failures: string[] = [];
         for (const item of result.items) {

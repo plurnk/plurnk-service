@@ -30,7 +30,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     assert.match(content, /````example <!-- Compute a thing\. -->\nsomething\n````/);
     const summary = content.split("## Summary\n\n")[1]!.split("\n\n")[0]!;
     assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the invocation");
-    const parsed = PlurnkParser.parseStatements(summary.replaceAll("\\n", "\n"));
+    const parsed = PlurnkParser.parseStatements(summary.replaceAll("\\n", "\n"), { executors: ["example", "fixture", "brave", "sh"] });
     assert.equal(parsed.items.length, 1);
     assert.equal(parsed.items[0]?.kind, "statement");
     if (parsed.items[0]?.kind === "statement") {

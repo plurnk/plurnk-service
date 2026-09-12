@@ -7,10 +7,15 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 
+// Fixture executors: every fence tag this file's DSL text writes opens as an executor.
+const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!))];
+
 const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => {
     const parsed = PlurnkParser.parse([
         source, PlurnkParser.frame("TASK", null),
-    ].join("\n"));
+    ].join("\n"), { executors: fixtureExecutors([
+        source, PlurnkParser.frame("TASK", null),
+    ].join("\n")) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === op,
     );

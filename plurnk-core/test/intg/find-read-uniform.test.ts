@@ -15,11 +15,11 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
 import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
-    const found = PlurnkParser.parse(`${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
+    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find((i) => i.kind === "statement" && i.statement.op === op);
     if (found === undefined) throw new Error(`no ${op} parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: T }).statement;
 };

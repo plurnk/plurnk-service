@@ -1173,7 +1173,9 @@ export default class Dispatcher {
     #operationHeading(body: string, schemeCtx: PlurnkSchemeContext): string | null {
         const line = body.split("\n").find((candidate) => candidate.trim().length > 0)?.trim();
         if (line === undefined || line.startsWith("`")) return null;
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(line, null));
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(line, null), {
+            executors: schemeCtx.executors?.availableRuntimes(schemeCtx.workspaceId) ?? [],
+        });
         if (parsed.unparsedTail !== undefined || parsed.items.length !== 1 || parsed.items[0].kind !== "statement") return null;
         const { statement } = parsed.items[0];
         if (statement.op !== "EXEC") return line;

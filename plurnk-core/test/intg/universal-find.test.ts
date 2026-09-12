@@ -15,14 +15,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import {
-    DEFAULT_MIMETYPES,
-    insertLoop,
-    insertTurn,
-    insertWorker,
-    insertWorkspace,
-    openMigrated,
-} from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 class PreparedDataScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -65,7 +58,7 @@ class PreparedDataScheme implements SchemeHandler {
 }
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {
@@ -75,7 +68,7 @@ const parseFind = (dsl: string): FindStatement => {
 };
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -87,7 +80,7 @@ const parseRead = (dsl: string): ReadStatement => {
 
 
 const parseSend = (dsl: string): SendStatement => {
-    const item = PlurnkParser.parse(`${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "SEND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "SEND") {

@@ -8,7 +8,7 @@ import SeamSocket from "./_seam.ts";
 import type { MockResponse, Provider } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import type { LoopUsage } from "../../src/core/Engine.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 export interface RpcResponse {
     jsonrpc: "2.0";
@@ -165,7 +165,7 @@ export const withDaemon = async <T>(
 
 // Parse plurnk DSL into statement ops. Used to build mock provider responses.
 export const parseDsl = (text: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parse(text);
+    const result = PlurnkParser.parse(text, { executors: fixtureExecutors(text) });
     const statements = result.items
         .filter((i) => i.kind === "statement")
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
@@ -175,6 +175,13 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
     }
     return statements;
 };
+
+// A response the parser admits nothing from (prose, bare headings): ops stay empty by design.
+export const makeRawMockResponse = (text: string, completion: number = 0): MockResponse => ({
+    ...makeMockResponse("```TASK\n[]\n```", completion),
+    // No pre-parsed ops: the engine parses the content itself and rejects it on its own terms.
+    assistant: { content: text, reasoning: null } as MockResponse["assistant"],
+});
 
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
     return {

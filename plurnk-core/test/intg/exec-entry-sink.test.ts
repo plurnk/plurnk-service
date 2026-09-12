@@ -13,7 +13,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import Results from "../../src/core/results.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
+import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -23,7 +23,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 });
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parseStatements(input);
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     const item = parsed.items.find((x) => x.kind === "statement");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;

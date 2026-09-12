@@ -1,10 +1,11 @@
-// {§send-looks-like-operation} — a model reply whose first line is an operation heading is a
-// mis-fenced operation, refused at dispatch so nothing is silently delivered as a reply.
+// {§send-looks-like-operation} — an explicit SEND whose first line is an operation heading is a
+// mis-fenced operation, refused at dispatch so nothing is silently delivered as a reply; a heading
+// outside any fence is prose with the parser's advisory ({§bare-heading-advisory}).
 // {§send-response-receipt} — a delivered reply names the prompts it answered.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 import { promptLoopPrefix } from "../../src/core/plurnk-uri.ts";
 
 const DONE = "```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
@@ -16,9 +17,9 @@ const MISFENCED = [
     "````\nTASK\n[{\"content\": \"Research positioning\", \"status\": \"in_progress\"}]\n````",
 ].join("\n\n");
 
-test("{§send-looks-like-operation}: operations on the line after a bare fence are refused, never delivered as replies", async () => {
+test("{§bare-heading-advisory}: operations on the line after a bare fence are prose; the rejection names the fence form and nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse(MISFENCED, 10),
+        makeRawMockResponse(MISFENCED, 10),
         makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -26,29 +27,19 @@ test("{§send-looks-like-operation}: operations on the line after a bare fence a
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
             const { finalStatus, loopId, result } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
-            assert.equal(finalStatus, 200, "the corrected second turn concludes");
+            assert.equal(finalStatus, 200, "the corrected second attempt concludes");
             await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; turn_id: number }>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            const refused = model.slice(0, 3);
-            assert.deepEqual(refused.map(({ op, status_rx }) => ({ op, status_rx })), [
-                { op: "SEND", status_rx: 400 },
-                { op: "SEND", status_rx: 400 },
-                { op: "SEND", status_rx: 400 },
-            ], "each bare fence parsed as a SEND and each was refused");
-            const problems = refused.map((r) => (JSON.parse(r.rx) as { problem: Record<string, unknown> }).problem);
-            for (const problem of problems) {
-                assert.equal(problem.type, "https://problems.plurnk.xyz/engine/dispatcher/send-looks-like-operation");
-                assert.equal(problem.retryable, false);
-                assert.doesNotMatch(String(problem.detail), /meant|intended|wanted|tried/u);
+            assert.deepEqual(model.map(({ op }) => op), ["SEND", "TASK"], "only the corrected attempt produced operations");
+            assert.ok(!model.some((r) => r.op === "EXEC" || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
+            const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: model[0]!.turn_id });
+            assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1], "the misfenced attempt was rejected, the corrected one admitted");
+            const messages = (JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string }>).map(({ message }) => message);
+            assert.ok(messages.some((m) => /no valid Plurnk operation/u.test(m)), "the rejection names the absence");
+            for (const heading of ["sh", "READ", "TASK"]) {
+                assert.ok(messages.some((m) => m.startsWith(`\`${heading}\` on line`) && /outside any fence, so it is prose and nothing ran; an operation opens with ````/u.test(m)), heading);
             }
-            assert.deepEqual(problems.map((p) => p.heading), [
-                "sh <!-- brand presence -->",
-                "READ (https://plurnk.ai/) <!-- retry; 530 was marked retryable after 120s -->",
-                "TASK",
-            ], "the refusal names the heading it saw");
-            assert.equal(problems[1]!.recovery, "An operation goes on the fence line (````READ (https://plurnk.ai/) <!-- retry; 530 was marked retryable after 120s -->); a quoted example goes inside a SEND body.");
-            assert.ok(!model.some((r) => r.op === "EXEC" || r.op === "READ"), "nothing ran: the refusal is not a promotion into an operation");
             assert.equal((result as { content?: string } | undefined)?.content, "the answer", "only the real reply is the loop's response");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
             assert.equal(shells, undefined, "no shell spawned");
@@ -58,7 +49,7 @@ test("{§send-looks-like-operation}: operations on the line after a bare fence a
 
 test("{§send-looks-like-operation}: prose that merely starts with an operation word, and an unregistered name, are ordinary replies", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````\nDone\n````\n\n````\nsh is the default shell here.\n````", 10),
+        makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
         makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

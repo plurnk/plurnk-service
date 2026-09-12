@@ -10,7 +10,15 @@
 > YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services).
 
 > [!IMPORTANT]
-> YOU MUST write the OP on the opening fence line, in fences longer than any fences inside.
+> YOU MUST include the OP on the opening fence line.
+
+> [!NOTE]
+> YOU MAY resolve nested OP conflicts with matching numeric delimiters after fencing:
+>     ````42EDIT (edit-example.md)
+>     ````EDIT (edit-example.md)
+>     An edit example.
+>     ````
+>     ````42
 
 * `[metadata]`: optional one-line JSON array of option objects, e.g. `[{"pattern":"matcher"}]`.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.

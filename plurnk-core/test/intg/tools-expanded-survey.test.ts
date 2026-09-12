@@ -6,7 +6,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import { logEntries, openMigrated, packetSection } from "./_helpers.ts";
+import { logEntries, openMigrated, packetSection, fixtureExecutors } from "./_helpers.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 
 const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
@@ -31,7 +31,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const node = groups.flat().find(({ path }) => path.endsWith("/node.md"));
         const aside = node?.aside;
         assert.ok(typeof aside === "string" && aside.includes("\\n"), "Node's aside includes its inline body, not just an empty invocation");
-        const parsed = PlurnkParser.parseStatements(aside.replaceAll("\\n", "\n"));
+        const parsed = PlurnkParser.parseStatements(aside.replaceAll("\\n", "\n"), { executors: fixtureExecutors(aside.replaceAll("\\n", "\n")) });
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.ok(item?.kind === "statement" && item.statement.op === "EXEC");

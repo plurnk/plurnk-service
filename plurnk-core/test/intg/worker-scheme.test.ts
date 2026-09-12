@@ -25,7 +25,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace } from "./_dsl.ts";
 
@@ -219,7 +219,7 @@ for (const op of ["WORK", "FORK"] as const) {
             const loopId = await insertLoop(db, parentId, 1, "delegate");
             const turnId = await insertTurn(db, loopId, 1, 102);
             const source = PlurnkParser.frame(op, "Inspect the project.");
-            const parsed = PlurnkParser.parseStatements(source);
+            const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
             assert.equal(parsed.items.length, 1);
             const item = parsed.items[0];

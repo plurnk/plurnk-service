@@ -4,7 +4,7 @@ import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
     test(`{§worker-write-scoping}: ${origin} composes operations across explicit Worker namespaces`, async () => {
@@ -17,7 +17,7 @@ for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         let sequence = 0;
         const run = (header: string, body: string | null = null) => {
-            const parsed = PlurnkParser.parseClient(PlurnkParser.frame(header, body));
+            const parsed = PlurnkParser.parseClient(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one operation");
@@ -65,7 +65,7 @@ test("{§entry-owner}: scratch survives its namesake actor and remains workspace
         const turnId = await insertOperationTurn(db, loopId, 1, "client");
         let sequence = 0;
         return { workspaceId, run: (header: string, body: string | null = null) => {
-            const item = PlurnkParser.parseClient(PlurnkParser.frame(header, body)).items[0];
+            const item = PlurnkParser.parseClient(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
             assert.ok(item?.kind === "statement");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, origin: "client", sequence: ++sequence,
                 statement: item.statement as PlurnkStatement });

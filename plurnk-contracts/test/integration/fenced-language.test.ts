@@ -64,16 +64,18 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
     }
 });
 
-test("{§fence-boundary}: same-width code examples close before their surrounding SEND", () => {
+test("{§fence-closer}: a same-width bare fence closes its SEND, and the numeric delimiter keeps it as body", () => {
     for (const newline of ["\n", "\r\n"]) {
-        const source = "```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```";
-        const parsed = PlurnkParser.parse((source + "\n" + task("Done.", "completed")).replaceAll("\n", newline));
-        assert.equal(parsed.unparsedTail, undefined);
-        assert.deepEqual(errors(parsed), []);
-        const statements = ops(parsed);
-        assert.deepEqual(statements.map(({ op }) => op), ["SEND", "TASK"]);
-        assert.equal(statements[0].op === "SEND" ? statements[0].body?.raw : null,
-            ["Code:", "```ts", "const value = 42;", "```", "Verified."].join(newline));
+        const bare = PlurnkParser.parse("```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```\n".replaceAll("\n", newline) + task("Done.", "completed"));
+        assert.equal(bare.unparsedTail, undefined);
+        assert.deepEqual(errors(bare), []);
+        assert.deepEqual(ops(bare).map(({ op }) => op), ["SEND", "TASK"]);
+        const bareSend = ops(bare)[0];
+        assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;".replaceAll("\n", newline), "the first same-width bare fence is the closer");
+        const delimited = PlurnkParser.parse("```42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```42\n".replaceAll("\n", newline) + task("Done.", "completed"));
+        assert.deepEqual(errors(delimited), []);
+        const delimitedSend = ops(delimited)[0];
+        assert.equal(delimitedSend.op === "SEND" ? delimitedSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline));
     }
 });
 

@@ -10,7 +10,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme, fixtureExecutors } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -38,14 +38,14 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`${dsl}`).items
+    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items
         .find((i) => i.kind === "statement" && i.statement.op === "READ");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const found = PlurnkParser.parse(`${dsl}`).items
+    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items
         .find((i) => i.kind === "statement" && i.statement.op === "FIND");
     if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: FindStatement }).statement;

@@ -20,15 +20,7 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import {
-    insertLoop,
-    insertTurn,
-    insertWorker,
-    insertWorkspace,
-    openMigrated,
-    schemeManifest,
-    seedEntryWithChannel,
-} from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, schemeManifest, seedEntryWithChannel } from "./_helpers.ts";
 
 type Actor = {
     readonly workerId: number;

@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
 for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
-    test(`{§fence-boundary}: raw model ${header} preserves examples, original source, and actual task disposition`, async () => {
+    test(`{§numeric-delimiter}: a delimited ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `nested-${crypto.randomUUID()}`);
@@ -23,7 +23,9 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
             ].join("\n");
             const status = header === "SEND" ? "completed" : "in_progress";
             const inventory = [{ content: "Preserve the examples.", status }];
-            const source = `\`\`\`\`${header}\n${body}\n\`\`\`\`\n\n${PlurnkParser.frame("TASK", JSON.stringify(inventory))}`;
+            // The body quotes four-backtick headings, so the block needs the numeric delimiter to hold them.
+            const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame("TASK", JSON.stringify(inventory))}`;
+            assert.match(source, /^`````42/u, "frame chose the delimiter for the quoted headings");
             const provider = new Mock({
                 contextWindow: 100_000,
                 responses: [{ assistant: { content: source, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }],

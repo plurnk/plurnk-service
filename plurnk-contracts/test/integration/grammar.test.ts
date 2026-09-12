@@ -11,6 +11,8 @@ import {
 
 type Op = PlurnkOp;
 
+// {§fence-heading-in-body} — the executors these witnesses invoke, as the host would name them.
+const EXECUTORS = ["sh", "bash", "node", "python3", "gitea", "brave", "search-api", "example", "plurnk", "crm", "c++", "jq"];
 const section = (op: Op, slots = "", body?: string): string => PlurnkParser.frame(op + slots, body ?? null);
 
 const sections = (...values: string[]): string => values.join("\n\n");
@@ -18,10 +20,10 @@ const inventory = (content: string, status: Plan[number]["status"] = "in_progres
     JSON.stringify([{ content, status }]);
 
 const errorsOf = (input: string) =>
-    PlurnkParser.parseStatements(input).items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+    PlurnkParser.parseStatements(input, { executors: EXECUTORS }).items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 
 const oneStatement = (input: string) => {
-    const result = PlurnkParser.parseStatements(input);
+    const result = PlurnkParser.parseStatements(input, { executors: EXECUTORS });
     // hard errors only — a tolerated form may carry a warning-severity advisory ({§heading-inline-body})
     assert.deepEqual(result.items.filter((item) => item.kind === "error" && item.error.severity === "error"), [], input);
     assert.equal(result.unparsedTail, undefined, input);
@@ -338,7 +340,7 @@ test("TASK rejects modifiers without inferring what their content meant", () => 
     );
 
     const all = firstError("```TASK (notes.md) <1>\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```");
-    assert.equal(all.message, "unexpected `(` (`(path)` slot opener); expected `<L>` line marker, operation-heading line ending, matching closing fence, or body content");
+    assert.equal(all.message, "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
 });
 
 // {§bare-statement}
@@ -353,19 +355,20 @@ test("same-lane sections compose and section whitespace is structural", () => {
     assert.equal(result.items.length, 3);
 });
 
-test("an unfinished block establishes an unparsed-tail trust boundary", () => {
+test("{§closer-fallback}: a heading whose target never closes is one bounded error and its siblings survive", () => {
     const result = PlurnkParser.parseStatements(section("EDIT", " (first.md)", "one") + "\n`````EDIT (broken\n" + section("EDIT", " (third.md)", "three"));
     const statements = result.items.filter((item) => item.kind === "statement");
-    assert.equal(statements.length, 1);
-    assert.equal("target" in statements[0].statement ? statements[0].statement.target?.raw : null, "first.md");
-    assert.deepEqual(result.unparsedTail?.from, { line: 4, column: 0 });
-    assert.match(result.unparsedTail?.reason ?? "", /not closed with 5 backticks/);
+    assert.deepEqual(statements.map((item) => "target" in item.statement ? item.statement.target?.raw : null), ["first.md", "third.md"]);
+    assert.equal(result.unparsedTail, undefined);
+    assert.equal(result.items.filter((item) => item.kind === "error" && item.error.severity === "error").length, 1);
 });
-test("only a matching closing fence completes a section", () => {
+test("{§closer-fallback}: only an unfinished heading slot loses the boundary; a missing closer never does", () => {
     assert.equal(PlurnkParser.parseStatements(section("EDIT", " (p)", "body")).unparsedTail, undefined);
-    assert.ok(PlurnkParser.parseStatements("```EDIT (p) {meta").unparsedTail);
     assert.ok(PlurnkParser.parseStatements("```EDIT (path").unparsedTail);
-    assert.ok(PlurnkParser.parseStatements("```EDIT (p)\nbody").unparsedTail);
+    assert.ok(PlurnkParser.parseStatements('```EDIT (p) [{"meta"').unparsedTail);
+    const open = PlurnkParser.parseStatements("```EDIT (p)\nbody");
+    assert.equal(open.unparsedTail, undefined);
+    assert.equal(open.items.some((item) => item.kind === "statement" && item.statement.op === "EDIT" && item.statement.body === "body"), true);
 });
 test("{§turn-shape}: TASK-less programs preserve authored positions without EOF diagnostics", () => {
     for (const { source, line } of [
@@ -445,15 +448,19 @@ test("plurnk is an executor name, not a transparent document wrapper", () => {
     assert.equal(result.op === "EXEC" ? result.executor : null, "plurnk");
     assert.equal("body" in result ? result.body : null, body);
 });
-test("EOF does not close an unfinished executor block", () => {
-    const result = PlurnkParser.parseStatements("`````plurnk\n" + section("TASK", "", inventory("done", "completed")));
-    assert.equal(result.items.some((item) => item.kind === "statement"), false);
-    assert.match(result.unparsedTail?.reason ?? "", /not closed with 5 backticks/);
+test("{§fence-heading-in-body}: a four-backtick TASK inside an undelimited executor block is the turn's TASK", () => {
+    const result = PlurnkParser.parseStatements("`````plurnk\n" + section("TASK", "", inventory("done", "completed")), { executors: EXECUTORS });
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EXEC", "TASK"]);
+    const exec = result.items.find((item) => item.kind === "statement");
+    assert.equal(exec?.kind === "statement" && exec.statement.op === "EXEC" ? exec.statement.body : "?", null, "the executor block ended at the heading with no body");
 });
-test("a longer inner fence cannot terminate a shorter outer block", () => {
-    const result = PlurnkParser.parseStatements("```sh\n````\necho hello");
-    assert.equal(result.items.some((item) => item.kind === "statement"), false);
-    assert.match(result.unparsedTail?.reason ?? "", /not closed with 3 backticks/);
+test("{§fence-closer}: a longer bare fence closes a shorter undelimited block and what follows is prose", () => {
+    const result = PlurnkParser.parseStatements("```sh\n````\necho hello", { executors: EXECUTORS });
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EXEC"]);
+    const exec = result.items.find((item) => item.kind === "statement");
+    assert.equal(exec?.kind === "statement" && exec.statement.op === "EXEC" ? exec.statement.body : "?", null);
 });
 test("{§disposition-anywhere}: an operation after TASK is admitted in authored order with no diagnostic", () => {
     const result = PlurnkParser.parse(sections(
@@ -627,22 +634,27 @@ test("body text on the heading line runs as the body and raises one advisory nam
 });
 
 // {§matcher-option}
-test("a matcher written as a body is ignored with one advisory; the operation still parses and the option form is stated", () => {
-    for (const [op, body] of [["FIND", "/resolveWorkerPrimary/"], ["READ", "resolveWorkerPrimary"], ["KILL", "~topic"]] as const) {
+test("{§bare-matcher-lift}: a sigil matcher after the target lifts into pattern; a bare word stays an ignored body with one advisory", () => {
+    for (const [op, body, dialect] of [["FIND", "/resolveWorkerPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
         const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("TASK", "", inventory("n"))));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, op);
-        assert.equal(errors[0]!.error.severity, "warning", `${op}: an advisory, never an error`);
-        assert.equal(errors[0]!.error.message, `${op} takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].`);
-        assert.doesNotMatch(errors[0]!.error.message, /resolveWorkerPrimary|topic/u, "the advisory does not echo the body");
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], op);
         const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(ops.map(({ op: name }) => name), [op, "TASK"], `${op} keeps its place; nothing is promoted`);
-        assert.equal((ops[0] as { matcher?: unknown }).matcher ?? null, null, "the body never becomes a matcher");
+        assert.deepEqual(ops.map(({ op: name }) => name), [op, "TASK"]);
+        const matcher = (ops[0] as { matcher?: { dialect?: string; raw?: string } | null }).matcher;
+        assert.equal(matcher?.dialect, dialect, `${op}: the sigil names the dialect`);
+        assert.equal(matcher?.raw, body);
     }
-    // The inline-heading form is the same slip and gets the same advisory.
+    const word = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
+    const advisories = word.items.filter((item) => item.kind === "error");
+    assert.equal(advisories.length, 1);
+    assert.equal(advisories[0]!.kind === "error" ? advisories[0]!.error.severity : null, "warning");
+    assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /READ takes no body; the body was ignored/u);
+    assert.deepEqual(word.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
+    // The inline-heading spelling is the grep spelling and lifts the same way.
     const inline = PlurnkParser.parse("\n```FIND (Engine.ts) /resolveWorkerPrimary/\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
-    assert.ok(inline.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /FIND takes no body/u.test(item.error.message)));
-    assert.deepEqual(inline.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["FIND", "TASK"]);
+    assert.deepEqual(inline.items.filter((item) => item.kind === "error"), []);
+    const find = inline.items.find((item) => item.kind === "statement");
+    assert.equal(find?.kind === "statement" ? (find.statement as { matcher?: { raw?: string } | null }).matcher?.raw : null, "/resolveWorkerPrimary/");
 });
 
 test("a malformed regex pattern receives a bounded dialect error that echoes nothing", () => {
@@ -1116,14 +1128,11 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
         assert.equal(error.message, `${runtime} accepts one \`(program)\` path at most once`);
     }
 
-    // {§heading-inline-body} — text after the target on the heading line is the body, and a FIND
-    // body is ignored with an advisory ({§matcher-option}).
+    // {§bare-matcher-lift} — a sigil matcher after the target on the heading line is the pattern.
     const inlineItems = PlurnkParser.parse("```FIND (data.json) $.role\n```").items;
-    const inline = inlineItems.find((item) => item.kind === "error" && /takes no body/u.test(item.error.message));
-    assert.ok(inline && inline.kind === "error", "the inline-body advisory follows the on-the-OP-line advisory");
-    assert.equal(inline.error.severity, "warning");
-    assert.equal(inline.error.message, 'FIND takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].');
-    assert.ok(inlineItems.some((item) => item.kind === "statement" && item.statement.op === "FIND"), "the FIND still parses");
+    assert.deepEqual(inlineItems.filter((item) => item.kind === "error" && item.error.severity === "error"), []);
+    const lifted = inlineItems.find((item) => item.kind === "statement" && item.statement.op === "FIND");
+    assert.equal(lifted?.kind === "statement" ? (lifted.statement as { matcher?: { dialect?: string } | null }).matcher?.dialect : null, "jsonpath");
 
     const target = PlurnkParser.parseStatements("```EDIT (path").unparsedTail;
     assert.match(target?.reason ?? "", /target slot of `EDIT`.*add `\)`/);

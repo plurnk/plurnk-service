@@ -91,12 +91,14 @@ lookStatement : OPEN_LOOK slotModifiers? opAside? statementEnd ;
 
 opAside : ASIDE ;
 
-// Inline and multiline blocks normalize through the same AST path. Every
-// statement retains its matching closing fence. {§empty-section}
+// Inline and multiline blocks normalize through the same AST path. A closer is
+// shown, never demanded: a block also ends at the next heading or at the end of
+// the input. {§empty-section} {§closer-fallback}
 statementEnd
     : SECTION_END
-    | BODY_OPEN body? SECTION_END
-    | body SECTION_END
+    | BODY_OPEN body? SECTION_END?
+    | body SECTION_END?
+    |
     ;
 
 // COPY and MOVE repeat the same resource selection used by single-target OPs.
@@ -116,7 +118,8 @@ selectionModifier
 
 emptyStatementEnd
     : SECTION_END
-    | BODY_OPEN SECTION_END
+    | BODY_OPEN SECTION_END?
+    |
     ;
 
 slotModifiers

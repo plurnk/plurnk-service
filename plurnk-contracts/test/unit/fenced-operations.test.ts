@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser, Validator } from "../../src/index.ts";
 
+const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "toString", "__proto__"];
 const statements = (source: string) => {
-    const result = PlurnkParser.parseStatements(source);
+    const result = PlurnkParser.parseStatements(source, { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     return result.items.map((item) => {
@@ -44,7 +45,7 @@ test("fenced operations: native keywords take precedence over executor names", (
 
 test("fenced operations: inner programs and different-length fences remain exact literal body text", () => {
     const body = '## A heading\n```sh\necho hello\n```\n`````\n### EDIT_ (unchanged<1,2>)\n';
-    const [edit] = statements(`\`\`\`\`EDIT (README.md) <1,-1>\n${body}\n\`\`\`\``);
+    const [edit] = statements(`\`\`\`\`42EDIT (README.md) <1,-1>\n${body}\n\`\`\`\`42`);
     assert.equal(edit.op, "EDIT");
     assert.equal(edit.body, body);
 });
@@ -58,35 +59,43 @@ test("fenced operations: shorter and longer runs stay literal for independently 
                 .flatMap((inner) => ["`".repeat(inner) + "sh", "echo literal", "`".repeat(inner)])
                 .concat(fence + "not-a-closer", "a same-width named example", fence)
                 .join(newline);
-            const [edit] = statements(`${fence}EDIT (notes.md)${newline}${body}${newline}${fence}\t `);
+            const [edit] = statements(`${fence}7EDIT (notes.md)${newline}${body}${newline}${fence}7\t `);
             assert.equal(edit.op, "EDIT");
             assert.equal(edit.body, body, `fence count ${count}`);
         }
     }
 });
 
-test("fenced operations: a longer backtick run cannot supply a closing-fence suffix in any lexer mode", () => {
+test("fenced operations: a longer backtick run closes a heading or body; an unfinished slot still loses the boundary", () => {
     for (const count of [3, 4, 7]) {
         const fence = "`".repeat(count);
         for (const extra of [1, 4]) {
             const longer = "`".repeat(count + extra);
-            for (const header of ["READ (notes.md)", "READ (notes.md", "sh [broken", "EDIT (notes.md) text", "EDIT (notes.md)\ntext\n"]) {
-                const source = `${fence}${header}${longer}`;
-                const result = PlurnkParser.parseStatements(source);
-                assert.deepEqual(result.unparsedTail?.from, { line: 1, column: 0 }, source);
-                assert.deepEqual(result.items.filter((item) => item.kind === "statement"), [], source);
+            const closed = PlurnkParser.parseStatements(`${fence}READ (notes.md)${longer}`, { executors: EXECUTORS });
+            assert.equal(closed.unparsedTail, undefined);
+            assert.deepEqual(closed.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ"]);
+            for (const header of ["READ (notes.md", "sh [broken"]) {
+                // The longer run closes the heading; the unfinished slot is one bounded error.
+                const result = PlurnkParser.parseStatements(`${fence}${header}${longer}`, { executors: EXECUTORS });
+                assert.equal(result.unparsedTail, undefined, header);
+                assert.deepEqual(result.items.filter((item) => item.kind === "statement"), [], header);
+                assert.equal(result.items.filter((item) => item.kind === "error" && item.error.severity === "error").length, 1, header);
             }
+            const inline = PlurnkParser.parseStatements(`${fence}EDIT (notes.md) text${longer}`, { executors: EXECUTORS });
+            assert.equal(inline.items.some((item) => item.kind === "statement" && item.statement.op === "EDIT" && item.statement.body === "text"), true);
+            const below = PlurnkParser.parseStatements(`${fence}EDIT (notes.md)\ntext\n${longer}`, { executors: EXECUTORS });
+            assert.equal(below.items.some((item) => item.kind === "statement" && item.statement.op === "EDIT" && item.statement.body === "text"), true);
         }
     }
 });
 
-test("fenced operations: inline-body recovery preserves a longer run until the exact closing fence", () => {
+test("fenced operations: a longer run after an inline body closes the block and what follows is prose", () => {
     const result = PlurnkParser.parseStatements("```EDIT (notes.md) text````\ncontinued\n```");
     assert.equal(result.unparsedTail, undefined);
     const admitted = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(admitted.length, 1);
     assert.equal(admitted[0].op, "EDIT");
-    assert.equal(admitted[0].body, "text````\ncontinued");
+    assert.equal(admitted[0].body, "text");
     const diagnostics = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0].severity, "warning");
@@ -113,11 +122,12 @@ test("fenced operations: transfer operands and opaque metadata keep their contra
     assert.equal(exec.aside, "list issues");
 });
 
-test("fenced operations: an unfinished block never admits its contents as an executable statement", () => {
+test("fenced operations: an unfinished block keeps a shorter inner executor block as body, never as a statement", () => {
     const result = PlurnkParser.parse('```READ (safe.txt)```\n````EDIT (victim.txt)\n```sh\necho not-an-operation\n```');
-    assert.equal(result.unparsedTail?.from.line, 2);
-    assert.match(result.unparsedTail?.reason ?? "", /4 backticks/);
-    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ"]);
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "EDIT"]);
+    const edit = result.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
+    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\necho not-an-operation");
 });
 
 test("fenced operations: closed malformed blocks do not discard later valid operations", () => {

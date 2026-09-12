@@ -34,6 +34,16 @@ Language and teaching:
   diagnostic code is gone.
 - A body on FIND, READ or KILL is ignored with one `parse_advisory` notice naming the
   `[{"pattern": "…"}]` form; the operation still runs and nothing strikes.
+- The language no longer counts backticks. A block closes at any fence of at least its
+  opener's count (CommonMark), shorter inner fences are body, and a closer is never demanded:
+  a block also ends at the next heading or at the end of the input. A numeric delimiter
+  written after the backticks of both fences (the opener carrying `42EDIT (x)`, the closer
+  carrying `42`) nests equal-count fences. A fence line of four or more backticks naming an
+  operation or a known executor is a heading wherever it stands. Only operations and the
+  workspace's executors open blocks; every other fence tag, and an unlabeled fence, is prose,
+  so the implicit unlabeled-fence SEND is gone. A heading written outside any fence draws one
+  advisory naming the fence form. `FIND (path) /regex/` lifts the bare matcher into
+  `pattern`. `PlurnkParser.parse` takes `{ executors }`.
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.

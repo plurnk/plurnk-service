@@ -80,6 +80,7 @@ const mockSeam = () => {
         runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}), ...(a.policy !== undefined ? { policy: a.policy } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         cancelWorker: async () => {},
+        executorTags: () => ["sh"],
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),

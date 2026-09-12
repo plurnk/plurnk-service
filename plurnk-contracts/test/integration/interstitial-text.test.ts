@@ -36,7 +36,7 @@ test("{§whitespace-contract}: the topology witness ignores a model-written resu
         task,
         "Postscript: finished.",
     ].join("\n");
-    const parsed = PlurnkParser.parse(source);
+    const parsed = PlurnkParser.parse(source, { executors: ["jq"] });
     assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
     const ops = statements(parsed);
@@ -88,13 +88,12 @@ test("{§disposition-anywhere}: ignored prose neither hides an operation after T
     assert.deepEqual(log.items.map((item) => item.kind), ["statement", "statement"]);
 });
 
-test("{§unparsed-tail-boundary}: ignored outside text never repairs an unfinished operation body", () => {
+test("{§closer-fallback}: a shorter, longer, or missing closer all end the block after its literal body", () => {
     for (const closer of ["", "```", "`````"]) {
         const parsed = PlurnkParser.parse("Prelude.\n````EDIT (note.md)\nLiteral body.\n" + closer);
-        assert.deepEqual(parsed.unparsedTail, {
-            from: { line: 2, column: 0 },
-            reason: "EDIT block opened at line 2 but was not closed with 4 backticks",
-        });
-        assert.equal(statements(parsed).length, 0);
+        assert.equal(parsed.unparsedTail, undefined, closer);
+        assert.deepEqual(statements(parsed).map(({ op }) => op), ["EDIT"], closer);
+        const edit = statements(parsed)[0];
+        assert.equal(edit.op === "EDIT" ? edit.body : null, "Literal body.", closer);
     }
 });

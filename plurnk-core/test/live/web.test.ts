@@ -21,7 +21,7 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "../intg/_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, fixtureExecutors } from "../intg/_helpers.ts";
 
 // A stable NON-HTML URL: text/plain uses raw fetch (an HTML target routes through the
 // HTTP scheme's generic acquisition path, which is exercised separately).
@@ -29,7 +29,7 @@ const HTTP_URL = "https://www.google.com/robots.txt";
 
 test("live web: a discovered http:// READ atomically materializes a real URL (no model, no mock)",
     async () => {
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (${HTTP_URL})`, null));
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (${HTTP_URL})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`READ (${HTTP_URL})`, null)) });
         const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "READ") as { statement: PlurnkStatement } | undefined;
         if (item === undefined) throw new Error("parse produced no statement");
         const statement = item.statement;

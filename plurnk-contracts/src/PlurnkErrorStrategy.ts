@@ -17,7 +17,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "outside an operation block",
-        SLOTS: "in operation header - expected `(path)`, `<scope>`, `[metadata]`, a line ending, or the matching closing fence",
+        SLOTS: "in operation header - expected `(path)`, `<scope>`, `[metadata]`, a line ending, or the closing fence",
         TARGET: "in `(path)` slot - expected URI characters or `)`",
         METADATA: "in `[metadata]` modifier - expected single-line JSON option objects or `]`",
         BODY: "in body",
@@ -43,7 +43,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.RBRACKET]: "`]` (`[metadata]` modifier closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.BODY_OPEN]: "operation-heading line ending",
-        [plurnkParser.SECTION_END]: "matching closing fence",
+        [plurnkParser.SECTION_END]: "closing fence",
         [plurnkParser.TARGET_TEXT]: "path content",
         [plurnkParser.METADATA_TEXT]: "scheme metadata content",
         [plurnkParser.BODY_TEXT]: "body content",

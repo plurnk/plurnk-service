@@ -932,9 +932,11 @@ test("{§error-shape}: informed fence recovery explains the boundary, preserves 
     try {
         const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
         const task = PlurnkParser.frame("TASK", '[{"content":"Reported the result.","status":"completed"}]');
+        // {§unparsed-tail-boundary} — an unfinished target slot at the end of the input is the one
+        // boundary loss left; a missing or mismatched closer no longer is ({§closer-fallback}).
         const rejected = [
             PlurnkParser.frame("EDIT (worker:///must-not-exist)", "never write"),
-            `\`\`\`\`SEND\n${body}\n\`\`\`\`\``,
+            "````SEND (worker://reviewer",
         ].join("\n");
         const corrected = [PlurnkParser.frame("SEND", body), task].join("\n");
         const provider = new AttemptWitness({
@@ -950,7 +952,7 @@ test("{§error-shape}: informed fence recovery explains the boundary, preserves 
         const [, failedTurn, recoveryTurn] = result.turnIds;
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: failedTurn });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
-        const message = "SEND block opened at line 4 but was not closed with 4 backticks";
+        const message = "target slot of `SEND` opened at line 4 but never closed - add `)`";
         for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors), [{
             line: 4, column: 0, source: "grammar", message,
         }]);
@@ -1147,8 +1149,9 @@ ${body}
 test("{§invalid-emission-attempts} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const rejected = "````SEND\nExample:\n```ts\nconst value = 42;\n```\nReported.\n`````";
-        const message = "SEND block opened at line 1 but was not closed with 4 backticks";
+        // {§unparsed-tail-boundary} — only an unfinished heading slot at the end of the input rejects.
+        const rejected = "````READ (worker:///unfinished";
+        const message = "target slot of `READ` opened at line 1 but never closed - add `)`";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [

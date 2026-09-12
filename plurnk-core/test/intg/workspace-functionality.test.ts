@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated } from "./_helpers.ts";
+import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 test("{§workspace-environment-sharing}: MCP definitions belong to the workspace without any conversation worker", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {
@@ -50,7 +50,7 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
         alias: "shared", definition: { name: "shared", transport: "http", url: server.url, read: ["echo"] },
     }) as { status: number };
     assert.equal(repeated.status, 200, "a second client's identical configuration reuses the workspace definition");
-    const read = PlurnkParser.parseStatements(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null)).items[0];
+    const read = PlurnkParser.parseStatements(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null), { executors: fixtureExecutors(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null)) }).items[0];
     assert.equal(read?.kind, "statement");
     if (read?.kind !== "statement") throw new Error("Expected one READ");
     for (const workerId of [alice, bob]) {

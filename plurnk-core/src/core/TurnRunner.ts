@@ -1223,7 +1223,7 @@ export default class TurnRunner {
                             // {§provider-interrupted-attempt} — the interrupted response stays durable
                             // as an unaccepted attempt; it is never admitted or replayed.
                             await currentModelCall.observeResponse(error.attempt, failure, nativeInputs);
-                            await classifyProviderAttempt(providerAttemptId, this.#splitResponse(error.attempt), currentEmissionAttempt, false);
+                            await classifyProviderAttempt(providerAttemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []), currentEmissionAttempt, false);
                         } else {
                             await currentModelCall.fail(failure, error.capacity ?? null);
                         }
@@ -1293,7 +1293,7 @@ export default class TurnRunner {
                 turnWireAccounting.push(...completedResponse.accounting);
                 await currentModelCall.observeResponse(completedResponse, null, nativeInputs);
                 railEvidence = railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-                splitResponse = this.#splitResponse(completedResponse);
+                splitResponse = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
                 await classifyProviderAttempt(
                     attemptRow.id,
                     splitResponse,
@@ -1339,7 +1339,7 @@ export default class TurnRunner {
             if (err instanceof ProviderError && err.attempt !== undefined) {
                 response = err.attempt;
                 await providerModelCall.observeResponse(response, failure, nativeInputs);
-                splitResponse = this.#splitResponse(response);
+                splitResponse = this.#splitResponse(response, this.#executors()?.availableRuntimes(workspaceId) ?? []);
                 await classifyProviderAttempt(
                     providerAttemptId,
                     splitResponse,
@@ -1677,7 +1677,7 @@ export default class TurnRunner {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderAttempt): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt, executors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -1687,13 +1687,16 @@ export default class TurnRunner {
         const parseErrors: ParseErrorInfo[] = [];
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
+        const bareHeadings: PlurnkParseError[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
         } else {
             // {§observability-boundary} — the parse is observed without its input;
             // only the resulting statement count is attributable.
             const parsed = observedSync("contracts.parse", {}, (span) => {
-                const result = PlurnkParser.parse(assistant.content);
+                // {§fence-heading-in-body} {§interstitial-fence} — the executors this workspace can run
+                // are heading tags to the parser; anything else tagged is a code block.
+                const result = PlurnkParser.parse(assistant.content, { executors });
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });
@@ -1705,6 +1708,7 @@ export default class TurnRunner {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
                         if (err.severity === "warning") {
+                            if (/outside any fence/u.test(err.message)) bareHeadings.push(err);
                             parseNotices.push({
                                 source: "grammar",
                                 kind: "parse_advisory",
@@ -1735,6 +1739,14 @@ export default class TurnRunner {
             }
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
+        // {§bare-heading-advisory} — an emission whose only operations sit outside fences has
+        // nothing to admit; its advisories become the rejection's own diagnostics, so the informed
+        // recovery packet names the fence form instead of a bare "no valid operation".
+        if (sourceStatementCount === 0) {
+            for (const advisory of bareHeadings) {
+                parseErrors.push({ message: advisory.message, line: advisory.line, column: advisory.column, source: advisory.source });
+            }
+        }
         const dispositions = ops.filter(TurnDisposition.is);
         const trustworthyBoundary = dispositions.length <= 1 && !hasUnparsedTail;
         // {§turn-shape} — bounded operation errors are recoverable and ride with the

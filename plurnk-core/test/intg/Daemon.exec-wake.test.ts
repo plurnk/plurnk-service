@@ -12,7 +12,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { insertWorker, openMigrated } from "./_helpers.ts";
+import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 // These fixtures exercise the lifecycle after a stream genuinely becomes
 // monitored. Optimistic settlement has its own matrix; disable it here so the
@@ -58,7 +58,7 @@ test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream a
             const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0]!.id });
             const resource = await db.test_get_entry_by_id.get<{ pathname: string; scheme: string }>({ id: subscription!.entry_id });
             const peer = await insertWorker(db, workspaceId, null, "controller", "client");
-            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)).items[0];
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)) }).items[0];
             if (parsed?.kind !== "statement") throw new Error("Expected KILL");
             const killed = await daemon.dispatchAsClient({ workspaceId, workerId: peer, statement: parsed.statement });
             assert.equal(killed.status, 200, JSON.stringify(killed));

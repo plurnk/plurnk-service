@@ -14,15 +14,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { copyStmt, urlPath } from "./_dsl.ts";
-import {
-    DEFAULT_MIMETYPES,
-    insertLoop,
-    insertTurn,
-    insertWorker,
-    insertWorkspace,
-    openMigrated,
-    seedEntryWithChannel,
-} from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel, fixtureExecutors } from "./_helpers.ts";
 
 type DataSchemeManifest = Extract<SchemeManifest, { category: "data" }>;
 
@@ -192,7 +184,7 @@ class IndependentChannelScheme implements SchemeHandler {
 }
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -202,7 +194,7 @@ const parseRead = (dsl: string): ReadStatement => {
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`${dsl}`).items.find(
+    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {

@@ -22,7 +22,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme, fixtureExecutors } from "./_helpers.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -31,7 +31,7 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse one op the way production does, so a bare path carries its REAL parsed shape
 // (LocalPath {kind:"local"}) — the exact thing the model emits, not a hand-built UrlPath.
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
-    const found = PlurnkParser.parse(`${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
+    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find((i) => i.kind === "statement" && i.statement.op === op);
     if (found === undefined) throw new Error(`no ${op} parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: T }).statement;
 };

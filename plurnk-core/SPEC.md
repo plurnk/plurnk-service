@@ -1087,7 +1087,7 @@ Three current entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one final TASK. Omitted TASK continues silently under {§turn-shape}, without a synthesized inventory, receipt, diagnostic, warning, or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after TASK are admitted in authored order and the disposition is scheduled last ({§disposition-anywhere}). A failed document boundary, duplicate TASK, boundary-destroying tail, or no source operation rejects the exchange; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one final TASK. Omitted TASK continues silently under {§turn-shape}, without a synthesized inventory, receipt, diagnostic, warning, or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after TASK are admitted in authored order and the disposition is scheduled last ({§disposition-anywhere}). A duplicate TASK, an unfinished heading slot at the end of the input, or no source operation rejects the exchange; no recovered prefix dispatches. A missing closer never rejects ({§closer-fallback}), and an exchange whose only operations stand outside fences carries their {§bare-heading-advisory} diagnostics into its rejection, so the informed recovery names the fence form. Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order at that operation's position under {§op-execution-order}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -2353,10 +2353,13 @@ violations follow the current admission and strike contracts
   untargeted SEND has, as its first non-blank line, a line that parses alone as one clean
   heading naming an operation this worker could perform — a Plurnk operation, or a registered
   executor or MCP service — dispatch refuses it 400 `send-looks-like-operation`, naming the
-  `heading`, and delivers nothing. The parser's {§unlabeled-fence-send} stays silent and exact;
-  this is admission, not promotion: the line is never run as the operation it resembles, and the
-  neutral recovery says only where each intent belongs (an operation on the fence line, a quoted
-  example inside a SEND body). A first line that does not parse alone (prose after the word), a
+  `heading`, and delivers nothing. Since the fences chapter's unlabeled-fence SEND was retired
+  ({§interstitial-fence}), this guards only an explicit `SEND` block; a heading written outside
+  any fence is prose with the parser's own advisory ({§bare-heading-advisory}), and an emission
+  made only of such lines is rejected carrying those advisories ({§emission-admission}). This is
+  admission, not promotion: the line is never run as the operation it resembles, and the neutral
+  recovery says only where each intent belongs (an operation on the fence line, a quoted example
+  inside a delimited SEND body). A first line that does not parse alone (prose after the word), a
   name no registry knows, or an inner fence is an ordinary reply. Origin: the 2026-09-11 dogfood,
   where four operations on the line after their fences were delivered as four 200 replies and the
   loop then parked fifteen minutes on receipts that could never arrive.

@@ -11,11 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
 import type { EntryData } from "../../src/schemes/_entry-crud.ts";
-import {
-    makeSchemeCtx,
-    openMigrated,
-    seedEnvelope,
-} from "./_helpers.ts";
+import { makeSchemeCtx, openMigrated, seedEnvelope } from "./_helpers.ts";
 import {
     copyStmt,
     moveStmt,

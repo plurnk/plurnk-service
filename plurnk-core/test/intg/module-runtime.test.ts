@@ -14,7 +14,7 @@ import { PlurnkParser, type ReadStatement, type UrlPath } from "@plurnk/plurnk-c
 import type { RuntimeSchemeFacet } from "../../src/server/DaemonModule.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import type Exec from "../../src/schemes/Exec.ts";
-import { executionAddress, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { executionAddress, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 // Registration supplies output declarations without starting the runtime.
 const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`, channel = "results"): RegistryEntry => ({
@@ -217,7 +217,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the wor
             (await engine.prepareWorkspaceRuntimes(workspace, "fixture", [{ tag: "myserver", entry: fakeEntry("myserver", "fixture", channel), scheme: facet }]))();
         }
         const parse = (body: string) => {
-            const parsed = PlurnkParser.parseStatements(body);
+            const parsed = PlurnkParser.parseStatements(body, { executors: fixtureExecutors(body) });
             assert.equal(parsed.unparsedTail, undefined);
             assert.equal(parsed.items.length, 1);
             const item = parsed.items[0];
@@ -304,7 +304,7 @@ test("{§runtime-resource-binding}: retained output keeps its actual channel aft
                 },
             },
         } }]);
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("myserver", "fixture")).items[0];
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("myserver", "fixture"), { executors: fixtureExecutors(PlurnkParser.frame("myserver", "fixture")) }).items[0];
         assert.equal(parsed?.kind, "statement");
         if (parsed?.kind !== "statement") throw new Error("Expected an operation");
         const invoked = await engine.dispatch({

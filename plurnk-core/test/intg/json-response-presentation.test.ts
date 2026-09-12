@@ -5,7 +5,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
 
 test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted JSON coordinates", async (t) => {
     const db = await openMigrated();
@@ -24,7 +24,7 @@ test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted 
         : new Response(source, { headers: { "content-type": "application/json", "cache-control": "max-age=600" } }));
     let sequence = 0;
     const dispatch = async (dsl: string) => {
-        const parsed = PlurnkParser.parse(`${dsl}`);
+        const parsed = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) });
         const item = parsed.items.find((item) => item.kind === "statement");
         assert.equal(item?.kind, "statement", dsl);
         if (item?.kind !== "statement") throw new Error("operation did not parse");

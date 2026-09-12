@@ -14,7 +14,7 @@ import type { AnchoredReadResult } from "../../src/content/read-projector.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { editStmt } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES, insertOperationTurn, insertWorker, makeSchemeCtx, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertOperationTurn, insertWorker, makeSchemeCtx, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
 
 const source = "first\nsecond\nthird";
 const runtime = async (t: TestContext) => {
@@ -26,7 +26,7 @@ const runtime = async (t: TestContext) => {
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     let sequence = 0;
     const run = async (program: string, origin: "model" | "_plurnk" = "model") => {
-        const parsed = PlurnkParser.parseClient(program);
+        const parsed = PlurnkParser.parseClient(program, { executors: fixtureExecutors(program) });
         assert.equal(parsed.items.length, 1, program);
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement", program);

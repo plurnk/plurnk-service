@@ -17,7 +17,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import MembersFunctionality from "../../src/server/MembersFunctionality.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_helpers.ts";
+import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, rootWorkspace, fixtureExecutors } from "./_helpers.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const execFileP = promisify(execFile);
@@ -26,7 +26,7 @@ type Definition = { alias: string; origin: string; state: string; detail?: { eff
 type Candidate = { alias?: string; definition: { glob: string }; provenance: { kind: string; source: string }; summary?: string };
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parseStatements(input);
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     const item = parsed.items.find((x) => x.kind === "statement");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;

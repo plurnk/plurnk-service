@@ -150,6 +150,9 @@ export interface ApplicationPort {
         readonly workerId: number;
         readonly statements: PlurnkStatement[];
     }): Promise<OperationResult[]>;
+    // {§fence-heading-in-body} — the executor tags this workspace can run: what a client-tier
+    // parse must know for those tags to open blocks ({§interstitial-fence}).
+    executorTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;
         readonly workerId: number;

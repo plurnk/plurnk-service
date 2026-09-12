@@ -4,10 +4,10 @@ import { PlurnkParser, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
 
 const read = (source: string): ReadStatement => {
-    const parsed = PlurnkParser.parseStatements(source);
+    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
     const item = parsed.items.find(({ kind }) => kind === "statement");

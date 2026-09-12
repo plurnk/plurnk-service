@@ -10,14 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { execStmt, dispositionStmt } from "./_dsl.ts";
-import {
-    DEFAULT_MIMETYPES,
-    insertLoop,
-    insertWorker,
-    insertWorkspace,
-    openMigrated,
-    testExecutors,
-} from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
 import type { PlanEntry } from "@plurnk/plurnk-contracts";
 
 let runtimeSequence = 0;

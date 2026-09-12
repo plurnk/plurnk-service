@@ -4,10 +4,10 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { EditStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
-    const result = PlurnkParser.parseStatements(input);
+    const result = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     for (const item of result.items) {
         if (item.kind === "statement") return item.statement;
     }
@@ -15,7 +15,7 @@ const parseOne = (input: string): PlurnkStatement => {
 };
 
 const parseAll = (input: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parseStatements(input);
+    const result = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     return result.items.filter((i) => i.kind === "statement").map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
 };
 
@@ -180,14 +180,20 @@ for (const [header, body] of [
     });
 }
 
-for (const [outerTicks, innerTicks] of [[4, 3], [3, 4]]) {
-    test(`parser: ${innerTicks}-backtick blocks stay literal in a ${outerTicks}-backtick body`, () => {
-        const outer = "`".repeat(outerTicks!);
-        const inner = "`".repeat(innerTicks!);
-        const body = `quoted section:\n${inner}EDIT (worker:///inner)\nhello\n${inner}`;
-        const stmts = parseAll(`${outer}EDIT (worker:///demo)\n${body}\n${outer}`);
-        assert.equal(stmts.length, 1, "only the matching fence closes the body");
-        assert.equal(stmts[0]?.op, "EDIT");
-        assert.equal((stmts[0] as EditStatement).body, body);
-    });
-}
+test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-closer})", () => {
+    const body = "quoted section:\n```EDIT (worker:///inner)\nhello\n```";
+    const stmts = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
+    assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
+    assert.equal(stmts[0]?.op, "EDIT");
+    assert.equal((stmts[0] as EditStatement).body, body);
+});
+
+test("parser: a 4-backtick heading inside a 3-backtick body is a heading unless the body is delimited ({§fence-heading-in-body} {§numeric-delimiter})", () => {
+    const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
+    const bare = parseAll(`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\``);
+    assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "the inner heading ended the outer block and opened its own");
+    assert.equal((bare[0] as EditStatement).body, "quoted section:");
+    const delimited = parseAll(`\`\`\`42EDIT (worker:///demo)\n${body}\n\`\`\`42`);
+    assert.equal(delimited.length, 1, "the delimiter keeps the quoted heading as body");
+    assert.equal((delimited[0] as EditStatement).body, body);
+});

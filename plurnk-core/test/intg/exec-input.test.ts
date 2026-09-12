@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import Common from "@plurnk/plurnk-execs-common";
-import { executionAddress, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { executionAddress, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
 
 class Dialogue extends BaseExecutor {
     readonly received: Array<{ body: string; metadata: readonly string[] | null }> = [];
@@ -57,7 +57,7 @@ const fixture = async (executor: Executor, workspaceScoped = false) => {
     }
     let sequence = 0;
     const dispatch = (source: string, onDispatch?: (id: number) => void, actor = { workerId, loopId, turnId }) => {
-        const parsed = PlurnkParser.parseStatements(source);
+        const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0]!;
         assert.equal(item.kind, "statement");

@@ -5,10 +5,10 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { FindStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, fixtureExecutors } from "./_helpers.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parseStatements(input);
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     const item = parsed.items.find((x) => x.kind === "statement");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;

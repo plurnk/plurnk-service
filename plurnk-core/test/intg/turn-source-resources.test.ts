@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries, fixtureExecutors } from "./_helpers.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
@@ -36,7 +36,7 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         const initialization = await read("ops:///1/1");
         assert.equal(initialization.status, 200);
         assert.ok("content" in initialization && typeof initialization.content === "string");
-        const parsed = PlurnkParser.parseStatements(initialization.content);
+        const parsed = PlurnkParser.parseStatements(initialization.content, { executors: fixtureExecutors(initialization.content) });
         assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === "READ"
             && item.statement.target?.raw === "ops:///1/1"
             && JSON.stringify(item.statement.lineMarker?.marks) === "[1,-1]"), "the program contains its own ordinary full READ");

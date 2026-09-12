@@ -262,50 +262,83 @@ input
 ```
 `````
 
-§section-boundary Every statement is one executable backtick block. Its header
-occupies one physical line. A fence is a complete run of at least three backticks; its closing
-fence has exactly the same count and no following text except horizontal
-whitespace. Each statement chooses its own count independently. There are no
-operation suffixes or heading levels.
+§section-boundary Every statement is one backtick block. Its header occupies one
+physical line: a fence of at least three backticks, an optional numeric delimiter
+({§numeric-delimiter}), then the name and its slots. A closer is shown by
+convention and never demanded ({§fence-closer}, {§closer-fallback}). There are no
+operation suffixes or heading levels. Nothing in the language is counted by the
+author: every boundary is an anchored line the parser recognizes by its first
+characters (operator, 2026-09-12: counted pairs failed 52 of 363 turns on
+GLM-5.3-flash; anchored tokens failed none).
 
-§fence-boundary Only top-level headers identify executable operations. Inside a
-body, same-width named blocks nest without interpreting their headers or changing
-their bytes. Names use the ordinary header alphabet, independent of registration.
+§fence-closer A block opened with N backticks and delimiter D (its digits, possibly
+none) closes at the first line at column zero made of at least N backticks,
+exactly D, and nothing else but horizontal whitespace. Count follows CommonMark: a
+shorter fence inside the body is body; an equal or longer bare fence closes a bare
+block. The delimiter compares exactly: a bare fence never closes a delimited block,
+and a delimited fence never closes a bare one. The compact one-line form closes on
+its heading line after the modifiers under the same rule.
+
+§numeric-delimiter Digits between the opening backticks and the name (an opener
+carrying `42EDIT (x)`) identify the block, and only a fence carrying `42` closes it. This is how a
+block nests fences of its own width: with a delimiter, a body may carry bare fences
+and headings of the same count. The delimiter is syntax, never AST or persistence
+state; `PlurnkParser.frame` chooses one when the body it wraps holds a heading line
+of four or more backticks ({§statement-rendering}).
+
+§fence-heading-in-body A fence line of four or more backticks, optional digits, and
+a name that is a native operation or a known executor is a heading wherever it
+stands. Inside an open block it ends that block without closing it
+({§closer-fallback}) and opens the next statement. Fence lines of fewer than four
+backticks are headings only outside any block. Known executors are `sh` plus what
+the host names in `ParseOptions.executors`. Consequences: a closer glued to the next
+opener (eight backticks then `READ`) can never swallow the rest of a turn, and a quoted
+heading of four or more backticks inside a body needs the numeric delimiter to stay body.
+
+§closer-fallback A block that ends at a heading or at the end of the input has no
+closer of its own. Its body is cut back to its last bare fence line (any count,
+optional digits), which is the closer the author meant, and one terminating line
+ending goes with it; when no bare fence line exists the body is the whole span less
+one terminating line ending. This carries no diagnostic: a missing closer is never
+an admission failure, and {§unparsed-tail-boundary} is not involved.
+
+§fence-boundary Inside a body, fences are read by count and delimiter, never by
+name, except for the heading rule above:
 
 | Fence encountered inside a body | Meaning |
 |---|---|
-| Same-width fence immediately followed by a name at column zero | Opens a nested literal block; a matching closer at the end of that same line makes it a complete inline example |
-| Same-width standalone fence | Closes the innermost nested block, or the operation when none remains |
-| Different-width fence, indented fence, or other backtick text | Literal content; does not change nesting |
+| Fewer backticks than the block's own | Body |
+| At least the block's backticks, bare, block undelimited | The block's closer |
+| At least the block's backticks carrying the block's delimiter | The block's closer |
+| At least the block's backticks with any other delimiter | Body |
+| Four or more backticks naming a native operation or known executor | A heading: ends the block, opens the next statement |
 
-A bodyless statement may close on its header line after its modifiers. A top-level
-unlabeled fence follows {§unlabeled-fence-send}; a bare same-width fence inside a
-body is a closer, not a nested opener. Deliberately unfinished named snippets or
-unlabeled examples can use a different outer fence width. An unfinished outer block establishes
-{§unparsed-tail-boundary}; earlier complete operations remain independently
-admissible.
+§interstitial-fence A fence line that names no native operation and no known
+executor opens nothing: unlabeled, or tagged like a code block (`ts`, `json`),
+outside a block it is prose and ignored like every other outside line
+({§whitespace-contract}); inside a body it is body. Nothing is promoted into a
+header or recursively parsed. There is no implicit SEND: a reply is an explicit
+`SEND` block. (This replaces the retired unlabeled-fence SEND of the fences
+chapter, whose unlabeled fences turned displaced headings into silent messages.)
 
-§unlabeled-fence-send A top-level opening fence without a name selects an
-unaddressed SEND, without a warning. Its header accepts horizontal whitespace
-and one optional final single-line aside, but no target, scope, or metadata.
-Its aside, body, and required closing fence follow the ordinary SEND rules.
-No body text is promoted into a header or recursively parsed as operations.
-This applies in every parser tier and preserves the opening fence's source
-position and exact authored source. It neither supplies a TASK inventory nor
-changes disposition handling. Named malformed blocks retain their diagnostics.
-The engine may still refuse the SEND it selects at dispatch ({§send-looks-like-operation}).
+§bare-heading-advisory An operation name that opens a line outside any block in the
+shape of a heading (`READ (…)`, `TASK`, …) is prose and runs nothing. The parser
+emits one warning-severity advisory naming the fence form, placed after the parsed
+items, so the loss is never quiet.
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. TASK normalizes an empty body to `[]`
-under {§plan-value}. Closing fences are required even for bodyless operations.
+under {§plan-value}. Closing fences are conventional, never required
+({§closer-fallback}).
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
 EXEC executors from the shared AST, with one blank line between operations.
 Every closing fence occupies its own line, including bodyless operations;
 inline fences remain accepted input, not generated examples.
-It chooses at least four backticks and more than any run within the body,
-preserving body bytes on reparse. Fence length is syntax, not AST or
-persistence state. Core-authored programs use
+It chooses at least four backticks and more than any run within the body, and a
+numeric delimiter whenever the body holds a heading line of four or more backticks
+({§fence-heading-in-body}), preserving body bytes on reparse. Fence length and
+delimiter are syntax, not AST or persistence state. Core-authored programs use
 this serializer and the ordinary admission parser.
 
 | Element | Contract |
@@ -316,7 +349,7 @@ this serializer and the ordinary admission parser.
 | `<scope>` | Operation-specific numeric or anchored coordinates |
 | `<!-- … -->` | Optional final, single-line aside |
 | Body | Literal content between framing newlines |
-| Closing fence | Exactly the opening backtick count |
+| Closing fence | The opening backtick count and delimiter, on its own line |
 
 §slot-order Producers put target, scope, metadata, then aside, separated
 by one ASCII space. Target and scope form one resource selection; COPY/MOVE
@@ -1265,15 +1298,21 @@ diagnostics are:
   diagnostic, with or without flags, without assuming what the extra text was
   intended to represent. Invalid patterns or flags retain the native
   regex failure; no branch silently removes or executes trailing content.
-- §matcher-body-redirect **Matcher text after the target.** Text that follows the
-  target on a FIND, READ or KILL heading, or sits below it, is a body, and those
+- §bare-matcher-lift **The grep spelling.** Text after the target on a FIND, READ or
+  KILL heading that begins with a dialect sigil (`/`, `//`, `$`, `~`, `&`) and fits
+  on one line is the `pattern` option, lifted exactly as `[{"pattern": "…"}]` would
+  be; nothing else can begin a heading slot with those characters, so the lift is
+  unambiguous and silent. `FIND (src/parser.ts) /\bparse\w+\b/` is the same
+  operation as `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`.
+- §matcher-body-redirect **Any other body on those operations.** Text that follows
+  the target without a sigil, or sits below the heading, is a body, and those
   operations take none: the builder keeps the statement without it and raises one
   warning-severity advisory (`READ takes no body; the body was ignored. A matcher
   belongs in the heading as [{"pattern": "…"}]`), delivered like
   {§misplaced-aside-advisory} as a `parse_advisory` notice (operator, 2026-09-12:
   a gentle warning, never an error the model must recover from). Nothing is
-  promoted into a matcher from a body or a slot region; the advisory never echoes
-  the body.
+  promoted into a matcher from a multi-line body; the advisory never echoes the
+  body.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
@@ -1329,8 +1368,9 @@ Independent malformed statements each retain one hard error. Advisories remain
 separate because they do not represent failed admission.
 
 §unparsed-tail-boundary When the lexer cannot determine where a malformed
-statement ends, the result's `unparsedTail` marks the position from which
-parsing gave up. `ParseResult.items` contains only facts that begin strictly
+statement ends — an unfinished `(target` or `[metadata` slot on a heading line —
+the result's `unparsedTail` marks the position from which parsing gave up. A block
+without a closer is not such a case: it ends under {§closer-fallback}. `ParseResult.items` contains only facts that begin strictly
 before that point; recovered contexts and diagnostics at or beyond it are not
 public results. The tail is one separate boundary fact, not an additional
 malformed-statement diagnostic. Consumers must treat anything from that point

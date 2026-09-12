@@ -64,8 +64,9 @@ const exampleLineOf = (
     return value;
 };
 
-const oneExecSection = (source: string, expectedTarget?: string): boolean => {
-    const parsed = PlurnkParser.parseStatements(source);
+// {§fence-heading-in-body} — the runtime's own tag is the known executor while its example parses.
+const oneExecSection = (source: string, runtime: string, expectedTarget?: string): boolean => {
+    const parsed = PlurnkParser.parseStatements(source, { executors: [runtime] });
     const statements = parsed.items.filter((item) => item.kind === "statement");
     const errors = parsed.items.filter((item) => item.kind === "error");
     const statement = statements[0]?.statement;
@@ -158,7 +159,7 @@ export default class RuntimeInvocation {
 
         const exampleTarget = example.target === undefined ? "" : ` (${PathSyntax.escapeTarget(example.target)})`;
         const source = PlurnkParser.frame(`${runtime}${exampleTarget}`, example.body ?? null);
-        if (!oneExecSection(source)) {
+        if (!oneExecSection(source, runtime)) {
             fail("invocation.example must render one valid EXEC section");
         }
 
@@ -188,7 +189,7 @@ export default class RuntimeInvocation {
                 fail(`tool registry.tools[${index}].details must be a string`);
             }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
-            if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), exactTarget)) {
+            if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), runtime, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);

@@ -10,14 +10,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-    openMigrated,
-    insertWorkspace,
-    insertWorker,
-    lookThroughScheme,
-    makeSchemeCtx,
-    makeHandlerCtx,
-} from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, makeHandlerCtx, fixtureExecutors } from "./_helpers.ts";
 
 const readHttp = (
     http: Http,
@@ -58,7 +51,11 @@ const parsedRead = (target: string, metadata: readonly string[] = []): ReadState
 \`\`\`READ (${target})${modifiers}\`\`\`
 \`\`\`TASK
 [{"content":"acquisition pending","status":"in_progress"}]
-\`\`\``);
+\`\`\``, { executors: fixtureExecutors(`
+\`\`\`READ (${target})${modifiers}\`\`\`
+\`\`\`TASK
+[{"content":"acquisition pending","status":"in_progress"}]
+\`\`\``) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );

@@ -7,7 +7,8 @@ test("{§statement-rendering}: canonical frames close on their own line and pres
     const body = "```json\n{\"ok\":true}\n```";
     assert.equal(PlurnkParser.frame("SEND", body), `\`\`\`\`SEND\n${body}\n\`\`\`\``);
     const nested = "````SEND\n" + body + "\n````";
-    assert.equal(PlurnkParser.frame("EDIT (example.md)", nested), "`````EDIT (example.md)\n" + nested + "\n`````");
+    // {§numeric-delimiter} — a body holding a four-backtick heading is framed with a delimiter.
+    assert.equal(PlurnkParser.frame("EDIT (example.md)", nested), "`````42EDIT (example.md)\n" + nested + "\n`````42");
 });
 
 test("{§statement-rendering}: inline input remains legal but is never the canonical rendering", () => {
@@ -54,9 +55,11 @@ test("quoted programs are exact body content without speculative diagnostics", (
     assert.equal(send?.kind === "statement" && send.statement.op === "SEND" ? send.statement.body?.raw : null, body);
 });
 
-test("an unfinished outer body cannot dispatch inner programs", () => {
+test("an unfinished outer body never dispatches a shorter inner program; it is that body", () => {
     const input = "```READ (before.md)```\n````EDIT (notes.md)\n```sh\nrm notes.md\n```";
     const parsed = PlurnkParser.parseStatements(input);
-    assert.deepEqual(parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ"]);
-    assert.match(parsed.unparsedTail?.reason ?? "", /not closed with 4 backticks/);
+    assert.deepEqual(parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "EDIT"]);
+    assert.equal(parsed.unparsedTail, undefined);
+    const edit = parsed.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
+    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\nrm notes.md");
 });

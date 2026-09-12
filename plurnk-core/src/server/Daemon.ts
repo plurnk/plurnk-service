@@ -863,6 +863,10 @@ export default class Daemon implements ApplicationPort {
     // loop, regardless of how many statements op.parse produced. Each statement is one
     // ordinary operation turn; a proposal may keep that turn and loop open across
     // interrupt/resume until settlement.
+    executorTags(workspaceId: number): readonly string[] {
+        return this.#engine.executorTags(workspaceId);
+    }
+
     async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);

@@ -24,14 +24,11 @@ test("SEND messages do not conclude a turn and omitted TASK remains absent", () 
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§unlabeled-fence-send}: a nested TASK's closer cannot finish an unlabeled outer message", () => {
+test("{§interstitial-fence}: an unlabeled fence between operations is prose and the TASK after it is the disposition", () => {
     const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```TASK\n[{\"content\":\"Inspect the note.\",\"status\":\"in_progress\"}]\n```");
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(statements.map(({ op }) => op), ["READ"]);
-    assert.deepEqual(result.unparsedTail, {
-        from: { line: 3, column: 0 },
-        reason: "SEND block opened at line 3 but was not closed with 3 backticks",
-    });
+    assert.deepEqual(statements.map(({ op }) => op), ["READ", "TASK"]);
+    assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 

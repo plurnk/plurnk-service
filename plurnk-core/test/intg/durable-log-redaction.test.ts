@@ -22,13 +22,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import Envelope from "../../src/server/envelope.ts";
-import {
-    DEFAULT_MIMETYPES,
-    insertLoop,
-    insertTurn,
-    insertWorkspace,
-    openMigrated,
-} from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
 import { dispositionStmt } from "./_dsl.ts";
 
 const REDACTED = "__redacted__";
@@ -71,7 +65,7 @@ class CredentialProbe implements SchemeHandler {
 }
 
 const parseClientStatement = (source: string, op: PlurnkOp): PlurnkStatement => {
-    const parsed = PlurnkParser.parseClient(source);
+    const parsed = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
     assert.equal(parsed.unparsedTail, undefined);
     const errors = parsed.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors, []);

@@ -18,7 +18,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { InvalidLoopPolicyError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES, fixtureExecutors } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, dispositionStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
@@ -43,7 +43,10 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         const parsed = PlurnkParser.parseStatements([
             PlurnkParser.frame("WORK", "Review the files."),
             PlurnkParser.frame("FORK", "Review the reasoning."),
-        ].join("\n"));
+        ].join("\n"), { executors: fixtureExecutors([
+            PlurnkParser.frame("WORK", "Review the files."),
+            PlurnkParser.frame("FORK", "Review the reasoning."),
+        ].join("\n")) });
         assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
         const branches = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         const provider = new Mock({
@@ -189,7 +192,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
         assert.ok(turnSource, "initialization stores exact source before its real READ");
         const source = turnSource.content;
-        const sourceFoists = PlurnkParser.parse(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
+        const sourceFoists = PlurnkParser.parse(source, { executors: fixtureExecutors(source) }).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
             .filter(({ op }) => op === "FIND" || op === "READ");
         assert.equal(sourceFoists.length, foists.length, "the exact source accounts for every structural observation");
         for (const [index, { tx }] of foists.entries()) {

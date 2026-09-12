@@ -7,14 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry, { type Executor, type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import {
-    insertLoop,
-    insertTurn,
-    insertWorker,
-    insertWorkspace,
-    openMigrated,
-    makeSchemeCtx,
-} from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, makeSchemeCtx } from "./_helpers.ts";
 
 const statement = (body: string): ExecStatement => ({
     metadata: null,

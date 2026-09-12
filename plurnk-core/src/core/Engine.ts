@@ -365,6 +365,11 @@ export default class Engine {
 
     // Late injection: the executor registry is async-built at daemon start()
     // (discover + probe), after Engine construction.
+    // {§fence-heading-in-body} — the tags the parser must know for a workspace's executors.
+    executorTags(workspaceId?: number): readonly string[] {
+        return this.#executors?.availableRuntimes(workspaceId) ?? [];
+    }
+
     setExecutors(executors: ExecutorRegistry): void {
         this.#executors = executors;
     }

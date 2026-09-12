@@ -11,7 +11,7 @@ import Results from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { dispositionStmt } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors, fixtureExecutors } from "./_helpers.ts";
 
 class FixtureEngine extends Engine {
     documents: Array<{ pathname: string; content: string }> = [];
@@ -159,7 +159,7 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
             .filter((token) => token.type === "code" && token.lang?.split(/[ \t]/)[0] === runtime));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
         const execs = examples.flatMap(({ raw }) => {
-            const parsed = PlurnkParser.parseStatements(raw);
+            const parsed = PlurnkParser.parseStatements(raw, { executors: fixtureExecutors(raw) });
             assert.equal(parsed.unparsedTail, undefined, raw);
             assert.equal(parsed.items.length, 1, raw);
             assert.equal(parsed.items[0]?.kind, "statement", raw);
@@ -219,7 +219,7 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
         const examples = Lexer.lex(doc.content).flatMap((token) =>
             token.type === "code" && token.lang?.startsWith("READ ") ? [token.raw] : []);
         const reads = examples.flatMap((source) => {
-            const parsed = PlurnkParser.parseStatements(source);
+            const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             assert.equal(parsed.unparsedTail, undefined, source);
             assert.equal(parsed.items.length, 1, source);
             assert.equal(parsed.items[0]?.kind, "statement", source);

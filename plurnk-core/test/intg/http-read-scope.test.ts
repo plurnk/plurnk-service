@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Http from "@plurnk/plurnk-schemes-http";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, fixtureExecutors } from "./_helpers.ts";
 
 const HOST = "93.184.216.34";
 
@@ -26,7 +26,7 @@ const htmlPage = (): string => [
 ].join("\n");
 
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`${dsl}`).items.find(
+    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
         (item) => item.kind === "statement" && item.statement.op === "READ",
     );
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
@@ -80,7 +80,7 @@ for (const pretty of [false, true]) {
             });
             let sequence = 0;
             const run = async (header: string, body: string | null = null) => {
-                const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body));
+                const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
                 assert.equal(parsed.items.length, 1);
                 const item = parsed.items[0];
                 assert.ok(item?.kind === "statement");
@@ -237,7 +237,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
         }) as typeof fetch;
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
-            const found = PlurnkParser.parse(`${dsl}`).items.find(
+            const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
                 (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("```READ") ? "READ" : "FIND"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);

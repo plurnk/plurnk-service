@@ -3,8 +3,11 @@ import test from "node:test";
 import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 
+// Fixture executors: every fence tag this file's DSL text writes opens as an executor.
+const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!))];
+
 const statements = (source: string): PlurnkStatement[] => {
-    const parsed = PlurnkParser.parseStatements(source);
+    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     const errors = parsed.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors, []);
     return parsed.items

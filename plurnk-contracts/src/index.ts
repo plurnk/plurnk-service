@@ -40,6 +40,7 @@ export { lifecycleOfLoopStatus, type LoopLifecycle } from "./LoopLifecycle.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
 export { default as PlurnkParser } from "./PlurnkParser.ts";
+export type { ParseOptions } from "./PlurnkParser.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
 export { default as AcpPlanValue } from "./AcpPlanValue.ts";

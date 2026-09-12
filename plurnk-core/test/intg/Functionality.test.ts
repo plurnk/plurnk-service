@@ -18,7 +18,7 @@ import type {
 } from "../../src/server/DaemonModule.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated } from "./_helpers.ts";
+import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
@@ -26,7 +26,7 @@ import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts
 const OWNER = "fx fixture adapter";
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parseStatements(input);
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     const item = parsed.items.find((x) => x.kind === "statement");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;

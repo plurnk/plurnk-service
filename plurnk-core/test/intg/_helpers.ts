@@ -463,3 +463,12 @@ export const awaitExecOutcome = async (
         await new Promise((resolve) => setTimeout(resolve, 10));
     }
 };
+
+// {§fence-heading-in-body} — every executor tag the integration fixtures write, as the daemon would name them.
+export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "node", "python3", "sqlite", "jq", "gitea", "brave", "fixture", "fx", "dialogue", "tools", "question", "members", "skills", "agents", "svc", "mcp", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "viaexec", "tool", "other", "familytool", "calc", "workspacecap", "echo", "cdp", "playwright"];
+
+// Fixtures mint executors freely; every fence tag a DSL text writes is an executor for that text.
+export const fixtureExecutors = (text: string): readonly string[] => [...new Set([
+    ...TEST_EXECUTORS,
+    ...[...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!),
+])];

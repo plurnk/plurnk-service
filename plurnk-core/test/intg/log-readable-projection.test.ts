@@ -8,7 +8,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import Log from "../../src/schemes/Log.ts";
-import { DEFAULT_MIMETYPES, makeSchemeCtx, openMigrated, readLog, seedEntryWithChannel, seedEnvelope } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx, openMigrated, readLog, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
 import { findStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const runtime = async (t: TestContext) => {
@@ -18,7 +18,7 @@ const runtime = async (t: TestContext) => {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     let sequence = 0;
     const dispatch = async (source: string) => {
-        const { items } = PlurnkParser.parseClient(source);
+        const { items } = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
         assert.equal(items.length, 1, source);
         const item = items[0];
         assert.equal(item?.kind, "statement", source);

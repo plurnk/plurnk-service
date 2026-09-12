@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, fixtureExecutors } from "./_helpers.ts";
 
 for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller", "peer"]) for (const scoped of [false, true]) {
     test(`{§worker-write-scoping}: ${operation} to '${destination}' preserves ${scoped ? "scoped" : "whole"} transfer semantics`, async () => {
@@ -16,7 +16,7 @@ for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         let sequence = 0;
         const run = (header: string, body: string | null = null) => {
-            const item = PlurnkParser.parseClient(PlurnkParser.frame(header, body)).items[0];
+            const item = PlurnkParser.parseClient(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected an operation");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "client",

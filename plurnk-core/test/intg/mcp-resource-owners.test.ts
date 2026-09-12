@@ -11,7 +11,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorker, openMigrated } from "./_helpers.ts";
+import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
 import { makeMockResponse, waitForDb } from "./_rpc.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
@@ -23,7 +23,7 @@ const path = resourcePath(uri);
 const task = (status: string) => PlurnkParser.frame("TASK", JSON.stringify([{ content: "Inspect the resource.", status }]));
 
 const statement = (source: string) => {
-    const parsed = PlurnkParser.parseStatements(source);
+    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     assert.equal(parsed.unparsedTail, undefined);
     assert.equal(parsed.items.length, 1);
     const item = parsed.items[0];

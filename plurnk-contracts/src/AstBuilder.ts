@@ -107,8 +107,21 @@ export default class AstBuilder {
     // owner's business ({§scheme-metadata-modifier}): a second block or malformed JSON lifts
     // nothing and reaches the owner's 400 untouched; only a present `pattern` that is not a
     // string, or a malformed matcher, is the language's own positioned diagnostic.
-    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position): { matcher: MatcherBody | null; metadata: SchemeMetadata } {
-        if (metadata === null || metadata.length !== 1) return { matcher: null, metadata };
+    // {§bare-matcher-lift} — a matcher written bare after the target in its grep spelling
+    // (`/re/`, `//xpath`, `$json`, `~fts`, `&graph`) is the `pattern` option; nothing else can
+    // begin a heading slot with those characters, so the lift is unambiguous.
+    static #bareMatcher(raw: string | null): string | null {
+        if (raw === null) return null;
+        const text = raw.trim();
+        if (text === "" || text.includes("\n")) return null;
+        return /^(\/\/|\/|\$|~|&)/u.test(text) ? text : null;
+    }
+
+    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null): { matcher: MatcherBody | null; metadata: SchemeMetadata } {
+        if (metadata === null || metadata.length !== 1) {
+            const bare = AstBuilder.#bareMatcher(raw);
+            return { matcher: bare === null ? null : AstBuilder.#parseMatcherBody(bare, position), metadata };
+        }
         let parsed: unknown;
         try { parsed = JSON.parse(`[${metadata[0]}]`); }
         catch (cause) {
@@ -135,6 +148,7 @@ export default class AstBuilder {
     // strike, over a body the model was taught not to write).
     static #adviseBody(op: string, raw: string | null, position: Position): void {
         if (raw === null || raw.trim() === "") return;
+        if (AstBuilder.#bareMatcher(raw) !== null) return;
         AstBuilder.#advisories.push(new PlurnkParseError(
             position.line, position.column, "parser",
             `${op} takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].`,
@@ -178,7 +192,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         AstBuilder.#adviseBody("FIND", raw, position);
-        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position);
+        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, raw);
         return {
             op: "FIND",
             aside,
@@ -225,7 +239,7 @@ export default class AstBuilder {
             ? slots.target.pathname
             : slots.target?.raw;
         AstBuilder.#adviseBody("READ", raw, position);
-        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position);
+        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, raw);
         // {§read-find-normalization} — a glob target is a survey, so it is a FIND; a matcher on an
         // exact target stays a READ and selects the lines it renders ({§read-pattern}).
         if (targetPath !== undefined && PathSyntax.hasGlob(targetPath)) {
@@ -304,7 +318,7 @@ export default class AstBuilder {
 
     static #buildDisposition(ctx: DispositionStatementContext): DispositionStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const op = (ctx.start?.text ?? "").replace(/^`+/, "");
+        const op = (ctx.start?.text ?? "").replace(/^`+[0-9]*/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
@@ -348,7 +362,7 @@ export default class AstBuilder {
     }
 
     static #executorOf(ctx: ExecStatementContext): string | null {
-        const name = ctx.OPEN_EXEC().getText().replace(/^`+/, "");
+        const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "");
         return name === "EXEC" ? null : name;
     }
 
@@ -371,7 +385,7 @@ export default class AstBuilder {
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         AstBuilder.#adviseBody("KILL", AstBuilder.#bodyTextOf(ctx), position);
-        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position);
+        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, AstBuilder.#bodyTextOf(ctx));
         return {
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx),
@@ -552,8 +566,23 @@ export default class AstBuilder {
         return token === null ? null : token.slice("<!--".length, -"-->".length).trim();
     }
 
+    // {§closer-fallback} — without a real closer (the block ended at the next heading or at the end
+    // of the input) the body is cut back to its last bare fence line, which is the closer the model
+    // meant, and one terminating line ending goes with it. A synthetic SECTION_END carries no backtick.
     static #bodyTextOf(ctx: ParserRuleContext): string | null {
-        return AstBuilder.#findFirst(ctx, BodyContext)?.getText() ?? null;
+        const text = AstBuilder.#findFirst(ctx, BodyContext)?.getText() ?? null;
+        if (text === null) return null;
+        const closer = AstBuilder.#findToken(ctx, plurnkLexer.SECTION_END);
+        if (closer !== null && closer.includes("`")) return text;
+        const lines = text.split("\n");
+        for (let index = lines.length - 1; index >= 0; index -= 1) {
+            if (/^`{3,}[0-9]*[ \t]*\r?$/u.test(lines[index] ?? "")) {
+                const kept = lines.slice(0, index).join("\n");
+                return kept === "" ? null : kept;
+            }
+        }
+        const trimmed = text.replace(/\r?\n$/u, "");
+        return trimmed === "" ? null : trimmed;
     }
 
     static #requiredBodyTextOf(ctx: ParserRuleContext): string {

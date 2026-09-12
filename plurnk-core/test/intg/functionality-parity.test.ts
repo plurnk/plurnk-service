@@ -22,7 +22,7 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
-import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, viableWindow } from "./_helpers.ts";
+import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, viableWindow, fixtureExecutors } from "./_helpers.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { makeMockResponse, waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
@@ -63,7 +63,7 @@ class PacketCapturingMock extends Mock {
 }
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parseStatements(input);
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
     const item = parsed.items.find((x) => x.kind === "statement");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;

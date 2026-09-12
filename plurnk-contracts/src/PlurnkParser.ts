@@ -1,4 +1,4 @@
-import { CharStream, CommonTokenStream, type ParserRuleContext } from "antlr4ng";
+import { CharStream, CommonTokenStream, Token, type ParserRuleContext } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
@@ -34,13 +34,29 @@ const CONTAINER_RULES = new Set<number>([
     plurnkParser.RULE_turn,
 ]);
 
+// {§fence-heading-in-body} — the host names its registered executors so their fence tags end an
+// open block from inside it exactly as the native operations do.
+export interface ParseOptions {
+    readonly executors?: readonly string[];
+}
+
 export default class PlurnkParser {
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
+    // {§statement-rendering} — a wider fence keeps shorter inner fences as body ({§fence-closer});
+    // a body that itself holds a heading line of four or more backticks needs the numeric
+    // delimiter, since such a line ends any block it stands in ({§fence-heading-in-body}).
     static frame(header: string, body: string | null): string {
         const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
         const fence = "`".repeat(Math.max(4, longest + 1));
-        return `${fence}${header}\n${body === null ? "" : `${body}\n`}${fence}`;
+        const nested = body !== null && /^`{4,}[0-9]*[A-Za-z]/mu.test(body);
+        let delimiter = "";
+        if (nested) {
+            let candidate = 42;
+            while (new RegExp(`^\`{3,}${candidate}(?![0-9])`, "mu").test(body)) candidate += 1;
+            delimiter = String(candidate);
+        }
+        return `${fence}${delimiter}${header}\n${body === null ? "" : `${body}\n`}${fence}${delimiter}`;
     }
 
     // {§statement-rendering} — framing is syntax, never persisted AST state.
@@ -85,8 +101,9 @@ export default class PlurnkParser {
     // Parse one model turn. An omitted disposition is silent continuation; a present one
     // may sit anywhere in the turn ({§disposition-anywhere}) and the runtime executes it last.
     // Outside text never becomes a parse item. {§whitespace-contract} {§turn-shape}
-    static parse(input: string): ParseResult {
-        const result = PlurnkParser.#run(input, (parser) => parser.document());
+    static parse(input: string, options: ParseOptions = {}): ParseResult {
+        const result = PlurnkParser.#run(input, (parser) => parser.document(), undefined, options);
+        PlurnkParser.#adviseBareHeadings(input, result.items, options.executors ?? []);
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
         if (result.unparsedTail === undefined) PlurnkParser.#requireSourceOperation(result.items);
@@ -139,24 +156,25 @@ export default class PlurnkParser {
     // Parse a bare sequence of statements - teaching-example collections, single ops,
     // documentation snippets. No turn shape; outside text is ignored in every tier.
     // Not for model output; use `parse` for that.
-    static parseStatements(input: string): ParseResult {
-        return PlurnkParser.#run(input, (parser) => parser.statementSeq());
+    static parseStatements(input: string, options: ParseOptions = {}): ParseResult {
+        return PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, options);
     }
 
     // Parse saved turns in source order; dispositions separate them. Each turn
     // requires a disposition, including when ordinary operations follow it.
-    static parseLog(input: string): ParseResult {
-        return PlurnkParser.#run(input, (parser) => parser.log());
+    static parseLog(input: string, options: ParseOptions = {}): ParseResult {
+        return PlurnkParser.#run(input, (parser) => parser.log(), undefined, options);
     }
 
     // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
     // op LOOK. The topmost subset (one above Script); never used for model output. The
     // protocol entry points reject LOOK, so a client op only parses here.
-    static parseClient(input: string): ParseResult<ClientStatement> {
+    static parseClient(input: string, options: ParseOptions = {}): ParseResult<ClientStatement> {
         return PlurnkParser.#run<ClientStatement>(
             input,
             (parser) => parser.clientStatementSeq(),
             (ctx) => AstBuilder.buildClient(ctx as ClientStatementContext),
+            options,
         );
     }
 
@@ -164,8 +182,10 @@ export default class PlurnkParser {
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
         buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
+        options: ParseOptions = {},
     ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
+        for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
@@ -206,6 +226,16 @@ export default class PlurnkParser {
                 items.push({ kind: "error", error: err });
             }
         }
+        // {§interstitial-fence} — a tagged fence that opened nothing is prose; say so once, as a
+        // warning, so a misspelled executor is never a silent loss.
+        for (const note of lexer.takeUnknownTags()) {
+            items.push({
+                kind: "error",
+                error: new PlurnkParseError(note.line, note.column, "parser",
+                    `\`${note.tag}\` is not an operation or a known executor here; the block was read as prose and nothing ran.`,
+                    "warning"),
+            });
+        }
 
         return { items, unparsedTail };
     }
@@ -215,16 +245,48 @@ export default class PlurnkParser {
     // meaning and can violate AstBuilder's complete-statement precondition. {§unparsed-tail-boundary}
     static #unparsedTail(lexer: plurnkLexer): ParseResult["unparsedTail"] {
         const modeName = lexer.modeNames[lexer.mode] ?? "";
-        if (lexer.mode === 0) return undefined;
+        // {§closer-fallback} — a block still open at the end of the input ended there; only an
+        // unfinished target or metadata slot loses the boundary.
+        if (modeName !== "TARGET" && modeName !== "METADATA") return undefined;
         const openTag = lexer.getOpenTag();
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
-        const heading = lexer.getOpenHeading().replace(/^`+/, "") || openTag;
+        const heading = lexer.getOpenHeading().replace(/^`+[0-9]*/, "") || openTag;
         const reason = modeName === "METADATA"
             ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`]\``
             : modeName === "TARGET"
                 ? `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``
                 : `${openTag} block opened at line ${from.line} but was not closed with ${lexer.getFenceLength()} backticks`;
         return { from, reason };
+    }
+
+    // {§bare-heading-advisory} — an operation heading written outside any fence is prose, and prose
+    // is silent; one warning names the fence form so the loss is never quiet ({§interstitial-fence}).
+    static #adviseBareHeadings(input: string, items: ParseItem<PlurnkStatement>[], executors: readonly string[]): void {
+        const names = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "TASK", ...executors]
+            .map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+        const headingShape = new RegExp(`^(${names.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, "u");
+        const covered = new Set<number>();
+        for (const item of items) {
+            if (item.kind !== "statement") continue;
+            const start = item.statement.position.line;
+            const body = (item.statement as { body?: unknown }).body;
+            const raw = typeof body === "string" ? body : body !== null && typeof body === "object" && "raw" in (body as object) ? String((body as { raw: unknown }).raw ?? "") : "";
+            const span = raw === "" ? 0 : raw.split("\n").length;
+            for (let line = start; line <= start + span + 1; line += 1) covered.add(line);
+        }
+        const lines = input.split("\n");
+        lines.forEach((text, index) => {
+            const line = index + 1;
+            if (covered.has(line)) return;
+            const match = headingShape.exec(text);
+            if (match === null) return;
+            items.push({
+                kind: "error",
+                error: new PlurnkParseError(line, 0, "parser",
+                    `\`${match[1]}\` on line ${line} is outside any fence, so it is prose and nothing ran; an operation opens with \`\`\`\`${match[1]} on the fence line.`,
+                    "warning"),
+            });
+        });
     }
 
     // Walk statement containers in source order; bounded malformed statements become errors.
@@ -252,11 +314,16 @@ export default class PlurnkParser {
                     // One malformed statement projects one hard diagnostic. {§error-shape}
                     for (const error of errorsForStatement) consumedErrors.add(error);
                     items.push({ kind: "error", error: errForStatement });
-                } else if ((c.getChildCount?.() ?? 0) === 0) {
-                    // A phantom statement context synthesized during error recovery (e.g. a
-                    // a required slot the parser opened then failed to fill): zero tokens
-                    // matched, so its opening terminal is null and building it would null-deref.
-                    // The real failure is already recorded; skip the zero-token recovery node.
+                } else if ((c.getChildCount?.() ?? 0) === 0 || c.exception || c.start?.type === Token.EOF) {
+                    // A phantom statement context synthesized during error recovery (a required
+                    // slot the parser opened then failed to fill, or a disposition the log rule
+                    // demanded at the end of the input): nothing real was matched, so building it
+                    // would build the recovery token. Surface the parser's own diagnostic instead.
+                    const pending = errors.find((e) => !consumedErrors.has(e) && !PlurnkParser.#isBefore(e, start));
+                    if (pending) {
+                        consumedErrors.add(pending);
+                        items.push({ kind: "error", error: pending });
+                    }
                 } else {
                     try {
                         items.push({ kind: "statement", statement: buildFn(c) });

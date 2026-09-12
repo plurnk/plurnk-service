@@ -6,7 +6,7 @@ import test from "node:test";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { parsePath, PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { insertWorker } from "./_helpers.ts";
+import { insertWorker, fixtureExecutors } from "./_helpers.ts";
 import { copyStmt, findStmt, readStmt, regex } from "./_dsl.ts";
 
 class CapturingMock extends Mock {
@@ -107,7 +107,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         await writeFile(join(root, ".agents", "skills", "alpha", "references", "guide.md"), "Changed on disk.\n");
         assert.match(String((await dispatch(readStmt(target))).content), /Changed on disk/);
         for (const op of ["```EDIT (skill://alpha/references/guide.md) <1,-1>\nchanged\n```", "```KILL (skill://alpha/references/guide.md)```"]) {
-            const parsed = PlurnkParser.parseStatements(op);
+            const parsed = PlurnkParser.parseStatements(op, { executors: fixtureExecutors(op) });
             const item = parsed.items.find((item) => item.kind === "statement");
             assert.ok(item?.kind === "statement");
             const result = await dispatch(item.statement);

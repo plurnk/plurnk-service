@@ -32,9 +32,10 @@ test("{§plan-value} TASK carries canonical inventory with whole-body plaintext 
 test("{§op-shapes} former workflow labels are not native operations or aliases", () => {
     for (const name of ["PLAN", "NEXT", "WAIT", "DONE", "FAIL"]) {
         assert.equal((PLURNK_OPS as readonly string[]).includes(name), false);
-        const former = parse(name, "[]");
-        assert.equal(former.op, "EXEC");
-        assert.equal(former.op === "EXEC" ? former.executor : null, name);
+        // {§interstitial-fence} — a retired label is not an executor either: the block is prose, with one advisory.
+        const former = PlurnkParser.parseStatements(PlurnkParser.frame(name, "[]"));
+        assert.deepEqual(former.items.filter((item) => item.kind === "statement"), [], name);
+        assert.deepEqual(former.items.map((item) => item.kind === "error" ? item.error.severity : "statement"), ["warning"], name);
     }
     const parsed = PlurnkParser.parse(PlurnkParser.frame("READ (notes.md)", null));
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

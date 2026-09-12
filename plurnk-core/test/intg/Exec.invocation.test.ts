@@ -11,16 +11,7 @@ import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import {
-    insertLoop,
-    insertTurn,
-    insertWorker,
-    insertWorkspace,
-    openMigrated,
-    rootWorkspace,
-    schemeManifest,
-    seedEntryWithChannel,
-} from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, schemeManifest, seedEntryWithChannel } from "./_helpers.ts";
 
 interface Run {
     readonly body: string;

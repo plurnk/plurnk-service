@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import { PlurnkParser, type OperationResult } from "@plurnk/plurnk-contracts";
 import StrikeRail from "./StrikeRail.ts";
 
+// Fixture executors: every fence tag this file's DSL text writes opens as an executor.
+const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!))];
+
 const statements = (source: string) => {
-    const parsed = PlurnkParser.parseStatements(source);
+    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };

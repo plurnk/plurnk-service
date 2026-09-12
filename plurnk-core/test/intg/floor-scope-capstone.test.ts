@@ -8,10 +8,10 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
-import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES, fixtureExecutors } from "./_helpers.ts";
 
 const parse = (dsl: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parseStatements(dsl);
+    const result = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) });
     return result.items
         .filter((i) => i.kind === "statement")
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);

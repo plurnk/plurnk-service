@@ -1,9 +1,10 @@
+import { fixtureExecutors } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 
 export const statement = (source: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parseClient(source);
+    const parsed = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
     assert.equal(parsed.items.length, 1);
     assert.equal(parsed.unparsedTail, undefined);
     const item = parsed.items[0];
