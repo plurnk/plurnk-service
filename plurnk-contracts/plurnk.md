@@ -12,14 +12,6 @@
 > [!IMPORTANT]
 > YOU MUST include the OP and its parameters on the opening fence line.
 
-> [!NOTE]
-> YOU MAY resolve nested OP conflicts with matching numeric delimiters after fencing:
-> ````42EDIT (edit-example.md)
-> ````EDIT (edit-example.md)
-> An edit example.
-> ````
-> ````42
-
 * `[metadata]`: optional one-line JSON array of option objects, e.g. `[{"pattern":"matcher"}]`.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
 
@@ -82,6 +74,12 @@
 
     ````EDIT (books.xml) [{"pattern":"//book[price > 35.00]"}] <!-- an empty body removes each match -->
     ````
+
+    ````42EDIT (edit-example.md) <!-- resolve nested OP conflicts with matching numeric delimiters after fencing -->
+    ````EDIT (edit-example.md)
+    An edit example.
+    ````
+    ````42
 
 > [!TIP]
 > The EDIT body is literal text. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
