@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import { Lexer } from "marked";
 import ToolResources from "./ToolResources.ts";
+import EntryManifest from "../schemes/_entry-manifest.ts";
 import { functionalityRuntimeDecl, FUNCTIONALITY_VERBS } from "../server/FunctionalityManager.ts";
 
 test("{§tools-resource-discovery} renders a general runtime as one self-describing resource", () => {
@@ -128,6 +129,50 @@ test("{§capability-admission} derives an inventory summary from the effective e
     const family = resources[0]?.content ?? "";
     assert.match(family, /^## Summary\n\n````fixture \(echo\)\\n\{"message": string\}\\n````$/m);
     assert.doesNotMatch(family, /fail/);
+});
+
+// {§scheme-catalog-aside} — a family with more tools than the catalog aside can show lists the
+// leading ones, an ellipsis and its count, instead of ending mid-name in the discovery row.
+test("a large family's inventory summary stays within the catalog aside bound and names its tool count", () => {
+    const tool = (name: string) => ({
+        target: name,
+        summary: `${name} does a thing.`,
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" as const },
+            signature: '{"query": string}',
+        },
+    });
+    const targets = Array.from({ length: 24 }, (_, index) => `tool_number_${index + 1}_with_a_long_name`);
+    const resources = ToolResources.render({
+        runtime: "gitea",
+        summary: { from: "tools" },
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        },
+        details: "",
+        registry: { tools: targets.map(tool) },
+    });
+    const family = resources[0]?.content ?? "";
+    const summary = /^## Summary\n\n(.*)$/m.exec(family)?.[1] ?? "";
+    assert.ok([...summary].length <= EntryManifest.SUMMARY_CODE_POINTS, `${[...summary].length} code points`);
+    assert.match(summary, /^````gitea \(tool_number_1_with_a_long_name\|tool_number_2_with_a_long_name\|[^)]*\|…\) <!-- 24 tools -->/);
+    assert.doesNotMatch(summary, /tool_number_24/, "the tail is elided, not cut mid-name");
+
+    const small = ToolResources.render({
+        runtime: "brave",
+        summary: { from: "tools", description: "Brave Search MCP Server" },
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        },
+        details: "",
+        registry: { tools: ["brave_web_search", "brave_news_search"].map(tool) },
+    });
+    assert.match(small[0]?.content ?? "", /^## Summary\n\n````brave \(brave_web_search\|brave_news_search\) <!-- Brave Search MCP Server -->/m, "a family that fits lists every tool");
 });
 
 test("{§tools-resource-discovery} keeps a concrete invocation's multiline body on one summary line", () => {

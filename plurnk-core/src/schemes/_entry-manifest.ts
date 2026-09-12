@@ -45,17 +45,19 @@ type CatalogEntryState = {
     channels: CatalogChannel[];
 };
 
-const CATALOG_SUMMARY_CODE_POINTS = 256;
-
 const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
     const points = [...value];
-    return points.length <= CATALOG_SUMMARY_CODE_POINTS
+    return points.length <= EntryManifest.SUMMARY_CODE_POINTS
         ? value
-        : `${points.slice(0, CATALOG_SUMMARY_CODE_POINTS - 1).join("")}…`;
+        : `${points.slice(0, EntryManifest.SUMMARY_CODE_POINTS - 1).join("")}…`;
 };
 
 export default class EntryManifest {
+    // {§scheme-catalog-aside} — the catalog shows a summary whole up to this many code points;
+    // a producer that wants its summary to survive the listing keeps within it.
+    static readonly SUMMARY_CODE_POINTS = 256;
+
     static toPath(scheme: string, authority: string, pathname: string): string {
         if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));
         return renderAddress({ scheme, authority, pathname });
