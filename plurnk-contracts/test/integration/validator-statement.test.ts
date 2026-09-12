@@ -130,8 +130,9 @@ test("PlurnkStatement: KILL with bare target", () => {
 test("PlurnkStatement: KILL carries its reason as an aside, never a body ({§matcher-option})", () => {
     const r = validateRoundTrip("```KILL (sh:///3/1/2) <!-- runaway; no output for 4 turns -->```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
-    const refused = PlurnkParser.parseStatements("```KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n```");
-    assert.equal(refused.items[0]?.kind, "error");
+    const ignored = PlurnkParser.parseStatements("```KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n```");
+    assert.equal(ignored.items[0]?.kind, "statement", "the KILL still parses without its body");
+    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /KILL takes no body/u.test(item.error.message)));
 });
 
 test("PlurnkStatement: WORK and FORK require prompt bodies", () => {

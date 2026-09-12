@@ -627,18 +627,22 @@ test("body text on the heading line runs as the body and raises one advisory nam
 });
 
 // {§matcher-option}
-test("a matcher written as a body is refused by name; the option form is stated", () => {
+test("a matcher written as a body is ignored with one advisory; the operation still parses and the option form is stated", () => {
     for (const [op, body] of [["FIND", "/resolveWorkerPrimary/"], ["READ", "resolveWorkerPrimary"], ["KILL", "~topic"]] as const) {
         const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("TASK", "", inventory("n"))));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1, op);
-        assert.equal(errors[0]!.error.message, `${op} takes no body; a matcher belongs in the heading as [{"pattern": "…"}].`);
-        assert.doesNotMatch(errors[0]!.error.message, /resolveWorkerPrimary|topic/u, "the diagnostic does not echo the body");
-        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["TASK"], `${op} is dropped; its sibling runs`);
+        assert.equal(errors[0]!.error.severity, "warning", `${op}: an advisory, never an error`);
+        assert.equal(errors[0]!.error.message, `${op} takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].`);
+        assert.doesNotMatch(errors[0]!.error.message, /resolveWorkerPrimary|topic/u, "the advisory does not echo the body");
+        const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.deepEqual(ops.map(({ op: name }) => name), [op, "TASK"], `${op} keeps its place; nothing is promoted`);
+        assert.equal((ops[0] as { matcher?: unknown }).matcher ?? null, null, "the body never becomes a matcher");
     }
-    // The inline-heading form is the same mistake and gets the same answer.
+    // The inline-heading form is the same slip and gets the same advisory.
     const inline = PlurnkParser.parse("\n```FIND (Engine.ts) /resolveWorkerPrimary/\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
-    assert.ok(inline.items.some((item) => item.kind === "error" && item.error.severity === "error" && /FIND takes no body/u.test(item.error.message)));
+    assert.ok(inline.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /FIND takes no body/u.test(item.error.message)));
+    assert.deepEqual(inline.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["FIND", "TASK"]);
 });
 
 test("a malformed regex pattern receives a bounded dialect error that echoes nothing", () => {
@@ -695,12 +699,13 @@ test("a READ or FIND whose body is only an HTML comment takes it as the aside an
             `The ${op} body contained only an HTML comment; it was applied as the operation aside.`,
         );
     }
-    // a heading aside wins; a body with any other content is refused as a body ({§matcher-option})
+    // a heading aside wins; a body with any other content is ignored with an advisory ({§matcher-option})
     const kept = PlurnkParser.parse(sections(section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("TASK", "", inventory("n"))));
     const read = kept.items.find((item) => item.kind === "statement" && item.statement.op === "READ");
     assert.equal(read?.kind === "statement" ? read.statement.aside : null, "heading");
-    const refused = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
-    assert.ok(refused.items.some((item) => item.kind === "error" && /READ takes no body/u.test(item.error.message)), "a body that is not a comment is refused");
+    const ignored = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
+    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /READ takes no body/u.test(item.error.message)), "a body that is not a comment is ignored with an advisory");
+    assert.ok(ignored.items.some((item) => item.kind === "statement" && item.statement.op === "READ"), "the READ still parses");
 });
 
 test("scope spellings normalize to ordered numeric marks", () => {
@@ -1112,9 +1117,13 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
     }
 
     // {§heading-inline-body} — text after the target on the heading line is the body, and a FIND
-    // body is refused by name ({§matcher-option}).
-    const inline = firstError("```FIND (data.json) $.role\n```");
-    assert.equal(inline.message, 'FIND takes no body; a matcher belongs in the heading as [{"pattern": "…"}].');
+    // body is ignored with an advisory ({§matcher-option}).
+    const inlineItems = PlurnkParser.parse("```FIND (data.json) $.role\n```").items;
+    const inline = inlineItems.find((item) => item.kind === "error" && /takes no body/u.test(item.error.message));
+    assert.ok(inline && inline.kind === "error", "the inline-body advisory follows the on-the-OP-line advisory");
+    assert.equal(inline.error.severity, "warning");
+    assert.equal(inline.error.message, 'FIND takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].');
+    assert.ok(inlineItems.some((item) => item.kind === "statement" && item.statement.op === "FIND"), "the FIND still parses");
 
     const target = PlurnkParser.parseStatements("```EDIT (path").unparsedTail;
     assert.match(target?.reason ?? "", /target slot of `EDIT`.*add `\)`/);

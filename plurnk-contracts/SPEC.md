@@ -364,9 +364,11 @@ language lifts only from one block that parses as a JSON array of objects;
 anything else lifts nothing and reaches the owner's `400` untouched. A
 `pattern` that is present but not a string is the language's own positioned
 diagnostic, as is a matcher of a claimed dialect that fails admission. FIND,
-READ, and KILL take no body at all: a body on them is refused by name
-(`FIND takes no body; a matcher belongs in the heading as [{"pattern": "…"}]`),
-never silently read as a matcher; a body that is only an HTML comment is still
+READ, and KILL take no body at all: a body on them is ignored and the operation
+still runs, with one warning-severity advisory naming the option form
+(`FIND takes no body; the body was ignored. A matcher belongs in the heading as
+[{"pattern": "…"}]`); it is never silently read as a matcher, and it never
+strikes ({§matcher-body-redirect}). A body that is only an HTML comment is still
 the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body: with
 a matcher it is the replacement for every selected span ({§edit-pattern}), and
 an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
@@ -1265,10 +1267,13 @@ diagnostics are:
   regex failure; no branch silently removes or executes trailing content.
 - §matcher-body-redirect **Matcher text after the target.** Text that follows the
   target on a FIND, READ or KILL heading, or sits below it, is a body, and those
-  operations take none: the builder refuses it by name (`READ takes no body; a
-  matcher belongs in the heading as [{"pattern": "…"}]`) and drops the statement,
-  its siblings unaffected ({§matcher-option}). Nothing is promoted into a matcher
-  from a body or a slot region.
+  operations take none: the builder keeps the statement without it and raises one
+  warning-severity advisory (`READ takes no body; the body was ignored. A matcher
+  belongs in the heading as [{"pattern": "…"}]`), delivered like
+  {§misplaced-aside-advisory} as a `parse_advisory` notice (operator, 2026-09-12:
+  a gentle warning, never an error the model must recover from). Nothing is
+  promoted into a matcher from a body or a slot region; the advisory never echoes
+  the body.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
@@ -1287,7 +1292,7 @@ diagnostics are:
   with no body, and raises one warning-severity advisory stating that observed
   normalization; the parser places the advisory right after its statement and
   the service delivers it as a `parse_advisory` notice with its position. A body
-  with any other content is refused as the body these operations do not take
+  with any other content is ignored under the same advisory path
   ({§matcher-body-redirect}).
 
 §error-shape The diagnostic class determines how much guidance the parser may

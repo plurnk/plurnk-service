@@ -130,10 +130,16 @@ export default class AstBuilder {
         return { matcher, metadata: others.length === 0 ? null : metadata };
     }
 
-    // {§matcher-option} — a text or log operation's body is never a matcher any more.
-    static #refuseBody(op: string, raw: string | null, position: Position): void {
+    // {§matcher-option} — a text or log operation's body is never a matcher; it is ignored with one
+    // advisory naming the option form, and the operation still runs (operator, 2026-09-12: warn, never
+    // strike, over a body the model was taught not to write).
+    static #adviseBody(op: string, raw: string | null, position: Position): void {
         if (raw === null || raw.trim() === "") return;
-        throw new PlurnkParseError(position.line, position.column, "visitor", `${op} takes no body; a matcher belongs in the heading as [{"pattern": "…"}].`);
+        AstBuilder.#advisories.push(new PlurnkParseError(
+            position.line, position.column, "parser",
+            `${op} takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].`,
+            "warning",
+        ));
     }
 
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -171,7 +177,7 @@ export default class AstBuilder {
     static #buildFindFrom(ctx: FindStatementContext, aside: string | null, raw: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
-        AstBuilder.#refuseBody("FIND", raw, position);
+        AstBuilder.#adviseBody("FIND", raw, position);
         const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position);
         return {
             op: "FIND",
@@ -218,7 +224,7 @@ export default class AstBuilder {
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
             : slots.target?.raw;
-        AstBuilder.#refuseBody("READ", raw, position);
+        AstBuilder.#adviseBody("READ", raw, position);
         const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position);
         // {§read-find-normalization} — a glob target is a survey, so it is a FIND; a matcher on an
         // exact target stays a READ and selects the lines it renders ({§read-pattern}).
@@ -364,7 +370,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        AstBuilder.#refuseBody("KILL", AstBuilder.#bodyTextOf(ctx), position);
+        AstBuilder.#adviseBody("KILL", AstBuilder.#bodyTextOf(ctx), position);
         const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position);
         return {
             op: "KILL",

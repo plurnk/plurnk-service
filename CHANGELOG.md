@@ -32,6 +32,8 @@ Language and teaching:
 - `TASK` may sit anywhere in a turn: operations after it run in authored order and the
   disposition settles last; nothing is dropped and the `operations-after-disposition`
   diagnostic code is gone.
+- A body on FIND, READ or KILL is ignored with one `parse_advisory` notice naming the
+  `[{"pattern": "…"}]` form; the operation still runs and nothing strikes.
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.

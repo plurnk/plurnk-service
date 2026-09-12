@@ -10,7 +10,7 @@
 > YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services).
 
 > [!IMPORTANT]
-> YOU MUST enclose each OP in matching backtick fences longer than any fences inside.
+> YOU MUST write the OP on the opening fence line, in fences longer than any fences inside.
 
 * `[metadata]`: optional one-line JSON array of option objects, e.g. `[{"pattern":"matcher"}]`.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
@@ -41,7 +41,13 @@
 * `completed`, `failed`: resolved, successfully or not.
 
 > [!IMPORTANT]
-> YOU SHOULD include one TASK in every turn, first or last. A turn holding only the final response SEND and a TASK with every task `completed` or `failed` finishes the loop; YOU MAY NOT finish while a task, worker, or stream is unfinished.
+> YOU SHOULD conclude every turn with one TASK operation.
+
+> [!IMPORTANT]
+> A turn holding only the final response SEND and a TASK with every task `completed` or `failed` finishes the loop.
+
+> [!IMPORTANT]
+> YOU MAY NOT finish the loop while a task, worker, or stream is unfinished.
 
 ## Workspace Navigation
 

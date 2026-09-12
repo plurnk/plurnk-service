@@ -78,7 +78,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         }
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
-            return `unrecognized character ${ch} in operation heading - a matcher is body content, below the OP heading`;
+            return `unrecognized character ${ch} in operation heading - a matcher belongs in the heading as [{"pattern": "…"}]`;
         }
         return `unrecognized character ${ch} ${context}`;
     }

@@ -715,7 +715,7 @@ test("a syntactically legal $fC matcher failure is bounded, admitted once, and m
     }
 });
 
-test("#409: a READ carrying pasted READ lines as a body is refused before dispatch, echoing nothing", async () => {
+test("#409: a READ carrying pasted READ lines as a body dispatches without it; one advisory names the option form, echoing nothing", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const renderedRead = [
@@ -753,14 +753,11 @@ ${renderedRead}
             attrs: string;
         }>({ turn_id: failed.turnId });
         assert.equal(
-            rows.some(({ origin, op }) => origin === "model" && (op === "READ" || op === "FIND")),
-            false,
-            "the body-bearing READ never dispatches ({§matcher-option})",
+            rows.some(({ origin, op }) => origin === "model" && op === "READ"),
+            true,
+            "the body-bearing READ dispatches without its body ({§matcher-body-redirect})",
         );
-        const error = rows.find(({ origin, op }) => origin === "model" && op === "error");
-        assert.ok(error);
-        const result = JSON.parse(error.rx) as { problem?: { detail?: string } };
-        assert.equal(result.problem?.detail, 'READ takes no body; a matcher belongs in the heading as [{"pattern": "…"}].');
+        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "error"), false, "an ignored body is an advisory, never an error row");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const turnOps = sources.find((row) => row.turn_id === failed.turnId && row.kind === "ops");
         assert.ok(turnOps, "the admitted source remains durable independently of result rows");
@@ -780,11 +777,11 @@ ${renderedRead}
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(log, /READ takes no body; a matcher belongs in the heading/);
+        assert.match(JSON.stringify(packet), /READ takes no body; the body was ignored/, "the advisory reaches the next packet");
         assert.doesNotMatch(
             log,
             /@et6xE/,
-            "the terse error receipt does not echo the body-suppressed submitted program",
+            "the terse advisory does not echo the body-suppressed submitted program",
         );
     } finally {
         await db.close();
