@@ -79,7 +79,7 @@ test("{§packet-items}: items nothing references are collected; shared items sur
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 5, "definition + two records + two prompts");
         await db.test_delete_worker.run({ id: leaver });
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 5, "deletion cascades the composition, not the items");
-        await db.maintenance_collect_packet_items.run({});
+        await db.retention_collect_packet_items.run({ collect: 1 });
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 3, "the leaver's own record and prompt are collected; the shared definition and record stay");
     } finally { await db.close(); }
 });

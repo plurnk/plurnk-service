@@ -19,3 +19,13 @@ JOIN derivations d ON d.id = f.rowid AND d.state = 'complete'
 JOIN candidates c ON c.deep_hash = d.deep_hash
 WHERE f.content MATCH $query
 ORDER BY bm25(derivation_fts), c.key COLLATE BINARY;
+
+-- INIT: derivations_delete_fts
+-- {§retention-policy}: the full-text row is the derivation's shadow (rowid = derivation id) and
+-- leaves with it on every delete path, so no collector has to remember it.
+DROP TRIGGER IF EXISTS derivations_delete_fts;
+CREATE TRIGGER derivations_delete_fts
+AFTER DELETE ON derivations
+BEGIN
+    DELETE FROM derivation_fts WHERE rowid = OLD.id;
+END;

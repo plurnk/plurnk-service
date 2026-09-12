@@ -779,3 +779,17 @@ VALUES (
 -- PREP: test_bag_of_turn
 -- {§packet-items}: the bag exactly as turns.packet stores it, sections not assembled.
 SELECT packet FROM turns WHERE id = $id;
+
+-- PREP: test_set_channel_content
+-- {§retention-policy} witnesses: rewrite a channel's body so its derivation is superseded.
+UPDATE entry_channels SET content = $content WHERE entry_id = $entry_id AND name = 'body';
+
+-- PREP: test_fts_count
+SELECT COUNT(*) AS n FROM derivation_fts;
+
+-- PREP: test_turn_sections_count
+SELECT COUNT(*) AS n FROM turn_sections WHERE turn_id = $turn_id;
+
+-- PREP: test_complete_turn_at
+-- {§retention-policy} witnesses: backdate a turn's completion.
+UPDATE turns SET completed_at = $completed_at WHERE id = $id;

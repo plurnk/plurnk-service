@@ -22,6 +22,7 @@ import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
+import Retention, { retentionPolicy } from "./Retention.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
@@ -107,6 +108,8 @@ export default class Daemon implements ApplicationPort {
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
+    // {§retention-policy} — the operator's retention, run on a cadence and at shutdown.
+    readonly #retention: Retention;
     readonly #skills: SkillsFunctionality;
     readonly #members: MembersFunctionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
@@ -266,6 +269,7 @@ export default class Daemon implements ApplicationPort {
             loopPacketNotify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "loop/packet", payload);
             } });
+        this.#retention = new Retention(db, retentionPolicy());
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
@@ -1384,6 +1388,7 @@ export default class Daemon implements ApplicationPort {
         if (this.#started) throw new Error("daemon already started");
         this.#started = true;
         this.#drains.start();
+        this.#retention.start((cause) => { console.error("retention pass failed:", cause instanceof Error ? cause.message : String(cause)); });
 
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
@@ -1538,6 +1543,7 @@ export default class Daemon implements ApplicationPort {
         // already between queue claim and activation must observe its own abort,
         // not misclassify orderly shutdown as a capability failure.
         const derivationAbort = new DOMException("daemon stopping", "AbortError");
+        this.#retention.stop();
         this.#engine.cancelAllProposals("daemon_stopping");
         this.#engine.cancelDerivations(derivationAbort);
         this.#drains.beginStop("daemon_stopping");
@@ -1613,8 +1619,8 @@ export default class Daemon implements ApplicationPort {
         const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
         // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
-        // {§packet-items} — items no composition references are collected before the statistics.
-        const collectResult = await settle("packet items collect", () => this.#db.maintenance_collect_packet_items.run({}));
+        // {§retention-policy} — the operator's retention runs once more before the statistics.
+        const collectResult = await settle("retention", () => this.#retention.run());
         const optimizeResult = await settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [
             moduleResult,
