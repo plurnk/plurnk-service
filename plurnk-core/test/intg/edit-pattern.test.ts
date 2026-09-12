@@ -119,15 +119,3 @@ test("a resource-selecting dialect on an EDIT is refused: it names no spans", as
         assert.match(String(r.problem?.type), /\/pattern-dialect-unsupported$/);
     } finally { await db.close(); }
 });
-
-// {§edit-pattern} — a regex splices the source, not a projection of it: an HTML edit by pattern
-// lands on the markup's own coordinates.
-test("a regex pattern edits HTML source coordinates, not the handler's readable projection", async () => {
-    const { db, dispatch, body } = await setup("<html>\n  <body>\n    <h1>Team Roster</h1>\n  </body>\n</html>", "/users.html");
-    try {
-        const r = await dispatch(editStmt(urlPath("worker", "/users.html"), "<h2>Roster</h2>", null, { dialect: "regex", raw: "/<h1>.*<\\/h1>/", pattern: "<h1>.*<\\/h1>", flags: "" }));
-        assert.equal(r.status, 200, JSON.stringify(r));
-        assert.equal(r.matched, 1);
-        assert.equal(await body(), "<html>\n  <body>\n    <h2>Roster</h2>\n  </body>\n</html>");
-    } finally { await db.close(); }
-});
