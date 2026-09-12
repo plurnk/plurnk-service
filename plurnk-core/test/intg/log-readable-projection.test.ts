@@ -160,7 +160,7 @@ test("{§log-readable-projection}: initially suppressed program READ receipts re
     const branch = await Fork.fork(db, ids.workerId, "branch");
     const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
     assert.equal(forkRead.content, "```TASK\n```");
-    const forkRows = await db.fork_get_log_entries.all<{ initial_folded: string; projection_folded: string }>({ worker_id: branch });
+    const forkRows = await db.test_fork_log_entries.all<{ initial_folded: string; projection_folded: string }>({ worker_id: branch });
     assert.equal(forkRows[0]?.initial_folded, "[[1,-1]]");
     assert.equal(forkRows[0]?.projection_folded, "[[2,2]]");
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <1,-1>\`\`\``)).status, 200);

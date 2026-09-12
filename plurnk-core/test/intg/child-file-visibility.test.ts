@@ -107,7 +107,7 @@ test("a child's packet names its parent worker; the root's packet does not", asy
             assert.ok(childTurn, "the child ran a model turn");
             const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);
             assert.ok(modelWorkerId !== undefined);
-            const parent = await db.fork_get_worker.get<{ name: string }>({ id: modelWorkerId });
+            const parent = await db.worker_get.get<{ name: string }>({ id: modelWorkerId });
             assert.ok(parent !== undefined);
             // {§packet-empty-sections} — the parent rides the Worker identity block, never a separate section.
             const identity = JSON.parse(packetSection(childPacket, "worker"));

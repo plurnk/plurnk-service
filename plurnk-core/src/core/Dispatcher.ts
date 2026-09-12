@@ -1184,7 +1184,7 @@ export default class Dispatcher {
 
     // The loop's Active Prompts, oldest first, exactly as the packet lists them.
     async #activePrompts(workerId: number, loopId: number): Promise<string[]> {
-        const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });
+        const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
         if (worker === undefined) throw new Error(`worker ${workerId} does not exist`);
         const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
         const prefix = promptLoopPrefix(loopSeq);
@@ -1198,7 +1198,7 @@ export default class Dispatcher {
 
     async #isOwnPromptAddress(target: ParsedPath | null, workerId: number, loopId: number): Promise<boolean> {
         if (target === null || target.kind !== "url" || target.scheme !== "prompt") return false;
-        const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });
+        const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
         if (worker === undefined || target.hostname !== worker.name) return false;
         const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
         return target.pathname.startsWith(promptLoopPrefix(loopSeq));

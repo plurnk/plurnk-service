@@ -713,3 +713,47 @@ ORDER BY t.id LIMIT 1;
 -- PREP: test_children_of_worker
 -- {§worker-spawn-prompt-resource} tests: every child of a worker, live or concluded, by name.
 SELECT id, name FROM workers WHERE parent_worker_id = $worker_id ORDER BY id;
+
+-- PREP: test_fork_loops
+-- A worker's loops as a fork copies them ({§worker-fork-trigger}).
+SELECT id, sequence, status, prompt, policy, model_route_id, spawn_model_route_id,
+       reasoning_policy, max_turns, terminal_result
+FROM loops WHERE worker_id = $worker_id ORDER BY id;
+
+-- PREP: test_fork_log_entries
+-- A worker's log rows with their current projection, as a fork copies them.
+SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
+       ambient_event_id,
+       scheme, username, password, hostname, port, pathname, query, fragment,
+       lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
+       state, outcome, attrs, initial_folded,
+       projection.active AS projection_active,
+       projection.folded AS projection_folded,
+       projection.output_admission_turn_id,
+       projection.output_withheld
+FROM log_entries
+JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
+WHERE worker_id = $worker_id
+ORDER BY id;
+
+-- PREP: test_fork_scratch_entries
+-- A worker's named scratch with its liveness, as a fork selects it.
+SELECT e.id, e.scheme, e.authority, e.pathname, e.attributes,
+       EXISTS (
+           SELECT 1 FROM entry_channels c
+           WHERE c.entry_id = e.id AND c.state = 'active'
+       ) AS active
+FROM entries e
+JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE w.id = $worker_id AND e.scheme IN ('worker', 'prompt')
+ORDER BY e.id;
+
+-- PREP: test_insert_log_curation_effect
+INSERT INTO log_curation_effects (
+    operation_log_entry_id, target_log_entry_id,
+    active_before, active_after, folded_before, folded_after
+)
+VALUES (
+    $operation_log_entry_id, $target_log_entry_id,
+    $active_before, $active_after, $folded_before, $folded_after
+);

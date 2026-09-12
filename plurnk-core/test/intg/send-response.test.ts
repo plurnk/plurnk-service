@@ -91,7 +91,7 @@ test("{§send-response-receipt}: a delivered reply names the Active Prompts it a
             assert.equal(send?.status_rx, 200);
             const { recipients } = JSON.parse(send!.rx) as { recipients: string[] };
             const workerId = modelWorkerId!;
-            const worker = await db.fork_get_worker.get<{ name: string }>({ id: workerId });
+            const worker = await db.worker_get.get<{ name: string }>({ id: workerId });
             const prefix = promptLoopPrefix(1);
             const prompts = await db.drain_get_all_prompt_bodies_for_loop.all<{ pathname: string }>({ worker_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
             assert.equal(prompts.length, 1, "one prompt in the loop");

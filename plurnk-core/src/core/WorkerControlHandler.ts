@@ -70,7 +70,7 @@ export default class WorkerControlHandler {
                 { worker: error.workerName, retryable: false },
             );
         }
-        const worker = await this.#db.fork_get_worker.get<{ name: string }>({ id: workerId });
+        const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
         if (worker === undefined) throw new Error("worker control: created worker was not found");
         await ctx.injectWorker({
             workspaceId: ctx.workspaceId,
@@ -89,7 +89,7 @@ export default class WorkerControlHandler {
         name: string | undefined,
     ): Promise<number> {
         if (statement.op === "FORK") return Fork.fork(this.#db, ctx.workerId, name);
-        const parent = await this.#db.fork_get_worker.get<{ workspace_id: number; origin: WorkerOrigin }>({ id: ctx.workerId });
+        const parent = await this.#db.worker_get.get<{ workspace_id: number; origin: WorkerOrigin }>({ id: ctx.workerId });
         if (parent?.workspace_id !== ctx.workspaceId) throw new Error("worker control: parent is absent from this workspace");
         const options = { workspaceId: ctx.workspaceId, parentWorkerId: ctx.workerId, origin: parent.origin };
         const row = name === undefined

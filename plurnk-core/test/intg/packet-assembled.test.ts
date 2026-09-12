@@ -35,7 +35,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
             db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
             injectWorker: async (args) => {
                 children.push(args.workerId);
-                const history = await db.fork_get_loops.all({ worker_id: args.workerId });
+                const history = await db.test_fork_loops.all({ worker_id: args.workerId });
                 const childLoopId = await insertLoop(db, args.workerId, history.length + 1, args.prompt);
                 return { action: "enqueued_new_loop", loopId: childLoopId };
             },
@@ -58,7 +58,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         const packet = await getPacket(db, second.turnId);
         const receipts = logEntries(packet).filter(({ path }) => /\/(WORK|FORK)$/.test(String(path)));
         assert.equal(receipts.length, 2);
-        const names = await Promise.all(children.map(async (id) => (await db.fork_get_worker.get<{ name: string }>({ id }))!.name));
+        const names = await Promise.all(children.map(async (id) => (await db.worker_get.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
         const pointers = packetSection(packet, "delegation");
         for (const [index, name] of names.entries()) {

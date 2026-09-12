@@ -576,6 +576,16 @@ terminal history.**
 | §machine-processes-entry-inheritance **Named scratch and evidence** | Workspace | FORK snapshots quiescent `worker`, `prompt`, and `reasoning` entries whose authority is the source Worker name into the child name. Bytes, attributes, and channel results remain exact; embedded addresses are not rewritten. Other resources, including `worker:///_plurnk/**`, stay shared. |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
 
+§worker-fork-trigger **The branch's claimed row is the fork.** `worker_name_claim` with a fork
+snapshot inserts the branch worker with its parent's generation policy, ambient cursor, and event
+boundary, and `workers_fork_copies_history` (an `INIT` process trigger in `fork.sql`,
+{§db-process-triggers}) copies the parent's history inside that INSERT: loops as terminal history,
+turns and their sources, log rows with their attribution and current projection, curation effects,
+and quiescent named scratch with its channels. Ids are remapped by natural key — `(worker, sequence)`
+for a loop, `(loop, sequence)` for a turn, `(turn, sequence)` for a log row — so no id map exists
+outside the database, every copied row passes the same table triggers the original did, and a fork
+either lands whole or not at all. Nothing else runs: `Fork.fork` is the claim.
+
 §machine-processes-worker-is-its-log **A worker's conversational memory of
 the shared world is its log, with no hidden per-worker snapshot beside it.**
 A scoped KILL suppresses canonical body intervals on that worker's rows ({§log-kill-scope});

@@ -14,7 +14,7 @@ const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 // Tables that grow with use and are never pruned ({§db-schema-baseline} has no retention today).
 const GROWING = new Set(["log_entries", "entries", "entry_channels", "subscriptions", "workers", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "client_interactions", "turn_sources"]);
 // Statements that read a whole table on purpose (forensic digest, startup recovery, whole-workspace listings).
-const WHOLE_TABLE_BY_DESIGN = /^(digest_|recovery_|test_|fork_get_|envelope_list_|drain_scheduled_loops$|drain_claim_next_loop$|drain_ready_loop$)/;
+const WHOLE_TABLE_BY_DESIGN = /^(digest_|recovery_|test_|envelope_list_|drain_scheduled_loops$|drain_claim_next_loop$|drain_ready_loop$)/;
 
 const collectStatements = async (): Promise<Array<{ name: string; file: string; sql: string }>> => {
     const out: Array<{ name: string; file: string; sql: string }> = [];

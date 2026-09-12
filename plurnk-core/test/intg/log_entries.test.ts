@@ -406,7 +406,7 @@ test("{§log-history-projection}: curation effects are immutable while their eve
         const ctx = await seedEnvelope(db, "ws-log-curation-effect-history");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
         const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
-        await db.fork_insert_log_curation_effect.run({
+        await db.test_insert_log_curation_effect.run({
             operation_log_entry_id: operationId,
             target_log_entry_id: targetId,
             active_before: 1,
@@ -464,7 +464,7 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
         const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
-        await db.fork_insert_log_curation_effect.run({
+        await db.test_insert_log_curation_effect.run({
             operation_log_entry_id: operationId,
             target_log_entry_id: targetId,
             active_before: 1,

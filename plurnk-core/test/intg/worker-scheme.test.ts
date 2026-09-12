@@ -157,7 +157,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
 
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         if (worker === undefined) throw new Error("spawn must create a worker named 'worker' in the workspace");
-        const meta = await db.fork_get_worker.get<{ workspace_id: number; origin: string }>({ id: worker.id });
+        const meta = await db.worker_get.get<{ workspace_id: number; origin: string }>({ id: worker.id });
         assert.equal(meta?.origin, "model", "spawned worker's actor class follows its parent");
         assert.equal(meta?.workspace_id, workspaceId, "spawned worker shares the workspace (sisters)");
 
@@ -199,7 +199,7 @@ for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
         for (const [index, statement] of [spawnedWorker("fresh", "go"), forkWorker("branch", "go")].entries()) {
             const result = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: index + 1, origin });
             assert.equal(result.status, 200, JSON.stringify(result));
-            const child = await db.fork_get_worker.get<{ origin: string }>({ id: calls[index].workerId });
+            const child = await db.worker_get.get<{ origin: string }>({ id: calls[index].workerId });
             assert.equal(child?.origin, "model", "operation producer is not the child actor class");
             const lineage = await db.test_worker_lineage.get<{ parent_worker_id: number }>({ id: calls[index].workerId });
             assert.equal(lineage?.parent_worker_id, workerId);
@@ -247,7 +247,7 @@ for (const op of ["WORK", "FORK"] as const) {
             for (const result of results) assert.deepEqual(result.attrs, { worker: `worker://${result.body}` });
             assert.equal(calls.length, 3);
             for (const call of calls) {
-                const child = await db.fork_get_worker.get<{ name: string }>({ id: call.workerId });
+                const child = await db.worker_get.get<{ name: string }>({ id: call.workerId });
                 assert.ok(child !== undefined);
                 assert.match(child.name, /^[a-f0-9]{8}$/);
                 const lineage = await db.test_worker_lineage.get<{ parent_worker_id: number }>({ id: call.workerId });
@@ -255,7 +255,7 @@ for (const op of ["WORK", "FORK"] as const) {
                 assert.equal(call.workspaceId, workspaceId);
                 assert.equal(call.prompt, "Inspect the project.");
                 assert.deepEqual(call.freshLoopPolicy, { proposals: "review" });
-                const inherited = await db.fork_get_loops.all({ worker_id: call.workerId });
+                const inherited = await db.test_fork_loops.all({ worker_id: call.workerId });
                 assert.equal(inherited.length, op === "FORK" ? 1 : 0, "FORK copies history; WORK starts fresh");
                 const addressed = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: child.name });
                 assert.equal(addressed?.id, call.workerId, "the reported name addresses the child that actually received the prompt");

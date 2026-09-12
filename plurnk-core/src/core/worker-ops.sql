@@ -29,3 +29,8 @@ LIMIT 1;
 SELECT COUNT(DISTINCT r.id) AS n FROM workers r
 JOIN loops l ON l.worker_id = r.id
 WHERE r.workspace_id = $workspace_id AND l.status IN (100, 102, 202);
+
+-- PREP: worker_get
+SELECT workspace_id, name, origin, parent_worker_id,
+       model_route_id, spawn_model_route_id, reasoning_policy
+FROM workers WHERE id = $id;

@@ -221,7 +221,7 @@ test("{§machine-processes-entry-inheritance} a fork copies only quiescent snaps
         });
 
         const branch = await Fork.fork(db, parent, "branch");
-        const entries = await db.fork_get_scratch_entries.all<{
+        const entries = await db.test_fork_scratch_entries.all<{
             scheme: string;
             pathname: string;
             active: number;
