@@ -3,7 +3,7 @@
 // follow the industry lexicon (OpenAI where the concept is standard); the MODEL-FACING packet
 // follows the training distribution (ops mirror HTTP/shell, display mirrors CSS) and is OUT OF
 // SCOPE for this guard — renaming packet vocabulary to API-speak would trade the resonance the
-// plurnkdown razor is built on for a standard the model never sees at that layer.
+// packet-vocabulary razor is built on for a standard the model never sees at that layer.
 //
 // Scope: src/ non-test + SPEC.md. Test files may QUOTE retired words (retired-list tests,
 // parsing fixtures — quotations are not usages); the shed code names retired knobs inside

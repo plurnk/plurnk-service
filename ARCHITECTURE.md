@@ -32,7 +32,6 @@ flowchart LR
 ```mermaid
 flowchart LR
     contracts["plurnk-contracts<br/>language + shared wire"] --> core
-    packet["plurnk-plurnkdown<br/>packet projection"] --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     skills["plurnk-agent-skills<br/>standard skill resource trees"] --> core
     providers["Provider family"] --> core
@@ -55,7 +54,6 @@ document does not restate their teaching.
 | Contract area                                             | Owner                                                        | Normative source                                                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | Model language, parser, shared types/wire                 | `@plurnk/plurnk-contracts`                                   | [`plurnk.md`](./plurnk-contracts/plurnk.md), [`SPEC.md`](./plurnk-contracts/SPEC.md)                           |
-| Model-packet Markdown projection                          | `@plurnk/plurnk-plurnkdown`                                  | [`plurnk-plurnkdown/SPEC.md`](./plurnk-plurnkdown/SPEC.md)                                                     |
 | Discovery, trust predicate, teaching bytes                | `@plurnk/plurnk-meta`                                        | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md)                                                                 |
 | Agent Skills documents and resource trees                 | `@plurnk/plurnk-agent-skills`                                | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md)                                               |
 | Provider adaptation and model selection                   | `@plurnk/plurnk-providers`, aliases, model-data package      | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md) |
