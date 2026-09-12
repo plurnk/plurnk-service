@@ -4319,6 +4319,40 @@ only after authority crosses the client boundary.
 
 ## §packet Packet shape
 
+§packet-markdown **The packet's Markdown projection, owned here since the packet
+projection package retired (#626).** Core renders the transformed section list
+into one system string and one user string. Within each slot, list order is
+preserved. A nonempty section with a header renders as an H2 immediately followed
+by its JSON object/array content; non-JSON content has one blank line after the
+header. A null header renders only its content. Empty content is omitted, trailing
+newlines are removed from each section, and rendered sections are separated by one
+blank line. Any node whose content is empty is absent from the wire, except the
+child-orientation sections, which state emptiness as `[]` ({§packet-empty-sections}).
+Core owns the order at {§packet-cache-monotone}; a trusted plugin may transform the
+section list before rendering ({§packet-plugin-transform}). The projection preserves
+the evidence section owners supply: paths, URI fragments, log coordinates, scopes and
+coordinate-prefixed body lines remain usable without translation; curation and log-row
+measurements stay attached to what they measure ({§tokenomics-agnostic-ruler});
+statuses, Problems, body visibility and bodyless rows render as produced, never
+upgraded or suppressed; operation examples remain typed fences and log records keep
+their boundaries ({§log-wire-format}).
+
+| Default section | Slot   | Wire form                                                                                     | Semantic owner                  |
+| --------------- | ------ | --------------------------------------------------------------------------------------------- | ------------------------------- |
+| `definition`    | system | Bare `plurnk.md`; no wrapper heading                                                          | {§definition-table-projection}  |
+| `system-policy` | system | Authored Markdown                                                                             | {§policy-sections}              |
+| `inject`        | system | Authored Markdown                                                                             | {§packet-inject}                |
+| `worker`        | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `date`, `timezone` | {§packet-cache-monotone}        |
+| `log`           | user   | Markdown H3 records with JSON metadata                                                        | {§log-wire-format}              |
+| `turn`          | user   | JSON `{loop, turn}` coordinate of this response                                               | {§packet-current-turn}          |
+| `delegation`    | user   | JSON `{workers, streams}` status/path pointers, each `[]` when empty                          | {§child-orientation}            |
+| `errors`        | user   | JSON status/log-path pointers                                                                 | {§operation-results}            |
+| `notices`       | user   | Terse observation bullets                                                                     | {§notice-drain-on-read}         |
+| `git`           | user   | Working-tree state in a NOTE blockquote                                                       | {§packet-cache-monotone}        |
+| `budget`        | user   | JSON curation usage and ceiling; pressure guidance when needed                                | {§tokenomics-neutral-telemetry} |
+| `prompt`        | user   | JSON `prompt://<worker>/<loop>/<N>` pointers                                                  | {§prompt-entry}                 |
+| `recap`         | user   | Optional authored operational recap                                                           | {§recap}                        |
+
 §packet-stored-shape **A model packet preserves the rendered request and, only
 when an emission is admitted, its response.** Core assembles and measures the
 request under {§packet-assembly}. An admitted response extends that same record
