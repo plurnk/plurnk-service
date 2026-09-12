@@ -1,17 +1,5 @@
 -- Dispatcher: the pending set a disposition is judged against, and the turn's own failures.
 
--- PREP: engine_worker_has_live_child
--- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
--- like an open stream. DONE while one exists is premature completion ({§send-premature-terminate}).
--- Live = a child with ANY unresolved loop (100/102/202) — the SAME definition
--- engine_child_workers_live uses for the Delegation workers orientation, so the 409 gate and the section the model
--- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
--- ({§child-orientation}). Administrative loops may interleave with model loops, so newest-loop
--- inference is not a valid worker-liveness test.
-SELECT 1 AS live FROM workers r
-JOIN loops l ON l.worker_id = r.id
-WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202) LIMIT 1;
-
 -- PREP: engine_log_selection_high_water
 -- An admitted program resolves log curation against the event journal as it
 -- existed on entry. Later statements may observe earlier effects, but a broad

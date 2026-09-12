@@ -793,3 +793,15 @@ SELECT COUNT(*) AS n FROM turn_sections WHERE turn_id = $turn_id;
 -- PREP: test_complete_turn_at
 -- {§retention-policy} witnesses: backdate a turn's completion.
 UPDATE turns SET completed_at = $completed_at WHERE id = $id;
+
+-- PREP: test_open_subscription_detached
+-- {§worker-obligations} witnesses: an open stream, detached or not, on an entry of the worker's.
+INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, detached)
+VALUES ($worker_id, $entry_id, 'sh', 'sh: sleep', $detached)
+RETURNING id;
+
+-- PREP: test_close_subscription
+-- {§worker-obligations} witnesses: settle a stream with a plain success.
+UPDATE subscriptions
+SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), close_status = 200, close_result = '{"status":200}', channel_results = '{}'
+WHERE id = $id;

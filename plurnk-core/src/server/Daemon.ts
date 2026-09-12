@@ -339,8 +339,6 @@ export default class Daemon implements ApplicationPort {
             loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
-            // {§exec-timeout} — a `<-1>` spawn is nobody's obligation.
-            isDetachedSubscription: (subscriptionId) => (this.#schemes.get("exec") as { isDetachedSpawn?: (id: number) => boolean } | undefined)?.isDetachedSpawn?.(subscriptionId) === true,
             readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"),
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);

@@ -78,7 +78,8 @@ test("the completion gate and child orientation use the same any-unresolved-loop
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId);
-        const gate = async (): Promise<boolean> => (await db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: parent })) !== undefined;
+        // {§worker-obligations} — the gate reads the same view the wait matrix and the drain do.
+        const gate = async (): Promise<boolean> => (await db.worker_live_obligations.get<{ workers: 0 | 1 }>({ worker_id: parent }))?.workers === 1;
         const orientCount = async (): Promise<number> => (await db.engine_child_workers_live.all<{ name: string }>({ worker_id: parent })).length;
 
         // No children → both clear.

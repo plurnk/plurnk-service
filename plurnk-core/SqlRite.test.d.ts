@@ -145,7 +145,6 @@ export class SqlRiteSync {
 	digest_channel_disposition_counts: SqlRiteSyncPreparedStatements;
 	digest_channel_dispositions: SqlRiteSyncPreparedStatements;
 	digest_derivation_state: SqlRiteSyncPreparedStatements;
-	engine_worker_has_live_child: SqlRiteSyncPreparedStatements;
 	engine_log_selection_high_water: SqlRiteSyncPreparedStatements;
 	engine_turn_packet_boundaries: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
@@ -297,6 +296,7 @@ export class SqlRiteSync {
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
 	worker_count_active: SqlRiteSyncPreparedStatements;
 	worker_get: SqlRiteSyncPreparedStatements;
+	worker_live_obligations: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
 	workspace_module_state_get: SqlRiteSyncPreparedStatements;
@@ -459,6 +459,8 @@ export class SqlRiteSync {
 	test_fts_count: SqlRiteSyncPreparedStatements;
 	test_turn_sections_count: SqlRiteSyncPreparedStatements;
 	test_complete_turn_at: SqlRiteSyncPreparedStatements;
+	test_open_subscription_detached: SqlRiteSyncPreparedStatements;
+	test_close_subscription: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -678,7 +680,6 @@ export default class SqlRite {
 	digest_channel_disposition_counts: SqlRitePreparedStatements;
 	digest_channel_dispositions: SqlRitePreparedStatements;
 	digest_derivation_state: SqlRitePreparedStatements;
-	engine_worker_has_live_child: SqlRitePreparedStatements;
 	engine_log_selection_high_water: SqlRitePreparedStatements;
 	engine_turn_packet_boundaries: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
@@ -830,6 +831,7 @@ export default class SqlRite {
 	worker_deliverable_by_name: SqlRitePreparedStatements;
 	worker_count_active: SqlRitePreparedStatements;
 	worker_get: SqlRitePreparedStatements;
+	worker_live_obligations: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
 	workspace_module_state_get: SqlRitePreparedStatements;
@@ -992,6 +994,8 @@ export default class SqlRite {
 	test_fts_count: SqlRitePreparedStatements;
 	test_turn_sections_count: SqlRitePreparedStatements;
 	test_complete_turn_at: SqlRitePreparedStatements;
+	test_open_subscription_detached: SqlRitePreparedStatements;
+	test_close_subscription: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;

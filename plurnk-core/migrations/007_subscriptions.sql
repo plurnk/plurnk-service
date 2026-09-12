@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     -- EXEC `<0>` — turn-scoped: the stream is reaped at the worker's next pre-turn so it never survives
     -- into the subsequent turn; its terminal output surfaces initially visible like any conclusion. {§exec-poll}
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
+    -- {§worker-obligations}: a `<-1>` spawn outlives its loop and is nobody's obligation ({§exec-timeout}).
+    detached     INTEGER NOT NULL DEFAULT 0 CHECK (detached IN (0, 1)),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
     close_result TEXT             CHECK (close_result IS NULL OR json_valid(close_result)),
@@ -142,6 +144,22 @@ END;
 -- are curated model context and therefore cannot own this lifecycle fact.
 -- The row survives KILLing any generated observation and disappears only with
 -- its subscription. {§exec-stream}
+-- {§worker-obligations}: what a worker still holds — an open stream that is not detached, or a
+-- child with an unresolved loop (the same liveness the Delegation section shows, so the 409 gate
+-- and the section the model reads never disagree, {§child-orientation}). The one definition the
+-- completion gate, the wait matrix, and the drain's wake settlement all read.
+CREATE VIEW IF NOT EXISTS worker_obligations AS
+SELECT w.id AS worker_id,
+       EXISTS (
+           SELECT 1 FROM subscriptions s
+           WHERE s.worker_id = w.id AND s.closed_at IS NULL AND s.detached = 0
+       ) AS streams,
+       EXISTS (
+           SELECT 1 FROM workers c JOIN loops l ON l.worker_id = c.id
+           WHERE c.parent_worker_id = w.id AND l.status IN (100, 102, 202)
+       ) AS workers
+FROM workers w;
+
 CREATE TABLE IF NOT EXISTS subscription_publications (
     id                 INTEGER NOT NULL PRIMARY KEY,
     version            INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),

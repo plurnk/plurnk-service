@@ -137,7 +137,6 @@ export class SqlRiteSync {
 	digest_channel_disposition_counts: SqlRiteSyncPreparedStatements;
 	digest_channel_dispositions: SqlRiteSyncPreparedStatements;
 	digest_derivation_state: SqlRiteSyncPreparedStatements;
-	engine_worker_has_live_child: SqlRiteSyncPreparedStatements;
 	engine_log_selection_high_water: SqlRiteSyncPreparedStatements;
 	engine_turn_packet_boundaries: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
@@ -289,6 +288,7 @@ export class SqlRiteSync {
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
 	worker_count_active: SqlRiteSyncPreparedStatements;
 	worker_get: SqlRiteSyncPreparedStatements;
+	worker_live_obligations: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
 	workspace_module_state_get: SqlRiteSyncPreparedStatements;
@@ -388,7 +388,6 @@ export default class SqlRite {
 	digest_channel_disposition_counts: SqlRitePreparedStatements;
 	digest_channel_dispositions: SqlRitePreparedStatements;
 	digest_derivation_state: SqlRitePreparedStatements;
-	engine_worker_has_live_child: SqlRitePreparedStatements;
 	engine_log_selection_high_water: SqlRitePreparedStatements;
 	engine_turn_packet_boundaries: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
@@ -540,6 +539,7 @@ export default class SqlRite {
 	worker_deliverable_by_name: SqlRitePreparedStatements;
 	worker_count_active: SqlRitePreparedStatements;
 	worker_get: SqlRitePreparedStatements;
+	worker_live_obligations: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
 	workspace_module_state_get: SqlRitePreparedStatements;

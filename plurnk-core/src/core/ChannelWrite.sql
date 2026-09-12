@@ -36,8 +36,8 @@ WHERE entry_id = $entry_id AND name = $channel;
 -- PREP: open_subscription
 -- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is
 -- a normal, non-turn-scoped subscription — the column is NOT NULL, so a missing bind would error.
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, poll_seconds, turn_scoped, published_channel, source)
-VALUES ($worker_id, $entry_id, $scheme, $handle, $poll_seconds, COALESCE($turn_scoped, 0), $published_channel, $source)
+INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, poll_seconds, turn_scoped, detached, published_channel, source)
+VALUES ($worker_id, $entry_id, $scheme, $handle, $poll_seconds, COALESCE($turn_scoped, 0), COALESCE($detached, 0), $published_channel, $source)
 RETURNING id;
 
 -- PREP: close_subscription

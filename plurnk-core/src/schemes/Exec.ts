@@ -152,12 +152,6 @@ export default class Exec extends CoreSchemeAdapterBase {
         return false;
     }
 
-    // {§exec-timeout} — a `<-1>` spawn is nobody's obligation: terminals, joins, and optimistic
-    // settlement look past it.
-    isDetachedSpawn(subscriptionId: number): boolean {
-        return this.#activeAborts.get(subscriptionId)?.detached === true;
-    }
-
     // {§exec-timeout} — a `<-1>` spawn ends with the daemon: nothing else ever aborts it, so the
     // stop sequence reaps it (bounded housekeeping) before the streaming drain barrier.
     abortDetached(): void {
@@ -694,6 +688,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // {§exec-poll} — hibernation wake cadence
             turnScoped: attrs.turnScoped === true, // {§exec-poll} — `<0>` reaped at the next pre-turn
+            detached: attrs.detached === true, // {§worker-obligations} — `<-1>` is nobody's obligation
             publishedChannel: resolved.executor.publishedChannel,
             source: attrs.coordinate === undefined ? undefined
                 : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,

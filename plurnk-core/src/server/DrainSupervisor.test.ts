@@ -33,7 +33,6 @@ const supervisor = (
     loopAttributions: async () => [],
     cancelSubscription: async () => false,
     hasActiveStreams: () => false,
-    isDetachedSubscription: () => false,
     readSystemPrompt,
     emitLogEntry: async () => {},
     emit,

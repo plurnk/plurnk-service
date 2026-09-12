@@ -116,7 +116,6 @@ export default class DrainSupervisor {
     readonly #loopAttributions: (loopId: number) => Promise<string[]>;
     readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
     readonly #hasActiveStreams: (workerId: number) => boolean;
-    readonly #isDetachedSubscription: (subscriptionId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
     readonly #emit: EmitEvent;
@@ -149,7 +148,6 @@ export default class DrainSupervisor {
         loopAttributions,
         cancelSubscription,
         hasActiveStreams,
-        isDetachedSubscription,
         readSystemPrompt,
         emitLogEntry,
         emit,
@@ -164,7 +162,6 @@ export default class DrainSupervisor {
         loopAttributions: (loopId: number) => Promise<string[]>;
         cancelSubscription: (subscriptionId: number) => Promise<boolean>;
         hasActiveStreams: (workerId: number) => boolean;
-        isDetachedSubscription: (subscriptionId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
         emit: EmitEvent;
@@ -179,7 +176,6 @@ export default class DrainSupervisor {
         this.#loopAttributions = loopAttributions;
         this.#cancelSubscription = cancelSubscription;
         this.#hasActiveStreams = hasActiveStreams;
-        this.#isDetachedSubscription = isDetachedSubscription;
         this.#readSystemPrompt = readSystemPrompt;
         this.#emitLogEntry = emitLogEntry;
         this.#emit = emit;
@@ -933,12 +929,9 @@ export default class DrainSupervisor {
     }
 
     async #workerHasLiveObligation(workerId: number): Promise<boolean> {
-        const [openSubscriptions, liveChild] = await Promise.all([
-            this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }),
-            this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId }),
-        ]);
-        // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
-        return openSubscriptions.some(({ id }) => !this.#isDetachedSubscription(id)) || liveChild !== undefined;
+        // {§worker-obligations} — the same row the completion gate reads.
+        const held = await this.#db.worker_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ worker_id: workerId });
+        return held !== undefined && (held.streams === 1 || held.workers === 1);
     }
 
     settleCompletionWake(

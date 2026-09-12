@@ -1209,13 +1209,11 @@ export default class Dispatcher {
     // requires a new packet, independently of its result or log visibility.
     async #pendingSet(workerId: number, turnId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
-        // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
-        const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
-            .filter(({ id }) => execHandler?.isDetachedSpawn?.(id) !== true);
-        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("streams");
-        const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
-        if (liveChild !== undefined) pending.push("workers");
+        // {§worker-obligations} — the stream and child legs are one durable row.
+        const held = await this.#db.worker_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ worker_id: workerId });
+        if (held === undefined) throw new Error(`worker ${workerId} does not exist`);
+        if (held.streams === 1) pending.push("streams");
+        if (held.workers === 1) pending.push("workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
         const receipts = [...new Set(boundaries.operations
             .filter(({ op }) => op !== "KILL")
@@ -1270,14 +1268,9 @@ export default class Dispatcher {
     // A live obligation to wait on: a spawned child or an open stream (not retrievals, which land
     // next turn regardless). The wait-side twin of #pendingSet's stream+child legs ({§wait-obligation-matrix}).
     async hasLiveWork(workerId: number): Promise<boolean> {
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
-        // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
-        const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
-            .filter(({ id }) => execHandler?.isDetachedSpawn?.(id) !== true);
-        if (openSubs.length > 0) return true;
-        if (execHandler?.hasActiveSpawns?.(workerId) === true) return true;
-        const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
-        return liveChild !== undefined;
+        // {§worker-obligations} — one durable row answers both legs.
+        const held = await this.#db.worker_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ worker_id: workerId });
+        return held !== undefined && (held.streams === 1 || held.workers === 1);
     }
 
     async #runLogCuration(
