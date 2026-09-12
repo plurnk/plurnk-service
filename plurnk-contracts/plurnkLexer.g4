@@ -115,6 +115,21 @@ private open(implicitName?: string): void {
     this.inlineBody = false;
 }
 
+// {§indented-fences} - a fence line may carry leading horizontal whitespace; the line still
+// starts there for every fence purpose (CommonMark allows three spaces; this allows any).
+private atLineStart(): boolean {
+    for (let back = 1; ; back++) {
+        const c = this.inputStream.LA(-back);
+        if (c <= 0 || c === 0x0A || c === 0x0D) return true;
+        if (c !== 0x20 && c !== 0x09) return false;
+    }
+}
+
+private skipHorizontal(offset: number): number {
+    while (this.inputStream.LA(offset) === 0x20 || this.inputStream.LA(offset) === 0x09) offset++;
+    return offset;
+}
+
 private offsetAfterEol(offset: number): number | null {
     if (this.inputStream.LA(offset) === 0x0D && this.inputStream.LA(offset + 1) === 0x0A) return offset + 2;
     return this.inputStream.LA(offset) === 0x0A ? offset + 1 : null;
@@ -125,6 +140,7 @@ private offsetAfterEol(offset: number): number | null {
 // delimiter is what lets an equal-count block nest ({§numeric-delimiter}).
 private closingAt(offset: number): boolean {
     if (this.inputStream.LA(offset === 1 ? -1 : offset - 1) === 0x60) return false;
+    offset = this.skipHorizontal(offset);
     let cursor = offset;
     while (this.inputStream.LA(cursor) === 0x60) cursor++;
     if (cursor - offset < this.fenceLength) return false;
@@ -180,12 +196,12 @@ private headingAt(offset: number): boolean {
 
 private headingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
-    return after !== null && this.headingAt(after);
+    return after !== null && this.headingAt(this.skipHorizontal(after));
 }
 
 private closingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
-    return after !== null && this.closingAt(after);
+    return after !== null && this.closingAt(this.skipHorizontal(after));
 }
 
 private targetScopeEnd(): boolean {
@@ -242,9 +258,9 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.column === 0 || !this.started || this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atLineStart() || !this.started || this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
-UNKNOWN_TAG : { this.column === 0 || !this.started }? FENCE [0-9]* NAME { this.noteUnknownTag(); } -> type(TEXT), channel(HIDDEN) ;
+UNKNOWN_TAG : { this.atLineStart() || !this.started }? FENCE [0-9]* NAME { this.noteUnknownTag(); } -> type(TEXT), channel(HIDDEN) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
 THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;
@@ -296,8 +312,8 @@ METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type
 mode BODY;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
 // the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§closer-fallback}).
-B_END : { this.closingAfterEol() }? EOL FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
-B_EMPTY_END : { (this.column === 0 || this.inlineBody) && this.closingAt(1) }? FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;
 B_TICK : '`' -> type(BODY_TEXT) ;

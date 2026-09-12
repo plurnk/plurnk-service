@@ -587,7 +587,7 @@ export default class AstBuilder {
         if (closer !== null && closer.includes("`")) return text;
         const lines = text.split("\n");
         for (let index = lines.length - 1; index >= 0; index -= 1) {
-            if (/^`{3,}[0-9]*[ \t]*\r?$/u.test(lines[index] ?? "")) {
+            if (/^[ \t]*`{3,}[0-9]*[ \t]*\r?$/u.test(lines[index] ?? "")) {
                 const kept = lines.slice(0, index).join("\n");
                 return kept === "" ? null : kept;
             }

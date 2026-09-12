@@ -49,6 +49,8 @@ Language and teaching:
   that never closes reads to the end of its line; an option a scheme does not take is dropped
   with a `metadata_ignored` notice; and a response with no operation is an admitted empty turn
   with a `turn_no_operations` notice and one strike, never a private resample.
+- Indented fence lines are fence lines: leading whitespace on an opener or closer is ignored,
+  bodies keep their own indentation.
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.

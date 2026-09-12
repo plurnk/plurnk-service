@@ -276,7 +276,7 @@ export default class PlurnkParser {
     static #adviseBareHeadings(input: string, items: ParseItem<PlurnkStatement>[], executors: readonly string[]): void {
         const names = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "TASK", ...executors]
             .map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
-        const headingShape = new RegExp(`^(${names.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, "u");
+        const headingShape = new RegExp(`^[ \\t]*(${names.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, "u");
         const covered = new Set<number>();
         for (const item of items) {
             if (item.kind !== "statement") continue;

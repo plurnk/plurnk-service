@@ -197,3 +197,28 @@ test("{§unclosed-aside}: an aside that never closes on its line is the aside to
     assert.deepEqual(errors(closed), []);
     assert.equal((statements(closed)[0] as { aside: string | null }).aside, "ok");
 });
+
+test("{§indented-fences}: indented opener and closer lines are fence lines; the body keeps its own indentation", () => {
+    const source = [
+        "    ````EDIT (ark/json-schema/scope.ts) <@VaKRz> <!-- restore the union -->",
+        "    \t\"boolean|TypeWithNoKeywords\",",
+        "    ````",
+        "",
+        "    ````READ (ark/json-schema/scope.ts) <71,80> <!-- verify -->",
+        "    ````",
+        "",
+        "    ````sh <!-- typecheck -->",
+        "    ./node_modules/.bin/tsc --noEmit",
+        "    ````",
+        task,
+    ].join("\n");
+    const result = PlurnkParser.parse(source);
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(errors(result).filter(({ severity }) => severity === "error"), []);
+    assert.deepEqual(statements(result).map(({ op }) => op), ["EDIT", "READ", "EXEC", "TASK"]);
+    assert.equal(bodyText(statements(result)[0]), "    \t\"boolean|TypeWithNoKeywords\",", "the body line keeps its indentation");
+    assert.equal(bodyText(statements(result)[2]), "    ./node_modules/.bin/tsc --noEmit");
+    const unclosed = PlurnkParser.parseStatements("    ````EDIT (a.md)\n    body\n    ````READ (b.md)\n    ````");
+    assert.deepEqual(statements(unclosed).map(({ op }) => op), ["EDIT", "READ"], "an indented heading still ends an open block");
+    assert.equal(bodyText(statements(unclosed)[0]), "    body");
+});

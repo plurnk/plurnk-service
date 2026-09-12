@@ -313,6 +313,13 @@ name, except for the heading rule above:
 | At least the block's backticks with any other delimiter | Body |
 | Four or more backticks naming a native operation or known executor | A heading: ends the block, opens the next statement |
 
+§indented-fences Leading horizontal whitespace before an opener or a closer is
+not part of the fence: an indented fence line is a fence line, on openers,
+closers, headings that end a block, and the closer fallback. A body keeps its own
+lines' indentation. CommonMark allows three spaces; this allows any, because a
+model that indents an emission indents all of it (operator, 2026-09-12: measured
+at five to ten percent of emissions on GLM-5.3-flash).
+
 §inline-chain A closer on a heading line, or on a body's closing line, may be
 followed on that same line by the next opener; the closer still closes, and the
 opener opens. This absorbs the habit of writing several operations in one
