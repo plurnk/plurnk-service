@@ -92,8 +92,8 @@ test("parseLog retains consecutive turns with independently chosen fence lengths
     assert.deepEqual(ops(parsed).flatMap((op) => op.op === "SEND" ? [op.body?.raw] : []), ["One.", "Two."]);
 });
 
-// {§disposition-ends-turn}
-test("operations after a disposition are recognized, dropped and diagnosed once", () => {
+// {§disposition-anywhere}
+test("operations after a disposition are admitted in authored order without a diagnostic", () => {
     for (const status of ["pending", "in_progress", "waiting", "completed", "failed"] as const) {
         for (const precedingRead of [false, true]) {
             const input = [
@@ -105,24 +105,21 @@ test("operations after a disposition are recognized, dropped and diagnosed once"
             ].join("\n");
             const parsed = PlurnkParser.parse(input);
             assert.equal(parsed.unparsedTail, undefined);
-            const diagnostics = errors(parsed);
-            assert.deepEqual(diagnostics.map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
-            assert.equal(diagnostics[0].message, "`TASK` ended the turn; 3 operations after its body were not admitted (KILL ×1, READ ×1, SEND ×1). Other operations precede TASK.");
-            assert.equal(diagnostics[0].line, precedingRead ? 6 : 4);
-            assert.deepEqual(ops(parsed).map(({ op }) => op), [...(precedingRead ? ["READ"] : []), "TASK"]);
-            const send = ops(parsed).at(-1);
-            assert.ok(send !== undefined && TurnDisposition.is(send));
-            assert.deepEqual(send.body, [{ content: "Answer.", status }]);
+            assert.deepEqual(errors(parsed), []);
+            assert.deepEqual(ops(parsed).map(({ op }) => op), [...(precedingRead ? ["READ"] : []), "TASK", "KILL", "READ", "SEND"]);
+            const disposition = ops(parsed).find(TurnDisposition.is);
+            assert.ok(disposition !== undefined);
+            assert.deepEqual(disposition.body, [{ content: "Answer.", status }]);
         }
     }
 });
 
-// {§fence-boundary} {§disposition-ends-turn}
-test("literal examples inside a SEND do not count as trailing operations", () => {
+// {§fence-boundary} {§disposition-anywhere}
+test("literal examples inside a SEND stay literal while a KILL after TASK is admitted", () => {
     const body = "Example:\n" + frame("KILL (notes.md)", null);
     const parsed = PlurnkParser.parse([frame("SEND", body), task("Explained.", "completed"), frame("KILL (log:///1/2/3/READ)", null)].join("\n"));
-    assert.deepEqual(errors(parsed).map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
-    assert.deepEqual(ops(parsed).map(({ op }) => op), ["SEND", "TASK"]);
+    assert.deepEqual(errors(parsed), []);
+    assert.deepEqual(ops(parsed).map(({ op }) => op), ["SEND", "TASK", "KILL"]);
     const send = ops(parsed)[0];
     assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
 });

@@ -808,23 +808,16 @@ the human is the native `question` EXEC tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation TASK has a reserved token ({§turn-disposition}).
-  A turn admits at most one TASK, and when present it ends the
-  turn ({§disposition-ends-turn}): ordinary operations precede it, and the
-  runtime executes it last. A second disposition is a structural
-  error, not a choice between competing outcomes.
-- §disposition-ends-turn The disposition operation and its body end a model turn.
-  `PlurnkParser.parse` admits no statement after them: trailing statements are
-  recognized as operations, dropped, never executed, and reported as one hard
-  diagnostic with `code: "operations-after-disposition"` anchored at the first
-  dropped heading. The message names the disposition heading, counts what was
-  dropped by OP (`3 operations after its body were not admitted (KILL ×1, READ ×1,
-  SEND ×1)`), and states the rule: `Other operations precede TASK.`
-  Bounded hard diagnostics positioned after the disposition
-  belong to that dropped source and collapse into the same diagnostic as ignored
-  malformed headings; the disposition's own advisories and a second-disposition
-  structural error stand as before. TASK omission does not synthesize a
-  disposition ({§turn-shape}). Concatenated saved programs use
-  the same disposition boundary.
+  A turn admits at most one TASK, anywhere among its operations
+  ({§disposition-anywhere}); the runtime executes it last. A second
+  disposition is a structural error, not a choice between competing outcomes.
+- §disposition-anywhere The disposition may sit anywhere in a model turn
+  (operator, 2026-09-12: models state the plan first; the inventory is a
+  statement about state, not a boundary). `PlurnkParser.parse` admits every
+  operation before and after it in authored order; the runtime defers only the
+  disposition until the other admitted operations settle
+  ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
+  position. TASK omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
 - §park-202-only TASK wait intent applies `<T>` (wait up to T minutes),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
@@ -890,7 +883,7 @@ types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts one operation-bearing model turn.
-An explicit disposition ends the turn ({§disposition-ends-turn}). Omitted TASK
+An explicit disposition may sit anywhere in it ({§disposition-anywhere}). Omitted TASK
 means silent continuation: no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Explicit empty or malformed inventories retain their own handling.
@@ -899,14 +892,15 @@ Bounded operation errors retain valid siblings. Duplicate dispositions
 and failed document boundaries remain structural failures.
 
 `parseLog` reads consecutive saved turns separated by their dispositions and
-requires their dispositions. There is no outer Markdown program wrapper;
+requires their dispositions; a saved turn is stored per turn, so a mid-turn
+disposition never needs splitting. There is no outer Markdown program wrapper;
 the executable blocks themselves are the program.
 
 §tier-entrypoints Each parser entry point owns one document tier:
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; optional final TASK | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn; at most one TASK, anywhere | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including the read-shaped LOOK command        | `ClientStatement`     |
@@ -1219,7 +1213,7 @@ class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
-    readonly code?: "invalid-turn-structure" | "operations-after-disposition";
+    readonly code?: "invalid-turn-structure";
 }
 ```
 
@@ -1257,9 +1251,8 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
-turn-shape diagnostics ({§turn-shape}). Omitted TASK produces no diagnostic. Operations
-after the disposition carry `code: "operations-after-disposition"`
-({§disposition-ends-turn}). A failed
+turn-shape diagnostics ({§turn-shape}). Omitted TASK produces no diagnostic, and
+neither does the position of a present one ({§disposition-anywhere}). A failed
 document boundary carries `code: "invalid-turn-structure"`, which cannot be
 recovered as an individual failed operation. Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted

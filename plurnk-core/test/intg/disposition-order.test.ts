@@ -8,8 +8,8 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_help
 
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
-// {§disposition-ends-turn} {§emission-admission}
-test("a KILL after TASK never executes: one diagnostic, completion refused, preceding SEND retained", async () => {
+// {§disposition-anywhere} {§emission-admission}
+test("a KILL after TASK executes before the disposition: the curation lands and completion proceeds", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
@@ -36,52 +36,37 @@ Answer.
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
         });
-        // The dropped KILL is an unseen same-turn failure, so completion is refused and the loop continues.
-        assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes, [
-            { op: "SEND", status: 200, problemType: null },
-            { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
-            { op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" },
-        ]);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; rx: string; attrs: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["SEND", "error", "TASK"]);
-        const diagnostic = rows.find(({ op }) => op === "error");
-        assert.ok(diagnostic);
-        assert.equal(
-            JSON.parse(diagnostic.rx).problem.detail,
-            `\`TASK\` ended the turn; 1 operation after its body was not admitted (KILL ×1). Other operations precede TASK.`,
-        );
+        assert.equal(result.status, 200, "nothing was dropped, nothing failed unseen, so the completion stands");
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200], ["TASK", 200]]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["SEND", "KILL", "TASK"]);
         const send = rows.find(({ op }) => op === "SEND");
         assert.ok(send);
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(packet);
         assert.equal(JSON.parse(packet.packet).assistant.content, source);
-        const retained = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
-        assert.equal(retained.find(({ id }) => id === plan.id)?.active, 1, "the KILL after the disposition never ran");
+        const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
+        assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after TASK curated the earlier inventory");
     } finally { await db.close(); }
 });
 
-test("TASK authored first ends the turn: nothing after it executes, and one diagnostic counts what was dropped", async () => {
+test("TASK authored first: every later operation runs in authored order and the disposition settles last", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "```TASK\n[{\"content\":\"Inspect results.\",\"status\":\"in_progress\"}]\n```\n```READ (worker:///note.md)```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```\n```KILL (log:///99/*/*)```";
+        const source = "```TASK\n[{\"content\":\"Inspect results.\",\"status\":\"in_progress\"}]\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["error", "TASK"]);
-        const diagnostic = rows.find(({ op }) => op === "error");
-        assert.ok(diagnostic);
-        assert.equal(diagnostic.status_rx, 400);
-        assert.equal(
-            JSON.parse(diagnostic.rx).problem.detail,
-            `\`TASK\` ended the turn; 3 operations after its body were not admitted (READ ×1, EDIT ×1, KILL ×1) and 1 malformed heading after it was ignored. Other operations precede TASK.`,
-        );
-        assert.equal(rows.some(({ op }) => op === "EDIT" || op === "READ" || op === "KILL"), false, "nothing after the disposition ran");
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["EDIT", 201], ["READ", 200], [null, 400], ["TASK", 102]],
+            "EDIT then READ in authored order, the malformed FIND as its bounded diagnostic, the disposition last");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
+        const read = rows.find(({ op }) => op === "READ");
+        assert.ok(read);
+        assert.match(JSON.parse(read.rx).content ?? JSON.stringify(JSON.parse(read.rx)), /Created before READ/u, "the READ observed the EDIT that preceded it");
     } finally { await db.close(); }
 });
 
@@ -114,14 +99,12 @@ ${tail}`),
     }
 });
 
-test("internal turn programs end at the disposition like model turns", () => {
+test("internal turn programs admit a disposition anywhere like model turns", () => {
     const source = "````KILL (log:///1/1/*)\n````\n\n````TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n````";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "TASK"]);
     assert.equal(TurnOps.renderInternal(statements), source);
-    // {§disposition-ends-turn} — a program that authors an operation after its disposition is invalid turnOps.
-    assert.throws(
-        () => TurnOps.parseInternal("```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```\n```KILL (log:///1/1/*)```"),
-        { name: "SyntaxError", message: /Core generated invalid turnOps: `TASK` ended the turn; 1 operation after its body was not admitted \(KILL ×1\)/u },
-    );
+    // {§disposition-anywhere} — a program that authors an operation after its disposition is valid turnOps.
+    const first = TurnOps.parseInternal("```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```\n```KILL (log:///1/1/*)```");
+    assert.deepEqual(first.map(({ op }) => op), ["TASK", "KILL"]);
 });

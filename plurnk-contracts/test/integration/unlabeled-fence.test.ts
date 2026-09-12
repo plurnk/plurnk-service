@@ -159,13 +159,13 @@ test("{§unlabeled-fence-send}: named malformed headers are not messages", () =>
     assert.deepEqual(errors(result).map(({ message }) => message), ["unexpected bracket modifier; the fence name selects the executor"]);
 });
 
-test("{§turn-shape}: an implicit SEND neither supplies TASK nor bypasses its final position", () => {
+test("{§turn-shape}: an implicit SEND neither supplies TASK nor is dropped for following one", () => {
     const source = unlabeled("TASK\nThis is a literal example.");
     const missing = PlurnkParser.parse(source);
     assert.deepEqual(statements(missing).map(({ op }) => op), ["SEND"]);
     assert.deepEqual(errors(missing), []);
     const late = PlurnkParser.parse(task + "\n" + source);
-    assert.deepEqual(statements(late).map(({ op }) => op), ["TASK"]);
-    assert.deepEqual(errors(late).map(({ code }) => code), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
+    assert.deepEqual(statements(late).map(({ op }) => op), ["TASK", "SEND"]);
+    assert.deepEqual(errors(late), []);
     assert.ok(errors(PlurnkParser.parseLog(source)).length > 0, "a saved turn still requires its disposition");
 });

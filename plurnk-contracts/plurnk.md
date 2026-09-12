@@ -41,7 +41,7 @@
 * `completed`, `failed`: resolved, successfully or not.
 
 > [!IMPORTANT]
-> YOU SHOULD conclude every turn with one TASK. A turn holding only the final response SEND and a TASK with every task `completed` or `failed` finishes the loop; YOU MAY NOT finish while a task, worker, or stream is unfinished.
+> YOU SHOULD include one TASK in every turn, first or last. A turn holding only the final response SEND and a TASK with every task `completed` or `failed` finishes the loop; YOU MAY NOT finish while a task, worker, or stream is unfinished.
 
 ## Workspace Navigation
 

@@ -14,7 +14,7 @@ log
     : turn+ EOF
     ;
 
-// {§turn-shape} — turns contain ordinary operations followed by a disposition.
+// {§turn-shape} — a saved turn's operations followed by its disposition (parseLog).
 turn
     : midStatement* dispositionStatement
     ;
@@ -22,8 +22,8 @@ turn
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
 // disposition is recognized by its own token, never by a whole-turn
 // alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
-// Statements after the disposition stay recognizable here so that model admission
-// can drop them and name what it dropped ({§disposition-ends-turn}).
+// {§disposition-anywhere} — the disposition may sit anywhere among the turn's
+// operations; the runtime schedules it last.
 modelTurn
     : midStatement+ (dispositionStatement midStatement*)?
     | dispositionStatement midStatement*

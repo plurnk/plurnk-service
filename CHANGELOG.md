@@ -29,6 +29,9 @@ Language and teaching:
   delivered replies name the prompts they answered.
 - An explicit empty `TASK` is a soft 409 receipt and never a strike; only a refused
   completion (pending work, unobserved failures, deferred receipts) strikes the review contract.
+- `TASK` may sit anywhere in a turn: operations after it run in authored order and the
+  disposition settles last; nothing is dropped and the `operations-after-disposition`
+  diagnostic code is gone.
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.

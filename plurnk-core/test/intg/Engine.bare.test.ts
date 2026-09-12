@@ -558,7 +558,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
 });
 
 for (const state of ["in_progress", "waiting", "completed"] as const) {
-    test(`{§bare-inference} {§disposition-ends-turn}: BARE after TASK ${state} is dropped, never called, and diagnosed once`, async () => {
+    test(`{§bare-inference} {§disposition-anywhere}: BARE after TASK ${state} runs before the disposition`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
@@ -578,15 +578,12 @@ question
                 loopId,
                 messages: [],
             });
-            assert.equal(result.status, 102, "the diagnostic is a same-turn failure the model sees in the next packet");
-            assert.deepEqual(child.completions, [], "no isolated call was made for the dropped BARE");
-            assert.deepEqual(result.outcomes.map(({ op }) => op), [null, "TASK"]);
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === null), [
-                { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
-            ]);
+            assert.equal(result.status, 102);
+            assert.deepEqual(child.completions, ["question"], "the isolated call was made although BARE was authored after TASK");
+            assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "TASK"], "the disposition is scheduled last");
             assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [
                 state === "completed"
-                    ? { op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures" }
+                    ? { op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }
                     : { op: "TASK", status: 102, problemType: null },
             ]);
         } finally {

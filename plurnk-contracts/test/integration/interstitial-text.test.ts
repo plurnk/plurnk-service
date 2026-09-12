@@ -78,10 +78,10 @@ test("{§turn-shape}: ignored text supplies neither an operation nor a task inve
     assert.deepEqual(missing.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§disposition-ends-turn}: ignored prose cannot reopen the TASK boundary or hide duplicate TASK", () => {
+test("{§disposition-anywhere}: ignored prose neither hides an operation after TASK nor a duplicate TASK", () => {
     const parsed = PlurnkParser.parse(task + "\nSome prose.\n````READ (late.md)````\nMore prose.");
-    assert.deepEqual(statements(parsed).map(({ op }) => op), ["TASK"]);
-    assert.deepEqual(parsed.items.flatMap((item) => item.kind === "error" ? [item.error.code] : []), [PlurnkParser.OPERATIONS_AFTER_DISPOSITION]);
+    assert.deepEqual(statements(parsed).map(({ op }) => op), ["TASK", "READ"]);
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const duplicate = PlurnkParser.parse(task + "\nCommentary.\n" + task);
     assert.ok(duplicate.items.some((item) => item.kind === "error" && item.error.code === "invalid-turn-structure"));
     const log = PlurnkParser.parseLog(task + "\nCommentary.\n" + task + "\nAfterword.");

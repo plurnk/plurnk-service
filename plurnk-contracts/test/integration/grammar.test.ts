@@ -455,22 +455,15 @@ test("a longer inner fence cannot terminate a shorter outer block", () => {
     assert.equal(result.items.some((item) => item.kind === "statement"), false);
     assert.match(result.unparsedTail?.reason ?? "", /not closed with 3 backticks/);
 });
-test("{§disposition-ends-turn}: TASK keeps its inventory and a trailing operation is dropped with one hard diagnostic", () => {
+test("{§disposition-anywhere}: an operation after TASK is admitted in authored order with no diagnostic", () => {
     const result = PlurnkParser.parse(sections(
         section("TASK", "", inventory("done", "completed")),
         section("READ", " (late.md)"),
     ));
-    const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0]!.error.severity, "error");
-    assert.equal(errors[0]!.error.code, PlurnkParser.OPERATIONS_AFTER_DISPOSITION);
-    assert.equal(errors[0]!.error.line, 5, "anchored at the first dropped operation");
-    assert.equal(
-        errors[0]!.error.message,
-        "`TASK` ended the turn; 1 operation after its body was not admitted (READ ×1). Other operations precede TASK.",
-    );
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(ops.map(({ op }) => op), ["TASK"]);
+    assert.deepEqual(ops.map(({ op }) => op), ["TASK", "READ"]);
     assert.deepEqual(ops[0]?.op === "TASK" ? ops[0].body : null, [{ content: "done", status: "completed" }]);
 });
 

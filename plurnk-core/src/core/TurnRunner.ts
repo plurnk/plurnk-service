@@ -1737,9 +1737,8 @@ export default class TurnRunner {
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
         const dispositions = ops.filter(TurnDisposition.is);
         const trustworthyBoundary = dispositions.length <= 1 && !hasUnparsedTail;
-        // {§turn-shape} — bounded operation errors are recoverable, and
-        // the parser's own {§disposition-ends-turn} diagnostic (what followed TASK was dropped)
-        // rides with them; document-boundary failures still reject the program.
+        // {§turn-shape} — bounded operation errors are recoverable and ride with the
+        // admitted program; document-boundary failures still reject it.
         const recoverableParseErrors = trustworthyBoundary
             ? parseErrors.filter(
                 (error) =>

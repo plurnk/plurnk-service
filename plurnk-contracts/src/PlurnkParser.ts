@@ -14,7 +14,6 @@ import {
     type ParseResult,
     type PlurnkStatement,
     type Position,
-    type DispositionStatement,
     type ResourceSelection,
 } from "./types.ts";
 
@@ -36,7 +35,6 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly OPERATIONS_AFTER_DISPOSITION = "operations-after-disposition";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     static frame(header: string, body: string | null): string {
@@ -84,16 +82,14 @@ export default class PlurnkParser {
         }).join("\n\n");
     }
 
-    // Parse one model turn. An omitted disposition is silent continuation.
+    // Parse one model turn. An omitted disposition is silent continuation; a present one
+    // may sit anywhere in the turn ({§disposition-anywhere}) and the runtime executes it last.
     // Outside text never becomes a parse item. {§whitespace-contract} {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
-        if (result.unparsedTail === undefined) {
-            PlurnkParser.#requireSourceOperation(result.items);
-            PlurnkParser.#dispositionEndsTurn(result.items);
-        }
+        if (result.unparsedTail === undefined) PlurnkParser.#requireSourceOperation(result.items);
         return result;
     }
 
@@ -115,56 +111,6 @@ export default class PlurnkParser {
                 PlurnkParser.NO_VALID_OPERATION,
             ),
         });
-    }
-
-    // {§disposition-ends-turn} — coalesce trailing operations and their bounded diagnostics
-    // without hiding a duplicate disposition. parseLog retains the complete authored source.
-    static #dispositionEndsTurn(items: ParseItem<PlurnkStatement>[]): void {
-        const at = items.findIndex((item) => item.kind === "statement" && TurnDisposition.is(item.statement));
-        if (at === -1) return;
-        const disposition = (items[at] as { statement: DispositionStatement }).statement;
-        // The cut is the first trailing statement or the first hard bounded diagnostic past the
-        // disposition heading (a malformed trailing heading). The disposition's own advisories are
-        // spliced right after it and carry its line, so they stay.
-        const trailing = (item: ParseItem<PlurnkStatement>): boolean => item.kind === "statement"
-            || (item.kind === "error" && item.error.severity === "error" && item.error.code !== "invalid-turn-structure" && item.error.line > disposition.position.line);
-        const cut = items.findIndex((item, index) => index > at && trailing(item));
-        if (cut === -1) return;
-        const kept: ParseItem<PlurnkStatement>[] = items.slice(0, cut);
-        const counts = new Map<string, number>();
-        let malformed = 0;
-        let anchor: { line: number; column: number } | undefined;
-        for (const item of items.slice(cut)) {
-            if (item.kind === "statement") {
-                const name = item.statement.op === "EXEC" ? item.statement.executor ?? "sh" : item.statement.op;
-                counts.set(name, (counts.get(name) ?? 0) + 1);
-                anchor ??= item.statement.position;
-            } else if (item.kind === "error") {
-                if (item.error.code === "invalid-turn-structure") { kept.push(item); continue; }
-                if (item.error.severity === "error") { malformed += 1; anchor ??= { line: item.error.line, column: item.error.column }; }
-            }
-        }
-        const dropped = [...counts.values()].reduce((sum, count) => sum + count, 0);
-        const parts: string[] = [];
-        if (dropped > 0) {
-            const byOp = [...counts].map(([op, count]) => `${op} ×${count}`).join(", ");
-            parts.push(dropped === 1 ? `1 operation after its body was not admitted (${byOp})` : `${dropped} operations after its body were not admitted (${byOp})`);
-        }
-        if (malformed > 0) parts.push(malformed === 1 ? "1 malformed heading after it was ignored" : `${malformed} malformed headings after it were ignored`);
-        const heading = disposition.op;
-        kept.push({
-            kind: "error",
-            error: new PlurnkParseError(
-                anchor?.line ?? disposition.position.line,
-                anchor?.column ?? 0,
-                "parser",
-                `\`${heading}\` ended the turn; ${parts.join(" and ")}. Other operations precede TASK.`,
-                "error",
-                PlurnkParser.OPERATIONS_AFTER_DISPOSITION,
-            ),
-        });
-        items.length = 0;
-        items.push(...kept);
     }
 
     // Collapse a lexer per-character cascade: the SIGNAL/TARGET modes emit one 'unrecognized
