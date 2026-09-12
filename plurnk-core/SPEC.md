@@ -1919,6 +1919,13 @@ in the same commit. KILL against another scheme retains that scheme's ordinary
 resource or process semantics; this projection contract is specific to
 `log:///`.
 
+§log-curation-direct **A direct curation is one statement.** A core-scheme KILL that carries no
+operation row (`Log.kill`, reached outside the model's dispatch) lands its whole projection plan
+through `log_apply_projection_plan`: one UPDATE over the plan's targets whose precondition count —
+every target still at its `active`/`folded` before-state — is evaluated once before any row
+changes, so one stale target withholds the entire plan and the caller reports the collision. The
+same transitions the dispatcher's atomic curation event makes, without the row.
+
 ### §reasoning-history Read-only reasoning history
 
 | Surface | Contract |

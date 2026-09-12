@@ -214,7 +214,7 @@ export class SqlRiteSync {
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_curation_targets: SqlRiteSyncPreparedStatements;
 	log_set_folded_by_id: SqlRiteSyncPreparedStatements;
-	log_set_projection_by_id: SqlRiteSyncPreparedStatements;
+	log_apply_projection_plan: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
@@ -731,7 +731,7 @@ export default class SqlRite {
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_curation_targets: SqlRitePreparedStatements;
 	log_set_folded_by_id: SqlRitePreparedStatements;
-	log_set_projection_by_id: SqlRitePreparedStatements;
+	log_apply_projection_plan: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;

@@ -375,26 +375,25 @@ test("{§log-history-projection}: every event receives one projection and inacti
             /durable log event must retain its projection/,
             "the one-to-one current state cannot be detached from its evidence",
         );
-        assert.ok(await db.log_set_projection_by_id.get({
-            id: targetId,
-            active_before: 1,
-            active_after: 0,
-            folded_before: "[]",
-            folded_after: "[]",
-        }));
+        const plan = (targets: Array<{ id: number; activeBefore: 0 | 1; activeAfter: 0 | 1 }>): { targets: string } =>
+            ({ targets: JSON.stringify(targets.map((t) => ({ ...t, foldedBefore: "[]", foldedAfter: "[]" }))) });
+        assert.deepEqual(await db.log_apply_projection_plan.all(plan([{ id: targetId, activeBefore: 1, activeAfter: 0 }])), [{ id: targetId }]);
         await assert.rejects(
-            () => db.log_set_projection_by_id.get({
-                id: targetId,
-                active_before: 0,
-                active_after: 1,
-                folded_before: "[]",
-                folded_after: "[]",
-            }),
+            () => db.log_apply_projection_plan.all(plan([{ id: targetId, activeBefore: 0, activeAfter: 1 }])),
             /killed log entry cannot re-enter the active projection/,
         );
+        // {§log-curation-direct} — a plan with one stale precondition lands nothing, including its
+        // still-valid targets: the second row here is live, and stays live.
+        const liveId = await minimalLog(db, ctx, { sequence: 2 });
+        assert.deepEqual(await db.log_apply_projection_plan.all(plan([
+            { id: liveId, activeBefore: 1, activeAfter: 0 },
+            { id: targetId, activeBefore: 1, activeAfter: 0 },
+        ])), [], "one stale target (already retired) withholds the whole plan");
+        assert.equal((await db.test_get_log_projection.get<{ active: number }>({ worker_id: ctx.workerId, loop_seq: 1, turn_seq: 1, sequence: 2 }))?.active, 1, "the valid target was not touched");
+        assert.deepEqual(await db.log_apply_projection_plan.all(plan([{ id: liveId, activeBefore: 1, activeAfter: 0 }])), [{ id: liveId }], "alone, the valid target lands");
         assert.equal(
             (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
-            1,
+            2,
             "projection retirement never deletes its durable event",
         );
     } finally { await db.close(); }

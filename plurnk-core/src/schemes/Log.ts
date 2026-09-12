@@ -670,18 +670,20 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return ids.length === 0 ? { status: 204, ids: [] } : { status: 200, ids };
     }
 
+    // {§log-curation-direct} — one statement lands the whole plan or none of it.
     async #applyDirect(plan: LogCurationPlan, ctx: PlurnkSchemeContext): Promise<void> {
-        for (const target of plan.targets) {
-            const landed = await ctx.db.log_set_projection_by_id.get<{ id: number }>({
+        if (plan.targets.length === 0) return;
+        const landed = await ctx.db.log_apply_projection_plan.all<{ id: number }>({
+            targets: JSON.stringify(plan.targets.map((target) => ({
                 id: target.id,
-                active_before: target.activeBefore,
-                active_after: target.activeAfter,
-                folded_before: LogVisibility.serialize(target.foldedBefore),
-                folded_after: LogVisibility.serialize(target.foldedAfter),
-            });
-            if (landed === undefined) {
-                throw new Error("Log curation selection changed before its projection plan landed.");
-            }
+                activeBefore: target.activeBefore,
+                activeAfter: target.activeAfter,
+                foldedBefore: LogVisibility.serialize(target.foldedBefore),
+                foldedAfter: LogVisibility.serialize(target.foldedAfter),
+            }))),
+        });
+        if (landed.length !== plan.targets.length) {
+            throw new Error("Log curation selection changed before its projection plan landed.");
         }
     }
 

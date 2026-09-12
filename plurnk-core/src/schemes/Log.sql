@@ -68,15 +68,21 @@ UPDATE log_entry_projections SET folded = $folded
 WHERE log_entry_id = $id AND active = 1 AND json(folded) != json($folded)
 RETURNING log_entry_id AS id;
 
--- PREP: log_set_projection_by_id
--- Direct core-scheme calls use the same collision-checked projection transition
--- as the dispatcher's atomic curation event, without manufacturing an op row.
+-- PREP: log_apply_projection_plan
+-- {§log-curation-direct}: a direct core-scheme curation lands its whole plan or none of it. Every
+-- target's precondition is counted once, before any row changes; one stale target means zero rows.
+-- The same collision-checked transition as the dispatcher's atomic curation event, without an op row.
 UPDATE log_entry_projections
-SET active = $active_after,
-    folded = $folded_after
-WHERE log_entry_id = $id
-  AND active = $active_before
-  AND json(folded) = json($folded_before)
+SET active = json_extract(plan.value, '$.activeAfter'),
+    folded = json_extract(plan.value, '$.foldedAfter')
+FROM json_each($targets) AS plan
+WHERE log_entry_projections.log_entry_id = json_extract(plan.value, '$.id')
+  AND (
+      SELECT COUNT(*) FROM json_each($targets) AS t
+      JOIN log_entry_projections p ON p.log_entry_id = json_extract(t.value, '$.id')
+       AND p.active = json_extract(t.value, '$.activeBefore')
+       AND json(p.folded) = json(json_extract(t.value, '$.foldedBefore'))
+  ) = json_array_length($targets)
 RETURNING log_entry_id AS id;
 
 -- PREP: log_find_candidates
