@@ -188,8 +188,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
-                    "initialization reads its authored reasoning, its exact program and the Active Prompt",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "TASK"],
+                    "initialization reads its authored reasoning and its exact program; the prompt arrives as its row",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
@@ -311,8 +311,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
-                    "initialization contains the eight surveys, the reasoning/program/prompt READs and TASK",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "TASK"],
+                    "initialization contains the eight surveys, the reasoning and program READs, and TASK",
                 );
                 const turnOps = initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops");
                 assert.equal(turnOps?.origin, "_plurnk");

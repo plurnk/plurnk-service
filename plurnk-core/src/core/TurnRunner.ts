@@ -830,10 +830,8 @@ export default class TurnRunner {
                 },
                 lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             });
-            if (promptPublication !== null) initializationStatements.push({
-                op: "READ", aside: "inspect Active Prompt", matcher: null, body: null, metadata: null,
-                target: promptPublication.path, lineMarker: null, position: UNKNOWN_POSITION,
-            });
+            // {§prompt-entry} — the prompt reaches the model as its `prompt` row in the first
+            // model turn; initialization does not READ it a second time.
             initializationStatements.push(task);
             const admittedInitializationStatements = initializationStatements.filter(initializationAdmits);
             const source = TurnOps.renderInternal(admittedInitializationStatements);

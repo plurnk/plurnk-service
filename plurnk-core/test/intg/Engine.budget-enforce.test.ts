@@ -240,7 +240,8 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.equal(provider.requests.length, 2, "one rejected physical request is followed by one changed request");
         assert.ok(requestChars(provider.requests[0]) > UpstreamPromptCapacityMock.maxRequestChars);
         assert.ok(requestChars(provider.requests[1]) <= UpstreamPromptCapacityMock.maxRequestChars, "withholding the automatic prompt body makes the request fit");
-        assert.ok(provider.requests[1].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the ordinary prompt READ preview survives automatic-prompt withholding");
+        assert.ok(!provider.requests[1].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the withheld prompt body is absent from the changed request");
+        assert.ok(provider.requests[1].some((message) => /prompt:\/\/[^\s"]+/.test(chatMessageText(message))), "the Active Prompts pointer still names the entry the model can READ");
 
         const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
@@ -256,8 +257,8 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         const entries = logEntries(packet);
-        assert.equal(entries.find(({ path }) => String(path).endsWith("/prompt"))?.body, undefined);
-        assert.match(String(entries.find(({ path, target }) => String(path).endsWith("/READ") && String(target).startsWith("prompt://"))?.body), new RegExp(PROMPT_CAPACITY_SENTINEL));
+        assert.equal(entries.find(({ path }) => String(path).endsWith("/prompt"))?.body, undefined, "the prompt row's body is withheld");
+        assert.equal(entries.find(({ path, target }) => String(path).endsWith("/READ") && String(target).startsWith("prompt://")), undefined, "no second copy of the prompt exists to fall back on; the entry itself is the source");
         assert.match(packetSection(packet, "errors"), /"status":413,"path":"log:\/\/\/[^"]+\/error"/, "the recovered rejection remains visible to the model");
     } finally {
         await db.close();

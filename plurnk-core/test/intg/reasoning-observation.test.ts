@@ -35,7 +35,7 @@ test("{§reasoning-initial-read}: the first model input contains initialization'
         assert.ok("content" in source && typeof source.content === "string");
         assert.match(source.content, /READ \(reasoning:\/\/\/3\/1\)/);
         assert.match(source.content, /READ \(ops:\/\/\/3\/1\)/);
-        assert.match(source.content, /READ \(prompt:\/\/alice\/3\/[a-f0-9]{8}\)/);
+        assert.doesNotMatch(source.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         assert.equal(provider.received.length, 1, "the harness rationale costs no model inference");
     } finally { await db.close(); }
 });

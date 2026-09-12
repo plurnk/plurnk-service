@@ -30,10 +30,7 @@ test("a short prompt lands as one first-class prompt row", async () => {
             assert.match(prompt!.rx ?? "", /three/, "the complete durable body belongs to the prompt row");
             assert.equal(rows.filter((r) => r.op === "prompt").length, 1, "initialization does not duplicate prompt delivery");
             const inspection = rows.filter((r) => r.scheme === "prompt" && r.op === "READ");
-            assert.equal(inspection.length, 1, "initialization demonstrates an ordinary prompt READ");
-            assert.equal(inspection[0].status_rx, 200);
-            assert.equal(inspection[0].pathname, prompt.pathname);
-            assert.equal(JSON.parse(inspection[0].rx!).content, "three\nshort\nlines");
+            assert.equal(inspection.length, 0, "initialization never READs the prompt: the row is its one publication");
         } finally { ws.close(); }
     });
 });

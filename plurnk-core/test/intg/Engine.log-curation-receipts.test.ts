@@ -52,7 +52,7 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             const recordedKills = history.filter(({ op }) => op === "KILL");
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
-            assert.equal(JSON.parse(recordedKills[0].rx).matched, 4, "the broad sweep includes initialization's reasoning, program and prompt READs and the file READ");
+            assert.equal(JSON.parse(recordedKills[0].rx).matched, 3, "the broad sweep includes initialization's reasoning and program READs and the file READ");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "worker" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {
