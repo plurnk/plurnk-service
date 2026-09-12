@@ -195,6 +195,7 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
         ],
         functions: [
             resolve(PROJECT_ROOT, "src/core/content_weight.ts"),
+            resolve(PROJECT_ROOT, "src/core/glob_match.ts"),
         ],
     })) as unknown as Db;
     return db;

@@ -219,8 +219,7 @@ export default class GitMembership {
     // projected from disk, but the standard never outranks the operator's exclusions — a path the
     // active repository ignores, or an exclusion matches, contributes nothing.
     static async excludesInstruction(db: Db, workspaceId: number, key: string, signal?: AbortSignal): Promise<boolean> {
-        const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
-        if (constraints.some(({ effect, glob }) => effect === "exclude" && matchesGlob(key, glob))) return true;
+        if (await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key }) !== undefined) return true;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return false;
         const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
@@ -265,8 +264,7 @@ export default class GitMembership {
             };
         }
 
-        const rows = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
-        const exclusion = rows.find(({ effect, glob }) => effect === "exclude" && matchesGlob(key, glob));
+        const exclusion = await db.crud_constraint_excluding.get<{ glob: string }>({ workspace_id: workspaceId, key });
         if (exclusion !== undefined) {
             return {
                 ok: false,
@@ -282,8 +280,7 @@ export default class GitMembership {
             };
         }
 
-        if (rows.some(({ effect, glob, source }) =>
-            effect === "include" && source === "members" && matchesGlob(key, glob))) {
+        if (await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key }) !== undefined) {
             return { ok: true, incorporation: "definition" };
         }
 

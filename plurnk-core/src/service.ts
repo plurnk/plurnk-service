@@ -161,6 +161,7 @@ export default class Service {
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
                 functions: [
                     resolve(Service.#codeDir, `core/content_weight${Service.#ext}`),
+                    resolve(Service.#codeDir, `core/glob_match${Service.#ext}`),
                 ],
                 ...tuning,
             });

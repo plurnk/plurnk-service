@@ -129,6 +129,37 @@ SELECT effect, glob, source FROM workspace_constraints
 WHERE workspace_id = $workspace_id
 ORDER BY effect, glob;
 
+-- PREP: crud_constraint_excluding
+-- {§membership-glob-in-sql}: the first exclusion covering a key, evaluated where the constraints live.
+SELECT glob FROM workspace_constraints
+WHERE workspace_id = $workspace_id AND effect = 'exclude' AND glob_match($key, glob)
+ORDER BY glob
+LIMIT 1;
+
+-- PREP: crud_constraint_including_by_definition
+-- {§membership-glob-in-sql}: whether a members definition (not a creation record) includes the key.
+SELECT 1 AS included FROM workspace_constraints
+WHERE workspace_id = $workspace_id AND effect = 'include' AND source = 'members' AND glob_match($key, glob)
+LIMIT 1;
+
+-- PREP: crud_untracked_member_marks
+-- {§membership-glob-in-sql}: for each untracked path, whether it is a registered member and which
+-- inclusion owns it — a creation record by exact path, else the first matching definition.
+SELECT path.value AS pathname,
+       EXISTS (
+           SELECT 1 FROM entries e
+           WHERE e.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = '' AND e.pathname = path.value
+       ) AS registered,
+       (SELECT c.source FROM workspace_constraints c
+        WHERE c.workspace_id = $workspace_id AND c.effect = 'include'
+          AND CASE WHEN c.source = 'create' THEN c.glob = path.value ELSE glob_match(path.value, c.glob) END
+        ORDER BY c.source = 'create' DESC, c.glob LIMIT 1) AS source,
+       (SELECT c.glob FROM workspace_constraints c
+        WHERE c.workspace_id = $workspace_id AND c.effect = 'include'
+          AND CASE WHEN c.source = 'create' THEN c.glob = path.value ELSE glob_match(path.value, c.glob) END
+        ORDER BY c.source = 'create' DESC, c.glob LIMIT 1) AS glob
+FROM json_each($paths) AS path;
+
 -- PREP: crud_delete_generated_workspace_constraint
 -- Automatic lifecycle may remove only its own exact creation record, never a projected definition.
 DELETE FROM workspace_constraints

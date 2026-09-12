@@ -296,14 +296,12 @@ export default class ClientReads {
                     retryable: false },
             );
         }
-        const rows = await this.#db.log_read_recent_ids.all<{ id: number }>({
+        const rows = await this.#db.log_entries_recent.all<Record<string, unknown>>({
             worker_id: workerId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
             limit: Math.min(args.limit ?? 100, 1000) });
-        const entries: LogEntryWire[] = [];
-        for (const r of rows) entries.push(await LogEntry.fetchLogEntry(this.#db, r.id));
-        return entries;
+        return rows.map((row) => LogEntry.wire(row));
     }
 
 }

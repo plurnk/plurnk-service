@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
-import { matchesGlob } from "node:path";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -78,15 +77,17 @@ export default class GitState {
     static async #markMembers(db: Db, workspaceId: number, snapshot: GitStatusSnapshot): Promise<void> {
         const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.RENDERED_PATHS);
         if (untracked.length === 0) return;
-        const inclusions = (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
-            .filter((row) => row.effect === "include");
+        // {§membership-glob-in-sql} — one statement marks every rendered path.
+        const marks = await db.crud_untracked_member_marks.all<{ pathname: string; registered: 0 | 1; source: string | null; glob: string | null }>({
+            workspace_id: workspaceId,
+            paths: JSON.stringify(untracked.map((file) => file.path)),
+        });
+        const byPath = new Map(marks.map((mark) => [mark.pathname, mark]));
         for (const file of untracked) {
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId, scheme: "file", authority: "", pathname: file.path,
-            });
-            if (entry === undefined) { file.member = null; continue; }
-            const row = inclusions.find((candidate) => (candidate.source === "create" ? candidate.glob === file.path : matchesGlob(file.path, candidate.glob)));
-            file.member = row === undefined ? "member" : row.source === "create" ? "created" : row.glob;
+            const mark = byPath.get(file.path);
+            if (mark === undefined) throw new Error(`git status: no membership mark for ${file.path}`);
+            if (mark.registered === 0) { file.member = null; continue; }
+            file.member = mark.source === null ? "member" : mark.source === "create" ? "created" : mark.glob as string;
         }
     }
 

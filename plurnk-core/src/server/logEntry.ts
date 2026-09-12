@@ -54,6 +54,11 @@ export default class LogEntry {
     static async fetchLogEntry(db: Db, id: number): Promise<LogEntryWire> {
         const row = await db.log_entry_by_id.get<Record<string, unknown>>({ id });
         if (row === undefined) throw new Error(`log_entries row ${id} not found`);
+        return LogEntry.wire(row);
+    }
+
+    // One hydrated row, as log_entry_by_id and log_entries_recent both select it.
+    static wire(row: Record<string, unknown>): LogEntryWire {
         return {
             id: row.id as number,
             worker_id: row.worker_id as number,

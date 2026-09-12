@@ -190,17 +190,9 @@ export default class EditMutations {
         let publishedReads: PublishedRead[] | null = null;
         const publishedAnchors = async (): Promise<PublishedRead[]> => {
             if (publishedReads !== null) return publishedReads;
-            const rows = await ctx.db.engine_render_log.all<{ op: string; status_rx: number; rx: string | null }>({ worker_id: ctx.workerId });
-            const reads: PublishedRead[] = [];
-            for (const row of rows) {
-                if (row.op !== "READ" || row.status_rx !== 200 || typeof row.rx !== "string") continue;
-                let parsed: { lineAnchorIdentity?: unknown; lineAnchors?: unknown; startLine?: unknown };
-                try { parsed = JSON.parse(row.rx) as typeof parsed; } catch { continue; }
-                if (parsed.lineAnchorIdentity !== lineAnchorIdentity || !Array.isArray(parsed.lineAnchors)) continue;
-                reads.push({ startLine: typeof parsed.startLine === "number" ? parsed.startLine : 1, anchors: parsed.lineAnchors as string[] });
-            }
-            publishedReads = reads;
-            return reads;
+            const rows = await ctx.db.edit_published_reads.all<{ start_line: number; anchors: string }>({ worker_id: ctx.workerId, identity: lineAnchorIdentity });
+            publishedReads = rows.map(({ start_line, anchors }) => ({ startLine: start_line, anchors: JSON.parse(anchors) as string[] }));
+            return publishedReads;
         };
         const stripRendered = async (statement: EditStatement): Promise<EditStatement> => {
             const body = statement.body;

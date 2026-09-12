@@ -68,6 +68,9 @@ export class SqlRiteSync {
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_list_workspace_constraints: SqlRiteSyncPreparedStatements;
+	crud_constraint_excluding: SqlRiteSyncPreparedStatements;
+	crud_constraint_including_by_definition: SqlRiteSyncPreparedStatements;
+	crud_untracked_member_marks: SqlRiteSyncPreparedStatements;
 	crud_delete_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_delete_family_workspace_constraints: SqlRiteSyncPreparedStatements;
 	crud_insert_family_workspace_constraint: SqlRiteSyncPreparedStatements;
@@ -164,6 +167,7 @@ export class SqlRiteSync {
 	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
 	worker_lineage_contains: SqlRiteSyncPreparedStatements;
+	edit_published_reads: SqlRiteSyncPreparedStatements;
 	engine_count_active_loops_for_worker: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
 	engine_loop_provider_requests: SqlRiteSyncPreparedStatements;
@@ -212,6 +216,7 @@ export class SqlRiteSync {
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
+	log_entries_recent: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
 	loop_docs_materialized: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
@@ -251,7 +256,6 @@ export class SqlRiteSync {
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
-	log_read_recent_ids: SqlRiteSyncPreparedStatements;
 	application_list_worker_loops: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
@@ -312,6 +316,9 @@ export default class SqlRite {
 	crud_delete_entry: SqlRitePreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_list_workspace_constraints: SqlRitePreparedStatements;
+	crud_constraint_excluding: SqlRitePreparedStatements;
+	crud_constraint_including_by_definition: SqlRitePreparedStatements;
+	crud_untracked_member_marks: SqlRitePreparedStatements;
 	crud_delete_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_delete_family_workspace_constraints: SqlRitePreparedStatements;
 	crud_insert_family_workspace_constraint: SqlRitePreparedStatements;
@@ -408,6 +415,7 @@ export default class SqlRite {
 	drain_worker_min_poll: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
 	worker_lineage_contains: SqlRitePreparedStatements;
+	edit_published_reads: SqlRitePreparedStatements;
 	engine_count_active_loops_for_worker: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
 	engine_loop_provider_requests: SqlRitePreparedStatements;
@@ -456,6 +464,7 @@ export default class SqlRite {
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;
+	log_entries_recent: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
 	loop_docs_materialized: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;
@@ -495,7 +504,6 @@ export default class SqlRite {
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;
-	log_read_recent_ids: SqlRitePreparedStatements;
 	application_list_worker_loops: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
 	proposal_get_pending: SqlRitePreparedStatements;
