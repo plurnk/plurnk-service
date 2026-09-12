@@ -131,9 +131,8 @@ test("{§capability-admission} derives an inventory summary from the effective e
     assert.doesNotMatch(family, /fail/);
 });
 
-// {§scheme-catalog-aside} — a family with more tools than the catalog aside can show lists the
-// leading ones, an ellipsis and its count, instead of ending mid-name in the discovery row.
-test("a large family's inventory summary stays within the catalog aside bound and names its tool count", () => {
+// {§scheme-catalog-aside} — a family's summary is its complete menu, however many tools it has.
+test("a large family's inventory summary names every tool", () => {
     const tool = (name: string) => ({
         target: name,
         summary: `${name} does a thing.`,
@@ -157,9 +156,9 @@ test("a large family's inventory summary stays within the catalog aside bound an
     });
     const family = resources[0]?.content ?? "";
     const summary = /^## Summary\n\n(.*)$/m.exec(family)?.[1] ?? "";
-    assert.ok([...summary].length <= EntryManifest.SUMMARY_CODE_POINTS, `${[...summary].length} code points`);
-    assert.match(summary, /^````gitea \(tool_number_1_with_a_long_name\|tool_number_2_with_a_long_name\|[^)]*\|…\) <!-- 24 tools -->/);
-    assert.doesNotMatch(summary, /tool_number_24/, "the tail is elided, not cut mid-name");
+    assert.ok([...summary].length > EntryManifest.SUMMARY_CODE_POINTS, "the complete menu is longer than the prose bound");
+    assert.match(summary, new RegExp(`^\`\`\`\`gitea \\(${targets.join("\\|")}\\)`), "every tool is named, in declaration order");
+    assert.doesNotMatch(summary, /…/);
 
     const small = ToolResources.render({
         runtime: "brave",

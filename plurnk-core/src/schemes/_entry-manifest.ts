@@ -45,8 +45,12 @@ type CatalogEntryState = {
     channels: CatalogChannel[];
 };
 
+// {§scheme-catalog-aside} — prose is clipped so a row stays one line of orientation; an
+// invocation-form witness (a fenced one-liner, the shape a tool family's summary takes) is shown
+// whole, because a menu that is cut is no menu: the row exists so the model can invoke without a READ.
 const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
+    if (value.startsWith("```")) return value;
     const points = [...value];
     return points.length <= EntryManifest.SUMMARY_CODE_POINTS
         ? value
@@ -54,8 +58,7 @@ const catalogAside = (value: string | null): string | undefined => {
 };
 
 export default class EntryManifest {
-    // {§scheme-catalog-aside} — the catalog shows a summary whole up to this many code points;
-    // a producer that wants its summary to survive the listing keeps within it.
+    // {§scheme-catalog-aside} — the catalog shows a prose summary whole up to this many code points.
     static readonly SUMMARY_CODE_POINTS = 256;
 
     static toPath(scheme: string, authority: string, pathname: string): string {

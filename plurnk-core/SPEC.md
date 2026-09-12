@@ -2218,8 +2218,13 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   channel derivation under `{§scheme-catalog-parse-issues}`.
 
   §scheme-catalog-aside **Catalog aside.** `aside` is the exact channel
-  derivation's `{§mimetype-summary}` clipped to at most 256 Unicode code points
-  including a visible terminal ellipsis; absent metadata is omitted.
+  derivation's `{§mimetype-summary}`. Prose is clipped to at most 256 Unicode
+  code points including a visible terminal ellipsis, so a row stays one line
+  of orientation; an invocation-form witness — a summary that is one fenced
+  operation, the shape every tool family's summary takes
+  ({§tools-resource-materialization}) — is shown whole, every tool named,
+  because the discovery row exists so the model can invoke without a READ and
+  a menu that is cut is no menu. Absent metadata is omitted.
 
   Resource-level `stream` and broad-match
   `matchLocationCount` live only on `[0]`. A single-channel resource is therefore

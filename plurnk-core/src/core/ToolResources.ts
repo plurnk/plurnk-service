@@ -1,5 +1,4 @@
 import { PathSyntax, PlurnkParser, type JsonSchema } from "@plurnk/plurnk-contracts";
-import EntryManifest from "../schemes/_entry-manifest.ts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import ToolInputSchema from "./ToolInputSchema.ts";
 import type {
@@ -105,27 +104,6 @@ const summaryWitness = (
     return PlurnkParser.frame(header, input ?? null).replaceAll("\n", "\\n");
 };
 
-// {§scheme-catalog-aside} — a family's summary witness lists its tools inside the invocation
-// form, but the catalog shows a summary whole only up to its code-point bound. A family with more
-// tools than fit lists the leading ones, an ellipsis, and its tool count, so the discovery row
-// still orients instead of ending mid-name.
-const familyWitness = (
-    runtime: string,
-    invocation: RuntimeInvocationDecl,
-    targets: readonly string[],
-    description?: string,
-): string => {
-    const complete = summaryWitness(runtime, invocation, targets.join("|"), description);
-    if ([...complete].length <= EntryManifest.SUMMARY_CODE_POINTS) return complete;
-    const count = `${targets.length} tools`;
-    const aside = description === undefined ? count : `${description}; ${count}`;
-    for (let shown = targets.length - 1; shown >= 1; shown -= 1) {
-        const candidate = summaryWitness(runtime, invocation, `${targets.slice(0, shown).join("|")}|…`, aside);
-        if ([...candidate].length <= EntryManifest.SUMMARY_CODE_POINTS) return candidate;
-    }
-    return summaryWitness(runtime, invocation, "…", aside);
-};
-
 const authoredSummary = (source: ToolSource, summary: string): string => {
     if (!summary.startsWith("```") || summary.includes("\\n")) return summary;
     const { items } = PlurnkParser.parseStatements(summary);
@@ -221,10 +199,12 @@ export default class ToolResources {
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
         const schemaPath = (target: string): string => `${root}/${source.runtime}/${ToolResources.targetSegment(target)}.md`;
-        const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : familyWitness(
+        // {§scheme-catalog-aside} — the family's summary is its complete menu: every tool inside
+        // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
+        const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
             source.runtime,
             tools.length === 1 ? tools[0]!.invocation : { body: source.invocation.body, target: source.invocation.target, example: {} },
-            tools.map(({ target }) => target),
+            tools.map(({ target }) => target).join("|"),
             source.summary.description,
         );
         const familyInvocations = tools.map((tool) => PlurnkParser.frame(

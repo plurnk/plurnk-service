@@ -57,3 +57,32 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         assert.equal(byScheme.get("https")?.shallow_items, 2, "authority and pathname boundaries cannot collide in the shallow tally");
     } finally { db.close(); }
 });
+
+// {§scheme-catalog-aside} — prose clips at the bound; a fenced invocation-form summary (a tool
+// family's menu) is shown whole, every tool named.
+test("[catalog] a fenced invocation-form summary lists every tool while long prose still clips", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `catalog-aside-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const worker = new Worker();
+        const targets = Array.from({ length: 30 }, (_, index) => `tool_number_${index + 1}_with_a_long_name`);
+        const menu = `\`\`\`\`gitea (${targets.join("|")})\\n\`\`\`\``;
+        await worker.edit(editStmt(url("worker", "menu.md"), `# gitea\n\n## Summary\n\n${menu}\n\n## Tools\n`), ctx);
+        const prose = "word ".repeat(120).trim();
+        await worker.edit(editStmt(url("worker", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
+        const { default: SearchIndex } = await import("../../src/schemes/_search-index.ts");
+        await SearchIndex.maintain(ctx);
+        const listing = await worker.find({
+            metadata: null, op: "FIND", aside: null, target: url("worker", "*"),
+            lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 1 },
+        }, ctx);
+        assert.equal(listing.status, 200, JSON.stringify(listing));
+        const rows = (listing.results as Array<Array<{ path: string; aside?: string }>>).flat();
+        const menuRow = rows.find(({ path }) => path === "worker:///menu.md");
+        assert.equal(menuRow?.aside, menu, "the fenced witness is shown whole, every tool named");
+        const proseRow = rows.find(({ path }) => path === "worker:///prose.md");
+        assert.ok(proseRow?.aside !== undefined && [...proseRow.aside].length === 256 && proseRow.aside.endsWith("…"), `prose clips at the bound: ${proseRow?.aside?.length}`);
+    } finally { await db.close(); }
+});
