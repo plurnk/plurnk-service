@@ -7,7 +7,10 @@
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services), each enclosed in matching backtick fences longer than any fences inside.
+> YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services).
+
+> [!IMPORTANT]
+> YOU MUST enclose each OP in matching backtick fences longer than any fences inside.
 
 * `[metadata]`: optional one-line JSON array of option objects, e.g. `[{"pattern":"matcher"}]`.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
