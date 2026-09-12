@@ -177,7 +177,7 @@ test("{§log-wire-format}: receipt metadata leads with target, then aside, befor
         { name: "FIND", entry: { ...read, op: "FIND" }, target: "notes.md" },
         {
             name: "FIND with an aside",
-            entry: { ...read, op: "FIND", tx: { aside: "project filesystem" } },
+            entry: { ...read, op: "FIND", tx: { aside: "project root member files" } },
             target: "notes.md",
         },
         {

@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, CopyStatement, ReadStatement, UrlPath, FindStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -615,9 +615,8 @@ export default class TurnRunner {
         });
         let systemCtx = systemContext(initializationTurn?.id ?? modelTurn!.id);
         // {§prompt-entry} — the prompt entry exists before any turn of the loop
-        // runs, so the initialization COPY archives a real source; its `prompt`
-        // log row is published to the model turn below (one durable publication
-        // per loop, decided by that row).
+        // runs; its `prompt` log row is published to the model turn below (one
+        // durable publication per loop, decided by that row).
         const promptPublication = turnNumber === 1 && loopRow?.prompt_published === 0
             && typeof loopRow.prompt === "string" && loopRow.prompt.length > 0
             ? {
@@ -635,21 +634,6 @@ export default class TurnRunner {
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and an ordinary TASK.
         if (initializationTurn !== null) {
-            // {§worker-initialization-entry}: archive into named scratch before surveying.
-            if (promptPublication !== null) {
-                const archive: CopyStatement = {
-                    op: "COPY", aside: null,
-                    source: { target: promptPublication.path, metadata: null, lineMarker: null, matcher: null },
-                    destination: {
-                        target: { kind: "url", raw: `worker://${workerName}/prompts.md`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/prompts.md", query: null, fragment: null },
-                        metadata: null,
-                        lineMarker: { marks: [-1] },
-                        matcher: null,
-                    },
-                    position: UNKNOWN_POSITION,
-                };
-                initializationStatements.push(archive);
-            }
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
             // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
@@ -799,7 +783,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", aside: "project filesystem",
+                            op: "FIND", aside: "project root member files",
                             target: { kind: "local", raw: "*" },
                             metadata: null,
                             matcher: null,
@@ -810,7 +794,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", aside: "workspace entries",
+                            op: "FIND", aside: "shared worker Extended Context",
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -818,7 +802,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", aside: "worker scratch",
+                            op: "FIND", aside: "private worker Extended Context",
                             target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,

@@ -3,45 +3,23 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
+type LogRow = { op: string | null; pathname: string; scheme: string | null; origin: string; status_rx: number };
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
 
-test("{§worker-initialization-entry}: turn 0 archives the prompt into the literal Worker namespace by COPY <-1>", async () => {
+// {§worker-initialization-entry} — the prompt entry is the archive; turn 0 copies nothing into scratch.
+test("{§worker-initialization-entry}: turn 0 archives nothing; the prompt entry is the durable copy", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "prompt-backup" });
-            const { loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "first prompt" });
-            const worker = await db.worker_name_by_id.get<{ name: string }>({ worker_id: modelWorkerId });
-            const archive = `worker://${worker!.name}/prompts.md`;
+            await rpcCall(ws, 1, "workspace.create", { name: "prompt-no-archive" });
+            const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "first prompt" });
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const copies = rows.filter((r) => r.op === "COPY");
+            assert.equal(rows.find((r) => r.op === "COPY"), undefined, "no archiving COPY rides turn 0");
             const prompt = rows.find((r) => r.op === "prompt");
-            assert.equal(copies.length, 1, "turn 0 foists exactly one COPY");
-            const [copy] = copies;
             assert.ok(prompt !== undefined, "the prompt row is published");
-            assert.equal(copy.scheme, "prompt");
-            assert.equal(copy.pathname, prompt.pathname, "the COPY source is this loop's prompt entry");
-            assert.equal(copy.origin, "_plurnk");
-            assert.ok(copy.turn_id < prompt.turn_id, "the archive precedes the model turn that publishes the prompt row");
-            assert.equal(copy.status_rx, 201, "COPY <-1> onto the absent named scratch entry creates it");
-            assert.equal(copy.signal, null, "a COPY row carries no status; the archive is engine policy, not a classification");
-            assert.deepEqual(
-                (JSON.parse(copy.rx) as { effects: unknown[] }).effects,
-                [{ target: archive, action: "create" }],
-                "the receipt names the private address the program typed",
-            );
-            const tx = JSON.parse(copy.tx) as { aside: string | null; destination: { target: { raw: string } } };
-            assert.equal(tx.aside, null, "the prompt archive's source, destination, and tags need no narration");
-            assert.equal(tx.destination.target.raw, archive, "the destination path excludes its scope whitespace");
-            const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
-            assert.equal(body?.content, "first prompt", "COPY <-1> onto the absent named scratch entry created it with the prompt");
-
-            const { loopId: second } = await runLoopToTerminal(ws, 3, { prompt: "second prompt" }) as { loopId: number };
-            const rows2 = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: second });
-            assert.equal(rows2.find((r) => r.op === "COPY"), undefined, "initialization is once per worker: a later loop archives nothing");
-            const body2 = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
-            assert.equal(body2?.content, "first prompt");
+            assert.equal(prompt.scheme, "prompt", "the publication names the prompt entry");
+            const scratch = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
+            assert.equal(scratch, undefined, "no prompts.md scratch entry exists");
         } finally { ws.close(); }
     });
 });

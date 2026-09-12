@@ -185,7 +185,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 false,
                 "initialization has no synthetic actionless receipt",
             );
-            assert.equal(initialization[0]?.op, "COPY", "the real initialization archives the prompt first");
+            assert.equal(initialization[0]?.op, "READ", "the real initialization opens with its reasoning READ");
             assert.equal(initialization.at(-1)?.op, "TASK", "initialization dispatches its inventory last");
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
             assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));

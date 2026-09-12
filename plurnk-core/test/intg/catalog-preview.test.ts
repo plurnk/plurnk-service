@@ -188,7 +188,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
                     "initialization reads its authored reasoning, its exact program and the Active Prompt",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -246,8 +246,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 ], "the eight surveys execute in their taught order");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, null, null, null, "project filesystem", "workspace entries", "worker scratch"],
-                    "asides explain only otherwise-cryptic namespace targets",
+                    [null, null, null, null, null, "project root member files", "shared worker Extended Context", "private worker Extended Context"],
+                    "asides name what each namespace is; the program echo shows them verbatim",
                 );
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
@@ -311,15 +311,15 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
-                    "initialization contains the prompt archive, eight surveys, reasoning/program/prompt READs and TASK",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "READ", "TASK"],
+                    "initialization contains the eight surveys, the reasoning/program/prompt READs and TASK",
                 );
                 const turnOps = initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops");
                 assert.equal(turnOps?.origin, "_plurnk");
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^````COPY[^\n]*\n[\s\S]*\n````TASK\n\[{"content":"Address the prompt\.","status":"in_progress"}\]\n````$/,
+                    /^````FIND[^\n]*\n[\s\S]*\n````TASK\n\[{"content":"Address the prompt\.","status":"in_progress"}\]\n````$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }
