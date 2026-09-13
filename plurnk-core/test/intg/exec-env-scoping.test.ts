@@ -57,3 +57,63 @@ test(
         }
     },
 );
+
+// {§exec-env-scoped} the ceiling. The witness above uses a PLURNK_-prefixed canary, so it
+// proves only the invariant and passes under any policy. This one proves the allowlist: an
+// ordinary host name the policy does not admit never reaches the spawn, while one it does
+// admit arrives intact — the distinction a denylist could not make.
+test(
+    "{§exec-env-scoped} an EXEC subprocess inherits only the ambient names the policy admits",
+    async () => {
+        const ADMITTED = "PLURNK_TEST_ADMITTED_NAME";
+        const WITHHELD = "AGENT_SOCKET_CANARY";
+        const previous = {
+            inherit: process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT,
+            admitted: process.env[ADMITTED],
+            withheld: process.env[WITHHELD],
+        };
+        // The admitted name is deliberately NOT PLURNK_-prefixed in the spawn's view: the
+        // policy names it, and the invariant would strip a PLURNK_ name regardless.
+        const ADMITTED_IN_ENV = "PROJECT_TOOL_HOME";
+        process.env[ADMITTED_IN_ENV] = "/opt/tool";
+        process.env[WITHHELD] = "/run/user/1000/keyring/ssh";
+        process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = `PATH,HOME,${ADMITTED_IN_ENV}`;
+        const db = await openMigrated();
+        try {
+            const schemes = new SchemeRegistry();
+            const exec = schemes.get("exec") as Exec;
+            const engine = new Engine({ db, schemes });
+            engine.setExecutors(await testExecutors());
+            const workspaceId = await insertWorkspace(db, `exec-env-ceiling-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "exec env ceiling");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+
+            const idDeferred = deferred<number>();
+            const dispatchPromise = engine.dispatch({
+                statement: execStmt(null, `echo "admitted=$${ADMITTED_IN_ENV} withheld=$${WITHHELD}"`),
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            const logEntryId = await idDeferred.promise;
+            engine.resolveProposal(logEntryId, { decision: "accept" });
+            await dispatchPromise;
+            await exec.idle();
+
+            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+            const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const stdout = (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
+            assert.match(stdout, /admitted=\/opt\/tool/, "a policy-admitted ambient name reaches the subprocess");
+            assert.match(stdout, /withheld=$/mu, "an ambient name the policy does not admit is absent, not empty-stringed by the shell alone");
+            assert.doesNotMatch(stdout, /keyring/, "the agent socket never reaches a model-written command");
+        } finally {
+            await db.close();
+            delete process.env[ADMITTED_IN_ENV];
+            if (previous.inherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+            else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previous.inherit;
+            if (previous.withheld === undefined) delete process.env[WITHHELD]; else process.env[WITHHELD] = previous.withheld;
+            if (previous.admitted === undefined) delete process.env[ADMITTED]; else process.env[ADMITTED] = previous.admitted;
+        }
+    },
+);

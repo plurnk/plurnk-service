@@ -2764,7 +2764,28 @@ the subscription registry's stored controller. A terminal stream is immutable:
 The runtime scheme participates in the durable lookup; a completed `sh:///`
 stream cannot fall through an internal `exec`-only query. {§stream-control}
 
-§exec-env-scoped **Scoped environment.** An EXEC subprocess inherits the *project's* environment — its `.env`, the standard shell vars — so the model's commands run as the project expects; but never plurnk's own secrets: the provider API keys and `PLURNK_*` config are stripped before the spawn, so a model-executed command can't `printenv` the engine's keys. The service owns the scoping policy (the denylist); the executor spawns with the env it is handed.
+§exec-env-scoped **Scoped environment.** An EXEC subprocess receives a composed
+environment, never the host's. Two mechanisms apply in order, and they are different kinds
+of thing. First the **ambient policy**, a ceiling: `PLURNK_SERVICE_EXEC_ENV_INHERIT` names
+what the host's environment may contribute at all and `_EXCLUDE` narrows that, both taking
+exact names or one trailing-`*` prefix glob, both ordinary operator knobs under
+{§operator-config-env-defaults}. A worker document or a heading modifier narrows the ceiling
+further; nothing downstream widens it. Then the **invariant**, which is not a knob:
+`PLURNK_*` config and every provider credential name are stripped last and unconditionally,
+so no policy, document or modifier can readmit plurnk's own secrets. The service composes;
+the executor spawns with the environment it is handed.
+
+The ceiling exists because the invariant protects the wrong secrets. It knows plurnk's
+credentials and nothing about the operator's, so a denylist alone hands `SSH_AUTH_SOCK` and
+`NPM_TOKEN` to every command a model writes. Membership is an allowlist: the shipped
+`INHERIT` is what a shell, git, node and python need to run, and an operator who wants a
+tool's credential reachable by model-written commands adds it by name. An empty policy admits
+nothing ambient — the allowlist is declared in `.env.defaults`, so an empty one is a cleared
+policy rather than an unconfigured install.
+
+The full composition for one spawn, nearest setter winning for defaults and ceilings immune,
+is package floors → operator cascade → ambient policy → worker document → the op's modifier →
+body prefixes.
 
 - §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits EXEC followed by TASK; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
 - §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address.

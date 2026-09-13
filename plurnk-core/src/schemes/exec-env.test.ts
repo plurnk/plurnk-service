@@ -2,10 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ExecEnv from "./exec-env.ts";
 
-test("ExecEnv.scoped keeps the project + standard env, drops plurnk's own (PLURNK_* + provider keys)", () => {
+// The shipped ceiling, as declared in plurnk-core/.env.defaults. Held here as a literal so a
+// change to the default is a change to a witness, not a silent widening of what a model's
+// commands can read.
+const SHIPPED = "PATH,HOME,USER,LOGNAME,SHELL,PWD,TMPDIR,TERM,TZ,LANG,LC_*";
+
+test("ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any policy", () => {
     const scoped = ExecEnv.scoped({
+        PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,HOME,MY_PROJECT_KEY,OPENAI_API_KEY,AWS_REGION,CLOUDFLARE_ACCOUNT_ID,ACME_TOKEN,PLURNK_*",
         PATH: "/usr/bin", HOME: "/home/u",      // standard shell — keep
-        MY_PROJECT_KEY: "proj-secret",           // the project's own — keep
+        MY_PROJECT_KEY: "proj-secret",           // the project's own, admitted by policy — keep
         OPENAI_API_KEY: "sk-plurnk-provider",    // a provider key plurnk reads — drop
         AWS_REGION: "us-east-1",                 // provider coordinate, not a secret — keep
         CLOUDFLARE_ACCOUNT_ID: "account",        // provider coordinate, not a secret — keep
@@ -17,14 +23,52 @@ test("ExecEnv.scoped keeps the project + standard env, drops plurnk's own (PLURN
     });
     assert.equal(scoped.PATH, "/usr/bin");
     assert.equal(scoped.HOME, "/home/u");
-    assert.equal(scoped.MY_PROJECT_KEY, "proj-secret", "the project's own env reaches the subprocess");
+    assert.equal(scoped.MY_PROJECT_KEY, "proj-secret", "a policy-admitted project var reaches the subprocess");
     assert.equal(scoped.OPENAI_API_KEY, undefined, "a provider API key plurnk reads is stripped");
     assert.equal(scoped.AWS_REGION, "us-east-1");
     assert.equal(scoped.CLOUDFLARE_ACCOUNT_ID, "account");
     assert.equal(scoped.ACME_TOKEN, undefined);
-    // The anonymous `plurnk` provider has no apiKeyVar (filtered from the denylist),
-    // but its cred is PLURNK_-prefixed — so the prefix rule strips it anyway.
-    assert.equal(scoped.PLURNK_API_KEY, undefined, "the plurnk provider's bearer cred is stripped by the PLURNK_ prefix — its empty apiKeyVar loses no secret");
-    assert.equal(scoped.PLURNK_SERVICE_GIT_ALLOWED, undefined, "PLURNK_* config is stripped");
+    assert.equal(scoped.PLURNK_API_KEY, undefined, "the plurnk provider's bearer cred is stripped by the PLURNK_ prefix");
+    // The policy admitted `PLURNK_*` explicitly; the invariant strips it anyway. That is the
+    // whole point of running the invariant last: no policy can readmit plurnk's own.
+    assert.equal(scoped.PLURNK_SERVICE_GIT_ALLOWED, undefined, "PLURNK_* config is stripped even when the policy names it");
     assert.equal(scoped.PLURNK_SERVICE_DB_PATH, undefined);
+});
+
+// {§exec-env-scoped} — the ceiling. Before it, the filter was a denylist: it knew plurnk's
+// credentials and nothing about the operator's, so it handed the ssh agent and the npm token
+// to every command a model wrote.
+test("ExecEnv.scoped admits only the ambient names the policy names", () => {
+    const host = {
+        PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
+        PATH: "/usr/bin", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8",
+        SSH_AUTH_SOCK: "/run/user/1000/keyring/ssh",
+        NPM_TOKEN: "npm_live",
+        TAVILY_API_KEY: "tvly-live",
+        BRAVE_API_KEY: "brave-live",
+    };
+    const scoped = ExecEnv.scoped(host);
+    assert.equal(scoped.PATH, "/usr/bin", "the shell still runs");
+    assert.equal(scoped.LANG, "en_US.UTF-8");
+    assert.equal(scoped.LC_ALL, "en_US.UTF-8", "a trailing-* glob admits the open-ended locale family");
+    for (const name of ["SSH_AUTH_SOCK", "NPM_TOKEN", "TAVILY_API_KEY", "BRAVE_API_KEY"]) {
+        assert.equal(scoped[name], undefined, `${name} is not named by the shipped ceiling and does not reach a spawn`);
+    }
+});
+
+test("ExecEnv.scoped: EXCLUDE narrows INHERIT without rewriting it", () => {
+    const scoped = ExecEnv.scoped({
+        PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
+        PLURNK_SERVICE_EXEC_ENV_EXCLUDE: "TERM,LC_*",
+        PATH: "/usr/bin", TERM: "xterm-256color", LANG: "en_US.UTF-8", LC_ALL: "C",
+    });
+    assert.equal(scoped.PATH, "/usr/bin");
+    assert.equal(scoped.TERM, undefined, "an excluded exact name is removed after inherit");
+    assert.equal(scoped.LC_ALL, undefined, "exclude takes the same glob shape as inherit");
+    assert.equal(scoped.LANG, "en_US.UTF-8", "exclude narrows only what it names");
+});
+
+test("ExecEnv.scoped: an empty policy admits nothing ambient", () => {
+    const scoped = ExecEnv.scoped({ PATH: "/usr/bin", SSH_AUTH_SOCK: "/run/ssh" });
+    assert.deepEqual(scoped, {}, "the allowlist is declared in .env.defaults; an empty one is a cleared policy, not an unconfigured install");
 });
