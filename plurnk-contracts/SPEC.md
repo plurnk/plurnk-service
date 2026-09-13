@@ -324,7 +324,20 @@ at five to ten percent of emissions on GLM-5.3-flash).
 §inline-chain A closer on a heading line, or on a body's closing line, may be
 followed on that same line by the next opener; the closer still closes, and the
 opener opens. This absorbs the habit of writing several operations in one
-paragraph after prose. Prose after a closer on its line ends the chain.
+paragraph after prose. Prose after a closer on its line ends the chain; slot-shaped
+text there is the heading's own and is read under {§transparent-inline-closer}.
+
+§transparent-inline-closer **A closer mid-heading is read as if it were not written.** A
+closing fence on a heading line followed by more of that heading — a `<scope>`, an
+`[option block]`, a `<!-- aside -->`, or a naked matcher — does not end the reading: the
+heading keeps taking its slots under {§trailing-slots} and {§naked-pattern}, exactly as though
+the closer were absent, so ```READ (a.md)``` `<1,2>` is the same operation as `READ (a.md) <1,2>`.
+The closer is still a closer: the block ends with that physical line and never reaches down for
+the next operation, which is what a bare heading carrying a matcher would do. A closer followed
+by the next opener is {§inline-chain}, and by nothing is the ordinary {§fence-closer}. There is
+no ambiguity to resolve: a slot begins with `<` or `[` and an opener with a backtick run, so the
+shapes are disjoint (operator, 2026-09-13: "If there is no risk of ambiguity, then we add
+tolerance. Turning model soup into operations instead of errors is a cardinal imperative").
 
 §executor-case **An executor tag in any case.** A fence tag that matches a
 registered executor's name case-insensitively opens that executor (`SH` opens

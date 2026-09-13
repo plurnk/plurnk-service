@@ -147,3 +147,37 @@ test("{§trailing-slots}: a scope, an option block or an aside written after the
     const twice = PlurnkParser.parseStatements("````READ (a.rs) <1,2> /fn x/ <3,4>\n````\n");
     assert.match(diagnostics(twice).map(({ message }) => message).join(" "), /trailing text/u, "a second scope is not a slot; it stays trailing text");
 });
+
+test("{§transparent-inline-closer}: a closing fence mid-heading reads as if it were not written", () => {
+    const markerOf = (statement: ClientStatement) => "lineMarker" in statement ? statement.lineMarker : null;
+    // Each pair is the same heading with and without the inline closer; the readings must agree,
+    // because every slot after it is an ordinary slot of the operation the fence opened.
+    const pairs: Array<[string, string]> = [
+        ["EDIT (a.md)", " <1,2>"],
+        ["READ (a.md)", " <!-- note -->"],
+        ["READ (a.md)", ' [{"limit":3}]'],
+        ["READ (a.md)", " /fn resolve_/"],
+    ];
+    for (const [heading, tail] of pairs) {
+        const bare = one("```" + heading + tail + "\n");
+        const closed = one("```" + heading + "```" + tail + "\n");
+        assert.deepEqual(markerOf(closed.op), markerOf(bare.op), heading + tail + ": scope agrees");
+        assert.deepEqual(closed.op.matcher ?? null, bare.op.matcher ?? null, heading + tail + ": matcher agrees");
+        assert.deepEqual(closed.op.aside ?? null, bare.op.aside ?? null, heading + tail + ": aside agrees");
+        assert.deepEqual(closed.op.metadata ?? null, bare.op.metadata ?? null, heading + tail + ": option block agrees");
+    }
+    // The block still ends with its line: a following operation is its own statement, not a body.
+    const following = PlurnkParser.parseStatements("```EDIT (a.md)``` <1,2>\n```READ (b.md)\n```\n");
+    const ops = following.items.filter((item) => item.kind === "statement").map((item) => item.statement.op);
+    assert.deepEqual(ops, ["EDIT", "READ"], "the closed heading does not swallow the next operation as a body");
+    // {§inline-chain} still owns a closer followed by the next opener.
+    const chained = PlurnkParser.parseStatements("```EDIT (a.md)``` ```READ (b.md)\n");
+    assert.deepEqual(
+        chained.items.filter((item) => item.kind === "statement").map((item) => item.statement.op),
+        ["EDIT", "READ"],
+        "an opener after the closer still chains",
+    );
+    // A real body under a canonical block is untouched.
+    const block = one("````EDIT (a.md)\nnew content\n````\n");
+    assert.equal(block.op.body, "new content");
+});

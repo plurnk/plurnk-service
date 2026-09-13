@@ -19,6 +19,8 @@ private fenceDelimiter: string = "";
 private started: boolean = false;
 // {§inline-chain} — a closer on the heading line may be followed by the next opener on the same line.
 private inlineChain: boolean = false;
+// {§transparent-inline-closer} — a closer already consumed mid-heading, so the line's end closes.
+private inlineCloserSeen: boolean = false;
 private unclosedAsides: Array<{ line: number; column: number }> = [];
 
 // After a closer's text, does an opener (backticks, digits, a known name) follow on the same line?
@@ -113,6 +115,7 @@ private open(implicitName?: string): void {
     this.openOp = native === undefined ? "EXEC" : name;
     this.type = native ?? plurnkLexer.OPEN_EXEC;
     this.inlineChain = false;
+    this.inlineCloserSeen = false;
     this.openHeading = this.text;
     this.openHeadingLine = (this as any).currentTokenStartLine;
     this.openHeadingColumn = (this as any).currentTokenColumn;
@@ -212,6 +215,46 @@ private closingAfterEol(): boolean {
     return after !== null && this.closingAt(this.skipHorizontal(after));
 }
 
+// {§transparent-inline-closer} — true when the run here closes the open block but more of the
+// heading follows on the line and it is not the next opener. Slots, matchers, asides and option
+// blocks all still belong to this heading, so the closer is skipped and reading continues.
+private closerWithHeadingAhead(): boolean {
+    if (this.inputStream.LA(-1) === 0x60) return false;
+    let cursor = 1;
+    let ticks = 0;
+    while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
+    if (ticks < this.fenceLength) return false;
+    let at = cursor + ticks;
+    let digits = "";
+    while (this.inputStream.LA(at) >= 0x30 && this.inputStream.LA(at) <= 0x39) {
+        digits += String.fromCharCode(this.inputStream.LA(at));
+        at++;
+    }
+    if (digits !== this.fenceDelimiter) return false;
+    while (this.inputStream.LA(at) === 0x20 || this.inputStream.LA(at) === 0x09) at++;
+    // End of line or input: the ordinary closer owns it.
+    if (this.inputStream.LA(at) <= 0 || this.offsetAfterEol(at) !== null) return false;
+    // The next opener on the line: {§inline-chain} owns it.
+    return !this.openerFollowsAt(at);
+}
+
+// Does an opener (backticks, optional digits, a known name) begin at this offset?
+private openerFollowsAt(at: number): boolean {
+    let ticks = 0;
+    while (this.inputStream.LA(at + ticks) === 0x60) ticks++;
+    if (ticks < 3) return false;
+    let cursor = at + ticks;
+    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
+    let name = "";
+    for (;;) {
+        const c = this.inputStream.LA(cursor);
+        if (c <= 0 || c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d || c === 0x28 || c === 0x3c || c === 0x5b || c === 0x60) break;
+        name += String.fromCharCode(c);
+        cursor++;
+    }
+    return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
+}
+
 private targetScopeEnd(): boolean {
     let offset = 1;
     while (this.inputStream.LA(offset) === 0x20 || this.inputStream.LA(offset) === 0x09) offset++;
@@ -291,8 +334,14 @@ SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINE
 SLOTS_ASIDE : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ASIDE) ;
 // {§unclosed-aside} — an aside that never closes on its line is the aside to the end of the line.
 SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\n]* { this.noteUnclosedAside(); } -> type(ASIDE) ;
+// {§transparent-inline-closer} — a closing fence with more heading on its line reads as if it
+// were not written: the slots after it still belong to this operation (operator, 2026-09-13:
+// "If there's no risk of ambiguity, then we add tolerance").
+SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [0-9]* [ \t]* { this.inlineCloserSeen = true; } -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
+// {§transparent-inline-closer} — the block already met its closer, so its line ending ends it.
+SLOTS_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
 
@@ -327,6 +376,9 @@ mode BODY;
 // the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§closer-fallback}).
 B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+// {§transparent-inline-closer} — the heading already carried its closer, so the matcher or inline
+// body after it ends with that line and the block never reaches for the next operation.
+B_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;
 B_TICK : '`' -> type(BODY_TEXT) ;
