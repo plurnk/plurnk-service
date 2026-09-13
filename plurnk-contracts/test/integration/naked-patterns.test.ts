@@ -113,10 +113,11 @@ test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the f
 });
 
 test("{§local-path-fragment}: a bare path's #channel is its fragment, and stringify renders it back", () => {
+    const targetOf = (statement: ClientStatement) => "target" in statement ? statement.target : null;
     const { op, diagnostics: notes } = one("````READ (data/users.html#readable) <1,-1>\n````\n");
     assert.deepEqual(notes, []);
-    assert.deepEqual(op.target, { kind: "local", raw: "data/users.html", fragment: "readable" });
+    assert.deepEqual(targetOf(op), { kind: "local", raw: "data/users.html", fragment: "readable" });
     assert.equal(PlurnkParser.stringify([op]), "````READ (data/users.html#readable) <1,-1>\n````");
-    assert.deepEqual(one("````READ (data/users.html)\n````\n").op.target, { kind: "local", raw: "data/users.html" }, "no `#`, no field");
-    assert.deepEqual(one("````FIND (src/**#readable) /x/\n````\n").op.target, { kind: "local", raw: "src/**", fragment: "readable" });
+    assert.deepEqual(targetOf(one("````READ (data/users.html)\n````\n").op), { kind: "local", raw: "data/users.html" }, "no `#`, no field");
+    assert.deepEqual(targetOf(one("````FIND (src/**#readable) /x/\n````\n").op), { kind: "local", raw: "src/**", fragment: "readable" });
 });

@@ -331,12 +331,13 @@ body: null
 position: Position
 }
 /**
- * A bare local path with no `scheme://` prefix. The raw string is stored verbatim; resolution is the runtime's job.
+ * A bare local path with no `scheme://` prefix. `raw` is the path as authored, minus any `#channel`, which is `fragment` exactly as on a URL; resolution is the runtime's job.
  */
 
 export interface LocalPath {
 kind: "local"
 raw: string
+fragment?: (string | null)
 }
 /**
  * A path with a `scheme://` prefix, fully decomposed via WHATWG URL.
