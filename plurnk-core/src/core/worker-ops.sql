@@ -38,3 +38,16 @@ FROM workers WHERE id = $id;
 -- PREP: worker_live_obligations
 -- {§worker-obligations}: the worker's open non-detached streams and live children, as one row.
 SELECT streams, workers FROM worker_obligations WHERE worker_id = $worker_id;
+
+-- PREP: worker_env_document
+-- {§exec-env-scoped} layer four — the worker's own registry, read once per spawn. The
+-- authority IS the worker's name ({§worker-authority-carving}), so this joins rather than
+-- making the spawn pay for a name lookup and a channel read separately.
+SELECT ec.content
+FROM workers w
+JOIN entries e ON e.workspace_id = w.workspace_id
+              AND e.scheme = 'worker'
+              AND e.authority = w.name
+              AND e.pathname = $pathname
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+WHERE w.id = $worker_id;

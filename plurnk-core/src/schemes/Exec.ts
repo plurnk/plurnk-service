@@ -18,6 +18,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
+import WorkerEnv, { WORKER_ENV_PATHNAME } from "./worker-env.ts";
 import ExecAbort from "./exec-abort.ts";
 import { entryCoordinateOf, generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
@@ -94,6 +95,17 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
 export default class Exec extends CoreSchemeAdapterBase {
+    // {§exec-env-scoped} layer four — the worker's own registry over the ambient ceiling.
+    // A missing document is the ordinary case (a worker that never set anything), not an error.
+    static async #composedEnv(db: PlurnkSchemeContext["db"], ctx: { workspaceId: number; workerId: number }): Promise<NodeJS.ProcessEnv> {
+        const ambient = ExecEnv.scoped();
+        const document = await db.worker_env_document.get<{ content: string }>({
+            worker_id: ctx.workerId, pathname: WORKER_ENV_PATHNAME,
+        });
+        if (document === undefined) return ambient;
+        return WorkerEnv.compose(ambient, document.content, ExecEnv.ownSecretTest());
+    }
+
     // The slot contract, stated when a resource source cannot be read: the resource IS the
     // program and the body its stdin; a targetless invocation takes a command body.
     static sourceRecovery(source: string, upstream: unknown): string {
@@ -1042,7 +1054,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         }
                         return ctx.requestInteraction(request, signal);
                     },
-                    env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
+                    env: await Exec.#composedEnv(db, ctx),  // SPEC {§exec} {§exec-env-scoped}
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         producerWorkerId: ctx.workerId,
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,

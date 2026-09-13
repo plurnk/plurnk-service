@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
-import { execStmt } from "./_dsl.ts";
+import { execStmt, editStmt } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -114,6 +114,67 @@ test(
             else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previous.inherit;
             if (previous.withheld === undefined) delete process.env[WITHHELD]; else process.env[WITHHELD] = previous.withheld;
             if (previous.admitted === undefined) delete process.env[ADMITTED]; else process.env[ADMITTED] = previous.admitted;
+        }
+    },
+);
+
+// {§exec-env-scoped} layer four — the worker's own registry. The document is an ordinary
+// worker-authority entry, so the model reaches it with EDIT and READ like any resource; the
+// spawn composes it over the ambient ceiling. This is the registry working end to end.
+test(
+    "{§exec-env-scoped} a worker's own registry reaches its next spawn",
+    async () => {
+        const previous = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+        process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,CI";
+        process.env.CI = "1";
+        const db = await openMigrated();
+        try {
+            const schemes = new SchemeRegistry();
+            const exec = schemes.get("exec") as Exec;
+            const engine = new Engine({ db, schemes });
+            engine.setExecutors(await testExecutors());
+            const workspaceId = await insertWorkspace(db, `exec-env-registry-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const worker = await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId });
+            const loopId = await insertLoop(db, workerId, 1, "exec env registry");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+
+            // The worker writes its registry exactly as a model would: an EDIT to its own
+            // namespace. {§worker-authority-carving} — authority is a literal namespace, so the
+            // registry is addressed by the worker's name rather than by a principal.
+            const editDeferred = deferred<number>();
+            await engine.dispatch({
+                statement: editStmt({
+                    kind: "url", raw: `worker://${worker!.name}/.env`, scheme: "worker",
+                    username: null, password: null, hostname: worker!.name, port: null,
+                    pathname: "/.env", query: null, fragment: null,
+                }, "CARGO_TARGET_DIR=/tmp/shared\n# CI=1"),
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => editDeferred.resolve(id),
+            });
+
+            const idDeferred = deferred<number>();
+            const dispatchPromise = engine.dispatch({
+                statement: execStmt(null, 'echo "target=$CARGO_TARGET_DIR ci=[$CI]"'),
+                workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            const logEntryId = await idDeferred.promise;
+            engine.resolveProposal(logEntryId, { decision: "accept" });
+            await dispatchPromise;
+            await exec.idle();
+
+            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+            const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+            const streamEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const stdout = (await db.test_get_channel.get<{ content: string }>({ entry_id: streamEntry!.id, name: "stdout" }))?.content ?? "";
+            assert.match(stdout, /target=\/tmp\/shared/, "the worker's own value reaches its command");
+            assert.match(stdout, /ci=\[\]/, "and a disabled entry masks an ambient name for this worker alone");
+        } finally {
+            await db.close();
+            delete process.env.CI;
+            if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+            else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previous;
         }
     },
 );
