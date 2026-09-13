@@ -1,20 +1,29 @@
 {
     "name": "@plurnk/plurnk-agent-skills",
-    "version": "1.16.5",
+    "version": "1.17.0",
     "description": "Source-preserving loader for standard Agent Skills directories.",
-    "keywords": ["plurnk", "agent-skills"],
+    "keywords": [
+        "plurnk",
+        "agent-skills"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-agent-skills#readme",
-    "bugs": { "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues" },
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/plurnk/plurnk-service.git",
         "directory": "plurnk-agent-skills"
     },
-    "engines": { "node": ">=26" },
+    "engines": {
+        "node": ">=26"
+    },
     "license": "MIT",
     "author": "@wikitopian",
     "type": "module",
-    "publishConfig": { "access": "public" },
+    "publishConfig": {
+        "access": "public"
+    },
     "exports": {
         ".": {
             "plurnk-dev": "./src/index.ts",
@@ -23,7 +32,11 @@
         },
         "./package.json": "./package.json"
     },
-    "files": ["dist/**/*", "README.md", "SPEC.md"],
+    "files": [
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
     "scripts": {
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
@@ -35,7 +48,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-schemes": "^1.16.5",
+        "@plurnk/plurnk-schemes": "1.17.0",
         "yaml": "^2.9.0"
     }
 }

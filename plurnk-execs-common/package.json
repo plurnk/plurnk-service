@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "1.16.5",
+    "version": "1.17.0",
     "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell, Node.js, Python 3, and supported host interpreters.",
     "keywords": [
         "plurnk",
@@ -67,7 +67,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "console.log(42)" }
+                    "example": {
+                        "body": "console.log(42)"
+                    }
                 }
             },
             {
@@ -84,7 +86,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "print(42)" }
+                    "example": {
+                        "body": "print(42)"
+                    }
                 }
             },
             {
@@ -101,7 +105,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "print 42;" }
+                    "example": {
+                        "body": "print 42;"
+                    }
                 }
             },
             {
@@ -118,7 +124,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "puts 42" }
+                    "example": {
+                        "body": "puts 42"
+                    }
                 }
             },
             {
@@ -135,7 +143,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "print(42)" }
+                    "example": {
+                        "body": "print(42)"
+                    }
                 }
             },
             {
@@ -152,7 +162,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "console.log(42)" }
+                    "example": {
+                        "body": "console.log(42)"
+                    }
                 }
             },
             {
@@ -169,7 +181,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "console.log(42)" }
+                    "example": {
+                        "body": "console.log(42)"
+                    }
                 }
             },
             {
@@ -186,7 +200,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "puts 42" }
+                    "example": {
+                        "body": "puts 42"
+                    }
                 }
             },
             {
@@ -203,7 +219,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "6 * 7" }
+                    "example": {
+                        "body": "6 * 7"
+                    }
                 }
             },
             {
@@ -220,7 +238,9 @@
                         "required": false,
                         "kind": "script"
                     },
-                    "example": { "body": "BEGIN { print 42 }" }
+                    "example": {
+                        "body": "BEGIN { print 42 }"
+                    }
                 }
             }
         ]
@@ -250,6 +270,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.16.5"
+        "@plurnk/plurnk-execs": "^1.17.0"
     }
 }

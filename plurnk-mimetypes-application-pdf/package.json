@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-pdf",
-    "version": "1.16.5",
+    "version": "1.17.0",
     "description": "application/pdf mimetype handler for plurnk-service. Binary content; the readable body is the document's header facts (page count, size), and the document itself rides the packet as a native document part on a route that accepts one. No extraction, no rendering.",
     "type": "module",
     "license": "MIT",
@@ -17,7 +17,7 @@
             {
                 "name": "application/pdf",
                 "revision": "1",
-                "glyph": "\ud83d\udcd5",
+                "glyph": "📕",
                 "extensions": [
                     ".pdf"
                 ]
@@ -47,7 +47,7 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.16.5"
+        "@plurnk/plurnk-mimetypes": "^1.17.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-application-pdf#readme",
     "bugs": {
