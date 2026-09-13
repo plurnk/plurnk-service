@@ -36,7 +36,7 @@
     ````
 
 * `pending`: blocked until a task it depends on is `completed`.
-* `waiting`: awaiting a stream, a worker, or an external event.
+* `waiting`: parked until a stream or worker finishes (doesn't block other in_progress work).
 * `in_progress`: active work.
 * `completed`, `failed`: resolved, successfully or not.
 

@@ -152,6 +152,31 @@ export default class TurnMaterialization {
             source: string | null; default_channel: string;
         }>({ worker_id: workerId });
         let written = 0;
+        // {§exec-stream} — a concluded stream lands one row per channel that has content; an empty
+        // sibling channel is a fact on that row (`channels`), never a row of its own, and only a
+        // stream that printed nothing at all lands one bodyless row on its default channel
+        // (operator, 2026-09-13: the empty ambient row was a packet bomb).
+        const closedBySubscription = new Map<number, typeof channels>();
+        for (const ch of channels) {
+            if (ch.state !== "closed" && ch.state !== "errored") continue;
+            const group = closedBySubscription.get(ch.subscription_id) ?? [];
+            group.push(ch);
+            closedBySubscription.set(ch.subscription_id, group);
+        }
+        const skipped = new Set<number>();
+        const siblings = new Map<number, Record<string, number>>();
+        for (const group of closedBySubscription.values()) {
+            const withContent = group.filter((ch) => ch.content.length > 0);
+            const kept = withContent.length > 0 ? withContent : group.filter((ch) => ch.channel === ch.default_channel).slice(0, 1);
+            if (kept.length === 0) kept.push(group[0]!);
+            for (const ch of group) {
+                if (kept.includes(ch)) continue;
+                skipped.add(ch.publication_id);
+                await this.#db.engine_mark_publication_terminal.run({ publication_id: ch.publication_id, published_end: ch.content.length });
+            }
+            const empties = Object.fromEntries(group.filter((ch) => !kept.includes(ch)).map((ch) => [`#${ch.channel}`, 0]));
+            for (const ch of kept) siblings.set(ch.publication_id, empties);
+        }
         for (const ch of channels) {
             // Default channels are an implementation detail. Preserve the
             // channel internally on the entry/subscription, but present the
@@ -167,15 +192,18 @@ export default class TurnMaterialization {
             // range it wants. At close, ONE foisted READ that is exactly a markerless READ —
             // the first page, the extent, the terminal status and Problem — initially visible. {§exec-stream-page}
             if (ch.state !== "closed" && ch.state !== "errored") continue;
+            if (skipped.has(ch.publication_id)) continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + written;
             const source = ch.source;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
+            const emptySiblings = siblings.get(ch.publication_id) ?? {};
             const result = Results.assert({
                 ...terminal,
                 ...(terminal.problem === undefined ? {} : { problem: { ...terminal.problem } }),
                 content: page.content ?? "",
                 mimetype: page.mimetype,
+                ...(Object.keys(emptySiblings).length === 0 ? {} : { channels: emptySiblings }),
                 ...(page.startLine === undefined || page.startLine === null ? {} : { startLine: page.startLine }),
                 ...(page.range === undefined ? {} : { range: page.range }),
                 ...(page.range !== undefined || page.region === undefined ? {} : { region: page.region }),

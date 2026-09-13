@@ -263,8 +263,34 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered visibly as the terminal observation");
-            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").includes("stderr") && !("body" in e));
-            assert.ok(stderrConclusion.length >= 1, "the empty stderr channel still lands a bodyless conclusion row — completion is information, never a silent skip");
+            // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row.
+            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").includes("stderr"));
+            assert.equal(stderrConclusion.length, 0, "an empty sibling channel lands no row of its own");
+            assert.deepEqual(deltas[0]?.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
+        } finally { ws.close(); }
+    });
+});
+
+// {§exec-stream} — a silent command still concludes visibly: one bodyless row on its default channel.
+test("a command that prints nothing on any channel lands exactly one bodyless conclusion row", async () => {
+    const mock = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse("```EXEC\ntrue\n```\n\n```TASK\n[{\"content\":\"spawned\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```TASK\n[{\"content\":\"checking\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "silent-command" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", policy: { proposals: "accept" } });
+            assert.equal(finalStatus, 200, "completion was never blocked by an undelivered termination");
+            const last = turnIds![turnIds!.length - 1];
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: last }))?.packet ?? "{}");
+            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").startsWith("sh:///"));
+            assert.equal(conclusions.length, 1, "one bodyless conclusion row for a silent stream");
+            assert.equal(conclusions[0]?.terminal, true);
+            assert.deepEqual(conclusions[0]?.channels, { "#stderr": 0 });
+            assert.equal("body" in conclusions[0]!, false);
         } finally { ws.close(); }
     });
 });

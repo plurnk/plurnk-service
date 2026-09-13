@@ -78,6 +78,14 @@ Language and teaching:
 
 Daemon and database:
 
+- A READ of a stream channel carries `terminal: false` while the command runs and `terminal: true`
+  once it has concluded.
+- A concluded stream lands one conclusion row per channel with content; an empty sibling channel
+  is a `channels` fact on that row, never a row of its own. A silent command still lands one
+  bodyless row.
+- EDIT receipts no longer carry `rev`; the revision stays in the durable receipt. The receipt's
+  boundary context is four lines (`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES=4`).
+
 - The packet's `## Worker` block follows the log and carries `{path, parent, loop, turn}`; the
   `## Turn` section and the date and time zone are gone. Nothing volatile precedes the log.
 

@@ -374,7 +374,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.doesNotMatch(out, /"target":"worker:\/\/\/source"/);
     assert.match(
         out,
-        /"effects":\[\{"target":"worker:\/\/\/draft","action":"update","rev":"abcdef01","extent":"lines 4->5","parseIssues":"0→3","change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
+        /"effects":\[\{"target":"worker:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0→3","change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
     );
     assert.match(
         out,
@@ -555,7 +555,7 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
     assert.match(out, /"destination":"worker:\/\/\/document<1,7,1,7>"/);
     assert.match(
         out,
-        /"effects":\[\{"target":"worker:\/\/\/document","action":"update","rev":"abcdef01","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1,-1> 1->1-2"\}\]/,
+        /"effects":\[\{"target":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1,-1> 1->1-2"\}\]/,
     );
     assert.equal(out.match(/1:reviewer/g)?.length, 1);
     assert.equal(out.match(/2:replacement/g)?.length, 1);
@@ -739,7 +739,7 @@ test("log render: a pattern EDIT carries its matcher and matched count beside th
         rx: { status: 200, matched: 3, receipt: receipt("1:alpha baz\n2:baz bar", "<1,7,1,10>") },
     }], tok);
     assert.match(out, /"matched":3,"matcher":"foo"/);
-    assert.match(out, /"rev":"abcdef01"/);
+    assert.doesNotMatch(out, /"rev"/, "the receipt carries no revision token");
 });
 
 test("log render: a matcher FIND exposes surgical coordinates", () => {
@@ -1008,7 +1008,7 @@ test("log render: model EDIT receipt renders revision and bounded join context v
         target: { scheme: "worker", pathname: "/draft" },
         rx: { status: 200, receipt: exactReceipt },
     }], tok);
-    assert.match(out, /"rev":"abcdef01"/);
+    assert.doesNotMatch(out, /"rev"/, "the receipt carries no revision token");
     assert.match(out, /"extent":"lines 4->5"/);
     assert.match(out, /"change":"-1 \+2"/);
     assert.match(out, /"range":"<2> 2->2-3"/);

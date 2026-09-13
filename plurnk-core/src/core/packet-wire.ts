@@ -26,15 +26,6 @@ import {
     type EditReceipt,
 } from "../content/index.ts";
 
-const editReceiptRevisionChars = (): number => {
-    const raw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS;
-    const value = Number(raw);
-    if (!Number.isSafeInteger(value) || value < 1 || value > 64) {
-        throw new Error(`PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS must be a safe integer from 1 through 64, got ${JSON.stringify(raw)}`);
-    }
-    return value;
-};
-
 // {§packet-stored-shape} — sections arrive from both the in-memory request and
 // the durable packet re-parsed by the digest. The latter uses the loose view
 // below and is narrowed at the rendering boundary.
@@ -394,8 +385,9 @@ export default class PacketWire {
 
     static #receiptMeta(value: unknown): Record<string, string | number> {
         const receipt: EditReceipt = assertEditReceipt(value);
+        // The durable receipt keeps the full revision for forensics; the model gets no token it
+        // cannot use (operator, 2026-09-13: "ditch rev").
         const head = {
-            rev: receipt.revision.slice(0, editReceiptRevisionChars()),
             extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
             ...(receipt.parseIssues === undefined
                 ? {}

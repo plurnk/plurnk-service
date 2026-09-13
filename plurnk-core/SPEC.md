@@ -2707,7 +2707,7 @@ two states and no others:
 
 | state | what the model receives |
 |---|---|
-| active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
+| active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing (operator, 2026-09-13). |
 | terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/<runtime>` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
@@ -2741,9 +2741,15 @@ The durable per-subscription, per-channel cursor records the size last reported
 to the model — by the Delegation stream pointer while active, by the terminal
 observation at close — so the pointer can state growth and no partial document
 or record ever reaches the model. The terminal observation and its cursor
-transition commit atomically; a terminal state with an empty channel still
-produces one bodyless conclusion row whose terminal fact, causal EXEC link, and
-available exit code make completion explicit without invented narration. KILL may curate
+transition commit atomically. A concluded stream lands one conclusion row per
+channel that holds content, and an empty sibling channel is a fact on that row
+(`channels: {"#stderr": 0}`), never a row of its own; only a stream that printed
+nothing on any channel lands one bodyless conclusion row, on its default
+channel, whose terminal fact, causal EXEC link, and available exit code make
+completion explicit without invented narration (operator, 2026-09-13: the
+per-channel empty row was "a useless packet bomb" — 131 of 298 conclusion rows
+in the candidate4 run). A skipped channel's publication is still marked
+terminal, so the stream's termination is delivered and never left pending. KILL may curate
 that log row without rewinding the cursor or publishing the terminal result
 again; the exact terminal result and channel content remain READable at the
 stream address. Every READ then obeys {§body-projection} and therefore renders
@@ -4273,7 +4279,7 @@ per-operation projection on `rx`; the aggregate remains inside dispatch.
 
 | Durable receipt fact                   | Packet projection                                                 | Meaning                                                                                                                   |
 | -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Full `revision`                        | `rev` abbreviated to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` | SHA-256 identity of the complete landed channel body; display correlation only, never a lookup or compare-and-swap token. |
+| Full `revision`                        | not projected                                                     | SHA-256 identity of the complete landed channel body, kept in the durable receipt for forensics; no operation takes a revision, so the packet carries none (operator, 2026-09-13). Formerly `rev`, abbreviated; the display knob is gone. Never a lookup or compare-and-swap token. |
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
 | `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
 | `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |

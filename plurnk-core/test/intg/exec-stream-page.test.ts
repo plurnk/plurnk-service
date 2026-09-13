@@ -57,12 +57,10 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(terminal.source, "log:///1/2/2/sh");
             assert.equal(terminal.terminal, true);
             assert.equal(terminal.exitCode, 0);
+            // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row of its own.
             const emptyTerminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stderr"));
-            assert.ok(emptyTerminal, "an empty selected channel still produces a terminal observation");
-            assert.equal(emptyTerminal.source, "log:///1/2/2/sh");
-            assert.equal(emptyTerminal.terminal, true);
-            assert.equal(emptyTerminal.exitCode, 0);
-            assert.equal(emptyTerminal.body, undefined, "completion truth does not require fabricated content");
+            assert.equal(emptyTerminal, undefined, "an empty sibling channel lands no row");
+            assert.deepEqual(terminal.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
             assert.equal(finalStatus, 200, "the scoped READ turn concluded");
             const read = await db.test_get_log_rx_by_worker_op.get<{ rx: string }>({ worker_id: modelWorkerId, op: "READ" });
             const asked = JSON.parse(read!.rx) as { content: string; startLine: number };

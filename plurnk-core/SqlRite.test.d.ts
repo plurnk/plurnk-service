@@ -279,6 +279,7 @@ export class SqlRiteSync {
 	turn_fail_open: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
+	engine_mark_publication_terminal: SqlRiteSyncPreparedStatements;
 	engine_insert_stream_delta: SqlRiteSyncPreparedStatements;
 	engine_get_loop_prompt: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
@@ -815,6 +816,7 @@ export default class SqlRite {
 	turn_fail_open: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_worker_stream_channels: SqlRitePreparedStatements;
+	engine_mark_publication_terminal: SqlRitePreparedStatements;
 	engine_insert_stream_delta: SqlRitePreparedStatements;
 	engine_get_loop_prompt: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;

@@ -37,10 +37,11 @@ test("a bare EXEC of a tool's name fails with a receipt that names the tool's re
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "try the tool by name", policy: { proposals: "accept" } }, { timeoutMs: 30_000 });
             assert.equal(finalStatus, 200);
             // {§exec-stream}: the spawn's EXEC row is `started`; the process's conclusion is the receipt
-            // on the stream's terminal READs (one per channel), which is what the next packet shows.
+            // on the stream's terminal READ — one per channel with content, and the shell's complaint is on stderr alone.
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const receipts = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
-            assert.equal(receipts.length, 2, "one terminal READ per stream channel");
+            assert.equal(receipts.length, 1, "one terminal READ, on the channel that holds the shell's complaint");
+            assert.deepEqual((JSON.parse(receipts[0]!.rx) as { channels?: unknown }).channels, { "#stdout": 0 }, "the empty stdout is a fact on that receipt");
             assert.ok(receipts.every((row) => row.status_rx === 500), "the shell's exit 127 is still a 500 receipt");
             const receipt = JSON.parse(receipts[0]!.rx) as { exitCode?: number; problem?: { detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
             assert.equal(receipt.exitCode, 127);

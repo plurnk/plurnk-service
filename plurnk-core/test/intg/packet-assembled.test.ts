@@ -348,7 +348,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         const [effect] = copies[0].effects as Array<Record<string, unknown>>;
         assert.equal(effect?.target, "worker:///slice.md");
         assert.equal(effect?.action, "create");
-        assert.match(String(effect?.rev), /^[a-f0-9]{8}$/);
+        assert.equal(Object.hasOwn(effect ?? {}, "rev"), false, "no revision token in the packet");
         assert.equal(effect?.extent, "lines 0->2");
         assert.equal(effect?.change, "-0 +2");
         assert.equal(effect?.range, "<1,-1> 1^->1-2");

@@ -17,6 +17,16 @@ WHERE s.worker_id = $worker_id
   AND sp.terminal_published = 0
 ORDER BY s.id, ec.name;
 
+-- PREP: engine_mark_publication_terminal
+-- {§exec-stream} — an empty sibling channel of a concluded stream lands no row of its own; its
+-- publication is still marked terminal here so the stream's termination counts as delivered.
+UPDATE subscription_publications
+SET published_end = $published_end,
+    terminal_published = 1,
+    version = version + 1
+WHERE id = $publication_id
+  AND terminal_published = 0;
+
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
 -- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is

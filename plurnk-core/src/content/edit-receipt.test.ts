@@ -11,6 +11,10 @@ import {
 } from "./edit-receipt.ts";
 
 test("editReceipt correlates disjoint edits to one bounded resulting revision", () => {
+    // The correlation is the subject; pin the window so the shipped default (4) cannot widen it.
+    const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
+    process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = "2";
+    try {
     const receipt = editReceipt(
         "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n",
         "one\nTWO\n2.5\nthree\nfour\nfive\nsix\nseven\nEIGHT\n",
@@ -28,6 +32,10 @@ test("editReceipt correlates disjoint edits to one bounded resulting revision", 
     assert.match(receipt.effects[0]?.context ?? "", /1:one\n2:TWO\n3:2\.5\n4:three/);
     assert.match(receipt.effects[1]?.context ?? "", /7:six\n8:seven\n9:EIGHT/);
     assert.doesNotMatch(receipt.effects[0]?.context ?? "", /6:five/);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
+        else process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = prior;
+    }
 });
 
 test("editReceipt shows symmetric boundary evidence without echoing a large landed middle", () => {

@@ -400,13 +400,17 @@ export default class ReadProjector {
         const producerResult = selectedRepresentation.producerResult;
         // {§read-content-wins} — a channel that delivered content reads as that content; the
         // producer's failure projects onto a READ only when there is nothing to read.
-        const contentDelivered = channel !== null && manifest.channels[channel] === "text/stream"
-            && typeof projected.content === "string" && projected.content.length > 0;
+        const isStream = channel !== null && manifest.channels[channel] === "text/stream";
+        const contentDelivered = isStream && typeof projected.content === "string" && projected.content.length > 0;
+        // {§exec-stream} — a stream READ states whether the stream has concluded, so an empty page
+        // on a live stream is never mistaken for a finished command that printed nothing.
+        const liveness = isStream ? { terminal: selectedRepresentation.state === "closed" || selectedRepresentation.state === "errored" } : {};
         const result = producerResult === undefined || (producerResult.status >= 400 && contentDelivered)
-            ? projected
+            ? { ...projected, ...liveness }
             : Results.assertReadResult({
                 ...producerResult,
                 ...projected,
+                ...liveness,
                 status: producerResult.status,
             }) as EntryReadResult;
         if (
