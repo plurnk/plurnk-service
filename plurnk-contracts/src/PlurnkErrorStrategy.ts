@@ -12,6 +12,8 @@ import { plurnkLexer } from "./generated/plurnkLexer.ts";
 export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #OFFENDING_CHAR_RE = /at: '([^']*)'$/;
 
+    static #TICK = String.fromCharCode(96);
+
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "outside an operation block",
         SLOTS: "in operation header - expected `(path)`, `<scope>`, `[metadata]`, a line ending, or the closing fence",
@@ -77,7 +79,36 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
             return `unrecognized character ${ch} in operation heading - a matcher belongs in the heading as [{"pattern": "…"}]`;
         }
+        // A backtick run in the slot region IS the closing fence; the error is the text after it
+        // on the line. Listing "the closing fence" as still expected names the thing the model
+        // already wrote, so state the fact instead.
+        if (modeName === "SLOTS" && ch === "'" + PlurnkErrorStrategy.#TICK + "'") {
+            const trailing = PlurnkErrorStrategy.#textAfterClosingFence(lexer);
+            if (trailing !== null) {
+                return `closing fence with ${JSON.stringify(trailing)} after it on the same line;`
+                    + " the heading's slots are read before the fence closes";
+            }
+        }
         return `unrecognized character ${ch} ${context}`;
+    }
+
+    // The text following a closing fence written inside a heading, or null when the backtick
+    // run is shorter than the open fence or nothing but whitespace follows it on the line.
+    static #textAfterClosingFence(lexer: plurnkLexer): string | null {
+        const stream = lexer.inputStream;
+        const start = lexer.tokenStartCharIndex;
+        let ticks = 0;
+        while (start + ticks < stream.size
+            && stream.getTextFromRange(start + ticks, start + ticks) === PlurnkErrorStrategy.#TICK) ticks += 1;
+        if (ticks < lexer.getFenceLength()) return null;
+        let trailing = "";
+        for (let i = start + ticks; i < stream.size; i += 1) {
+            const char = stream.getTextFromRange(i, i);
+            if (char === "\r" || char === "\n") break;
+            if (trailing.length === 32) { trailing += "\u2026"; break; }
+            trailing += char;
+        }
+        return trailing.trim().length === 0 ? null : trailing.trim();
     }
 
     static #scopeExcerpt(lexer: plurnkLexer): string {
