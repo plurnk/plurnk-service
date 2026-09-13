@@ -109,15 +109,17 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
         || parsed.items[1]?.statement?.op !== "TASK") throw new Error("outside text changed the parsed program");
 }
 
+// A quoted example rides a numeric delimiter ({§numeric-delimiter}): the SEND's body holds the
+// literal heading without executing it, and the disposition still follows.
 const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
-const unlabeledFence = String.fromCharCode(96).repeat(5);
-const unlabeled = unlabeledFence + " <!-- literal example -->\\n" + literalExample + "\\n" + unlabeledFence + "\\n" + program;
-const implicitSend = PlurnkParser.parse(unlabeled);
-assertClean("unlabeled SEND", implicitSend);
-if (implicitSend.items.length !== 2 || implicitSend.items[0]?.statement?.op !== "SEND"
-    || implicitSend.items[0]?.statement?.aside !== "literal example"
-    || implicitSend.items[0]?.statement?.body?.raw !== literalExample
-    || implicitSend.items[1]?.statement?.op !== "TASK") throw new Error("unlabeled fence executed its literal example");
+const outer = String.fromCharCode(96).repeat(5);
+const quoted = outer + "42SEND <!-- literal example -->\\n" + literalExample + "\\n" + outer + "42\\n" + program;
+const quotedSend = PlurnkParser.parse(quoted);
+assertClean("delimited SEND", quotedSend);
+if (quotedSend.items.length !== 2 || quotedSend.items[0]?.statement?.op !== "SEND"
+    || quotedSend.items[0]?.statement?.aside !== "literal example"
+    || quotedSend.items[0]?.statement?.body?.raw !== literalExample
+    || quotedSend.items[1]?.statement?.op !== "TASK") throw new Error("delimited SEND did not quote its literal example");
 
 // Parse a simple statement and validate its schema-derived position.
 const item = result.items[0];
@@ -147,9 +149,9 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
     || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
     throw new Error("PathSyntax target escape failed");
 }
-if (!PLURNK_OPS.includes("TASK") || PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || RESERVED_AUTHORITIES.join(",") !== "commons,plurnk") {
-    throw new Error("contracts constants are not usable");
-}
+if (!PLURNK_OPS.includes("TASK") || PLURNK_OPS.includes("PLAN")) throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
+if (!WORKER_NAME.test("worker-1")) throw new Error("WORKER_NAME rejects a legal worker name");
+if (RESERVED_AUTHORITIES.join(",") !== "plurnk") throw new Error("RESERVED_AUTHORITIES drifted: " + RESERVED_AUTHORITIES.join(","));
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
     throw new Error("unknown position sentinel is not intact");
 }

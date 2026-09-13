@@ -343,7 +343,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
-const packedTurnOps = "```DONE\ndone\n```";
+const packedTurnOps = "````TASK\n[{\"content\":\"done\",\"status\":\"completed\"}]\n````";
 const digestFixture = new SqlRiteSync({
     path: migratedDb,
     dir: dirname(fileURLToPath(import.meta.url)),
@@ -359,13 +359,7 @@ try {
         prompt: "packed-digest-prompt",
     });
     const turn = digestFixture.installation_insert_turn.get({ loop_id: loop.id });
-    digestFixture.installation_insert_turn_ops.run({
-        worker_id: worker.id,
-        loop_id: loop.id,
-        turn_id: turn.id,
-        rx: JSON.stringify({ content: packedTurnOps, mimetype: "text/vnd.plurnk" }),
-        weight: Math.ceil(packedTurnOps.length / 2),
-    });
+    digestFixture.installation_insert_turn_ops.run({ turn_id: turn.id, content: packedTurnOps });
 } finally {
     digestFixture.close();
 }
@@ -489,7 +483,7 @@ ${anchorContent}
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
     const applied = await aguiAction(address, "op.parse", {
-        text: `\`\`\`EDIT (${anchorTarget})\`\`\` <${one},${two}>`,
+        text: `\`\`\`EDIT (${anchorTarget}) <${one},${two}>\`\`\``,
     }, anchorWorkspace.name);
     const landed = (await aguiAction(address, "op.parse", {
         text: `\`\`\`READ (${anchorTarget})\`\`\``,
@@ -520,13 +514,13 @@ ok(
     skillBoot.listening === true && skillBoot.probeError === undefined,
     "the packed AG-UI workspace bootstrap accepts a conventional project skill without a provider",
 );
-// {§read-find-normalization}: a matcher finds locations; a scoped READ retrieves text.
+// {§read-find-normalization}: an authored READ is never rewritten into a FIND — a matcher
+// selects the region and the READ renders it. The survey of paths is FIND, and only FIND.
 const packedSourceWorks = skillBoot.probeResult?.sourceLookup?.status === 200
-        && isDeepStrictEqual(skillBoot.probeResult?.sourceLookup?.results, [{
-            channel: "body",
-            locator: "//function_definition",
-            region: { startLine: 1, startColumn: 1, endLine: 2, endColumn: 13 },
-        }])
+        && skillBoot.probeResult?.sourceLookup?.content === "def target():\n    return 1"
+        && isDeepStrictEqual(skillBoot.probeResult?.sourceLookup?.region, {
+            startLine: 1, startColumn: 1, endLine: 2, endColumn: 13,
+        })
         && skillBoot.probeResult?.sourceRead?.status === 200
         && skillBoot.probeResult?.sourceRead?.content === "def target():\n    return 1"
         && skillBoot.code === 0 && skillBoot.signal === null;
@@ -606,7 +600,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `\`\`\`node (skill://inspect/scripts/main.mjs) {cwd=run directory} {args=${JSON.stringify(packedSkillArgs)}}
+            text: `\`\`\`node (skill://inspect/scripts/main.mjs) [{"cwd": "run directory", "args": ${JSON.stringify(packedSkillArgs)}}]
 raw stdin
 \`\`\``,
         },
@@ -691,11 +685,11 @@ ok(
 ok(
     dormantBoot.probeResult?.skillCatalog?.status === 200
         && dormantBoot.probeResult.skillCatalog.results.flat().some((row) =>
-            row.path === "skill://inspect/SKILL.md" && row.summary === "Inspect a packed installation."),
+            row.path === "skill://inspect/SKILL.md" && row.aside === "Inspect a packed installation."),
     "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
-    packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("EXEC_ [skills] (discover)") === true,
+    packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("skills (discover)") === true,
     "the packed Worker learns Skills management from the generated family manager, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);

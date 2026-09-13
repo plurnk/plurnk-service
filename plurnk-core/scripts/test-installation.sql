@@ -18,13 +18,10 @@ VALUES ($loop_id, 1, 'client', 'operation', 200)
 RETURNING id;
 
 -- PREP: installation_insert_turn_ops
-INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, op,
-    tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs
-) VALUES (
-    $worker_id, $loop_id, $turn_id, 1, 'client', NULL,
-    '', 'text/vnd.plurnk', $rx, 'application/json', 200, $weight, '{"kind":"turnOps"}'
-);
+-- {§turn-source-resources}: the program a turn emitted is source evidence on the
+-- turn, which is where the digest reads its assistant projection.
+INSERT INTO turn_sources (turn_id, kind, content)
+VALUES ($turn_id, 'ops', $content);
 
 -- PREP: installation_select_capability_docs
 SELECT entries.workspace_id, entries.pathname, entry_channels.content
