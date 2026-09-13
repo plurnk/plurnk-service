@@ -111,6 +111,10 @@ target, one header per block:
 {"done":true}
 ````
 
+````SEND (https://api.example.com/v1/search) [{"Content-Type": "application/json"}]
+{"query":"plurnk"}
+````
+
 Metadata stays on one line; nested braces are preserved as content.
 An exact FIND forwards these headers when it must acquire the URL, but the
 result remains intentionally ineligible for later cache reuse. Request headers

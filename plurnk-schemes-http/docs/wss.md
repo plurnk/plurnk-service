@@ -41,6 +41,10 @@ turn's disposition operation is deferred until the other operations have run.
 {"type":"subscribe","channel":"updates"}
 ````
 
+````SEND (wss://api.example.com/feed)
+{"type":"ping"}
+````
+
 Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket
 identity; `messages` is the only current channel. An unavailable channel returns
