@@ -607,8 +607,10 @@ test("{§plan-slotless}: a malformed continuation heading preserves siblings wit
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const parseErrors = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string; line: number; source: string }>;
         assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation heading");
-        assert.equal(parseErrors[0]?.message, "TASK's body begins below the header");
-        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "lexer" });
+        // {§one-line-turn} — a TASK heading takes an inventory block, so an unterminated one is the
+        // block's own boundary loss, still one bounded diagnostic and never a completion.
+        assert.equal(parseErrors[0]?.message, "unexpected closing fence; expected `]` (`[metadata]` modifier closer) or scheme metadata content");
+        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "parser" });
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
             turn_id: result.turnId,
