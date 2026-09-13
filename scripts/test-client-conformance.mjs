@@ -334,11 +334,15 @@ try {
     await tui.waitFor(/A2A agents: none/);
     tui.write("Exercise the installed interactive terminal.\r");
     await tui.waitFor(/The installed interactive journey is complete\./);
-    // The status row settles on the session's summary line: the concluded loop's turns and
-    // accounting, the gauge's model, the ant (the daemon's alive-children count, {§agui-status-children}),
-    // the workspace, and the conversation worker.
+    // The status row settles on the session's summary line: elapsed time, the concluded
+    // accounting, the gauge's model, and the ant (the daemon's alive-children count,
+    // {§agui-status-children}). Since plurnk#58 the lifecycle glyph stands alone — the word
+    // repeated it — and the place (workspace, loop, turn, worker) is the prompt prefix's,
+    // asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️ completed · 3 turns · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜0 · installed-tui ·[\s\S]{0,220}?worker:\/\/tui-worker\//);
+    await tui.waitFor(/⏹️ · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜 0/);
+    // {plurnk#58} — the prompt prefix names the place: [workspace/loop/turn:~worker].
+    await tui.waitFor(/\[installed-tui(?:\/\d+\/\d+)?:[\s\S]{0,80}?tui-worker\]/);
     const tuiOutput = tui.output();
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
@@ -357,10 +361,11 @@ try {
     await tui.waitFor(/workspace: installed-rejected/);
     tui.write("Exercise the rejected provider request.\r");
     await tui.waitFor(/The requested model is unavailable; select an available model\./);
-    await tui.waitFor(/failed · 2 turns/);
+    // {plurnk#58} — the glyph is the lifecycle and the turn count left the status line.
+    await tui.waitFor(/❌ · \d/);
     tui.write("/workers\r");
-    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌ failed · 2 turns/);
-    if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️ completed")) {
+    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌ · \d/);
+    if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
         throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
     }
     await tui.exit();
