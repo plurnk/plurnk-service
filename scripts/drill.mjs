@@ -29,8 +29,8 @@ export const scopeIntg = (files, dirs) => {
     return changed;
 };
 
-const gitDiff = (base) => new Promise((resolve) => {
-    const child = spawn("git", ["diff", "--name-only", `${base}..HEAD`]);
+const gitDiff = (base, head) => new Promise((resolve) => {
+    const child = spawn("git", ["diff", "--name-only", `${base}..${head}`]);
     let out = "";
     child.stdout.on("data", (c) => { out += c; });
     child.once("close", (code) => resolve(code === 0 ? out.split("\n").filter(Boolean) : null));
@@ -42,7 +42,9 @@ const gitDiff = (base) => new Promise((resolve) => {
 const intgTargets = async () => {
     const base = process.env.PLURNK_GATE_BASE;
     if (!base) return null;
-    const files = await gitDiff(base);
+    // {#642} — diff to the sha being pushed, not to HEAD: a push of a ref that is not
+    // the checked-out branch would otherwise scope intg against the wrong commit.
+    const files = await gitDiff(base, process.env.PLURNK_GATE_HEAD ?? "HEAD");
     if (files === null) return null;
     const changed = scopeIntg(files, workspaces.map((w) => w.dir));
     return changed === null ? null : workspaces.filter((w) => changed.has(w.dir));

@@ -11,6 +11,7 @@ zero=0000000000000000000000000000000000000000
 any_update=0
 ref_count=0
 gate_base=
+gate_head=
 gates_main=0
 while read -r _local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
@@ -18,6 +19,7 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
     any_update=1
     ref_count=$((ref_count + 1))
     [ "$remote_sha" != "$zero" ] && gate_base="$remote_sha"
+    gate_head="$local_sha"
     case "$remote_ref" in
         refs/heads/main) gates_main=1 ;;
         refs/tags/*) : ;;
@@ -35,10 +37,24 @@ done
 # unblocked; main's protection unchanged.
 [ "$gates_main" = 1 ] || exit 0
 
+# The drill runs the WORKING TREE, not the commit being pushed (#642): every phase
+# spawns in a working-tree cwd. A dirty tree therefore gates code that is not what
+# lands, in either direction — uncommitted work can carry a red push green, or carry
+# a green push red. Refuse it and name what is dirty.
+dirt=$(git status --porcelain)
+if [ -n "$dirt" ]; then
+    echo "gate: the drill tests the working tree, which does not match the commit being pushed." >&2
+    echo "$dirt" >&2
+    exit 1
+fi
+
 # Worktree isolation at the push boundary: hand drill the remote base sha so intg
-# scopes to the changed workspaces. Single-ref, non-new pushes only — a multi-ref
-# or new-branch push has no single base and runs the full intg (safe default).
+# scopes to the changed workspaces, and the pushed sha so it scopes against the ref
+# being pushed rather than whatever HEAD happens to be (#642). Single-ref, non-new
+# pushes only — a multi-ref or new-branch push has no single base and runs the full
+# intg (safe default).
 [ "$ref_count" = 1 ] && [ -n "$gate_base" ] && export PLURNK_GATE_BASE="$gate_base"
+[ "$ref_count" = 1 ] && [ -n "$gate_head" ] && export PLURNK_GATE_HEAD="$gate_head"
 
 # Git exports its hook environment (GIT_DIR = <main>/.git/worktrees/<wt> when pushing
 # from a linked worktree). A gate test that runs `git init <tmpdir>` under it re-initializes
