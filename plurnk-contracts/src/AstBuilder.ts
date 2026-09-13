@@ -255,40 +255,16 @@ export default class AstBuilder {
         };
     }
 
-    static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
+    static #buildRead(ctx: ReadStatementContext): ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
-        const targetPath = slots.target?.kind === "url"
-            ? slots.target.pathname
-            : slots.target?.raw;
         AstBuilder.#adviseBody("READ", bodied.raw, position);
         const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null);
         const aside = bodied.aside ?? lifted.aside;
-        // {§read-find-normalization} — a glob target without a matcher is a survey, so it is a FIND;
-        // with a matcher the READ keeps its glob and the runtime reads each matching path
-        // ({§read-pattern}, core {§read-fan-out}).
-        if (targetPath !== undefined && PathSyntax.hasGlob(targetPath) && lifted.matcher === null) {
-            if (slots.lineMarker?.marks.some((mark) => typeof mark === "string") === true) {
-                throw new PlurnkParseError(
-                    position.line,
-                    position.column,
-                    "visitor",
-                    "line anchors require an exact READ target; FIND result positions are numeric",
-                );
-            }
-            const findSlots = slots as Slots;
-            return {
-                op: "FIND",
-                aside,
-                ...findSlots,
-                metadata: lifted.metadata,
-                matcher: lifted.matcher,
-                body: null,
-                position,
-            };
-        }
+        // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
+        // fan-out over every matching path, with or without a matcher (core {§read-fan-out}).
         return {
             op: "READ",
             aside,

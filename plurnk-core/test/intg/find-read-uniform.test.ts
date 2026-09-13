@@ -336,14 +336,14 @@ test("FIND on an exact target with a content matcher pages flat match locations"
     } finally { await db.close(); }
 });
 
-test("{§read-find-normalization}: authored READ aggregates use canonical FIND pagination", async () => {
+test("{§read-find-normalization}: a glob survey is an authored FIND; a pattern on an exact READ stays a READ", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "a.md", "target one\ntarget two");
         await seedRaw(ctx, "b.md", "other");
         const worker = new Worker();
 
-        const globRead = parseOp<FindStatement>("```READ (worker:///*.md) <2>```", "FIND");
+        const globRead = parseOp<FindStatement>("```FIND (worker:///*.md) <2>```", "FIND");
         const resourcePage = await worker.find(
             globRead,
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),

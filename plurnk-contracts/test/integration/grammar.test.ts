@@ -1056,13 +1056,13 @@ test("semantic matcher accepts arbitrary text and a result-position scope", () =
     assert.equal(find.matcher?.dialect, "fts");
 });
 
-// {§read-find-normalization} — the glob half: a survey target is a FIND; a matcher keeps the READ, glob and all.
-test("READ of a glob target normalizes to schema-valid FIND; a matcher keeps its op", () => {
+// {§read-find-normalization} — a READ is never rewritten: a glob target stays a READ (the runtime fans it out).
+test("READ of a glob target stays a schema-valid READ; a matcher keeps its op", () => {
     const cases = [
         { input: section("READ", " (worker:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4] },
         { input: patterned("READ", " (worker:///page.md) <3,5>", "/header/i"), op: "READ", dialect: "regex", marks: [3, 5] },
-        { input: section("READ", " (src/**/*.ts) <2>"), op: "FIND", dialect: null, marks: [2] },
-        { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "FIND", dialect: null, marks: [4, 8] },
+        { input: section("READ", " (src/**/*.ts) <2>"), op: "READ", dialect: null, marks: [2] },
+        { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "READ", dialect: null, marks: [4, 8] },
         { input: patterned("READ", " (worker:///src/**/*.ts)", "TODO"), op: "READ", dialect: "glob", marks: null },
     ] as const;
 

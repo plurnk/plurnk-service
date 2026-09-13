@@ -124,6 +124,13 @@ test("a pattern READ over a glob fans out into one exact pattern READ receipt pe
         const scopedDogs = JSON.parse((await rows()).at(-1)!.rx) as { content: string; matched: number };
         assert.deepEqual([scopedDogs.content, scopedDogs.matched], ["but I love dogs.", 1], "the authored scope bounds every fanned-out READ");
 
+        const every = await dispatch(readStmt(urlPath("worker", "/pets_*.md")));
+        assert.equal(every.status, 200, JSON.stringify(every));
+        assert.equal(every.rowsWritten, 3, "without a pattern every path under the glob is read");
+        const previews = (await rows()).slice(-3);
+        assert.deepEqual(previews.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_cats.md"], ["READ", "/pets_dogs.md"], ["READ", "/pets_fish.md"]]);
+        assert.equal((JSON.parse(previews[2]!.rx) as { content: string }).content, "Fish are quiet.", "each path renders its ordinary preview");
+
         const survey = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
         assert.ok(survey.status < 400, JSON.stringify(survey));
         assert.equal((await rows()).at(-1)!.op, "FIND", "a resource dialect on a glob READ is the FIND survey it always was");

@@ -38,9 +38,10 @@ Language and teaching:
   `READ (a.md) /bats?/i`, `KILL (log:///**) ~stale`); a sigil lifts on EDIT with the replacement
   beneath; `^…` is a regex without slashes; a trailing aside stays the aside. `[{"pattern": "…"}]`
   remains the escape and the COPY/MOVE operand form, and programs render matchers bare.
-- A pattern READ over a glob fans out: `READ (pets_*.md) /dogs/i` reads each matching path as
-  an ordinary exact pattern READ with its own receipt, so every line keeps its path, ordinal and
-  anchor; no match is one 204 on the glob; a glob READ without a pattern is still a FIND survey.
+- A READ over a glob fans out: `READ (pets_*.md)` reads each matching path as an ordinary exact
+  READ with its own receipt (the preview scope, or with a pattern only the matching lines), so
+  every line keeps its path, ordinal and anchor; no path is one 204 on the glob. A READ is never
+  rewritten into a FIND; the survey of paths is FIND.
 - A scope position written `<@abcde 42>` reads as the anchor with one advisory, never a refusal.
 - Recursive Reasoning: turn 0's reasoning READ is the pattern read
   `READ (reasoning:///L/T) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->`, and the

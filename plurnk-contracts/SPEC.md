@@ -586,15 +586,15 @@ metadata modifier. No scope, persistent worker identity, or output-language
 shape is represented. Provider selection, source admission, batching,
 accounting, and observation timing belong to the consuming service.
 
-§read-find-normalization An authored READ whose target path is classified as
-a glob and that carries no matcher normalizes during AST construction to one
-ordinary FIND statement: target, signals, and scope are preserved, and FIND's
-result pagination and projection contract then applies. A matcher never turns
-a READ into a FIND: READ with a `pattern` on an exact target stays READ and
-renders the selected lines ({§read-pattern}), and READ with a `pattern` on a
-glob stays READ with its glob, which the runtime fans out into one exact
-pattern READ per matching path ({§read-fan-out} in the core SPEC; operator,
-2026-09-13: `grep -n` output, a survey only when there is nothing to grep for).
+§read-find-normalization An authored READ is never rewritten into a FIND. A
+glob target on READ keeps its glob, and the runtime fans it out into one exact
+READ per matching path, with the authored scope and matcher ({§read-fan-out}
+in the core SPEC; operator, 2026-09-13: "give it what it asked for" — a model
+that asks to read every file under a glob gets those files, bounded by the
+FIND page and the preview scope, not a catalog it did not ask for). A matcher
+never changes the operation either: READ with a `pattern` on an exact target
+stays READ and renders the selected lines ({§read-pattern}). The survey of
+paths is FIND, and only FIND.
 
 §read-exact-target READ targets one exact resource (a local path or scheme
 URL, with optional `#channel` fragment or `[metadata]`) and has no body. A

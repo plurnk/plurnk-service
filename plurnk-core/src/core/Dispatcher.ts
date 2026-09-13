@@ -433,7 +433,7 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        if (context.statement.op === "READ" && context.statement.matcher !== null && Dispatcher.#globTarget(context.statement.target)) {
+        if (context.statement.op === "READ" && Dispatcher.#globTarget(context.statement.target)) {
             return this.#fanOutRead(context, context.statement);
         }
         let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
@@ -452,17 +452,18 @@ export default class Dispatcher {
         return target !== null && PathSyntax.hasGlob(target.kind === "url" ? target.pathname : target.raw);
     }
 
-    // {§read-fan-out} — a pattern READ over a glob is grep: the glob's matching paths come from the
-    // ordinary matcher FIND (unlogged, its resource page bounding the fan-out), and each one is read
-    // as an ordinary exact pattern READ with its own receipt row, so every rendered line keeps its
-    // path, ordinal and anchor. No path matched: one 204 receipt on the authored glob. A resource
-    // dialect (`~`, `&`) selects resources, not lines, so that READ is the survey it always was.
+    // {§read-fan-out} — a READ over a glob reads every matching path: the paths come from the
+    // ordinary FIND over the same target (unlogged; a matcher FIND when there is one, the catalog
+    // otherwise; its resource page bounds the fan-out), and each is read as an ordinary exact READ
+    // with the authored scope and matcher and its own receipt row, so every rendered line keeps its
+    // path, ordinal and anchor. No path: one 204 receipt on the authored glob. A resource dialect
+    // (`~`, `&`) selects resources, not lines, so that READ is the FIND survey.
     async #fanOutRead(context: DispatchContext, statement: ReadStatement): Promise<DispatchResult> {
         const survey: FindStatement = {
             op: "FIND", aside: statement.aside, target: statement.target, metadata: statement.metadata,
             matcher: statement.matcher, lineMarker: null, body: null, position: statement.position,
         };
-        if (statement.matcher!.dialect === "fts" || statement.matcher!.dialect === "graph") {
+        if (statement.matcher?.dialect === "fts" || statement.matcher?.dialect === "graph") {
             return this.dispatch({ ...context, statement: survey });
         }
         const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
@@ -471,10 +472,9 @@ export default class Dispatcher {
             ? ((found.results as MatchItem[] | undefined) ?? []).flatMap((item) => Array.isArray(item) && !("items" in item[0]) ? [item[0].path] : [])
             : [];
         if (paths.length === 0) {
-            const result = found.status >= 400 ? found : Results.assert({
-                status: 204, matched: 0, matcher: statement.matcher!.raw,
-                detail: `No line under ${statement.target!.raw} matched the pattern.`,
-            });
+            const result = found.status >= 400 ? found : Results.assert(statement.matcher === null
+                ? { status: 204, detail: `No path matched ${statement.target!.raw}.` }
+                : { status: 204, matched: 0, matcher: statement.matcher.raw, detail: `No line under ${statement.target!.raw} matched the pattern.` });
             const logEntryId = await this.#logWriter.writeLog({
                 statement, result, workspaceId: context.workspaceId, workerId: context.workerId, loopId: context.loopId,
                 turnId: context.turnId, sequence: context.sequence, origin: context.origin, curationPlan: null, modelCallId: null,
