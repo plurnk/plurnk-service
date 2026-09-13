@@ -1363,6 +1363,17 @@ diagnostics are:
   dialect without slashes or flags: the whole text is the pattern, so
   `READ (reasoning:///1/1) ^NOTE:.*` selects a turn's note lines (operator,
   2026-09-12: "Recursive Reasoning").
+- §trailing-slots **Slots after the matcher peel off the right.** The heading text after
+  the matcher is read backwards: a trailing `<!-- aside -->`, a trailing `<scope>` in the
+  shapes the lexer admits (result positions on FIND, text coordinates elsewhere) and a
+  trailing `[option block]` that parses as an array of objects come off the right end in
+  any order, each taken once and only when the heading did not already carry that slot,
+  until what remains is the matcher. `READ (a.rs) /fn resolve_/ <1,-1> <!-- entities -->`
+  is the same operation as `READ (a.rs) <1,-1> /fn resolve_/ <!-- entities -->`, with
+  one warning-severity advisory naming the canonical order for the scope or block
+  (operator, 2026-09-13: "swallow up anything that passes as legitimate plurnk"; the
+  2026-09-13 dumbox run refused three headings for this in one turn). A matcher that
+  itself ends in one of those shapes takes the option escape.
 - §matcher-body-redirect **A body beneath those headings.** Text below the heading
   of a FIND, READ or KILL is a body, and those operations take none: the builder
   keeps the statement without it and raises one warning-severity advisory (`READ

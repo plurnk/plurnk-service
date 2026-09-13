@@ -121,3 +121,29 @@ test("{§local-path-fragment}: a bare path's #channel is its fragment, and strin
     assert.deepEqual(targetOf(one("````READ (data/users.html)\n````\n").op), { kind: "local", raw: "data/users.html" }, "no `#`, no field");
     assert.deepEqual(targetOf(one("````FIND (src/**#readable) /x/\n````\n").op), { kind: "local", raw: "src/**", fragment: "readable" });
 });
+
+test("{§trailing-slots}: a scope, an option block or an aside written after the matcher peels off the right end", () => {
+    const markerOf = (statement: ClientStatement) => "lineMarker" in statement ? statement.lineMarker : null;
+    const scoped = one("````READ (crates/wasmi/src/store/mod.rs) /fn resolve_(memory|global)/ <1,-1> <!-- store entity resolution -->\n````\n");
+    assert.deepEqual(scoped.op.matcher, { dialect: "regex", raw: "/fn resolve_(memory|global)/", pattern: "fn resolve_(memory|global)", flags: "" });
+    assert.deepEqual(markerOf(scoped.op), { marks: [1, -1] });
+    assert.equal(scoped.op.aside, "store entity resolution");
+    assert.equal(scoped.diagnostics.length, 1);
+    assert.equal(scoped.diagnostics[0]!.severity, "warning");
+    assert.match(scoped.diagnostics[0]!.message, /after the pattern was read as the scope; the scope goes before the pattern/u);
+    const positions = one("````FIND (crates/wasmi/src/memory/*.rs) /fn data|as_slice/ <2>\n````\n");
+    assert.deepEqual(markerOf(positions.op), { marks: [2] }, "FIND takes result positions after the pattern");
+    assert.equal(positions.op.matcher?.raw, "/fn data|as_slice/");
+    const anchored = one("````KILL (log:///1/**) stale receipt <@aZ09b,@0Aa9Z>\n````\n");
+    assert.deepEqual(markerOf(anchored.op), { marks: ["@aZ09b", "@0Aa9Z"] });
+    assert.deepEqual(anchored.op.matcher, { dialect: "glob", raw: "stale receipt" });
+    const block = one('````READ (notes.md) /todo/i [{"limit":3}]\n````\n');
+    assert.deepEqual(block.op.metadata, ['{"limit":3}'], "a trailing option block is the option block");
+    assert.equal(block.op.matcher?.raw, "/todo/i");
+    assert.match(block.diagnostics[0]?.message ?? "", /options go before the pattern/u);
+    const canonical = one("````READ (a.rs) <1,-1> /fn x/ <!-- note -->\n````\n");
+    assert.deepEqual(canonical.diagnostics, [], "the canonical order draws no advisory");
+    assert.deepEqual([markerOf(canonical.op), canonical.op.matcher?.raw, canonical.op.aside], [{ marks: [1, -1] }, "/fn x/", "note"]);
+    const twice = PlurnkParser.parseStatements("````READ (a.rs) <1,2> /fn x/ <3,4>\n````\n");
+    assert.match(diagnostics(twice).map(({ message }) => message).join(" "), /trailing text/u, "a second scope is not a slot; it stays trailing text");
+});

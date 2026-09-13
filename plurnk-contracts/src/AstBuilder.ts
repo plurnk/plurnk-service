@@ -110,23 +110,66 @@ export default class AstBuilder {
     // {§naked-pattern} — one line of matcher text, its trailing aside split back out. A sigil
     // (`/`, `//`, `$`, `~`, `&`, `^`) is a matcher wherever it stands; a sigil-less glob or literal
     // is one only on the heading line of FIND, READ or KILL, where the text can mean nothing else.
-    static #bareMatcher(raw: string | null, op: string, inline: boolean): { text: string; aside: string | null } | null {
+    // {§trailing-slots} — the slots after the matcher peel off the right end of the heading text,
+    // aside, scope and option block in any order, until what remains is the matcher.
+    static #bareMatcher(raw: string | null, op: string, inline: boolean, position?: Position, carried: { scope: boolean; metadata: boolean } = { scope: false, metadata: false }): { text: string; aside: string | null; scope: string | null; metadata: string | null } | null {
         if (raw === null) return null;
         let text = raw.trim();
         if (text === "" || text.includes("\n")) return null;
         let aside: string | null = null;
-        const trailing = /\s*<!--([\s\S]*?)-->\s*$/u.exec(text);
-        if (trailing !== null) {
-            aside = (trailing[1] ?? "").trim();
-            text = text.slice(0, trailing.index).trim();
-            if (text === "") return null;
+        let scope: string | null = null;
+        let metadata: string | null = null;
+        // A slot the heading already carries is not peeled: a second one is trailing text.
+        let scopeFree = !carried.scope;
+        let metadataFree = !carried.metadata;
+        const scopeTail = op === "FIND" ? AstBuilder.#TAIL_POSITIONS : AstBuilder.#TAIL_TEXT_SCOPE;
+        for (;;) {
+            const trailingAside = /\s*<!--([\s\S]*?)-->\s*$/u.exec(text);
+            if (trailingAside !== null && aside === null) {
+                aside = (trailingAside[1] ?? "").trim();
+                text = text.slice(0, trailingAside.index).trim();
+                continue;
+            }
+            const trailingScope = scopeTail.exec(text);
+            if (trailingScope !== null && scopeFree && trailingScope.index > 0) {
+                scope = trailingScope[1]!;
+                scopeFree = false;
+                text = text.slice(0, trailingScope.index).trim();
+                AstBuilder.#adviseTrailing(position, `\`${scope}\` after the pattern was read as the scope; the scope goes before the pattern.`);
+                continue;
+            }
+            const trailingBlock = /\s*\[(\{[\s\S]*\})\]\s*$/u.exec(text);
+            if (trailingBlock !== null && metadataFree && trailingBlock.index > 0 && AstBuilder.#isJsonArrayOfObjects(trailingBlock[1]!)) {
+                metadata = trailingBlock[1]!;
+                metadataFree = false;
+                text = text.slice(0, trailingBlock.index).trim();
+                AstBuilder.#adviseTrailing(position, `\`[${metadata}]\` after the pattern was read as the option block; options go before the pattern.`);
+                continue;
+            }
+            break;
         }
-        if (AstBuilder.#SIGIL.test(text)) return { text, aside };
+        if (text === "") return null;
+        if (AstBuilder.#SIGIL.test(text)) return { text, aside, scope, metadata };
         if (!inline || (op !== "FIND" && op !== "READ" && op !== "KILL")) return null;
-        return { text, aside };
+        return { text, aside, scope, metadata };
+    }
+
+    static #adviseTrailing(position: Position | undefined, message: string): void {
+        if (position === undefined) return;
+        AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", message, "warning"));
+    }
+
+    static #isJsonArrayOfObjects(inner: string): boolean {
+        try {
+            const parsed = JSON.parse(`[${inner}]`) as unknown;
+            return Array.isArray(parsed) && parsed.every((element) => typeof element === "object" && element !== null && !Array.isArray(element));
+        } catch { return false; }
     }
 
     static readonly #SIGIL = /^(\/|\$|~|&|\^)/u;
+    // The scope shapes the lexer admits, matched at the right end of the heading text.
+    static readonly #TAIL_POSITIONS = /\s*(<-?[0-9]+(?:\.[0-9]+)?(?:(?:,\s?|-)-?[0-9]+(?:\.[0-9]+)?)*>)\s*$/u;
+    static readonly #TAIL_TEXT_SCOPE = /\s*(<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[: ][1-9][0-9]*)?|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[: ][1-9][0-9]*)?|@[0-9]{1,4}))*>)\s*$/u;
 
     // The body text that opened on the heading line itself, split from the lines beneath it.
     static #splitInlineBody(ctx: ParserRuleContext, position: Position): { inline: string | null; below: string | null } {
@@ -140,32 +183,37 @@ export default class AstBuilder {
         return { inline: text.slice(0, eol), below: below === "" ? null : below };
     }
 
-    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null } {
+    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false, carriedScope = false): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null } {
         if (metadata === null || metadata.length !== 1) {
-            const bare = AstBuilder.#bareMatcher(raw, op, inline);
+            const bare = AstBuilder.#bareMatcher(raw, op, inline, position, { scope: carriedScope, metadata: metadata !== null });
             return bare === null
-                ? { matcher: null, metadata, aside: null }
-                : { matcher: AstBuilder.#parseMatcherBody(bare.text, position), metadata, aside: bare.aside };
+                ? { matcher: null, metadata, aside: null, scope: null }
+                : {
+                    matcher: AstBuilder.#parseMatcherBody(bare.text, position),
+                    metadata: metadata ?? (bare.metadata === null ? null : [bare.metadata]),
+                    aside: bare.aside,
+                    scope: bare.scope,
+                };
         }
         let parsed: unknown;
         try { parsed = JSON.parse(`[${metadata[0]}]`); }
         catch (cause) {
             if (!(cause instanceof SyntaxError)) throw cause;
-            return { matcher: null, metadata, aside: null };
+            return { matcher: null, metadata, aside: null, scope: null };
         }
         const elements = parsed as unknown[];
         if (elements.some((element) => typeof element !== "object" || element === null || Array.isArray(element))) {
-            return { matcher: null, metadata, aside: null };
+            return { matcher: null, metadata, aside: null, scope: null };
         }
         const options = Object.assign({}, ...elements as object[]) as Record<string, unknown>;
-        if (!Object.hasOwn(options, "pattern")) return { matcher: null, metadata, aside: null };
+        if (!Object.hasOwn(options, "pattern")) return { matcher: null, metadata, aside: null, scope: null };
         const pattern = options.pattern;
         if (typeof pattern !== "string") {
             throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher, e.g. [{"pattern": "/needle/i"}].`);
         }
         const matcher = AstBuilder.#parseMatcherBody(pattern, position);
         const others = Object.keys(options).filter((key) => key !== "pattern");
-        return { matcher, metadata: others.length === 0 ? null : metadata, aside: null };
+        return { matcher, metadata: others.length === 0 ? null : metadata, aside: null, scope: null };
     }
 
     // {§matcher-option} — a text or log operation's body is never a matcher; it is ignored with one
@@ -218,11 +266,12 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         AstBuilder.#adviseBody("FIND", below, position);
-        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null);
+        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null, slots.lineMarker !== null);
         return {
             op: "FIND",
             aside: aside ?? lifted.aside,
             ...slots,
+            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseLineMarker(lifted.scope)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             body: null,
@@ -261,7 +310,7 @@ export default class AstBuilder {
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
         AstBuilder.#adviseBody("READ", bodied.raw, position);
-        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null);
+        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null, slots.lineMarker !== null);
         const aside = bodied.aside ?? lifted.aside;
         // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
         // fan-out over every matching path, with or without a matcher (core {§read-fan-out}).
@@ -269,6 +318,7 @@ export default class AstBuilder {
             op: "READ",
             aside,
             ...slots,
+            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             body: null,
@@ -282,11 +332,12 @@ export default class AstBuilder {
         // {§naked-pattern} — a sigil on the heading line is the matcher; the lines beneath are the
         // replacement (none deletes each match). Any other heading-line text is the body it always was.
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true);
+        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true, slots.lineMarker !== null);
         return {
             op: "EDIT",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
             ...slots,
+            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             body: lifted.matcher === null || split.inline === null ? AstBuilder.#bodyTextOf(ctx) : split.below,
@@ -392,11 +443,12 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#adviseBody("KILL", split.below, position);
-        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null);
+        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null);
         return {
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
             ...slots,
+            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             body: null,
