@@ -181,3 +181,18 @@ WHEN NOT EXISTS (
 BEGIN
     SELECT RAISE(ABORT, 'ambient event audience must be the producer direct parent in the same workspace');
 END;
+
+-- {§module-workspace-state}: the same provider-validated snapshot, owned by a WORKER rather
+-- than a workspace. A family declares which scope its definitions belong to; `env` is the first
+-- worker-scoped one, because an environment is context (how this worker works) rather than
+-- capability (what exists in this workspace). A sibling table rather than a nullable column on
+-- workspace_module_state: the foreign key is real, so a worker's definitions die with it, and
+-- every identity component stays NOT NULL ({§entry-identity-no-null}).
+CREATE TABLE IF NOT EXISTS worker_module_state (
+    worker_id        INTEGER NOT NULL,
+    namespace_owner  TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
+    state            TEXT    NOT NULL CHECK (json_valid(state)),
+    updated_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (worker_id, namespace_owner),
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
+) STRICT;

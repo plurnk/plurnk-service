@@ -296,6 +296,9 @@ export class SqlRiteSync {
 	workspace_module_state_get: SqlRiteSyncPreparedStatements;
 	workspace_module_state_put: SqlRiteSyncPreparedStatements;
 	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
+	worker_module_state_get: SqlRiteSyncPreparedStatements;
+	worker_module_state_put: SqlRiteSyncPreparedStatements;
+	worker_module_state_delete: SqlRiteSyncPreparedStatements;
 	workspace_get_settings: SqlRiteSyncPreparedStatements;
 }
 
@@ -549,5 +552,8 @@ export default class SqlRite {
 	workspace_module_state_get: SqlRitePreparedStatements;
 	workspace_module_state_put: SqlRitePreparedStatements;
 	workspace_module_state_delete: SqlRitePreparedStatements;
+	worker_module_state_get: SqlRitePreparedStatements;
+	worker_module_state_put: SqlRitePreparedStatements;
+	worker_module_state_delete: SqlRitePreparedStatements;
 	workspace_get_settings: SqlRitePreparedStatements;
 }
