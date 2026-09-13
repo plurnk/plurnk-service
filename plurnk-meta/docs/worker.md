@@ -13,7 +13,7 @@ an entry rather than controlling that worker.
 | `worker://reviewer/notes.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///notes.md` | Shared commons entry | Read and write. |
 
-The packet names your worker, its parent (`null` at a root), and today's date and time zone under `## Worker`. Addresses are literal and keep
+The packet names your worker, its parent (`null` at a root), and the loop and turn you are producing under `## Worker`, below the log. Addresses are literal and keep
 the same meaning when passed to another worker. All scratch belongs to the
 workspace; its namespace does not require a namesake worker. Generated
 references live under `worker:///_plurnk/`; reference
@@ -47,8 +47,8 @@ its log projection, never the original evidence. No later reasoning is added
 automatically after initialization's example READ.
 
 A READ can retain your current turn's reasoning: the source exists when your
-OPs execute. The packet's `## Turn` line names the coordinate you are
-producing. For example, on `{"loop":1,"turn":3}`:
+OPs execute. The packet's `## Worker` block names the coordinate you are
+producing. For example, on `"loop":1,"turn":3`:
 
 ````READ (reasoning:///1/3) <1,-1>
 ````

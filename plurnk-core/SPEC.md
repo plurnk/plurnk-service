@@ -745,18 +745,16 @@ EXEC git — never engine machinery.
   notices, and the rest keep that rule. The parent is not a section: the
   `## Worker` identity block carries `"parent": "worker://<name>"`, or
   `"parent": null` at a root, so a worker never infers its rank from silence.
-- §packet-current-date **The packet says what day it is.** The `## Worker` block carries
-  `"date": "YYYY-MM-DD"` and `"timezone": "<IANA zone>"` from the daemon's clock at packet
-  assembly: a calendar date, never a timestamp, so the cached system-and-worker prefix changes
-  once a day rather than once a packet. It is orientation data, not teaching; the model cannot
-  infer the present from its training, and every harness it was trained against supplied it.
-  `PacketBuilder` takes the clock as a dependency so fixtures stay deterministic.
-- §packet-current-turn **The packet says which turn it is.** A `## Turn` section carrying
-  `{"loop": L, "turn": T}` follows the log, first in the status clump: it changes every turn,
-  so it cannot ride the cached `## Worker` prefix. `L/T` is the coordinate the packet's response
-  becomes, so `reasoning:///L/T` and `ops:///L/T` are the model's own and `log:///L/T/*` its
-  rows; a model no longer infers the present from the last row's coordinate, which may or may
-  not be its own turn. The coordinate only; the source addresses stay documented, not taught.
+- §packet-current-turn **The packet says who and which turn, below the log.** The
+  `## Worker` block is the first section after the log, carrying
+  `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T}`: the actor,
+  whose child it is, and the coordinate this packet's response becomes, so `reasoning:///L/T`
+  and `ops:///L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
+  present from the last row's coordinate, which may or may not be its own turn. The block
+  changes every turn, so nothing of it precedes the log, and the packet carries no date, time
+  or zone anywhere (operator, 2026-09-13: no date or time injection, and nothing volatile above
+  the log, which is the cached prefix). The coordinate only; the source addresses stay
+  documented, not taught.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
@@ -3853,16 +3851,15 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
-|     4 | user   | `worker`              | `Worker`: one stable `path` naming the current actor, e.g. `worker://alice`, its `parent` address or `null`, and the daemon's calendar `date` with its IANA `timezone` ({§packet-current-date}). |
-|     5 | user   | `log`                 | Append-mostly model-visible history. |
-|     6 | user   | `turn`                | `Turn`: `{"loop": L, "turn": T}`, the coordinate this packet's response becomes ({§packet-current-turn}). |
-|     7 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
-|     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|     9 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    10 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    11 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
-|    12 | user   | `prompt`              | Current prompt-entry pointers. |
-|    13 | user   | `recap`               | Optional authored operational recap. |
+|     4 | user   | `log`                 | Append-mostly model-visible history; the first user section, so the cached prefix ends inside it. |
+|     5 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
+|     6 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
+|     7 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|     8 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|     9 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    10 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
+|    11 | user   | `prompt`              | Current prompt-entry pointers. |
+|    12 | user   | `recap`               | Optional authored operational recap. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly
@@ -4383,9 +4380,8 @@ their boundaries ({§log-wire-format}).
 | `definition`    | system | Bare `plurnk.md`; no wrapper heading                                                          | {§definition-table-projection}  |
 | `system-policy` | system | Authored Markdown                                                                             | {§policy-sections}              |
 | `inject`        | system | Authored Markdown                                                                             | {§packet-inject}                |
-| `worker`        | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `date`, `timezone` | {§packet-cache-monotone}        |
 | `log`           | user   | Markdown H3 records with JSON metadata                                                        | {§log-wire-format}              |
-| `turn`          | user   | JSON `{loop, turn}` coordinate of this response                                               | {§packet-current-turn}          |
+| `worker`        | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `loop`, `turn`     | {§packet-current-turn}          |
 | `delegation`    | user   | JSON `{workers, streams}` status/path pointers, each `[]` when empty                          | {§child-orientation}            |
 | `errors`        | user   | JSON status/log-path pointers                                                                 | {§operation-results}            |
 | `notices`       | user   | Terse observation bullets                                                                     | {§notice-drain-on-read}         |

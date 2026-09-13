@@ -125,13 +125,6 @@ export interface CurationOverflow {
 // Packet assembly ({§packet-assembly}) and model-facing budget admission
 // ({§context-output-admission}). Deliberate curation stays in scoped KILL.
 export default class PacketBuilder {
-    // {§packet-current-date} Local calendar date and IANA zone of the daemon's clock.
-    static currentDate(now: Date): { date: string; timezone: string } {
-        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        return { date: now.toLocaleDateString("en-CA", { timeZone: timezone }), timezone };
-    }
-
-
     #db: Db;
     // {§tokenomics-calibrated-readout} — admission and client gauges consume
     // the allowance captured before this request can change model evidence.
@@ -149,20 +142,14 @@ export default class PacketBuilder {
     // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
     // through the same environment contract as provider configuration.
 
-    // {§packet-current-date} — the clock the Worker block dates its packets from; injectable so
-    // fixtures that snapshot packets stay deterministic.
-    readonly #now: () => Date;
-
-    constructor({ db, schemes, executors, now = () => new Date() }: {
+    constructor({ db, schemes, executors }: {
         db: Db;
         schemes: SchemeRegistry;
         executors: () => ExecutorRegistry | undefined;
-        now?: () => Date;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#executors = executors;
-        this.#now = now;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         // Retired capacity knobs fail at boot rather than silently becoming inert.
         const bootAlias = resolveActiveRoute(process.env)?.alias ?? "";
@@ -356,20 +343,19 @@ export default class PacketBuilder {
             { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
-            // {§packet-current-date} — the date, not a timestamp: it changes once a day, so the
-            // cached prefix survives the day, and it is the one orientation fact a model cannot infer.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, ...PacketBuilder.currentDate(this.#now()) }) },
-            // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
+            // The append-mostly log leads the user slot; nothing volatile precedes it
+            // ({§packet-cache-monotone}; operator, 2026-09-13: no date or time in a packet, ever).
             {
                 name: "log",
                 slot: "user",
                 header: "Log",
                 content: renderedLog.content,
             },
-            // {§packet-current-turn} — the coordinate this packet's response becomes: first in the
-            // status clump (it changes every turn, so it cannot precede the log), and the one fact the
-            // sources cannot state about themselves — which `reasoning:///L/T` is the model's own.
-            { name: "turn", slot: "user", header: "Turn", content: JSON.stringify({ loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
+            // {§packet-current-turn} — the Worker block opens the status clump below the log: who
+            // the actor is, whose child it is, and the coordinate this packet's response becomes —
+            // the one fact the sources cannot state about themselves (which `reasoning:///L/T` is
+            // the model's own). It changes every turn, so it never precedes the log.
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word, just above errors. Terse pointers (the path is the actionable address

@@ -69,6 +69,9 @@ Language and teaching:
 
 Daemon and database:
 
+- The packet's `## Worker` block follows the log and carries `{path, parent, loop, turn}`; the
+  `## Turn` section and the date and time zone are gone. Nothing volatile precedes the log.
+
 - The schema baseline is eight domain chapters; process triggers live beside the statements
   that fire them; the engine has no TX or EXEC blocks.
 - Packet sections are rows over content-addressed items; whole-packet readers select from
