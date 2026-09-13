@@ -137,8 +137,8 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.equal(record.aside, "pluck notes from this turn's reasoning");
             assert.equal(record.target, "reasoning:///1/1");
             // {§reasoning-initial-read} — only the NOTE: line answers the pattern; a scope of one line holds no note.
-            if (limit === 1) assert.doesNotMatch(String(record.body), /NOTE:/);
-            else assert.match(String(record.body), /^\s*2:NOTE: Reasoning is absent from later packets\./m);
+            if (limit === 1) assert.doesNotMatch(String(record.body), /Note:/);
+            else assert.match(String(record.body), /^\s*2:Note: Prior reasoning can be searched with the pattern filters\./m);
             assert.doesNotMatch(String(record.body), /This harness-generated turn/, "the unmarked rationale line is not plucked");
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");

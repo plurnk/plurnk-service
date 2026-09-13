@@ -3,15 +3,15 @@ import { scopeEnvToAlias, type Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 export default class ReasoningView {
-    // {§reasoning-initial-read} — the rationale's one NOTE: line is what the pattern READ below
-    // plucks into the first packet, so the maneuver it teaches is shown working, not described.
-    static initialSource(loopSequence: number, turnSequence: number): string {
+    // {§reasoning-initial-read} — the rationale's one Note: line is what the pattern READ below
+    // plucks into the first packet, so the maneuver it teaches is shown working, not described
+    // (Matt's line, 2026-09-13; the coordinate is inferable from the Worker block below the log).
+    static initialSource(): string {
         return "This harness-generated turn surveys the workspace and available capabilities.\n"
-            + `NOTE: Reasoning is absent from later packets. In turn ${turnSequence + 1}, keep what matters as NOTE: lines`
-            + ` and pluck them with READ (reasoning:///${loopSequence}/${turnSequence + 1}) ${ReasoningView.NOTE_PATTERN}`;
+            + "Note: Prior reasoning can be searched with the pattern filters.";
     }
 
-    static readonly NOTE_PATTERN = "^NOTE:.*";
+    static readonly NOTE_PATTERN = "^Note:.*";
 
     static lines(provider: Provider): number {
         const key = "PLURNK_REASONING_VIEW_LINES";

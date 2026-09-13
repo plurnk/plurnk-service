@@ -24,7 +24,7 @@ test("{§reasoning-initial-read}: the first model input contains initialization'
         assert.ok(initial);
         assert.equal(initial.origin, "_plurnk");
         // {§reasoning-initial-read} — the pattern READ plucks the NOTE: line alone; the rest of the rationale stays out of the packet.
-        assert.match(String(initial.body), /^\s*2:NOTE: Reasoning is absent from later packets\. In turn 2, keep what matters as NOTE: lines and pluck them with READ \(reasoning:\/\/\/3\/2\) \^NOTE:\.\*$/m);
+        assert.match(String(initial.body), /^\s*2:Note: Prior reasoning can be searched with the pattern filters\.$/m);
         assert.doesNotMatch(String(initial.body), /This harness-generated turn surveys/);
         assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });

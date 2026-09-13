@@ -136,7 +136,7 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 | prefix | dialect                  | example                         |
 |--------|--------------------------|---------------------------------|
 | `/`    | regex (ECMAScript)       | `/\btimeout\b/i`                |
-| `^`    | regex anchored to a line | `^NOTE:.*`                      |
+| `^`    | regex anchored to a line | `^Note:.*`                      |
 | `//`   | xpath (1.0)              | `//dependencies/*`              |
 | `$`    | jsonpath (RFC 9535)      | `$.items[?(@.price>500)]`       |
 | `~`    | full-text (SQLite FTS5)  | `~retry`                        |

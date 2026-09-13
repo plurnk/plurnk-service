@@ -1960,13 +1960,16 @@ The real initialization turn records a short `_plurnk`-authored rationale before
 executing its program. That program READs its own reasoning and its own persisted
 ops before TASK; the Active Prompt arrives as its `prompt` row ({§prompt-entry}),
 never as a second READ. The rationale identifies its harness origin and carries
-exactly one `NOTE:` line; the reasoning READ is the pattern read
-`READ (reasoning:///L/T) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->`
+exactly one `Note:` line — `Note: Prior reasoning can be searched with the pattern
+filters.` (operator's words, 2026-09-13) — and the reasoning READ is the pattern
+read `READ (reasoning:///L/T) ^Note:.* <!-- pluck notes from this turn's reasoning -->`
 ({§naked-pattern} in the contracts SPEC), so the first model packet shows the
-maneuver working rather than described: only the note lands, and it names the next
-model turn's *current* reasoning coordinate with the same pattern READ (operator,
-2026-09-12: "Recursive Reasoning" — mark what must survive `NOTE:`, pluck it, and
-let the rest of the reasoning go). Each resolves through ordinary READ dispatch.
+maneuver working rather than described: only the note lands. The model's own
+coordinate is inferable from the `## Worker` block below the log
+({§packet-current-turn}), so the note teaches nothing the packet already says
+(operator, 2026-09-12: "Recursive Reasoning" — mark what must survive `Note:`,
+pluck it, and let the rest of the reasoning go). Each resolves through ordinary
+READ dispatch.
 `PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's
 scope: `0` omits it, `-1` leaves the pattern unbounded, and a positive integer
 bounds it to the first N lines. Source retention, deliberate READs, and client

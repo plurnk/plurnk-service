@@ -44,9 +44,8 @@ Language and teaching:
   rewritten into a FIND; the survey of paths is FIND.
 - A scope position written `<@abcde 42>` reads as the anchor with one advisory, never a refusal.
 - Recursive Reasoning: turn 0's reasoning READ is the pattern read
-  `READ (reasoning:///L/T) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->`, and the
-  injected rationale carries one `NOTE:` line naming the next turn's coordinate, so the first
-  packet shows the maneuver working.
+  `READ (reasoning:///L/T) ^Note:.* <!-- pluck notes from this turn's reasoning -->`, and the
+  injected rationale carries one `Note:` line, so the first packet shows the maneuver working.
 - The language no longer counts backticks. A block closes at any fence of at least its
   opener's count (CommonMark), shorter inner fences are body, and a closer is never demanded:
   a block also ends at the next heading or at the end of the input. A numeric delimiter

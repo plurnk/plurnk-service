@@ -51,7 +51,7 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
             else {
                 assert.equal(read?.target?.raw, "reasoning:///3/8");
                 assert.equal(read?.aside, "pluck notes from this turn's reasoning");
-                assert.deepEqual(read?.matcher, { dialect: "regex", raw: "^NOTE:.*", pattern: "^NOTE:.*", flags: "" });
+                assert.deepEqual(read?.matcher, { dialect: "regex", raw: "^Note:.*", pattern: "^Note:.*", flags: "" });
                 assert.deepEqual(read?.lineMarker, limit === -1 ? null : { marks: [1, limit] });
             }
             const plain = ReasoningView.initialRead(provider, 3, 8, false);
@@ -69,9 +69,8 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
 });
 
 test("{§reasoning-initial-read}: the authored rationale teaches the next model turn's current-source address", () => {
-    assert.equal(ReasoningView.initialSource(3, 1), "This harness-generated turn surveys the workspace and available capabilities.\n"
-        + "NOTE: Reasoning is absent from later packets. In turn 2, keep what matters as NOTE: lines"
-        + " and pluck them with READ (reasoning:///3/2) ^NOTE:.*");
-    const note = ReasoningView.initialSource(3, 1).split("\n").filter((line) => new RegExp(ReasoningView.NOTE_PATTERN).test(line));
+    assert.equal(ReasoningView.initialSource(), "This harness-generated turn surveys the workspace and available capabilities.\n"
+        + "Note: Prior reasoning can be searched with the pattern filters.");
+    const note = ReasoningView.initialSource().split("\n").filter((line) => new RegExp(ReasoningView.NOTE_PATTERN).test(line));
     assert.equal(note.length, 1, "exactly one line answers the pattern the initialization READ carries");
 });
