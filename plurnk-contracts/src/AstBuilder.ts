@@ -750,15 +750,17 @@ export default class AstBuilder {
         }
         // {§naked-pattern} — a matcher opening with `^` is a regex written without slashes or flags.
         if (raw.startsWith("^")) {
-            try { new RegExp(raw); }
+            const inline = AstBuilder.#liftInlineFlags(raw.slice(1), "", pos);
+            const pattern = `^${inline.pattern}`;
+            try { new RegExp(pattern, inline.flags); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
                     `pattern leads with \`^\` but is not a valid regex - ${AstBuilder.#detail(e)}`);
             }
-            return { dialect: "regex", raw, pattern: raw, flags: "" };
+            return { dialect: "regex", raw, pattern, flags: inline.flags };
         }
         if (raw.startsWith("/")) {
-            const regex = AstBuilder.#tryParseSlashRegex(raw);
+            const regex = AstBuilder.#tryParseSlashRegex(raw, pos);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
             if (regex.reason === "trailing") {
                 throw new PlurnkParseError(
@@ -812,7 +814,19 @@ export default class AstBuilder {
     // Splits an ECMAScript `/pattern/flags` literal. Backslash escapes and character
     // classes keep a slash inside the pattern; the first unescaped slash outside a
     // class closes it. The native constructor owns pattern and flag validity.
-    static #tryParseSlashRegex(raw: string):
+    // {§inline-flag-tolerance} — a leading PCRE inline modifier such as `(?i)` is the pretrained
+    // spelling of a flag; ECMAScript refuses the group, so it is lifted into the flags with one
+    // advisory rather than refused.
+    static #liftInlineFlags(pattern: string, flags: string, pos: Position): { pattern: string; flags: string } {
+        const inline = /^\(\?([ims]+)\)/u.exec(pattern);
+        if (inline === null) return { pattern, flags };
+        const lifted = [...new Set([...flags, ...inline[1]!])].join("");
+        AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
+            `\`${inline[0]}\` was read as the \`${inline[1]}\` flag; an ECMAScript regex takes its flags after the closing \`/\`.`, "warning"));
+        return { pattern: pattern.slice(inline[0].length), flags: lifted };
+    }
+
+    static #tryParseSlashRegex(raw: string, pos: Position):
         { ok: true; pattern: string; flags: string }
         | { ok: false; reason: "unclosed" }
         | { ok: false; reason: "trailing" }
@@ -835,10 +849,11 @@ export default class AstBuilder {
             i++;
         }
         if (i >= raw.length) return { ok: false, reason: "unclosed" };
-        const pattern = raw.slice(1, i);
-        const flags = raw.slice(i + 1);
-        const trailing = /^([A-Za-z]*)[\t ]/u.exec(flags);
-        try { new RegExp(pattern, trailing?.[1] ?? flags); }
+        const authored = raw.slice(i + 1);
+        const trailing = /^([A-Za-z]*)[\t ]/u.exec(authored);
+        const inline = AstBuilder.#liftInlineFlags(raw.slice(1, i), trailing?.[1] ?? authored, pos);
+        const { pattern, flags } = inline;
+        try { new RegExp(pattern, flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags }; }
         if (trailing !== null) return { ok: false, reason: "trailing" };
         return { ok: true, pattern, flags };

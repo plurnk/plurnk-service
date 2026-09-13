@@ -1322,6 +1322,15 @@ recovered as an individual failed operation. Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
+- §inline-flag-tolerance **PCRE inline modifiers.** A regex whose pattern opens with
+  `(?i)`, `(?m)`, `(?s)` or a combination — the pretrained spelling of a flag, which
+  ECMAScript refuses as an invalid group — is read with those letters lifted into
+  its flags (`/(?i)shutdown|reactor/` is `/shutdown|reactor/i`; `^(?i)note:` is the
+  anchored regex with `i`), with one warning-severity advisory naming the flag
+  position after the closing `/`. Only a leading group of `i`, `m` and `s` lifts;
+  `(?i:…)` scoped modifiers are valid ECMAScript and pass through untouched. From
+  the 2026-09-13 dumbox demo pass, where the model wrote the inline form, was
+  refused, and rewrote it as a trailing flag one turn later.
 - §regex-trailing-text A valid `/pattern/flags` prefix followed by horizontal
   whitespace and trailing text receives one concise trailing-content
   diagnostic, with or without flags, without assuming what the extra text was

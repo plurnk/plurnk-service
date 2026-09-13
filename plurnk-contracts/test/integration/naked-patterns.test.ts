@@ -93,3 +93,21 @@ test("{§matcher-option}: the option form is still read, and it is the rendered 
     assert.deepEqual(transfer.diagnostics, []);
     assert.equal(PlurnkParser.stringify([transfer.op]), '````COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n````', "COPY/MOVE operands keep the option form");
 });
+
+test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the flags with one advisory", () => {
+    const slash = one("````READ (ledger.md) /(?i)shutdown|reactor|code/ <!-- locate the code -->\n````\n");
+    assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/(?i)shutdown|reactor|code/", pattern: "shutdown|reactor|code", flags: "i" });
+    assert.equal(slash.diagnostics.length, 1);
+    assert.equal(slash.diagnostics[0]!.severity, "warning");
+    assert.equal(slash.diagnostics[0]!.message, "`(?i)` was read as the `i` flag; an ECMAScript regex takes its flags after the closing `/`.");
+    const merged = one("````FIND (src/**) /(?ms)^begin.*end$/i\n````\n");
+    assert.deepEqual(merged.op.matcher, { dialect: "regex", raw: "/(?ms)^begin.*end$/i", pattern: "^begin.*end$", flags: "ims" }, "authored flags and lifted letters merge without duplicates");
+    const caret = one("````READ (reasoning:///1/1) ^(?i)note:.*\n````\n");
+    assert.deepEqual(caret.op.matcher, { dialect: "regex", raw: "^(?i)note:.*", pattern: "^note:.*", flags: "i" });
+    assert.equal(caret.diagnostics.length, 1);
+    const scoped = one("````READ (a.md) /(?i:note):.*/\n````\n");
+    assert.deepEqual(scoped.diagnostics, [], "a scoped modifier group is valid ECMAScript and passes through");
+    assert.equal(scoped.op.matcher?.dialect, "regex");
+    const stillBroken = PlurnkParser.parseStatements("````READ (a.md) /(?x)loose/\n````\n");
+    assert.match(diagnostics(stillBroken)[0]?.message ?? "", /not a valid `\/pattern\/flags` regex/u, "an unsupported modifier keeps the native refusal");
+});
