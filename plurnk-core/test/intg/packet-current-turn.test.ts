@@ -1,5 +1,5 @@
-// {§packet-current-turn} — the packet names the coordinate its response becomes, first in the
-// status clump, so the model's own `reasoning:///L/T` and `ops:///L/T` need no guessing.
+// {§packet-current-turn} — the Worker block, first after the log, names the coordinate the
+// packet's response becomes, so the model's own `reasoning:///L/T` and `ops:///L/T` need no guessing.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection } from "./_helpers.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
 
-test("{§packet-current-turn}: the Turn line is the loop and turn sequence the packet opens, placed right after the log", async () => {
+test("{§packet-current-turn}: the Worker block carries the loop and turn sequence the packet opens, placed right after the log", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "packet-current-turn");
@@ -19,9 +19,12 @@ test("{§packet-current-turn}: the Turn line is the loop and turn sequence the p
         const packet = await packets.buildRequestPacket({
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 7, provider: provider(), gitStatus: null,
         });
-        assert.deepEqual(JSON.parse(packetSection(packet, "turn")), { loop: 3, turn: 7 });
+        const block = JSON.parse(packetSection(packet, "worker")) as { loop: number; turn: number; path: string };
+        assert.deepEqual([block.loop, block.turn], [3, 7]);
+        assert.match(block.path, /^worker:\/\//);
         const names = packet.sections.map(({ name }) => name);
-        assert.equal(names[names.indexOf("log") + 1], "turn", "first in the status clump, never before the log");
+        assert.equal(names[names.indexOf("log") + 1], "worker", "first in the status clump, never before the log");
+        assert.equal(names.includes("turn"), false, "there is no separate Turn section");
     } finally { await db.close(); }
 });
 
@@ -40,7 +43,8 @@ test("{§packet-current-turn}: the coordinate on the packet is the one whose rea
         assert.equal(turn?.sequence, 2);
         const user = mock.received.at(-1)!.find((m) => m.role === "user")?.content;
         assert.ok(typeof user === "string", "the mock receives the user packet as text");
-        assert.match(user, /## Turn\n\{"loop":1,"turn":2\}/, "the packet the model answered named turn 1/2");
+        assert.match(user, /## Worker\n\{"path":"worker:\/\/alice","parent":null,"loop":1,"turn":2\}/, "the packet the model answered named turn 1/2 in its Worker block");
+        assert.ok(user.indexOf("## Log") < user.indexOf("## Worker"), "below the log");
         const own = await engine.look({ ...context, statement: statement("```READ (reasoning:///1/2) <1,-1>```") });
         assert.equal(own.status, 200);
         assert.ok("content" in own);

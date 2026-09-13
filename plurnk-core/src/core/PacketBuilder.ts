@@ -315,8 +315,9 @@ export default class PacketBuilder {
             }>;
             return {
                 status: r.status, path: `worker://${r.name}`,
+                // No clock in a packet (operator, 2026-09-13): a scheduled task is due in so many minutes.
                 ...(tasks.length === 0 ? {} : { detail: tasks.map((task) =>
-                    `task ${task.id}: ${new Date(task.scheduled_at).toISOString()}`
+                    `task ${task.id}: due in ${Math.max(0, Math.round((task.scheduled_at - Date.now()) / 60_000))} min`
                     + (task.repeat_interval_ms === null ? "" : `, every ${task.repeat_interval_ms / 60_000} min`)).join("; ") }),
             };
         });
