@@ -4,6 +4,21 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { catalogProviderFromEnv, catalogReasoningPolicies, providerFromSdkModel } from "./catalogProvider.ts";
 import { lookupProvider, resolveModel } from "@plurnk/plurnk-models";
+import { calculateCostUsdDecimal } from "./usage.ts";
+
+// A rate literal breaks at every catalog refresh (the 1.17.0 stamp moved DeepSeek's rates); the
+// claim under test is that the estimate is the catalog's rates applied to the reported usage.
+const catalogRatesOf = (provider: string, model: string) => {
+    const cost = resolveModel(provider, model)?.info.cost;
+    if (cost === undefined) throw new Error(`${provider}/${model} has no catalog rates`);
+    return {
+        input: cost.inputPer1M,
+        output: cost.outputPer1M,
+        ...(cost.reasoningPer1M === undefined ? {} : { reasoning: cost.reasoningPer1M }),
+        ...(cost.cacheReadPer1M === undefined ? {} : { cacheRead: cost.cacheReadPer1M }),
+        ...(cost.cacheWritePer1M === undefined ? {} : { cacheWrite: cost.cacheWritePer1M }),
+    };
+};
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
@@ -878,9 +893,11 @@ test("Models.dev is the only fallback rate table", async () => {
     }, "deepseek-v4-flash");
     assert.notEqual(cataloged, null);
     const catalogedResponse = await cataloged!.generate({ workerId: "cataloged", messages: [] });
+    const catalogAmount = calculateCostUsdDecimal(catalogedResponse.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
+    assert.match(String(catalogAmount), /^0\.0*[1-9]/, "the catalog prices this usage");
     assert.deepEqual(catalogedResponse.accounting[0]?.cost, {
         kind: "estimated",
-        amount: { amount: "0.00012712", currency: "USD" },
+        amount: { amount: catalogAmount, currency: "USD" },
         source: "Models.dev catalog rates",
     });
 
@@ -925,9 +942,11 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
         PLURNK_PROVIDERS_COST: "input=0.22,output=0.66,cacheRead=0.007",
     }, "deepseek-v4-flash");
     const response = await overridden!.generate({ workerId: "overridden", messages: [] });
+    const overriddenAmount = calculateCostUsdDecimal(response.accounting[0]!.usage!, { ...catalogRatesOf("deepseek", "deepseek-v4-flash"), input: 0.22, output: 0.66, cacheRead: 0.007 });
+    assert.notEqual(overriddenAmount, calculateCostUsdDecimal(response.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash")), "the override changes the price");
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated",
-        amount: { amount: "0.0002148", currency: "USD" },
+        amount: { amount: overriddenAmount, currency: "USD" },
         source: "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates",
     });
     mock.restoreAll();

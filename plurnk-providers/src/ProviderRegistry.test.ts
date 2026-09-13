@@ -1,6 +1,22 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
+import { resolveModel } from "@plurnk/plurnk-models";
+import { calculateCostUsdDecimal } from "./usage.ts";
+
+// A rate literal breaks at every catalog refresh (the 1.17.0 stamp moved DeepSeek's rates); the
+// claim under test is that the estimate is the catalog's rates applied to the reported usage.
+const catalogRatesOf = (provider: string, model: string) => {
+    const cost = resolveModel(provider, model)?.info.cost;
+    if (cost === undefined) throw new Error(`${provider}/${model} has no catalog rates`);
+    return {
+        input: cost.inputPer1M,
+        output: cost.outputPer1M,
+        ...(cost.reasoningPer1M === undefined ? {} : { reasoning: cost.reasoningPer1M }),
+        ...(cost.cacheReadPer1M === undefined ? {} : { cacheRead: cost.cacheReadPer1M }),
+        ...(cost.cacheWritePer1M === undefined ? {} : { cacheWrite: cost.cacheWritePer1M }),
+    };
+};
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
@@ -279,9 +295,11 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
         totalTokens: 12,
         inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 8 },
     });
+    const expected = calculateCostUsdDecimal(response.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
+    assert.match(String(expected), /^0\.0*[1-9]/, "the catalog prices this usage");
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated",
-        amount: { amount: "0.0000008624", currency: "USD" },
+        amount: { amount: expected, currency: "USD" },
         source: "Models.dev catalog rates",
     });
     mock.restoreAll();
