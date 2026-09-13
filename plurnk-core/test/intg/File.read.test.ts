@@ -442,3 +442,19 @@ test("{§membership-change-gated-sync}: a grown file exposes newly valid lines a
         assert.equal(range.total, 8, "the range fact carries the refreshed line count");
     });
 });
+
+// {§local-path-fragment} — the channel a receipt advertises is addressable in the bare spelling.
+test("READ of a bare path with #readable reads the readable channel, not a file named users.html#readable", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await mkdir(join(root, "data"), { recursive: true });
+        await writeFile(join(root, "data/users.html"), "<html>\n  <body>\n    <h1>Team Roster</h1>\n    <p>Alice</p>\n  </body>\n</html>\n");
+        await addMember(ctx, "data/users.html");
+        const body = await readFileScheme(readStmt({ kind: "local", raw: "data/users.html" }), ctx);
+        assert.equal(body.status, 200, JSON.stringify(body));
+        const readable = await readFileScheme(readStmt({ kind: "local", raw: "data/users.html", fragment: "readable" }, { lineMarker: { marks: [1, -1] } }), ctx);
+        assert.equal(readable.status, 200, JSON.stringify(readable));
+        assert.equal(readable.channel, "readable");
+        assert.match(String(readable.content), /Team Roster/);
+        assert.doesNotMatch(String(readable.content), /<h1>/, "the readable channel is the projection, not the source");
+    });
+});

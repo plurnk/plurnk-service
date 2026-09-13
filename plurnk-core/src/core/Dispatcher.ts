@@ -894,7 +894,7 @@ export default class Dispatcher {
         const result = Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
         const target = statement.target;
         const handler = binding?.handler as SchemeHandler | undefined;
-        const selectedChannel = target?.kind === "url" ? target.fragment : null;
+        const selectedChannel = target?.fragment ?? null;
         if (result.status !== 200 || target === null || handler === undefined || manifest?.category !== "data"
             || (selectedChannel !== null && selectedChannel !== manifest.defaultChannel)) {
             return { result, nativePath: null };
@@ -1389,7 +1389,7 @@ export default class Dispatcher {
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null };
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // {§path-parentheses}
+        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: path.fragment ?? null }; // {§path-parentheses} {§local-path-fragment}
         const scheme = path.scheme === "file" ? null : path.scheme;
         // The registered scheme owns authority disposition. Namespace authority
         // is path syntax; resource and owner authorities remain explicit in the

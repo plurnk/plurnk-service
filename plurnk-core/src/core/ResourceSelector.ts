@@ -88,7 +88,7 @@ export default class ResourceSelector {
                 },
             );
         }
-        const fragment = target.kind === "url" ? target.fragment : null;
+        const fragment = target.fragment ?? null;
         const channel = fragment ?? manifest.defaultChannel;
         // {§readable-channel} — the projection follows its source; a transfer never writes it.
         if (access === "write" && EntryReadable.isDerived(channel)) {

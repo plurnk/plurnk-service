@@ -295,9 +295,7 @@ export default class EditMutations {
                 { scheme: schemeName, operation: "EDIT", retryable: false });
         }
         const addressedScheme = statement.target.kind === "url" ? statement.target.scheme : schemeName;
-        const publishedChannel = statement.target.kind === "url"
-            ? statement.target.fragment ?? manifest.defaultChannel
-            : manifest.defaultChannel;
+        const publishedChannel = statement.target.fragment ?? manifest.defaultChannel;
         const binding = manifest.category !== "data" ? null : await this.#resolveDataEntryAddress({
             target: statement.target, routedScheme: schemeName, handler, manifest, ctx, access: "write",
         });

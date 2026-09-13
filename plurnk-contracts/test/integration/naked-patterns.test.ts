@@ -111,3 +111,12 @@ test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the f
     const stillBroken = PlurnkParser.parseStatements("````READ (a.md) /(?x)loose/\n````\n");
     assert.match(diagnostics(stillBroken)[0]?.message ?? "", /not a valid `\/pattern\/flags` regex/u, "an unsupported modifier keeps the native refusal");
 });
+
+test("{§local-path-fragment}: a bare path's #channel is its fragment, and stringify renders it back", () => {
+    const { op, diagnostics: notes } = one("````READ (data/users.html#readable) <1,-1>\n````\n");
+    assert.deepEqual(notes, []);
+    assert.deepEqual(op.target, { kind: "local", raw: "data/users.html", fragment: "readable" });
+    assert.equal(PlurnkParser.stringify([op]), "````READ (data/users.html#readable) <1,-1>\n````");
+    assert.deepEqual(one("````READ (data/users.html)\n````\n").op.target, { kind: "local", raw: "data/users.html" }, "no `#`, no field");
+    assert.deepEqual(one("````FIND (src/**#readable) /x/\n````\n").op.target, { kind: "local", raw: "src/**", fragment: "readable" });
+});

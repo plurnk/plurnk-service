@@ -76,8 +76,11 @@ export default class PlurnkParser {
                 metadata !== null && metadata !== undefined ? metadata.map((block) => `[${block}]`)
                     : matcher !== null && matcher !== undefined ? [bare && naked(matcher.raw) ? matcher.raw : `[${JSON.stringify({ pattern: matcher.raw })}]`]
                         : [];
+            // {§local-path-fragment} — a bare path renders its channel back as `#channel`.
+            const spelled = (target: { kind: string; raw: string; fragment?: string | null }): string =>
+                target.kind === "local" && target.fragment !== undefined && target.fragment !== null ? `${target.raw}#${target.fragment}` : target.raw;
             const selection = (resource: ResourceSelection): void => {
-                modifiers.push(`(${resource.target.raw})`);
+                modifiers.push(`(${spelled(resource.target)})`);
                 if (resource.lineMarker !== null) modifiers.push(`<${resource.lineMarker.marks.join(",")}>`);
                 modifiers.push(...metadataOf(resource.metadata, resource.matcher, false));
             };
@@ -86,7 +89,7 @@ export default class PlurnkParser {
                 selection(statement.destination);
             } else {
                 if (statement.target !== null) {
-                    modifiers.push(`(${statement.target.raw})`);
+                    modifiers.push(`(${spelled(statement.target)})`);
                 }
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
                 modifiers.push(...metadataOf(statement.metadata, "matcher" in statement ? statement.matcher : null, true));

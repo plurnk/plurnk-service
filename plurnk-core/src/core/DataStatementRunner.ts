@@ -105,9 +105,7 @@ export default class DataStatementRunner {
                 },
             );
         }
-        const publishedChannel = statement.target?.kind === "url"
-            ? statement.target.fragment ?? manifest.defaultChannel
-            : manifest.defaultChannel;
+        const publishedChannel = statement.target?.fragment ?? manifest.defaultChannel;
         const authoredCoordinate = statement.target === null
             ? { authority: "", pathname: "" }
             : entryCoordinateOf(statement.target, manifest.authority ?? "namespace");

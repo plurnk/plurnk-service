@@ -660,7 +660,11 @@ export default class AstBuilder {
         if (raw.length === 0) return null;
         const target = PathSyntax.unescapeTarget(raw);
         if (!AstBuilder.#SCHEME_PATTERN.test(target)) {
-            return { kind: "local", raw: target };
+            // {§local-path-fragment} — `#channel` after a bare path is the channel, exactly as on a
+            // URL; a spelling that opens with `#` names no path, so it stays whole.
+            const hash = target.indexOf("#");
+            if (hash < 1) return { kind: "local", raw: target };
+            return { kind: "local", raw: target.slice(0, hash), fragment: target.slice(hash + 1) };
         }
         const protectedTarget = AstBuilder.#protectPathBraces(target);
         let url: URL;

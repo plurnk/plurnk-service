@@ -20,8 +20,8 @@
 * FIND: list matching paths, or the match locations inside one path
 * READ: read files, entries, streams, or only the lines a pattern selects
 * EDIT: create a file or entry; replace existing text by scope or by pattern
-* COPY: copy files, entries, streams, or text regions
-* MOVE: move files, entries, streams, or text regions
+* COPY (from) (to): copy files, entries, streams, or text regions
+* MOVE (from) (to): move files, entries, streams, or text regions
 * SEND: message workers or endpoints; without a path, respond to Active Prompts
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)

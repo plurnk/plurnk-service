@@ -10,13 +10,14 @@
     "$defs": {
         "LocalPath": {
             "title": "LocalPath",
-            "description": "A bare local path with no `scheme://` prefix. The raw string is stored verbatim; resolution is the runtime's job.",
+            "description": "A bare local path with no `scheme://` prefix. `raw` is the path as authored, minus any `#channel`, which is `fragment` exactly as on a URL; resolution is the runtime's job.",
             "type": "object",
             "required": ["kind", "raw"],
             "additionalProperties": false,
             "properties": {
                 "kind": { "const": "local" },
-                "raw": { "type": "string" }
+                "raw": { "type": "string" },
+                "fragment": { "type": ["string", "null"] }
             }
         },
         "UrlPath": {

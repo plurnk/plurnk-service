@@ -154,9 +154,7 @@ export default class ReadProjector {
 
     static async #project(opts: ReadProjectionOptions): Promise<AnchoredReadResult> {
         const { statement, manifest, target, identity, representation, mimetypes, bytes } = opts;
-        const fragment = statement.target?.kind === "url"
-            ? statement.target.fragment
-            : null;
+        const fragment = statement.target?.fragment ?? null;
         const selected = fragment ?? manifest.defaultChannel;
         const channel = selected === "" ? null : selected;
         const availableChannels = [...new Set([manifest.defaultChannel, ...Object.keys(manifest.channels)])].filter((candidate) =>

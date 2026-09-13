@@ -596,6 +596,16 @@ never changes the operation either: READ with a `pattern` on an exact target
 stays READ and renders the selected lines ({§read-pattern}). The survey of
 paths is FIND, and only FIND.
 
+§local-path-fragment **A bare path takes `#channel` like a URL.** `data/users.html#readable`
+parses as `{ kind: "local", raw: "data/users.html", fragment: "readable" }`: the first `#` ends
+the path and the rest is the channel (a spelling that opens with `#` names no path and stays
+whole), exactly as `worker:///a.html#readable` decomposes, so
+the `#channel` a READ receipt advertises (`channels: {"#readable": N}`) is addressable in the
+same bare spelling the receipt used (2026-09-13 dumbox demo: the model appended it and was
+told no entry existed at `users.html#readable`). `raw` is therefore always the path alone; a
+bare path never contains a literal `#`, and `PlurnkParser.stringify` renders the channel back.
+Without a `#` the field is absent, so an older `LocalPath` literal stays valid.
+
 §read-exact-target READ targets one exact resource (a local path or scheme
 URL, with optional `#channel` fragment or `[metadata]`) and has no body. A
 `<scope>` on READ selects
@@ -657,7 +667,7 @@ and path globs share the slot; content matchers belong in the body.
 
 | Form                    | Typed admission                                                     | Runtime meaning                                      |
 |-------------------------|---------------------------------------------------------------------|------------------------------------------------------|
-| Bare path               | `LocalPath { kind: "local", raw }`                                  | Resolves through the runtime's file surface          |
+| Bare path               | `LocalPath { kind: "local", raw, fragment? }`                       | Resolves through the runtime's file surface; `#channel` is `fragment` ({§local-path-fragment}) |
 | `scheme://…`            | WHATWG-decomposed `UrlPath`                                         | Resolves only when a runtime scheme owns the address |
 | Path glob               | Preserved in either path kind                                       | Scheme defines collection selection and ordering     |
 | `#channel` fragment     | Preserved as `UrlPath.fragment`                                     | Selects a named channel when the scheme supports it  |

@@ -53,9 +53,7 @@ export default class EntryOps {
     }
 
     static #fragmentOf(statement: { target: ResolvedEditStatement["target"] }): string | null {
-        const t = statement.target;
-        if (t === null || t.kind !== "url") return null;
-        return t.fragment;
+        return statement.target?.fragment ?? null;
     }
 
     static #resolveChannel(fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null {
@@ -438,9 +436,7 @@ export default class EntryOps {
             pathname: address.pathname ?? authoredCoordinate.pathname,
         };
         const { authority, pathname } = coordinate;
-        const selectedChannel = statement.target.kind === "url"
-            ? statement.target.fragment ?? manifest.defaultChannel
-            : manifest.defaultChannel;
+        const selectedChannel = statement.target.fragment ?? manifest.defaultChannel;
         const baseIdentity = EntryManifest.toPath(scheme, authority, pathname);
         const identity = selectedChannel === manifest.defaultChannel
             ? baseIdentity

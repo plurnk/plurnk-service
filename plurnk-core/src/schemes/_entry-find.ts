@@ -264,7 +264,7 @@ export default class EntryFind {
                 },
             };
         }
-        const fragment = statement.target.kind === "url" ? statement.target.fragment : null;
+        const fragment = statement.target.fragment ?? null;
         const channel = fragment;
         const availableChannels = [...new Set([
             manifest.defaultChannel,
