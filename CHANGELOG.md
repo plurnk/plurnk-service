@@ -43,6 +43,8 @@ Language and teaching:
   every line keeps its path, ordinal and anchor; no path is one 204 on the glob. A READ is never
   rewritten into a FIND; the survey of paths is FIND.
 - A scope position written `<@abcde 42>` reads as the anchor with one advisory, never a refusal.
+- An executor fence tag matches its registered name in any case (`SH` opens `sh`); the statement
+  carries the registered spelling.
 - A whole turn on one line parses: the next opener on a heading's own line ends that heading's
   bodyless block, and a TASK inventory written as a block on the heading line is its body, with
   one advisory.

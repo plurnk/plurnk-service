@@ -195,6 +195,7 @@ export default class PlurnkParser {
     ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
+        AstBuilder.executorSpellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));

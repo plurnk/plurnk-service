@@ -37,7 +37,7 @@ private openerFollows(): boolean {
         if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
         name += ch; cursor++;
     }
-    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutors.has(name));
+    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
 }
 
 private noteUnclosedAside(): void {
@@ -61,6 +61,13 @@ private asideClosesOnLine(): boolean {
 }
 // {§fence-heading-in-body} - tags that end an open block from inside it; the host adds executors.
 public knownExecutors: Set<string> = new Set(["sh"]);
+// {§executor-case} - an executor tag matches its registered name in any case (`SH` is `sh`).
+private knownExecutor(name: string): boolean {
+    if (this.knownExecutors.has(name)) return true;
+    const lower = name.toLowerCase();
+    for (const known of this.knownExecutors) if (known.toLowerCase() === lower) return true;
+    return false;
+}
 private slotReady: boolean = false;
 private targetDepth: number = 0;
 private metadataDepth: number = 0;
@@ -72,7 +79,7 @@ private unknownTags: Array<{ line: number; column: number; tag: string }> = [];
 // {§interstitial-fence} - only a native operation or a known executor opens a block.
 private knownHeading(): boolean {
     const name = this.text.replace(/^\x60+[0-9]*/, "");
-    return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutors.has(name);
+    return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
 }
 
 private noteUnknownTag(): void {
@@ -167,7 +174,7 @@ private closingAt(offset: number): boolean {
         if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
         name += ch; at++;
     }
-    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutors.has(name));
+    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
 }
 
 // {§fence-heading-in-body} - a fence line of four or more backticks naming an operation or a known
@@ -189,7 +196,7 @@ private headingAt(offset: number): boolean {
         cursor++;
     }
     if (name === "") return false;
-    if (!Object.hasOwn(plurnkLexer.OPERATIONS, name) && !this.knownExecutors.has(name)) return false;
+    if (!Object.hasOwn(plurnkLexer.OPERATIONS, name) && !this.knownExecutor(name)) return false;
     const next = this.inputStream.LA(cursor);
     return next <= 0 || next === 0x20 || next === 0x09 || next === 0x28 || next === 0x3C || next === 0x5B
         || this.offsetAfterEol(cursor) !== null;

@@ -325,6 +325,14 @@ followed on that same line by the next opener; the closer still closes, and the
 opener opens. This absorbs the habit of writing several operations in one
 paragraph after prose. Prose after a closer on its line ends the chain.
 
+§executor-case **An executor tag in any case.** A fence tag that matches a
+registered executor's name case-insensitively opens that executor (`SH` opens
+`sh`), and the statement's `executor` is the registered spelling, so a lookup
+by that name never misses. Operation names stay uppercase by teaching and were
+never written otherwise in 12,000 fences; one `SH` in 1,300 `sh` fences was
+(2026-09-13 census). An unregistered name in any case is still prose
+({§interstitial-fence}).
+
 §one-line-turn **A whole turn on one line.** The most frequent private rejection
 across the 2026-09-12/13 dumbox runs (five of eleven) was a turn emitted as a
 single line: prose, then heading after heading with no line ending anywhere. Two

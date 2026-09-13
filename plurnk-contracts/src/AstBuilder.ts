@@ -426,9 +426,13 @@ export default class AstBuilder {
         };
     }
 
+    // {§executor-case} — the AST carries the registered spelling; the tag may be written in any case.
+    static executorSpellings: ReadonlyMap<string, string> = new Map();
+
     static #executorOf(ctx: ExecStatementContext): string | null {
         const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "");
-        return name === "EXEC" ? null : name;
+        if (name === "EXEC") return null;
+        return AstBuilder.executorSpellings.get(name.toLowerCase()) ?? name;
     }
 
     static #buildBare(ctx: BareStatementContext): BareStatement {
