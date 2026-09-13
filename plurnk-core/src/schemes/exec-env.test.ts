@@ -72,3 +72,32 @@ test("ExecEnv.scoped: an empty policy admits nothing ambient", () => {
     const scoped = ExecEnv.scoped({ PATH: "/usr/bin", SSH_AUTH_SOCK: "/run/ssh" });
     assert.deepEqual(scoped, {}, "the allowlist is declared in .env.defaults; an empty one is a cleared policy, not an unconfigured install");
 });
+
+// {§exec-env-scoped} — plurnk's own tooling spawns (the skills registry CLI) run a binary the
+// operator configured, not a command a model wrote. The ceiling would only break them; the
+// invariant still applies, because plurnk's secrets have no business in any subprocess.
+test("ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
+    const kept = ExecEnv.withoutOwnSecrets({
+        PATH: "/usr/bin", npm_config_registry: "https://registry.npmjs.org/",
+        HTTPS_PROXY: "http://proxy:3128",
+        SSH_AUTH_SOCK: "/run/ssh",
+        OPENAI_API_KEY: "sk-provider",
+        PLURNK_SERVICE_DB_PATH: "./x.db",
+    });
+    assert.equal(kept.npm_config_registry, "https://registry.npmjs.org/", "an installer CLI keeps the operator's npm configuration");
+    assert.equal(kept.HTTPS_PROXY, "http://proxy:3128", "and the proxy it needs to reach a registry");
+    assert.equal(kept.SSH_AUTH_SOCK, "/run/ssh", "the ceiling does not apply: this binary is not model-authored");
+    assert.equal(kept.OPENAI_API_KEY, undefined, "but a provider credential never reaches it");
+    assert.equal(kept.PLURNK_SERVICE_DB_PATH, undefined, "nor plurnk's own configuration");
+});
+
+// {§operator-config-env-defaults} — the subprocess-common floors are declared by
+// @plurnk/plurnk-execs and reach a spawn through the ceiling, which names them.
+test("ExecEnv.scoped passes the declared subprocess floors through the ceiling", () => {
+    const scoped = ExecEnv.scoped({
+        PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,PAGER,GIT_PAGER,NO_COLOR,CI",
+        PATH: "/usr/bin", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", CI: "1",
+    });
+    assert.deepEqual(scoped, { PATH: "/usr/bin", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", CI: "1" },
+        "a floor that the ceiling does not name would never reach the spawn that wants it");
+});

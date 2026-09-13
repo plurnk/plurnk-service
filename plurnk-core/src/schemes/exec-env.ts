@@ -30,12 +30,20 @@ export default class ExecEnv {
         return raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
     }
 
-    // Read at call time (not memoized) so a secret set into process.env after boot is
-    // still scoped out of the next spawn, and so an operator's policy edit takes effect
-    // on the next spawn rather than the next restart.
-    static scoped(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-        const inherit = ExecEnv.#list(env.PLURNK_SERVICE_EXEC_ENV_INHERIT);
-        const exclude = ExecEnv.#list(env.PLURNK_SERVICE_EXEC_ENV_EXCLUDE);
+    // The invariant alone, for plurnk's OWN tooling spawns — an installer CLI the operator
+    // configured, not a command a model wrote. The binary is trusted, so the ceiling would
+    // only break it; plurnk's secrets still have no business in its environment.
+    static withoutOwnSecrets(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+        const providerKeys = ExecEnv.#ownSecretNames(env);
+        const out: NodeJS.ProcessEnv = {};
+        for (const [key, value] of Object.entries(env)) {
+            if (key.startsWith("PLURNK_") || providerKeys.has(key)) continue;
+            out[key] = value;
+        }
+        return out;
+    }
+
+    static #ownSecretNames(env: NodeJS.ProcessEnv): Set<string> {
         const providerKeys = new Set(
             providerCredentialEnvNames(),
         );
@@ -46,6 +54,16 @@ export default class ExecEnv {
                 if (trimmed.length > 0) providerKeys.add(trimmed);
             }
         }
+        return providerKeys;
+    }
+
+    // Read at call time (not memoized) so a secret set into process.env after boot is
+    // still scoped out of the next spawn, and so an operator's policy edit takes effect
+    // on the next spawn rather than the next restart.
+    static scoped(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+        const inherit = ExecEnv.#list(env.PLURNK_SERVICE_EXEC_ENV_INHERIT);
+        const exclude = ExecEnv.#list(env.PLURNK_SERVICE_EXEC_ENV_EXCLUDE);
+        const providerKeys = ExecEnv.#ownSecretNames(env);
         const out: NodeJS.ProcessEnv = {};
         for (const [key, value] of Object.entries(env)) {
             // The ceiling. An empty INHERIT admits nothing from the host: the allowlist is

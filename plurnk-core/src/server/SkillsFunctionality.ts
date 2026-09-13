@@ -4,6 +4,7 @@
 // `skills` CLI is the deterministic installer beneath `add`/`remove` and the
 // registry behind `discover`, and neither is the model's or a client's contract.
 import { execFile } from "node:child_process";
+import ExecEnv from "../schemes/exec-env.ts";
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -161,7 +162,10 @@ export class StandardSkillsToolchain implements SkillsToolchain {
         const [command, ...prefix] = this.#command;
         const { stdout, stderr } = await execFileP(command!, [...prefix, ...args], {
             cwd,
-            env: { ...process.env, HOME: home, NO_COLOR: "1", CI: "1" },
+            // {§exec-env-scoped} — the registry CLI is plurnk's own tooling, so it keeps the
+            // operator's environment (npm config, proxies) but never plurnk's secrets. NO_COLOR
+            // and CI arrive as declared floors from @plurnk/plurnk-execs rather than inline.
+            env: { ...ExecEnv.withoutOwnSecrets(), HOME: home },
             timeout: CLI_TIMEOUT_MS,
             maxBuffer: 8 * 1024 * 1024,
         });
