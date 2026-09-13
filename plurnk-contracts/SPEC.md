@@ -255,7 +255,8 @@ and parse diagnostics are separate contracts.
 body
 ```
 
-```OP (path)? <scope>?```
+```OP (path)? <scope>?
+```
 
 ```executor (program-or-tool)?
 input

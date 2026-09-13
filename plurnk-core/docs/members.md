@@ -36,7 +36,7 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-Ask first: ````` ````members (discover) ````` with `{"query": "build/report.json"}`
+Ask first: `members (discover)` with `{"query": "build/report.json"}`
 says `tracked`, `included by …`, `a creation record`, `excluded by …`,
 `ignored`, `untracked`, or `absent`.
 

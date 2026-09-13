@@ -18,5 +18,5 @@ sending the requested input to its Task resource.
 
 Task resources default to a concise `#body` and retain the protocol snapshot in
 `#json`. Their Artifact addresses are listed in the body and materialize on
-READ. ````` ````KILL ````` of a live Task resource cancels the local obligation and
+READ. `KILL` of a live Task resource cancels the local obligation and
 requests remote cancellation.

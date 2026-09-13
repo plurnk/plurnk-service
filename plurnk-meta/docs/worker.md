@@ -65,7 +65,7 @@ diverges. Embedded addresses are preserved verbatim. Both share the workspace.
 Omit the address to allocate a short worker name, reported in the receipt;
 explicit names cannot replace an existing worker, even after it finishes.
 A path outside the `worker://` scheme is the child's prompt resource, as for
-BARE: ````` ````WORK (specs/feature.md) ````` reads the file whole as the task,
+BARE: `WORK (specs/feature.md)` reads the file whole as the task,
 an inline body follows it after a blank line, and the child is auto-named.
 Use SEND to give an existing worker a follow-up task.
 
@@ -132,10 +132,10 @@ a nonempty all-failed inventory concludes unsuccessfully.
 
 Each child task's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
-failure preserves its status and Problem. ````` ````READ (worker://capital-checker) `````
+failure preserves its status and Problem. `READ (worker://capital-checker)`
 collects the same result explicitly. While the child is running it returns
 `425`; the inventory still chooses whether to continue or wait.
 A result does not imply that every task in that worker has finished.
 
-````` ````KILL (worker://<name>) ````` cancels that worker and its descendants, including
+`KILL (worker://<name>)` cancels that worker and its descendants, including
 queued work and unread messages. History remains readable; a later SEND can start new work.

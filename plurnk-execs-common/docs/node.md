@@ -53,7 +53,7 @@ it, never output; a non-200 receipt with no `stream` address ran nothing.
 Runs in the workspace project root by default, or the daemon's own cwd in a
 workspace without one; a `[{"cwd": "<directory>"}]` block on the opening fence line selects
 another. The target is a script, never a command or a directory:
-````` ````node (tool.js) ````` runs that JavaScript file and receives the body as
+`node (tool.js)` runs that JavaScript file and receives the body as
 stdin. `[{"args": ["--format","json"]}]` passes literal script arguments, also for
 `worker://` and `skill://` targets. Relative imports resolve from the script;
 ordinary relative filesystem paths resolve from cwd. The receipt names cwd

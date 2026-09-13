@@ -29,7 +29,7 @@ pwd
 
 The receipt always names the directory the command ran in.
 
-A script target runs that script: ````` ````sh (greet.sh) ````` runs it with an empty
+A script target runs that script: `sh (greet.sh)` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.

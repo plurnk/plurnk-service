@@ -24,7 +24,7 @@ client.
 
 The instructions are the skill: `READ (skill://<name>/SKILL.md)` for the
 procedure, `FIND (skill://<name>/**)` for its files, and
-````` ````runtime (skill://<name>/scripts/<program>) ````` to run one of its scripts
+`runtime (skill://<name>/scripts/<program>)` to run one of its scripts
 under the ordinary proposal policy. Skill resources are read-only; you do not
 `EDIT` an installed skill.
 

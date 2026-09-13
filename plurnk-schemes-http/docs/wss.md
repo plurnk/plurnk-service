@@ -10,11 +10,11 @@ while EDIT, SEND, and KILL address that connection.
 
 | Operation                                      | Effect                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| ````` ````READ (wss://host/path) `````                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
+| `READ (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second READ of the same address              | Read the retained representation; reuse the existing connection without reconnecting    |
-| ````` ````EDIT (wss://host/path) ````` with body         | Send one whole text frame through an already-open connection; ranges and batches are invalid |
-| ````` ````SEND (wss://host/path) ````` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
-| ````` ````KILL (wss://host/path) `````                   | Close or cancel the connection; an address with no connection is `404`                  |
+| `EDIT (wss://host/path)` with body         | Send one whole text frame through an already-open connection; ranges and batches are invalid |
+| `SEND (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
+| `KILL (wss://host/path)`                   | Close or cancel the connection; an address with no connection is `404`                  |
 
 | Connection state | Meaning                                          | EDIT or directed SEND                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |
