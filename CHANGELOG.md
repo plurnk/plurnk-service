@@ -32,8 +32,16 @@ Language and teaching:
 - `TASK` may sit anywhere in a turn: operations after it run in authored order and the
   disposition settles last; nothing is dropped and the `operations-after-disposition`
   diagnostic code is gone.
-- A body on FIND, READ or KILL is ignored with one `parse_advisory` notice naming the
-  `[{"pattern": "…"}]` form; the operation still runs and nothing strikes.
+- A body beneath a FIND, READ or KILL heading is ignored with one `parse_advisory` notice
+  naming the heading-line form; the operation still runs and nothing strikes.
+- Naked patterns: the matcher rides the heading bare on FIND, READ and KILL (`FIND (src) TODO`,
+  `READ (a.md) /bats?/i`, `KILL (log:///**) ~stale`); a sigil lifts on EDIT with the replacement
+  beneath; `^…` is a regex without slashes; a trailing aside stays the aside. `[{"pattern": "…"}]`
+  remains the escape and the COPY/MOVE operand form, and programs render matchers bare.
+- Recursive Reasoning: turn 0's reasoning READ is the pattern read
+  `READ (reasoning:///L/T) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->`, and the
+  injected rationale carries one `NOTE:` line naming the next turn's coordinate, so the first
+  packet shows the maneuver working.
 - The language no longer counts backticks. A block closes at any fence of at least its
   opener's count (CommonMark), shorter inner fences are body, and a closer is never demanded:
   a block also ends at the next heading or at the end of the input. A numeric delimiter

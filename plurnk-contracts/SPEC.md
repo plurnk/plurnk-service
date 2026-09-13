@@ -417,15 +417,17 @@ language lifts only from one block that parses as a JSON array of objects;
 anything else lifts nothing and reaches the owner's `400` untouched. A
 `pattern` that is present but not a string is the language's own positioned
 diagnostic, as is a matcher of a claimed dialect that fails admission. FIND,
-READ, and KILL take no body at all: a body on them is ignored and the operation
-still runs, with one warning-severity advisory naming the option form
-(`FIND takes no body; the body was ignored. A matcher belongs in the heading as
-[{"pattern": "…"}]`); it is never silently read as a matcher, and it never
-strikes ({§matcher-body-redirect}). A body that is only an HTML comment is still
-the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body: with
-a matcher it is the replacement for every selected span ({§edit-pattern}), and
-an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
-whose block left no metadata back as `[{"pattern": "…"}]`.
+READ, and KILL take no body at all: a body beneath their heading is ignored and
+the operation still runs, with one warning-severity advisory naming the
+heading-line form (`FIND takes no body; the body was ignored. A pattern belongs
+on the opening fence line after the path.`); it is never silently read as a
+matcher, and it never strikes ({§matcher-body-redirect}). The heading line itself
+is the matcher's home ({§naked-pattern}). A body that is only an HTML comment is
+still the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body:
+with a matcher it is the replacement for every selected span ({§edit-pattern}),
+and an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
+whose block left no metadata back bare when the bare form reads back identically
+({§naked-pattern}), otherwise as `[{"pattern": "…"}]`.
 
 ## 3. Lexical elements
 
@@ -735,6 +737,7 @@ matching.
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|
 | `//`      | XPath    | `//selector`                         | XPath 1.0 `xpath.parse()`         | Mimetype projection |
 | `/`       | Regex    | `/pattern/flags`                     | ECMAScript `RegExp` construction  | Mimetype projection |
+| `^`       | Regex    | `^pattern`, no slashes or flags      | ECMAScript `RegExp` construction  | Mimetype projection |
 | `$`       | JSONPath | RFC 9535 expression                  | `json-p3` compilation             | Mimetype projection |
 | `~`       | Full-text | `~query`                            | Single-line raw string            | SQLite FTS5 index   |
 | `&`       | Graph    | `&symbol`, `&<symbol`, or `&>symbol` | Exact shape validation            | Symbol index        |
@@ -756,8 +759,8 @@ implementation. A matcher admission error is local to its statement; later
 statements remain recoverable when their boundaries are trustworthy.
 
 - §pattern-body-single-line Every matcher is one physical line. On the protocol
-  operations it is the `pattern` option's JSON string ({§matcher-option}), one line by
-  construction; the client-tier LOOK still carries its matcher as a body, and AstBuilder
+  operations it is the heading line's text ({§naked-pattern}) or the `pattern` option's
+  JSON string ({§matcher-option}), one line by construction; the client-tier LOOK still carries its matcher as a body, and AstBuilder
   rejects a multiline one before dialect classification. A regex that matches a
   newline uses the two-character `\n` escape. Non-matcher operation bodies remain
   multiline.
@@ -1321,21 +1324,32 @@ diagnostics are:
   diagnostic, with or without flags, without assuming what the extra text was
   intended to represent. Invalid patterns or flags retain the native
   regex failure; no branch silently removes or executes trailing content.
-- §bare-matcher-lift **The grep spelling.** Text after the target on a FIND, READ or
-  KILL heading that begins with a dialect sigil (`/`, `//`, `$`, `~`, `&`) and fits
-  on one line is the `pattern` option, lifted exactly as `[{"pattern": "…"}]` would
-  be; nothing else can begin a heading slot with those characters, so the lift is
-  unambiguous and silent. `FIND (src/parser.ts) /\bparse\w+\b/` is the same
-  operation as `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`.
-- §matcher-body-redirect **Any other body on those operations.** Text that follows
-  the target without a sigil, or sits below the heading, is a body, and those
-  operations take none: the builder keeps the statement without it and raises one
-  warning-severity advisory (`READ takes no body; the body was ignored. A matcher
-  belongs in the heading as [{"pattern": "…"}]`), delivered like
-  {§misplaced-aside-advisory} as a `parse_advisory` notice (operator, 2026-09-12:
-  a gentle warning, never an error the model must recover from). Nothing is
-  promoted into a matcher from a multi-line body; the advisory never echoes the
-  body.
+- §naked-pattern **The matcher rides the heading bare.** After the path, and any
+  scope or option block, the rest of a FIND, READ or KILL heading line is the
+  matcher, in whichever dialect its first characters claim
+  ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`,
+  `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. Those
+  operations take no body, so heading-line text can mean nothing else. On EDIT only
+  a sigil lifts, because plain heading-line text is the replacement body it always
+  was; the lines beneath the heading are then the replacement, and none deletes each
+  match ({§edit-pattern}). A trailing `<!-- aside -->` on the same line stays the
+  aside. The lift is exactly what `[{"pattern": "…"}]` produces, and that option
+  remains the escape for a matcher the heading cannot hold bare: one opening with
+  `(`, `<`, `[` or a backtick, one containing `<!--`, and every COPY/MOVE operand.
+  `FIND (src/parser.ts) /\bparse\w+\b/` is the same operation as
+  `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`. `^` claims the regex
+  dialect without slashes or flags: the whole text is the pattern, so
+  `READ (reasoning:///1/1) ^NOTE:.*` selects a turn's note lines (operator,
+  2026-09-12: "Recursive Reasoning").
+- §matcher-body-redirect **A body beneath those headings.** Text below the heading
+  of a FIND, READ or KILL is a body, and those operations take none: the builder
+  keeps the statement without it and raises one warning-severity advisory (`READ
+  takes no body; the body was ignored. A pattern belongs on the opening fence line
+  after the path.`), delivered like {§misplaced-aside-advisory} as a
+  `parse_advisory` notice (operator, 2026-09-12: a gentle warning, never an error
+  the model must recover from). One sigil line beneath the heading is the bare form
+  written a line low and still lifts; nothing else is promoted into a matcher from
+  below the heading, and the advisory never echoes the body.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor

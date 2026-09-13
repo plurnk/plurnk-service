@@ -46,12 +46,20 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
     try {
         for (const limit of [-1, 0, 1, 8, 32]) {
             process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
-            const read = ReasoningView.initialRead(provider, 3, 8);
+            const read = ReasoningView.initialRead(provider, 3, 8, true);
             if (limit === 0) assert.equal(read, null);
             else {
                 assert.equal(read?.target?.raw, "reasoning:///3/8");
-                assert.equal(read?.aside, "inspect this turn's reasoning");
-                assert.deepEqual(read?.lineMarker, { marks: [1, limit] });
+                assert.equal(read?.aside, "pluck notes from this turn's reasoning");
+                assert.deepEqual(read?.matcher, { dialect: "regex", raw: "^NOTE:.*", pattern: "^NOTE:.*", flags: "" });
+                assert.deepEqual(read?.lineMarker, limit === -1 ? null : { marks: [1, limit] });
+            }
+            const plain = ReasoningView.initialRead(provider, 3, 8, false);
+            if (limit === 0) assert.equal(plain, null);
+            else {
+                assert.equal(plain?.aside, "inspect this turn's reasoning", "without a text/plain projection the READ is the plain scoped observation");
+                assert.equal(plain?.matcher, null);
+                assert.deepEqual(plain?.lineMarker, { marks: [1, limit] });
             }
         }
     } finally {
@@ -62,5 +70,8 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
 
 test("{§reasoning-initial-read}: the authored rationale teaches the next model turn's current-source address", () => {
     assert.equal(ReasoningView.initialSource(3, 1), "This harness-generated turn surveys the workspace and available capabilities.\n"
-        + "In turn 2, retain your reasoning in subsequent packets with:\n\n````READ (reasoning:///3/2) <1,-1>\n````");
+        + "NOTE: Reasoning is absent from later packets. In turn 2, keep what matters as NOTE: lines"
+        + " and pluck them with READ (reasoning:///3/2) ^NOTE:.*");
+    const note = ReasoningView.initialSource(3, 1).split("\n").filter((line) => new RegExp(ReasoningView.NOTE_PATTERN).test(line));
+    assert.equal(note.length, 1, "exactly one line answers the pattern the initialization READ carries");
 });

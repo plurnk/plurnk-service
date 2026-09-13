@@ -1178,6 +1178,9 @@ export default class Dispatcher {
         });
         if (parsed.unparsedTail !== undefined || parsed.items.length !== 1 || parsed.items[0].kind !== "statement") return null;
         const { statement } = parsed.items[0];
+        // {§naked-pattern} lifts prose after the path on FIND, READ and KILL as a literal matcher;
+        // on a reply's first line a multi-word literal is prose, not a mis-fenced operation.
+        if ("matcher" in statement && statement.matcher?.dialect === "glob" && /\s/u.test(statement.matcher.raw)) return null;
         if (statement.op !== "EXEC") return line;
         const executor = statement.executor;
         if (executor === null || schemeCtx.executors?.entry(executor, schemeCtx.workspaceId) === undefined) return null;

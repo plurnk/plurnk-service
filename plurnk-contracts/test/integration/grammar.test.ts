@@ -634,7 +634,7 @@ test("body text on the heading line runs as the body and raises one advisory nam
 });
 
 // {§matcher-option}
-test("{§bare-matcher-lift}: a sigil matcher after the target lifts into pattern; a bare word stays an ignored body with one advisory", () => {
+test("{§naked-pattern}: a sigil matcher after the target lifts into pattern; a bare word beneath the heading stays an ignored body with one advisory", () => {
     for (const [op, body, dialect] of [["FIND", "/resolveWorkerPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
         const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("TASK", "", inventory("n"))));
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], op);
@@ -1128,7 +1128,7 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
         assert.equal(error.message, `${runtime} accepts one \`(program)\` path at most once`);
     }
 
-    // {§bare-matcher-lift} — a sigil matcher after the target on the heading line is the pattern.
+    // {§naked-pattern} — a sigil matcher after the target on the heading line is the pattern.
     const inlineItems = PlurnkParser.parse("```FIND (data.json) $.role\n```").items;
     assert.deepEqual(inlineItems.filter((item) => item.kind === "error" && item.error.severity === "error"), []);
     const lifted = inlineItems.find((item) => item.kind === "statement" && item.statement.op === "FIND");

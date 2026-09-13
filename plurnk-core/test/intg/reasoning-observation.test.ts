@@ -23,9 +23,9 @@ test("{§reasoning-initial-read}: the first model input contains initialization'
         const initial = logEntries(packet).find((row) => row.target === "reasoning:///3/1");
         assert.ok(initial);
         assert.equal(initial.origin, "_plurnk");
-        assert.match(String(initial.body), /This harness-generated turn surveys the workspace and available capabilities\./);
-        assert.match(String(initial.body), /In turn 2, retain your reasoning in subsequent packets with:/);
-        assert.match(String(initial.body), /\d+:````READ \(reasoning:\/\/\/3\/2\) <1,-1>\n[ \t]*\d+:````/);
+        // {§reasoning-initial-read} — the pattern READ plucks the NOTE: line alone; the rest of the rationale stays out of the packet.
+        assert.match(String(initial.body), /^\s*2:NOTE: Reasoning is absent from later packets\. In turn 2, keep what matters as NOTE: lines and pluck them with READ \(reasoning:\/\/\/3\/2\) \^NOTE:\.\*$/m);
+        assert.doesNotMatch(String(initial.body), /This harness-generated turn surveys/);
         assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         assert.equal(reads.length, 1);

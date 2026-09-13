@@ -128,20 +128,25 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
         }
         if (limit !== 0) {
-            assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
+            assert.deepEqual(JSON.parse(reads[0]!.lineMarker), limit === -1 ? null : { marks: [1, limit] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
             assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
             const record = parseLogRecords(log).find(({ path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
             assert.ok(record);
-            assert.equal(record.aside, "inspect this turn's reasoning");
+            assert.equal(record.aside, "pluck notes from this turn's reasoning");
             assert.equal(record.target, "reasoning:///1/1");
-            assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
+            // {§reasoning-initial-read} — only the NOTE: line answers the pattern; a scope of one line holds no note.
+            if (limit === 1) assert.doesNotMatch(String(record.body), /NOTE:/);
+            else assert.match(String(record.body), /^\s*2:NOTE: Reasoning is absent from later packets\./m);
+            assert.doesNotMatch(String(record.body), /This harness-generated turn/, "the unmarked rationale line is not plucked");
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
             if (limit === 1) {
-                assert.doesNotMatch(String(record.body), /2:In turn/);
-                assert.deepEqual(record.range, { unit: "line", total: 5, requested: [1, 1], returned: [1, 1] });
+                assert.equal(record.status, 204, "a one-line scope holds no note: the ordinary empty pattern result");
+                assert.deepEqual(record.range, { unit: "line", total: 2, requested: [1, 1] });
+            } else {
+                assert.deepEqual(record.range, { unit: "line", total: 2, requested: limit === -1 ? [2, 2] : [1, limit], returned: [2, 2] });
             }
         }
     } finally {

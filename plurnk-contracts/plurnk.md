@@ -2,7 +2,7 @@
 
 ## Harness Operation Syntax
 
-    ````OP (path)? <scope|range>? [metadata]? <!-- aside -->?
+    ````OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
     body?
     ````
 
@@ -12,7 +12,7 @@
 > [!IMPORTANT]
 > YOU MUST include the OP and its parameters on the opening fence line.
 
-* `[metadata]`: optional one-line JSON array of option objects, e.g. `[{"pattern":"matcher"}]`.
+* `[metadata]`: optional one-line JSON array of option objects.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
 
 ## Helper Operations
@@ -51,10 +51,10 @@
 
 ## Workspace Navigation
 
-    ````FIND (src/**/*.ts) [{"pattern":"/TODO/"}] <!-- paths with matches -->
+    ````FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
     ````
 
-    ````READ (belfry.md) [{"pattern":"/\\bbats?\\b/i"}] <!-- only the lines matching "bat" or "bats" -->
+    ````READ (belfry.md) /\bbats?\b/i <!-- only the lines matching "bat" or "bats" -->
     ````
 
 > [!TIP]
@@ -72,7 +72,7 @@
     literal replacement text
     ````
 
-    ````EDIT (books.xml) [{"pattern":"//book[price > 35.00]"}] <!-- an empty body removes each match -->
+    ````EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
     ````
 
     ````42EDIT (edit-example.md) <!-- resolve nested OP conflicts with matching numeric delimiters after fencing -->
@@ -131,15 +131,17 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 > [!CAUTION]
 > The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
-## Pattern Filtering
-
-`[{"pattern":"matcher"}]` selects paths on FIND and lines on READ, EDIT, KILL, COPY, and MOVE:
+## `pattern`
 
 | prefix | dialect                  | example                         |
 |--------|--------------------------|---------------------------------|
-| `/`    | regex (ECMAScript)       | `/\\btimeout\\b/i`              |
+| `/`    | regex (ECMAScript)       | `/\btimeout\b/i`                |
+| `^`    | regex anchored to a line | `^NOTE:.*`                      |
 | `//`   | xpath (1.0)              | `//dependencies/*`              |
 | `$`    | jsonpath (RFC 9535)      | `$.items[?(@.price>500)]`       |
 | `~`    | full-text (SQLite FTS5)  | `~retry`                        |
 | `&`    | graph: `&sym` all relations, `&<sym` referrers, `&>sym` referents | `&<parseTurn` |
 | none   | glob, or a literal       | `?(export )?(async )function *` |
+
+> [!TIP]
+> The `[metadata]` parameter accepts a `[{"pattern":"matcher"}]` option for patterns that cannot be inline.

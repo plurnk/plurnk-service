@@ -107,40 +107,65 @@ export default class AstBuilder {
     // owner's business ({§scheme-metadata-modifier}): a second block or malformed JSON lifts
     // nothing and reaches the owner's 400 untouched; only a present `pattern` that is not a
     // string, or a malformed matcher, is the language's own positioned diagnostic.
-    // {§bare-matcher-lift} — a matcher written bare after the target in its grep spelling
-    // (`/re/`, `//xpath`, `$json`, `~fts`, `&graph`) is the `pattern` option; nothing else can
-    // begin a heading slot with those characters, so the lift is unambiguous.
-    static #bareMatcher(raw: string | null): string | null {
+    // {§naked-pattern} — one line of matcher text, its trailing aside split back out. A sigil
+    // (`/`, `//`, `$`, `~`, `&`, `^`) is a matcher wherever it stands; a sigil-less glob or literal
+    // is one only on the heading line of FIND, READ or KILL, where the text can mean nothing else.
+    static #bareMatcher(raw: string | null, op: string, inline: boolean): { text: string; aside: string | null } | null {
         if (raw === null) return null;
-        const text = raw.trim();
+        let text = raw.trim();
         if (text === "" || text.includes("\n")) return null;
-        return /^(\/\/|\/|\$|~|&)/u.test(text) ? text : null;
+        let aside: string | null = null;
+        const trailing = /\s*<!--([\s\S]*?)-->\s*$/u.exec(text);
+        if (trailing !== null) {
+            aside = (trailing[1] ?? "").trim();
+            text = text.slice(0, trailing.index).trim();
+            if (text === "") return null;
+        }
+        if (AstBuilder.#SIGIL.test(text)) return { text, aside };
+        if (!inline || (op !== "FIND" && op !== "READ" && op !== "KILL")) return null;
+        return { text, aside };
     }
 
-    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null): { matcher: MatcherBody | null; metadata: SchemeMetadata } {
+    static readonly #SIGIL = /^(\/|\$|~|&|\^)/u;
+
+    // The body text that opened on the heading line itself, split from the lines beneath it.
+    static #splitInlineBody(ctx: ParserRuleContext, position: Position): { inline: string | null; below: string | null } {
+        const text = AstBuilder.#bodyTextOf(ctx);
+        if (text === null) return { inline: null, below: null };
+        const body = AstBuilder.#findFirst(ctx, BodyContext);
+        if (body?.start === null || body?.start === undefined || body.start.line !== position.line) return { inline: null, below: text };
+        const eol = text.search(/\r?\n/u);
+        if (eol === -1) return { inline: text, below: null };
+        const below = text.slice(eol).replace(/^\r?\n/u, "");
+        return { inline: text.slice(0, eol), below: below === "" ? null : below };
+    }
+
+    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null } {
         if (metadata === null || metadata.length !== 1) {
-            const bare = AstBuilder.#bareMatcher(raw);
-            return { matcher: bare === null ? null : AstBuilder.#parseMatcherBody(bare, position), metadata };
+            const bare = AstBuilder.#bareMatcher(raw, op, inline);
+            return bare === null
+                ? { matcher: null, metadata, aside: null }
+                : { matcher: AstBuilder.#parseMatcherBody(bare.text, position), metadata, aside: bare.aside };
         }
         let parsed: unknown;
         try { parsed = JSON.parse(`[${metadata[0]}]`); }
         catch (cause) {
             if (!(cause instanceof SyntaxError)) throw cause;
-            return { matcher: null, metadata };
+            return { matcher: null, metadata, aside: null };
         }
         const elements = parsed as unknown[];
         if (elements.some((element) => typeof element !== "object" || element === null || Array.isArray(element))) {
-            return { matcher: null, metadata };
+            return { matcher: null, metadata, aside: null };
         }
         const options = Object.assign({}, ...elements as object[]) as Record<string, unknown>;
-        if (!Object.hasOwn(options, "pattern")) return { matcher: null, metadata };
+        if (!Object.hasOwn(options, "pattern")) return { matcher: null, metadata, aside: null };
         const pattern = options.pattern;
         if (typeof pattern !== "string") {
             throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher, e.g. [{"pattern": "/needle/i"}].`);
         }
         const matcher = AstBuilder.#parseMatcherBody(pattern, position);
         const others = Object.keys(options).filter((key) => key !== "pattern");
-        return { matcher, metadata: others.length === 0 ? null : metadata };
+        return { matcher, metadata: others.length === 0 ? null : metadata, aside: null };
     }
 
     // {§matcher-option} — a text or log operation's body is never a matcher; it is ignored with one
@@ -148,10 +173,10 @@ export default class AstBuilder {
     // strike, over a body the model was taught not to write).
     static #adviseBody(op: string, raw: string | null, position: Position): void {
         if (raw === null || raw.trim() === "") return;
-        if (AstBuilder.#bareMatcher(raw) !== null) return;
+        if (AstBuilder.#bareMatcher(raw, op, false) !== null) return;
         AstBuilder.#advisories.push(new PlurnkParseError(
             position.line, position.column, "parser",
-            `${op} takes no body; the body was ignored. A matcher belongs in the heading as [{"pattern": "…"}].`,
+            `${op} takes no body; the body was ignored. A pattern belongs on the opening fence line after the path.`,
             "warning",
         ));
     }
@@ -183,19 +208,20 @@ export default class AstBuilder {
     }
 
     static #buildFind(ctx: FindStatementContext): FindStatement {
-        const positionForBody = AstBuilder.#positionOf(ctx);
-        const bodied = AstBuilder.#asideBody("FIND", AstBuilder.#asideOf(ctx), AstBuilder.#bodyTextOf(ctx), positionForBody);
-        return AstBuilder.#buildFindFrom(ctx, bodied.aside, bodied.raw);
+        const position = AstBuilder.#positionOf(ctx);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const bodied = AstBuilder.#asideBody("FIND", AstBuilder.#asideOf(ctx), split.below, position);
+        return AstBuilder.#buildFindFrom(ctx, bodied.aside, split.inline, bodied.raw);
     }
 
-    static #buildFindFrom(ctx: FindStatementContext, aside: string | null, raw: string | null): FindStatement {
+    static #buildFindFrom(ctx: FindStatementContext, aside: string | null, inline: string | null, below: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
-        AstBuilder.#adviseBody("FIND", raw, position);
-        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, raw);
+        AstBuilder.#adviseBody("FIND", below, position);
+        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null);
         return {
             op: "FIND",
-            aside,
+            aside: aside ?? lifted.aside,
             ...slots,
             metadata: lifted.metadata,
             matcher: lifted.matcher,
@@ -232,14 +258,14 @@ export default class AstBuilder {
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
-        const aside = bodied.aside;
-        const raw = bodied.raw;
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
             : slots.target?.raw;
-        AstBuilder.#adviseBody("READ", raw, position);
-        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, raw);
+        AstBuilder.#adviseBody("READ", bodied.raw, position);
+        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null);
+        const aside = bodied.aside ?? lifted.aside;
         // {§read-find-normalization} — a glob target is a survey, so it is a FIND; a matcher on an
         // exact target stays a READ and selects the lines it renders ({§read-pattern}).
         if (targetPath !== undefined && PathSyntax.hasGlob(targetPath)) {
@@ -276,14 +302,17 @@ export default class AstBuilder {
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position);
+        // {§naked-pattern} — a sigil on the heading line is the matcher; the lines beneath are the
+        // replacement (none deletes each match). Any other heading-line text is the body it always was.
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true);
         return {
             op: "EDIT",
-            aside: AstBuilder.#asideOf(ctx),
+            aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
             ...slots,
             metadata: lifted.metadata,
             matcher: lifted.matcher,
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: lifted.matcher === null || split.inline === null ? AstBuilder.#bodyTextOf(ctx) : split.below,
             position,
         };
     }
@@ -384,11 +413,12 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        AstBuilder.#adviseBody("KILL", AstBuilder.#bodyTextOf(ctx), position);
-        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, AstBuilder.#bodyTextOf(ctx));
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        AstBuilder.#adviseBody("KILL", split.below, position);
+        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null);
         return {
             op: "KILL",
-            aside: AstBuilder.#asideOf(ctx),
+            aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
             ...slots,
             metadata: lifted.metadata,
             matcher: lifted.matcher,
@@ -730,6 +760,15 @@ export default class AstBuilder {
                     `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`);
             }
             return { dialect: "xpath", raw };
+        }
+        // {§naked-pattern} — a matcher opening with `^` is a regex written without slashes or flags.
+        if (raw.startsWith("^")) {
+            try { new RegExp(raw); }
+            catch (e) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor",
+                    `pattern leads with \`^\` but is not a valid regex - ${AstBuilder.#detail(e)}`);
+            }
+            return { dialect: "regex", raw, pattern: raw, flags: "" };
         }
         if (raw.startsWith("/")) {
             const regex = AstBuilder.#tryParseSlashRegex(raw);

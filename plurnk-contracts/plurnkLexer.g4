@@ -217,9 +217,11 @@ private inlineBodyAhead(): boolean {
 
 private noteInlineBody(): void {
     this.inlineBody = true;
-    // {§bare-matcher-lift} - a sigil opens the grep spelling of a matcher, not a misplaced body.
+    // {§naked-pattern} - a sigil is a matcher on any heading, and every heading-line word on FIND,
+    // READ or KILL is one, so only a bodied operation's stray heading text is worth an advisory.
     const first = this.text.charCodeAt(0);
-    if (first === 0x2F || first === 0x24 || first === 0x7E || first === 0x26) return;
+    if (first === 0x2F || first === 0x24 || first === 0x7E || first === 0x26 || first === 0x5E) return;
+    if (this.openOp === "FIND" || this.openOp === "READ" || this.openOp === "KILL") return;
     this.inlineBodies.push({ line: this.getOpenTagLine(), column: this.getOpenTagColumn(), heading: this.getOpenHeading() });
 }
 

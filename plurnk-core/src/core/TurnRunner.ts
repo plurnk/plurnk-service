@@ -823,7 +823,9 @@ export default class TurnRunner {
             const pathname = `/${loopRow!.sequence}/${initializationTurn.sequence}`;
             await Turn.recordSource(this.#db, initializationTurn.id, "reasoning",
                 ReasoningView.initialSource(loopRow!.sequence, initializationTurn.sequence));
-            const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence);
+            // {§reasoning-initial-read} — the pattern READ needs a text/plain projection to run the regex.
+            const pluck = await this.#mimetypes.getHandler("text/plain") !== null;
+            const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence, pluck);
             if (reasoningRead !== null) initializationStatements.push(reasoningRead);
             initializationStatements.push({
                 op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,

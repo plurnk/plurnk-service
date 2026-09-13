@@ -1943,12 +1943,17 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 The real initialization turn records a short `_plurnk`-authored rationale before
 executing its program. That program READs its own reasoning and its own persisted
 ops before TASK; the Active Prompt arrives as its `prompt` row ({§prompt-entry}),
-never as a second READ. The rationale identifies its harness
-origin and demonstrates a READ of the next model turn's *current* reasoning.
-Each resolves through ordinary READ dispatch.
+never as a second READ. The rationale identifies its harness origin and carries
+exactly one `NOTE:` line; the reasoning READ is the pattern read
+`READ (reasoning:///L/T) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->`
+({§naked-pattern} in the contracts SPEC), so the first model packet shows the
+maneuver working rather than described: only the note lands, and it names the next
+model turn's *current* reasoning coordinate with the same pattern READ (operator,
+2026-09-12: "Recursive Reasoning" — mark what must survive `NOTE:`, pluck it, and
+let the rest of the reasoning go). Each resolves through ordinary READ dispatch.
 `PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's
-scope: `0` omits it, `-1` requests the complete body, and a positive integer
-requests the first N lines. Source retention, deliberate READs, and client
+scope: `0` omits it, `-1` leaves the pattern unbounded, and a positive integer
+bounds it to the first N lines. Source retention, deliberate READs, and client
 streaming are independent. No later turn automatically requests reasoning.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
@@ -2374,7 +2379,10 @@ violations follow the current admission and strike contracts
   admission, not promotion: the line is never run as the operation it resembles, and the neutral
   recovery says only where each intent belongs (an operation on the fence line, a quoted example
   inside a delimited SEND body). A first line that does not parse alone (prose after the word), a
-  name no registry knows, or an inner fence is an ordinary reply. Origin: the 2026-09-11 dogfood,
+  name no registry knows, or an inner fence is an ordinary reply; so is a heading whose
+  only irregularity is a multi-word sigil-less matcher after the path (`READ (belfry.md)
+  returned nothing because the file is empty.`), which {§naked-pattern} would otherwise lift
+  as a literal — on a reply's first line that is prose. Origin: the 2026-09-11 dogfood,
   where four operations on the line after their fences were delivered as four 200 replies and the
   loop then parked fifteen minutes on receipts that could never arrive.
 - §send-idle-turn **Inventory-only continuation is valid.** An `in_progress` inventory continues whether or not another operation ran, including while children or streams are live. TASK is operational state; neither absence of other operations nor a not-ready READ may replace its intent with an implicit park. Exact repeating activity remains subject to {§engine-cycle-evidence}.
