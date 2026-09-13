@@ -43,14 +43,6 @@ export default class ExecEnv {
         return out;
     }
 
-    // The invariant as a predicate, for layers that compose above the ceiling: the worker
-    // document and the op's modifier are the model's own values, so the ceiling does not apply
-    // to them, but plurnk's own names are refused at every layer.
-    static ownSecretTest(env: NodeJS.ProcessEnv = process.env): (name: string) => boolean {
-        const names = ExecEnv.#ownSecretNames(env);
-        return (name: string) => name.startsWith("PLURNK_") || names.has(name);
-    }
-
     static #ownSecretNames(env: NodeJS.ProcessEnv): Set<string> {
         const providerKeys = new Set(
             providerCredentialEnvNames(),
