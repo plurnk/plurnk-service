@@ -1070,7 +1070,7 @@ test("READ of a glob target stays a schema-valid READ; a matcher keeps its op", 
         const statement = oneStatement(input);
         assert.equal(statement.op, op, input);
         assert.deepEqual(statement.lineMarker?.marks ?? null, marks, input);
-        assert.equal(statement.op === "FIND" || statement.op === "READ" ? statement.matcher?.dialect ?? null : null, dialect, input);
+        assert.equal(statement.matcher?.dialect ?? null, dialect, input);
         const validation = Validator.validatePlurnkStatement(statement);
         assert.equal(validation.valid, true, `${input}: ${JSON.stringify(validation.errors)}`);
     }
