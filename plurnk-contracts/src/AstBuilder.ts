@@ -266,9 +266,10 @@ export default class AstBuilder {
         AstBuilder.#adviseBody("READ", bodied.raw, position);
         const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null);
         const aside = bodied.aside ?? lifted.aside;
-        // {§read-find-normalization} — a glob target is a survey, so it is a FIND; a matcher on an
-        // exact target stays a READ and selects the lines it renders ({§read-pattern}).
-        if (targetPath !== undefined && PathSyntax.hasGlob(targetPath)) {
+        // {§read-find-normalization} — a glob target without a matcher is a survey, so it is a FIND;
+        // with a matcher the READ keeps its glob and the runtime reads each matching path
+        // ({§read-pattern}, core {§read-fan-out}).
+        if (targetPath !== undefined && PathSyntax.hasGlob(targetPath) && lifted.matcher === null) {
             if (slots.lineMarker?.marks.some((mark) => typeof mark === "string") === true) {
                 throw new PlurnkParseError(
                     position.line,
@@ -589,6 +590,16 @@ export default class AstBuilder {
                         `\`${component}\` was read as line ${component.slice(1)}; an anchor is five characters (\`@abcde\`).`, "warning"));
                 }
                 return Number.parseInt(component.slice(1), 10);
+            }
+            // {§combined-anchor-tolerance} — `@abcde 42` / `@abcde:42` is the displayed prefix copied whole;
+            // the anchor is the coordinate and the number is dropped.
+            const combined = /^(@[0-9A-Za-z]{5})[: ][1-9][0-9]*$/u.exec(component);
+            if (combined !== null) {
+                if (position !== undefined) {
+                    AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
+                        `\`${component}\` was read as the anchor \`${combined[1]}\`; a scope position takes the anchor without its displayed line number.`, "warning"));
+                }
+                return combined[1]!;
             }
             return component.startsWith("@") ? component : Number.parseFloat(component);
         });

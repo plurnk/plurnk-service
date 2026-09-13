@@ -770,20 +770,24 @@ test("text-coordinate operations admit Base62 anchors only in line positions", (
     }
 });
 
-// {§combined-anchor-line-redirect}
-test("a combined anchor and displayed line number gets one canonical correction", () => {
+// {§combined-anchor-tolerance}
+test("a combined anchor and displayed line number reads as the anchor, with one advisory per position", () => {
     for (const input of [
         section("EDIT", " (p) <@aZ09b:42,@0Aa9Z:43>", "body"),
         section("EDIT", " (p) <@aZ09b 42,@0Aa9Z 43>", "body"),
         section("COPY", " (p) (q) <@aZ09b 42,@0Aa9Z 43>"),
     ]) {
-        const errors = errorsOf(input);
-        assert.equal(errors.length, 1, input);
-        assert.equal(
-            errors[0]?.message,
-            "a scope position accepts one line coordinate; use the `@hash` anchor without its displayed line number",
-            input,
-        );
+        const result = PlurnkParser.parseStatements(input);
+        const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.equal(ops.length, 1, input);
+        const marker = ops[0]!.op === "COPY" ? ops[0]!.destination.lineMarker : (ops[0] as { lineMarker: { marks: unknown[] } | null }).lineMarker;
+        assert.deepEqual(marker, { marks: ["@aZ09b", "@0Aa9Z"] }, input);
+        const advisories = result.items.filter((item) => item.kind === "error");
+        assert.equal(advisories.length, 2, input);
+        for (const advisory of advisories) {
+            assert.equal(advisory.kind === "error" ? advisory.error.severity : null, "warning");
+            assert.match(advisory.kind === "error" ? advisory.error.message : "", /was read as the anchor `@[0-9A-Za-z]{5}`; a scope position takes the anchor without its displayed line number/u);
+        }
     }
 });
 
@@ -1052,14 +1056,14 @@ test("semantic matcher accepts arbitrary text and a result-position scope", () =
     assert.equal(find.matcher?.dialect, "fts");
 });
 
-// {§read-find-normalization} — the glob half: a survey target is a FIND; a matcher never changes the op.
+// {§read-find-normalization} — the glob half: a survey target is a FIND; a matcher keeps the READ, glob and all.
 test("READ of a glob target normalizes to schema-valid FIND; a matcher keeps its op", () => {
     const cases = [
         { input: section("READ", " (worker:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4] },
         { input: patterned("READ", " (worker:///page.md) <3,5>", "/header/i"), op: "READ", dialect: "regex", marks: [3, 5] },
         { input: section("READ", " (src/**/*.ts) <2>"), op: "FIND", dialect: null, marks: [2] },
         { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "FIND", dialect: null, marks: [4, 8] },
-        { input: patterned("READ", " (worker:///src/**/*.ts)", "TODO"), op: "FIND", dialect: "glob", marks: null },
+        { input: patterned("READ", " (worker:///src/**/*.ts)", "TODO"), op: "READ", dialect: "glob", marks: null },
     ] as const;
 
     for (const { input, op, dialect, marks } of cases) {

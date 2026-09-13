@@ -587,11 +587,14 @@ shape is represented. Provider selection, source admission, batching,
 accounting, and observation timing belong to the consuming service.
 
 §read-find-normalization An authored READ whose target path is classified as
-a glob normalizes during AST construction to one ordinary FIND statement:
-target, signals, scope, and matcher are preserved, and FIND's result
-pagination and projection contract then applies. A matcher never changes the
-operation: READ with a `pattern` on an exact target stays READ and renders the
-selected lines ({§read-pattern}); the runtime performs no READ fan-out.
+a glob and that carries no matcher normalizes during AST construction to one
+ordinary FIND statement: target, signals, and scope are preserved, and FIND's
+result pagination and projection contract then applies. A matcher never turns
+a READ into a FIND: READ with a `pattern` on an exact target stays READ and
+renders the selected lines ({§read-pattern}), and READ with a `pattern` on a
+glob stays READ with its glob, which the runtime fans out into one exact
+pattern READ per matching path ({§read-fan-out} in the core SPEC; operator,
+2026-09-13: `grep -n` output, a survey only when there is nothing to grep for).
 
 §read-exact-target READ targets one exact resource (a local path or scheme
 URL, with optional `#channel` fragment or `[metadata]`) and has no body. A
@@ -1350,11 +1353,13 @@ diagnostics are:
   the model must recover from). One sigil line beneath the heading is the bare form
   written a line low and still lifts; nothing else is promoted into a matcher from
   below the heading, and the advisory never echoes the body.
-- §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
-  A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
-  error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
-  without its displayed line number`. A malformed header scope is consumed as
-  one token at either COPY/MOVE operand; neither produces a punctuation cascade.
+- §combined-anchor-tolerance **Combined anchor and line number in a scope.** A
+  text-coordinate scope position written `@hash:L` or `@hash L` is the displayed
+  `@abcde 42:` prefix copied whole (a koota-entity turn refused nine of them in a
+  row, 2026-09-12): the position is the anchor, the number is dropped, and one
+  warning-severity advisory names the anchor-only form. The scope lexes as one
+  ordinary marker at any text-coordinate operation, either COPY/MOVE operand
+  included; nothing cascades.
 - §invalid-scope-diagnostic **Malformed scope content.** After a properly spaced
   scope opener, report the offending scope (at most 64 code points, ending at
   `>` or the heading's line end) and its operation's constraint: FIND result

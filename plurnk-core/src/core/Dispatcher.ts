@@ -1,5 +1,5 @@
-import { PlurnkParser, TurnDisposition } from "@plurnk/plurnk-contracts";
-import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, TurnDisposition, parsePath } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -25,6 +25,7 @@ import EffectPolicy from "../schemes/EffectPolicy.ts";
 import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
+import type { MatchItem } from "../schemes/_entry-find.ts";
 import ResourceMutations from "./ResourceMutations.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
@@ -432,6 +433,9 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        if (context.statement.op === "READ" && context.statement.matcher !== null && Dispatcher.#globTarget(context.statement.target)) {
+            return this.#fanOutRead(context, context.statement);
+        }
         let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx));
         const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
@@ -442,6 +446,58 @@ export default class Dispatcher {
             this.#resourceMutations.settleEdit(edit, result);
         }
         return result;
+    }
+
+    static #globTarget(target: ParsedPath | null): boolean {
+        return target !== null && PathSyntax.hasGlob(target.kind === "url" ? target.pathname : target.raw);
+    }
+
+    // {§read-fan-out} — a pattern READ over a glob is grep: the glob's matching paths come from the
+    // ordinary matcher FIND (unlogged, its resource page bounding the fan-out), and each one is read
+    // as an ordinary exact pattern READ with its own receipt row, so every rendered line keeps its
+    // path, ordinal and anchor. No path matched: one 204 receipt on the authored glob. A resource
+    // dialect (`~`, `&`) selects resources, not lines, so that READ is the survey it always was.
+    async #fanOutRead(context: DispatchContext, statement: ReadStatement): Promise<DispatchResult> {
+        const survey: FindStatement = {
+            op: "FIND", aside: statement.aside, target: statement.target, metadata: statement.metadata,
+            matcher: statement.matcher, lineMarker: null, body: null, position: statement.position,
+        };
+        if (statement.matcher!.dialect === "fts" || statement.matcher!.dialect === "graph") {
+            return this.dispatch({ ...context, statement: survey });
+        }
+        const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
+            (ctx) => this.#dataRun.run(schemeNameOf(statement.target), survey, ctx));
+        const paths = found.status < 300
+            ? ((found.results as MatchItem[] | undefined) ?? []).flatMap((item) => Array.isArray(item) && !("items" in item[0]) ? [item[0].path] : [])
+            : [];
+        if (paths.length === 0) {
+            const result = found.status >= 400 ? found : Results.assert({
+                status: 204, matched: 0, matcher: statement.matcher!.raw,
+                detail: `No line under ${statement.target!.raw} matched the pattern.`,
+            });
+            const logEntryId = await this.#logWriter.writeLog({
+                statement, result, workspaceId: context.workspaceId, workerId: context.workerId, loopId: context.loopId,
+                turnId: context.turnId, sequence: context.sequence, origin: context.origin, curationPlan: null, modelCallId: null,
+            });
+            context.onDispatch?.(logEntryId);
+            return result;
+        }
+        const results: DispatchResult[] = [];
+        for (const [index, path] of paths.entries()) {
+            const target = parsePath(path);
+            if (target === null) throw new InvalidOperationResultError(`FIND named an unparseable path: ${path}`);
+            results.push(await this.dispatch({ ...context, statement: { ...statement, target }, sequence: context.sequence + index }));
+        }
+        const matchingPathCount = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
+        if (matchingPathCount > paths.length) {
+            this.#notices.push(context.workspaceId, context.workerId, context.loopId, {
+                source: "engine:dispatcher",
+                kind: "read_fanout_bounded",
+                level: "warn",
+                message: `READ ${statement.target!.raw} matched ${matchingPathCount} paths; the first ${paths.length} were read. Narrow the glob, or FIND first.`,
+            });
+        }
+        return Results.assert({ ...(results.find(({ status }) => status >= 400) ?? results[results.length - 1]!), rowsWritten: results.length });
     }
 
     async #dispatchOne(context: DispatchContext, schemeCtx: PlurnkSchemeContext): Promise<DispatchResult> {

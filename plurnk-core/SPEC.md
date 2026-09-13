@@ -1832,9 +1832,9 @@ A `file:///` member EDIT diverges from this immediate-write contract: it diffs a
 
 AST: `{ op: "READ", target, body: null, signal: tags | null, lineMarker? }`.
 
-Matcher-bearing or path-glob READ syntax has already normalized to canonical
-FIND before dispatch under {§read-find-normalization}; core has no second READ
-selection or fan-out path.
+A path-glob READ without a matcher has already normalized to canonical FIND
+before dispatch under {§read-find-normalization}; a path-glob READ with a text
+matcher is the one fan-out core performs ({§read-fan-out}).
 
 - §read-read-content Returns channel content and mimetype.
 - §read-read-404 Returns 404 when the channel is absent.
@@ -1864,6 +1864,22 @@ selection or fan-out path.
   (`~`) or graph (`&`) pattern selects resources, not lines: 400
   `pattern-dialect-unsupported`; a matcher its mimetype cannot run answers the
   matcher's own 415/400 ({§matcher-dispatch}).
+- §read-fan-out **A pattern READ over a glob is grep.** `READ (pets_*.md) /dogs/i`
+  keeps its glob ({§read-find-normalization} in the contracts SPEC) and dispatch
+  fans it out: the ordinary matcher FIND over the same target, matcher and
+  metadata enumerates the matching paths without a receipt of its own, and each
+  path on its resource page is read as an ordinary exact pattern READ
+  ({§read-pattern}) with the authored scope and aside, one receipt row per path in
+  the FIND's order, so every rendered line keeps its path, physical ordinal and
+  anchor and remains a coordinate source for EDIT and KILL. The authored statement
+  contributes `rowsWritten`, the receipt count, to its turn's sequence. No matching
+  path is one 204 receipt on the authored glob (`matched: 0`); a FIND failure is
+  that failure on the authored glob. The FIND's resource page bounds the fan-out:
+  when more paths matched than were read, one `read_fanout_bounded` notice names
+  both counts. A full-text (`~`) or graph (`&`) matcher selects resources, not
+  lines, so that READ dispatches as the FIND survey it always was (operator,
+  2026-09-13: `grep -n` output; the survey is for when there is nothing to grep
+  for).
 - §read-bytes A binary channel with no readable projection, and the `#bytes` view of
   any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
   octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
