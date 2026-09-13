@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-text-html",
     "version": "1.17.0",
     "description": "text/html and application/xhtml+xml mimetype handler for plurnk-service. Structural extraction via parse5; readable markdown (content channel) via Readability + an owned serializer over linkedom.",
+    "keywords": ["plurnk","mimetype","html"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {

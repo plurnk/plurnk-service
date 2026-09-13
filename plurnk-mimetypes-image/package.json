@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-image",
     "version": "1.17.0",
     "description": "image/* mimetype handler for plurnk-service: PNG, JPEG, GIF, and WebP. Binary content; the readable body is the picture's header facts, and the picture itself rides the packet as a native image part on a route whose model can see.",
+    "keywords": ["plurnk","mimetype","image","multimodal"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {

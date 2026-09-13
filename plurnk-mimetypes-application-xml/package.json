@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-application-xml",
     "version": "1.17.0",
     "description": "application/xml and text/xml mimetype handler for plurnk-service. DOM-tree extraction via @xmldom/xmldom; xpath via the xpath package; framework structural projections.",
+    "keywords": ["plurnk","mimetype","xml"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {

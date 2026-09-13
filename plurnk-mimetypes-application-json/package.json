@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-application-json",
     "version": "1.17.0",
     "description": "application/json and application/jsonc mimetype handler for plurnk-service.",
+    "keywords": ["plurnk","mimetype","json"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {

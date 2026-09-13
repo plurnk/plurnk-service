@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-service",
     "version": "1.17.0",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-contracts contract.",
+    "keywords": ["plurnk","agent","llm","daemon","agui","sqlite","harness"],
     "type": "module",
     "license": "MIT",
     "engines": {

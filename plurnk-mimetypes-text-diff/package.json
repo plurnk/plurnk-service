@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-text-diff",
     "version": "1.17.0",
     "description": "text/x-diff (unified/combined diff) mimetype handler for plurnk-service. Hand-rolled line-budget scanner; no parser dependency.",
+    "keywords": ["plurnk","mimetype","diff","patch"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {

@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-text-markdown",
     "version": "1.17.0",
     "description": "text/markdown mimetype handler for plurnk-service.",
+    "keywords": ["plurnk","mimetype","markdown","gfm"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {

@@ -2,6 +2,7 @@
     "name": "@plurnk/plurnk-mimetypes-application-jsonl",
     "version": "1.17.0",
     "description": "application/jsonl (JSON Lines / NDJSON) mimetype handler for plurnk-service. Record-schema symbols, records array as deepJson. Hand-rolled, no parser dependency.",
+    "keywords": ["plurnk","mimetype","jsonl","ndjson"],
     "type": "module",
     "license": "MIT",
     "publishConfig": {
