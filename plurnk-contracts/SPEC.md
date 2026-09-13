@@ -325,6 +325,18 @@ followed on that same line by the next opener; the closer still closes, and the
 opener opens. This absorbs the habit of writing several operations in one
 paragraph after prose. Prose after a closer on its line ends the chain.
 
+§one-line-turn **A whole turn on one line.** The most frequent private rejection
+across the 2026-09-12/13 dumbox runs (five of eleven) was a turn emitted as a
+single line: prose, then heading after heading with no line ending anywhere. Two
+rules absorb it. The next opener on a heading's own line, after the heading's
+slots, ends that heading's block bodyless and opens ({§empty-section}), so
+`````EDIT (a.rs) <60,66> <!-- drop --> ````EDIT (b.rs) <31,38>` is two scoped
+deletions; and a TASK whose inventory rides its heading line as a `[…]` block
+(`````TASK [{"content": "…", "status": "in_progress"}] ````) takes that block as
+its body when nothing sits beneath the heading, with one warning-severity
+advisory naming the body as where the inventory belongs. A block beneath the
+heading still wins.
+
 §anchor-digits In a text scope, `@` followed by one to four digits cannot be a
 hash and is read as that line number, with one warning-severity advisory naming
 the five-character anchor form. Five characters after `@` are always an anchor.

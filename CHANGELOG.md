@@ -43,6 +43,9 @@ Language and teaching:
   every line keeps its path, ordinal and anchor; no path is one 204 on the glob. A READ is never
   rewritten into a FIND; the survey of paths is FIND.
 - A scope position written `<@abcde 42>` reads as the anchor with one advisory, never a refusal.
+- A whole turn on one line parses: the next opener on a heading's own line ends that heading's
+  bodyless block, and a TASK inventory written as a block on the heading line is its body, with
+  one advisory.
 - Slots written after a bare matcher peel off the right end of the heading: `READ (a.rs) /fn x/ <1,-1>`
   reads the scope with one advisory instead of refusing the regex for trailing text.
 - A bare path takes `#channel` like a URL: `READ (data/users.html#readable)` reads the channel

@@ -222,3 +222,25 @@ test("{§indented-fences}: indented opener and closer lines are fence lines; the
     assert.deepEqual(statements(unclosed).map(({ op }) => op), ["EDIT", "READ"], "an indented heading still ends an open block");
     assert.equal(bodyText(statements(unclosed)[0]), "    body");
 });
+
+test("{§one-line-turn}: a whole turn on one line parses, opener after heading and inventory on the heading line included", () => {
+    const chained = PlurnkParser.parse("I'll read the files and repair the mangled regions. ````READ (packages/quill/src/themes/base.ts) <1,30> <!-- imports + WeakMap --> ```` ````READ (packages/quill/src/themes/base.ts) <200,240> <!-- the rest --> ```` ````TASK [{\"content\":\"Repair\",\"status\":\"in_progress\"}] ````");
+    assert.equal(chained.unparsedTail, undefined);
+    assert.deepEqual(errors(chained).filter(({ severity }) => severity === "error"), []);
+    assert.deepEqual(statements(chained).map(({ op }) => op), ["READ", "READ", "TASK"]);
+    assert.deepEqual(bodyText(statements(chained)[2]!), [{ content: "Repair", status: "in_progress" }], "the heading-line block is the inventory");
+    assert.match(errors(chained).map(({ message }) => message).join(" "), /TASK's inventory was read from the heading line; it belongs in the body/u);
+
+    const direct = PlurnkParser.parse("Fix the call sites. ````EDIT (crates/wasmi/src/engine/config.rs) <60,66> <!-- drop mangled duplicate Default fields --> ````EDIT (crates/wasmi/src/error.rs) <31,38> <!-- repair mangled imports --> ````TASK [{\"content\":\"Repair\",\"status\":\"in_progress\"}] ````");
+    assert.deepEqual(errors(direct).filter(({ severity }) => severity === "error"), []);
+    const ops = statements(direct);
+    assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "EDIT", "TASK"]);
+    assert.deepEqual(ops.slice(0, 2).map((op) => [(op as { lineMarker?: { marks: unknown[] } | null }).lineMarker?.marks, bodyText(op)]), [[[60, 66], null], [[31, 38], null]], "each heading ends bodyless where the next opener begins");
+    assert.deepEqual(ops.slice(0, 2).map(({ aside }) => aside), ["drop mangled duplicate Default fields", "repair mangled imports"]);
+
+    const bare = PlurnkParser.parseStatements("````READ (a.rs) <1,10> ````READ (b.rs) <1,10>");
+    assert.deepEqual(statements(bare).map((op) => [op.op, (op as { target: { raw: string } | null }).target?.raw]), [["READ", "a.rs"], ["READ", "b.rs"]]);
+
+    const canonical = PlurnkParser.parse("````TASK\n[{\"content\":\"Repair\",\"status\":\"in_progress\"}]\n````");
+    assert.deepEqual(errors(canonical), [], "the inventory beneath the heading draws no advisory");
+});

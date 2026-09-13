@@ -377,7 +377,15 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const op = (ctx.start?.text ?? "").replace(/^`+[0-9]*/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        // {§one-line-turn} — an inventory written as a block on the heading line is the body when
+        // nothing sits beneath the heading, with one advisory naming where it belongs.
+        const below = AstBuilder.#bodyTextOf(ctx);
+        const inline = ctx.metadata()?.getText() ?? null;
+        if (inline !== null && (below === null || below.trim() === "")) {
+            AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
+                `${op}'s inventory was read from the heading line; it belongs in the body.`, "warning"));
+        }
+        const raw = below !== null && below.trim() !== "" ? below : inline;
         return {
             op,
             aside: AstBuilder.#asideOf(ctx),

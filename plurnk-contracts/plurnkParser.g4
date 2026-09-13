@@ -77,8 +77,9 @@ editStatement : OPEN_EDIT slotModifiers? opAside? statementEnd ;
 copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
+// {§one-line-turn} — the inventory may ride the heading line as a `[…]` block.
 dispositionStatement
-    : OPEN_TASK lineMarker? opAside? statementEnd
+    : OPEN_TASK lineMarker? metadata? opAside? statementEnd
     ;
 sendStatement : OPEN_SEND resourceSelection? opAside? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAside? statementEnd ;

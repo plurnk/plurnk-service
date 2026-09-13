@@ -111,7 +111,8 @@ private open(implicitName?: string): void {
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.started = true;
     this.slotReady = true;
-    this.metadataReady = this.openOp === "EXEC";
+    // {§one-line-turn} - TASK takes its inventory as a heading-line block; a bracket there is a slot.
+    this.metadataReady = this.openOp === "EXEC" || this.openOp === "TASK";
     this.inlineBody = false;
 }
 
@@ -271,6 +272,8 @@ TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HID
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
 mode SLOTS;
+// {§one-line-turn} - the next opener on a heading's own line ends this bodyless block and opens.
+SLOTS_NEXT_OPENER : { this.slotReady && this.openerFollows() }? [ \t]+ { this.inlineChain = true; } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
