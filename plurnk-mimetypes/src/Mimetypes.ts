@@ -160,6 +160,13 @@ export default class Mimetypes {
     readonly #grammarFingerprints = new Map<string, Promise<string>>();
     readonly #tokenizers: Tokenizers;
     #discovery: DiscoveryResult | null = null;
+
+    // Every consumer of discovery runs after ready(); a call that reaches here first is a
+    // lifecycle violation, named as such instead of a property read on null.
+    get #discovered(): DiscoveryResult {
+        if (this.#discovery === null) throw new Error("Mimetypes: ready() has not completed");
+        return this.#discovery;
+    }
     #readyPromise: Promise<void> | null = null;
     #disposePromise: Promise<void> | null = null;
 
@@ -190,12 +197,12 @@ export default class Mimetypes {
 
     async skippedPackages(): Promise<readonly string[]> {
         await this.ready();
-        return [...this.#discovery!.skipped];
+        return [...this.#discovered.skipped];
     }
 
     async displayMetadata(): Promise<readonly MimetypeDisplayMetadata[]> {
         await this.ready();
-        return [...this.#discovery!.handlers.values()]
+        return [...this.#discovered.handlers.values()]
             .map(({ mimetype, glyph }) => ({ mimetype, glyph }))
             .toSorted((a, b) => a.mimetype.localeCompare(b.mimetype));
     }
@@ -205,10 +212,10 @@ export default class Mimetypes {
     // mimetype work, preserving the family's lazy-loading contract.
     async attributions(context: PluginAttributionContext): Promise<PluginAttribution> {
         await this.ready();
-        const lists: PluginAttribution[] = [...this.#discovery!.packageAttributions.values()];
+        const lists: PluginAttribution[] = [...this.#discovered.packageAttributions.values()];
         const packageSources = new Map<string, Set<BaseHandler>>();
         for (const [mimetype, resolution] of this.#handlerInstances) {
-            const info = this.#discovery!.handlers.get(mimetype);
+            const info = this.#discovered.handlers.get(mimetype);
             if (info?.source !== "package") continue;
             const sources = packageSources.get(info.packageName) ?? new Set<BaseHandler>();
             sources.add(await resolution);
@@ -224,7 +231,7 @@ export default class Mimetypes {
 
     async detect(input: DetectInput): Promise<string | null> {
         await this.ready();
-        const result = detect(input, this.#discovery!.registry);
+        const result = detect(input, this.#discovered.registry);
         return result ?? this.#defaultMimetype;
     }
 
@@ -232,7 +239,7 @@ export default class Mimetypes {
     // ({§mimetype-classification}).
     async classify(mimetype: string): Promise<MimeClassification> {
         await this.ready();
-        const info = this.#discovery!.handlers.get(mimetype);
+        const info = this.#discovered.handlers.get(mimetype);
         if (info === undefined) return classifyMimetype(mimetype);
         return classifyWithHandler(mimetype, { binary: info.binary });
     }
@@ -241,7 +248,7 @@ export default class Mimetypes {
     // ({§mimetype-projection-identity}).
     async projectionIdentity(mimetype: string): Promise<string> {
         await this.ready();
-        const info = this.#discovery!.handlers.get(mimetype);
+        const info = this.#discovered.handlers.get(mimetype);
         if (info === undefined) {
             return projectionDigest({
                 contract: 1,
@@ -300,7 +307,7 @@ export default class Mimetypes {
         const cached = this.#handlerInstances.get(mimetype);
         if (cached !== undefined) return cached;
 
-        const info = this.#discovery!.handlers.get(mimetype);
+        const info = this.#discovered.handlers.get(mimetype);
         if (info === undefined) return null;
 
         const metadata: HandlerMetadata = {
@@ -382,7 +389,7 @@ export default class Mimetypes {
         mimetype: string,
     ): Promise<ReadableProjection | null> {
         await this.ready();
-        const info = this.#discovery!.handlers.get(mimetype);
+        const info = this.#discovered.handlers.get(mimetype);
         if (info?.binary !== true) return null;
         const handler = await this.getHandler(mimetype);
         if (handler === null || handler.content === BaseHandler.prototype.content) return null;
@@ -467,7 +474,7 @@ export default class Mimetypes {
 
         // Look up the handler's binary flag before reading content, so we read
         // the file as Uint8Array vs utf-8 string per the handler's expectation.
-        const info = this.#discovery!.handlers.get(mimetype) ?? null;
+        const info = this.#discovered.handlers.get(mimetype) ?? null;
         const isBinary = info?.binary ?? false;
 
         const content = await this.#resolveContent(input, isBinary, mimetype);
@@ -598,7 +605,7 @@ export default class Mimetypes {
         // String -> classify by leading prefix; parsed body -> dispatch verbatim.
         const parsed = typeof matcher === "string" ? parseBodyMatcher(matcher) : matcher;
 
-        const info = this.#discovery!.handlers.get(mimetype) ?? null;
+        const info = this.#discovered.handlers.get(mimetype) ?? null;
         const isBinary = info?.binary ?? false;
 
         const content = await this.#resolveContent(input, isBinary, mimetype);

@@ -21,6 +21,17 @@ export interface ReadSliceResult extends SchemeResultBase {
 }
 
 export default class ReadResolve {
+    // The marker of an unmarked read: the body preview's marks, mapped back onto the visible
+    // source lines when the read is a visible-line selection.
+    static #previewMarker(content: string, visibleLines: readonly number[] | undefined): LineMarker {
+        const preview = BodyPreview.select(visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content).marker;
+        if (visibleLines === undefined || visibleLines.length === 0) return preview;
+        return { marks: preview.marks.map((mark, index) => {
+            if (preview.marks.length === 4 && index % 2 === 1) return mark;
+            return visibleLines[Math.min(mark, visibleLines.length) - 1]!;
+        }) as LineMarker["marks"] };
+    }
+
     static async resolve(opts: {
         content: string;
         mimetype: string;
@@ -28,15 +39,7 @@ export default class ReadResolve {
         visibleLines?: readonly number[];
     }): Promise<ReadSliceResult> {
         const { content, mimetype, lineMarker, visibleLines } = opts;
-        const preview = lineMarker === null
-            ? BodyPreview.select(visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content).marker
-            : null;
-        const marker: LineMarker = lineMarker ?? (visibleLines === undefined || visibleLines.length === 0
-            ? preview!
-            : { marks: preview!.marks.map((mark, index) => {
-                if (preview!.marks.length === 4 && index % 2 === 1) return mark;
-                return visibleLines[Math.min(mark, visibleLines.length) - 1]!;
-            }) as LineMarker["marks"] });
+        const marker: LineMarker = lineMarker ?? ReadResolve.#previewMarker(content, visibleLines);
         const sliced = LineMarkerOps.sliceLines(content, marker);
         if (sliced.status === 416) {
             return {

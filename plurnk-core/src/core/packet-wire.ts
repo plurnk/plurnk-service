@@ -328,6 +328,9 @@ export default class PacketWire {
         if (lines.length !== ordinals.length) {
             throw new TypeError("A sparse log-body projection requires one source ordinal per rendered line.");
         }
+        if (sourceLineNumbers !== null && ordinals.some((ordinal) => ordinal < 1 || ordinal > sourceLineNumbers.length)) {
+            throw new TypeError("A sparse log-body projection's ordinals must address its source line numbers.");
+        }
         const displayed = ordinals.map((ordinal) => sourceLineNumbers === null ? startLine + ordinal - 1 : sourceLineNumbers[ordinal - 1]!);
         const width = lineAnchors === null
             ? numericLineNumberWidth > 0

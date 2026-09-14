@@ -34,7 +34,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         return Results.failure(`scheme:${this.#kind}`, code, status, detail, { content: null, mimetype: null, channel: null });
     }
 
-    #local(target: ParsedPath | null): boolean {
+    #local(target: ParsedPath | null): target is ParsedPath {
         return target !== null && (target.kind !== "url" || [target.hostname, target.username, target.password, target.port].every((value) => value === null));
     }
 
@@ -48,7 +48,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         const row = await db.turn_source_read.get<{ content: string | null }>({
             worker_id: workerId, loop_seq: Number(coordinate[1]), turn_seq: Number(coordinate[2]), kind: this.#kind,
         });
-        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No turn exists at ${target!.raw}.`) };
+        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No turn exists at ${target.raw}.`) };
         // An existing turn without a source of this kind is empty, not missing: the coordinate is
         // real, the provider simply returned nothing there.
         return {
@@ -64,29 +64,30 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         const target = statement.target;
         const failed = (status: number, code: string, detail: string): FindResult => ({ ...this.#failure(status, code, detail), ...emptyFindFields() });
         if (!this.#local(target)) return failed(400, "coordinate-malformed", `Use ${this.#kind}:/// with loop/turn coordinates or a path pattern.`);
-        const pathname = target!.kind === "url" ? target!.pathname : target!.raw;
+        const pathname = target.kind === "url" ? target.pathname : target.raw;
         const scope = pathScope(/^\/\d+$/.test(pathname) ? `${pathname}/` : pathname, true);
         const load = () => db.turn_source_candidates.all<Source>({ worker_id: workerId, kind: this.#kind });
         let all = await load();
-        const relation = statement.matcher?.dialect === "fts" || statement.matcher?.dialect === "graph";
-        if (relation && all.some(({ deep_hash }) => deep_hash === null) && core.settleDerivations !== undefined) {
+        const matcher = statement.matcher;
+        const relation = matcher !== null && (matcher.dialect === "fts" || matcher.dialect === "graph") ? matcher : null;
+        if (relation !== null && all.some(({ deep_hash }) => deep_hash === null) && core.settleDerivations !== undefined) {
             await core.settleDerivations();
             all = await load();
         }
         const selected = all.filter((row) => pathScopeMatches(scope, row.pathname));
-        if (scope.kind === "exact" && selected.length === 0) return failed(404, "entry-not-found", `No ${this.#kind} source exists at ${target!.raw}.`);
+        if (scope.kind === "exact" && selected.length === 0) return failed(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`);
         const projections = selected.map(({ pathname: key, content }) => ({ key, content, mimetype: this.#mimetype }));
         let matches: CandidateMatch[];
-        if (relation) {
+        if (relation !== null) {
             const candidates = resolveSearchCandidates(selected.map(({ pathname: key, deep_hash: deepHash }) => ({ key, deepHash })));
             const universe = resolveSearchCandidates(all.map(({ pathname: key, deep_hash: deepHash }) => ({ key, deepHash })));
             if (candidates.state !== "ready" || universe.state !== "ready") return failed(503, "search-index-incomplete", "The persistent search index does not yet cover the selected history.");
-            if (statement.matcher!.dialect === "fts") {
-                const result = await EntryFts.rankCandidates(db, candidates.candidates, statement.matcher!.raw.slice(1), core.signal);
+            if (relation.dialect === "fts") {
+                const result = await EntryFts.rankCandidates(db, candidates.candidates, relation.raw.slice(1), core.signal);
                 if (result.status !== 200) return { ...result, ...emptyFindFields() };
                 matches = result.matches;
             } else {
-                const result = await EntryGraph.matchCandidates(db, universe.candidates, candidates.candidates, statement.matcher!.raw);
+                const result = await EntryGraph.matchCandidates(db, universe.candidates, candidates.candidates, relation.raw);
                 if (result.status !== 200) return failed(result.status, "invalid-expression", "Malformed graph matcher; expected &symbol, &<symbol, or &>symbol.");
                 matches = Matcher.addTextRegions(result.matches.map(({ key, lineStart, lineEnd }) => ({ key, span: { lineStart, lineEnd } })), projections);
             }
