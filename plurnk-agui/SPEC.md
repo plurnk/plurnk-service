@@ -491,6 +491,13 @@ this Run.
 | `op.exec` / `op.parse` | Client-operation Worker's log and stream events. A proposal resume retains this scope. | This action result, deferred through its owned streams. |
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
+An operation Run owns an execution from the row that announces it: a started or
+queued EXEC row carries `attrs.stream`, and that address stays open for the Run
+until its `stream/concluded`, so the action result is deferred even when the
+command writes late or never (a `stream/event` is a race the result must not
+win). A detached execution (`<-1>`) is nobody's obligation and never defers the
+result.
+
 `workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or
 `entry.loop_id`) refines it wherever the event is loop-scoped. Opening a
 read-only management Run can therefore never replay reasoning, operation rows,

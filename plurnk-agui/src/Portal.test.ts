@@ -828,3 +828,44 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
     assert.equal(managementSeen.length, 0, "the concurrent result-only Run receives no operation evidence");
     portal.stop();
 });
+
+const startedExec = (over: Record<string, unknown> = {}) => ({
+    entry: {
+        id: 55, worker_id: 10, loop_id: 6, turn_id: 6, origin: "client", op: "EXEC", status_rx: 200, coordinate: "1.1.1",
+        rx: { status: 200, outcome: "started" }, tx: { op: "EXEC", executor: null, body: "sleep 1; printf late" },
+        attrs: { runtime: "sh", stream: "sh:///b1e0977e", coordinate: { loop_seq: 1, turn_seq: 1, sequence: 1 }, ...over },
+    },
+});
+const label = (event: AguiEvent): string => event.type === "CUSTOM" ? (event as { name: string }).name : event.type;
+
+test("{§agui-broadcast-fan} an operation Run owns an execution from the row that announces it, so a late-writing command concludes inside the Run", () => {
+    const m = mockSeam();
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", inputRunId: "op-1", notificationScope: "operation", emit: (evs) => seen.push(...evs) });
+    m.fire(3, "log/entry", startedExec());
+    const result: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } };
+    portal.finishThread(thread, [result]);
+    assert.equal(seen.some((e) => e.type === "RUN_FINISHED"), false, "the result waits for the execution the row announced, no channel write needed");
+
+    m.fire(3, "stream/event", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", channel: "stdout", state: "active", contentLength: 4 });
+    m.fire(3, "stream/concluded", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: "sh:///b1e0977e completed (exit 0)", wakeAction: "no-loop" });
+    const order = seen.map(label);
+    const conclusion = order.lastIndexOf("plurnk.stream");
+    assert.ok(conclusion !== -1 && conclusion < order.indexOf("plurnk.action.result") && order.indexOf("plurnk.action.result") < order.indexOf("RUN_FINISHED"),
+        `the conclusion, then the result, then the finish: ${order.join(" → ")}`);
+    portal.stop();
+});
+
+test("{§agui-broadcast-fan} a detached execution (<-1>) is nobody's obligation: its row never defers the action result", () => {
+    const m = mockSeam();
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", inputRunId: "op-2", notificationScope: "operation", emit: (evs) => seen.push(...evs) });
+    m.fire(3, "log/entry", startedExec({ detached: true }));
+    portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } }]);
+    assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "the Run settles at once; the detached spawn outlives it");
+    portal.stop();
+});

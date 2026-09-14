@@ -25,7 +25,7 @@ interface Thread {
     emit: (events: AguiEvent[]) => void;
     threadId: string;
     inputRunId: string;
-    openStreams: Set<number>;
+    openStreams: Set<string>;   // stream addresses this Run owns until their stream/concluded
     deferredFinish: AguiEvent[] | null;
     pendingTerminations: unknown[];
     // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
@@ -98,7 +98,6 @@ export default class Portal {
     }
 
     #routeNotification(workspaceId: number, method: string, params: unknown): void {
-        const entryId = (params as { entryId?: unknown }).entryId;
         for (const thread of this.#threads.get(workspaceId) ?? []) {
             if (Portal.#touchesChildren(thread, method, params)) void this.#refreshChildren(workspaceId, thread);
             if (!Portal.#ownsNotification(thread, method, params)) continue;
@@ -111,8 +110,11 @@ export default class Portal {
                 }
                 if (thread.loopId !== loopId) continue;
             }
-            if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
-            if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
+            // {§agui-broadcast-fan} — the row that announces an execution owns its stream for this Run
+            // before any channel write: a stream/event is a race the action result must not win.
+            const opened = Portal.#openedStream(method, params);
+            if (opened !== null) thread.openStreams.add(opened);
+            if (method === "stream/concluded") thread.openStreams.delete(Portal.#streamTarget(params));
             const out = thread.router.route(method, params);
             if (out.length > 0) thread.emit(out);
             if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
@@ -145,6 +147,23 @@ export default class Portal {
         if (children === thread.children || !(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
         thread.children = children;
         thread.emit([{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/children", value: children }] }]);
+    }
+
+    // The stream address a notification opens for the Run that owns it: a started or queued EXEC
+    // row's `attrs.stream`, or a stream/event's target. A detached execution (`<-1>`) is nobody's
+    // obligation ({§worker-obligations}) and opens nothing.
+    static #openedStream(method: string, params: unknown): string | null {
+        if (method === "log/entry") {
+            const attrs = (params as { entry?: { attrs?: { stream?: unknown; detached?: unknown } | null } }).entry?.attrs;
+            return typeof attrs?.stream === "string" && attrs.detached !== true ? attrs.stream : null;
+        }
+        return method === "stream/event" ? Portal.#streamTarget(params) : null;
+    }
+
+    static #streamTarget(params: unknown): string {
+        const target = (params as { target?: unknown }).target;
+        if (typeof target !== "string") throw new Error(`A stream notification names no target: ${JSON.stringify(params)}`);
+        return target;
     }
 
     static #ownsNotification(thread: Thread, method: string, params: unknown): boolean {
