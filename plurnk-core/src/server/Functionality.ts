@@ -58,7 +58,10 @@ export interface FunctionalityInvocation {
     readonly body: unknown;
 }
 
-type Origin = "service" | "workspace";
+// Who OWNS a definition, not where it is scoped. A family declares the scope its definitions
+// belong to ({§functionality-scope}); the locally-owned origin follows from it, so a worker-scoped
+// family's own entries say "worker" rather than claiming the workspace set them.
+type Origin = "service" | "workspace" | "worker";
 
 interface DefinitionRecord {
     readonly origin: Origin;
@@ -275,6 +278,12 @@ export default class Functionality {
         }
     }
 
+    // The origin a definition carries when this family owns it locally. Service definitions
+    // always come from the adapter's own `available()`; everything else is the family's own.
+    static #localOrigin(adapter: FunctionalityAdapter): Origin {
+        return adapter.scope === "worker" ? "worker" : "workspace";
+    }
+
     #adapter(family: string): FunctionalityAdapter {
         const adapter = this.#adapters.get(family);
         if (adapter === undefined) throw failure(family, "family-unknown", 404, `No Functionality family '${family}' is registered.`, { retryable: false });
@@ -322,10 +331,10 @@ export default class Functionality {
         for (const [alias, value] of Object.entries(raw.definitions)) {
             if (!ALIAS.test(alias) || !isRecord(value)) throw new Error(`Functionality state for ${adapter.family} has an invalid alias '${alias}'.`);
             const { origin, enabled, definition } = value;
-            if ((origin !== "service" && origin !== "workspace") || typeof enabled !== "boolean") {
+            if ((origin !== "service" && origin !== "workspace" && origin !== "worker") || typeof enabled !== "boolean") {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' is malformed.`);
             }
-            if (origin === "workspace") {
+            if (origin === Functionality.#localOrigin(adapter)) {
                 const result = Validator.validateJsonSchemaInstance(adapter.definitionSchema, definition);
                 if (!result.valid) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' holds an invalid definition.`);
                 definitions[alias] = { origin, enabled, definition: definition as object };
@@ -350,8 +359,9 @@ export default class Functionality {
             effective.set(service.alias, { alias: service.alias, origin: "service", definition: service.definition, enabled });
         }
         for (const [alias, record] of Object.entries(state.definitions)) {
-            if (record.origin !== "workspace") continue;
-            effective.set(alias, { alias, origin: "workspace", definition: record.definition!, enabled: record.enabled });
+            const local = Functionality.#localOrigin(adapter);
+            if (record.origin !== local) continue;
+            effective.set(alias, { alias, origin: local, definition: record.definition!, enabled: record.enabled });
         }
         return new Map([...effective].toSorted(([left], [right]) => left.localeCompare(right)));
     }

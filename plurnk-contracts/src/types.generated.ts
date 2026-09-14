@@ -729,7 +729,10 @@ reference?: string
 
 export type FunctionalityDefinitionState = {
 alias: string
-origin: ("service" | "workspace")
+/**
+ * Who owns this definition: the service baseline, the workspace, or one worker. A worker-scoped family (env) owns its definitions per worker, so origin names ownership rather than scope.
+ */
+origin: ("service" | "workspace" | "worker")
 /**
  * disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.
  */

@@ -3468,6 +3468,17 @@ failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
 definition before removal; failure rejects removal ({§skills-remove}).
 
+§functionality-scope **A family declares who owns its definitions.** Skills, MCP, members
+and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
+that every Worker there shares. Environment describes how one **Worker** works — context rather
+than capability — so its definitions are owned per Worker. The adapter declares `scope`
+(absent means workspace) and the coordinator keys durable state and the locally-owned `origin`
+by it: a workspace-scoped family's own entries carry origin `workspace`, a worker-scoped
+family's carry `worker`. Origin names ownership, never scope, so a projection never claims the
+workspace set a value one Worker set for itself. Nothing else in the contract varies: the six
+verbs, the two projections, enabledness, and the service-baseline rules are one implementation
+across every family, which is what keeps their idioms from drifting apart.
+
 §functionality-state **One durable value per workspace and family.**
 `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
 is stored under the provider namespace in `workspace_module_state`.

@@ -141,6 +141,11 @@ export interface FunctionalityPrepared {
 export interface FunctionalityAdapter {
     // The action segment (`workspace.<family>.<verb>`) and the EXEC family tag.
     readonly family: string;
+    // {§functionality-scope} — who owns this family's definitions. Skills, MCP, members and
+    // outbound A2A describe what exists in a WORKSPACE; env describes how one WORKER works, which
+    // is context rather than capability. Absent means workspace, so every existing family is
+    // unchanged. The coordinator keys durable state and the locally-owned origin by this.
+    readonly scope?: "workspace" | "worker";
     // The one publication owner for this family's runtimes and state.
     readonly namespaceOwner: string;
     readonly summary: string;
