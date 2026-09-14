@@ -1009,7 +1009,7 @@ export default class PacketWire {
                 const omitted = body.length > 0
                     ? `${projectedLineCount} output lines${native === null ? "" : " and native content"}`
                     : "native content";
-                meta.overflow = `${omitted} not shown; logTokensTotal exceeds logTokensMax`;
+                meta.overflow = `${omitted} not shown; the log exceeded logTokensMax when this row was withheld`;
             }
             const renderRow = (): string => {
                 const metadata = PacketWire.#canonicalJson(meta);

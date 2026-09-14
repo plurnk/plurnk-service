@@ -92,6 +92,8 @@ Daemon and database:
   bodyless row.
 - EDIT receipts no longer carry `rev`; the revision stays in the durable receipt. The receipt's
   boundary context is four lines (`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES=4`).
+- A withheld receipt reads `N output lines not shown; the log exceeded logTokensMax when this
+  row was withheld`: the past fact, not a live claim that the budget is exceeded.
 
 - The packet's `## Worker` block follows the log and carries `{path, parent, loop, turn}`; the
   `## Turn` section and the date and time zone are gone. Nothing volatile precedes the log.
