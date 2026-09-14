@@ -39,7 +39,11 @@ Where things are, for an agent that has to act before it has read everything:
   launching anything, and never reconstruct its invocation from memory.
 - **Landing**: topic branch, `npm run -s root:lint`, then `git push origin <branch>:main`.
   The pre-push drill is the gate (lint, unit, intg, client conformance against
-  `../plurnk` and `../plurnk.nvim`); on green, fast-forward local `main`, delete
+  `../plurnk` and `../plurnk.nvim`). It runs the pushed commit in a throwaway
+  worktree beside this checkout (`plurnk-service.wt-gate-<pid>`, removed when the
+  drill ends), so the working tree may stay dirty and be edited while it runs; intg
+  scopes to the changed leaf workspaces and runs in full for a root-level, `plurnk-core`,
+  or `plurnk-contracts` change. On green, fast-forward local `main`, delete
   the branch with `git branch -d`, mirror with
   `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
   lowercase-led line citing `(#N)`, no body.

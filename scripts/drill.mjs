@@ -15,15 +15,22 @@ for (const dir of root.workspaces) {
     workspaces.push({ dir, name: pkg.name, scripts: Object.keys(pkg.scripts ?? {}) });
 }
 
+// The framework packages every other workspace composes. Their intg tiers cannot see
+// a dependent break, and package.json points the other way (core lists the leaves it
+// bundles), so a change under them runs the full tier (#642: the env family's six
+// actions broke plurnk-agui's discovery witness and no scoped push ran it).
+export const FULL_INTG_ON = new Set(["plurnk-core", "plurnk-contracts"]);
+
 // Map a changed-file list to the set of workspace dirs to run intg for. A file
-// under a workspace scopes to it; a file outside every workspace (root config,
-// scripts/, .githooks/) can affect anything → null = run FULL intg.
+// under a leaf workspace scopes to it; a file outside every workspace (root config,
+// scripts/, .githooks/) or under a framework package can affect anything → null =
+// run FULL intg.
 export const scopeIntg = (files, dirs) => {
     const set = new Set(dirs);
     const changed = new Set();
     for (const file of files) {
         const top = file.split("/")[0];
-        if (!set.has(top)) return null; // root-level change → full intg
+        if (!set.has(top) || FULL_INTG_ON.has(top)) return null; // root or framework → full intg
         changed.add(top);
     }
     return changed;
@@ -112,7 +119,7 @@ if (import.meta.main) {
     if (!(await phase("unit", "test:unit", workspaces))) process.exit(1);
 
     const targets = await intgTargets();
-    if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level change" : "no base"})`);
+    if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level or framework change" : "no base"})`);
     else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
 
     if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);

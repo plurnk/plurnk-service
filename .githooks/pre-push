@@ -1,8 +1,8 @@
 #!/bin/sh
 # The gate: branch-name policy on EVERY push; the drill (lint+unit full; intg
-# scoped to the changed workspaces, full on a root-level change) on pushes to MAIN
-# ONLY — main is what ships and what every lane builds on. Never GitHub CI
-# (POSSUMTECH.md §Forge responsibilities).
+# scoped to the changed workspaces, full on a root-level or framework change) on
+# pushes to MAIN ONLY — main is what ships and what every lane builds on. Never
+# GitHub CI (POSSUMTECH.md §Forge responsibilities).
 # Branches are main or type/kebab-slug; tags pass. Deletions are exempt from both
 # the name policy and the drill — a deletion pushes no code to gate and removes a
 # ref rather than naming one (so a mis-named branch can always be deleted).
@@ -11,7 +11,7 @@ zero=0000000000000000000000000000000000000000
 any_update=0
 ref_count=0
 gate_base=
-gate_head=
+main_sha=
 gates_main=0
 while read -r _local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
@@ -19,9 +19,8 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
     any_update=1
     ref_count=$((ref_count + 1))
     [ "$remote_sha" != "$zero" ] && gate_base="$remote_sha"
-    gate_head="$local_sha"
     case "$remote_ref" in
-        refs/heads/main) gates_main=1 ;;
+        refs/heads/main) gates_main=1; main_sha="$local_sha" ;;
         refs/tags/*) : ;;
         refs/heads/*)
             branch="${remote_ref#refs/heads/}"
@@ -37,28 +36,42 @@ done
 # unblocked; main's protection unchanged.
 [ "$gates_main" = 1 ] || exit 0
 
-# The drill runs the WORKING TREE, not the commit being pushed (#642): every phase
-# spawns in a working-tree cwd. A dirty tree therefore gates code that is not what
-# lands, in either direction — uncommitted work can carry a red push green, or carry
-# a green push red. Refuse it and name what is dirty.
-dirt=$(git status --porcelain)
-if [ -n "$dirt" ]; then
-    echo "gate: the drill tests the working tree, which does not match the commit being pushed." >&2
-    echo "$dirt" >&2
-    exit 1
-fi
-
-# Worktree isolation at the push boundary: hand drill the remote base sha so intg
-# scopes to the changed workspaces, and the pushed sha so it scopes against the ref
-# being pushed rather than whatever HEAD happens to be (#642). Single-ref, non-new
-# pushes only — a multi-ref or new-branch push has no single base and runs the full
-# intg (safe default).
-[ "$ref_count" = 1 ] && [ -n "$gate_base" ] && export PLURNK_GATE_BASE="$gate_base"
-[ "$ref_count" = 1 ] && [ -n "$gate_head" ] && export PLURNK_GATE_HEAD="$gate_head"
-
 # Git exports its hook environment (GIT_DIR = <main>/.git/worktrees/<wt> when pushing
 # from a linked worktree). A gate test that runs `git init <tmpdir>` under it re-initializes
-# the MAIN repository as bare (#402). The drill discovers the repository from cwd.
+# the MAIN repository as bare (#402). Everything below discovers the repository from cwd.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
 
-exec npm test
+# The drill runs the COMMIT being pushed, never the working tree (#642): a throwaway
+# worktree at the pushed sha is immutable for the whole run, so editing here while the
+# gate runs cannot change what it tests, and uncommitted work never rides a push green
+# or red. It sits beside this checkout because the conformance phase reads the sibling
+# clients as `../plurnk` and `../plurnk.nvim`. Installed dependencies are copied whole:
+# the workspace links are relative (`node_modules/@plurnk/x -> ../../x`), so inside the
+# worktree they resolve to the worktree's own packages.
+repo=$(git rev-parse --show-toplevel) || exit 1
+gate="$(dirname "$repo")/$(basename "$repo").wt-gate-$$"
+cleanup() {
+    cd "$repo" || return
+    git worktree remove --force "$gate" >/dev/null 2>&1
+    git worktree prune >/dev/null 2>&1
+}
+trap cleanup EXIT INT TERM HUP
+git worktree add --detach --quiet "$gate" "$main_sha" || exit 1
+cp -a "$repo/node_modules" "$gate/node_modules" || exit 1
+for installed in "$repo"/*/node_modules; do
+    [ -d "$installed" ] || continue
+    workspace=$(basename "$(dirname "$installed")")
+    cp -a "$installed" "$gate/$workspace/node_modules" || exit 1
+done
+cd "$gate" || exit 1
+
+# Hand the drill the remote base sha so intg scopes to the changed workspaces, and the
+# pushed sha so it scopes against the ref being pushed. Single-ref, non-new pushes only —
+# a multi-ref or new-branch push has no single base and runs the full intg (safe default).
+[ "$ref_count" = 1 ] && [ -n "$gate_base" ] && export PLURNK_GATE_BASE="$gate_base"
+export PLURNK_GATE_HEAD="$main_sha"
+
+echo "gate: drilling $main_sha in $gate"
+npm test
+status=$?
+exit $status

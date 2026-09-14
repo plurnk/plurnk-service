@@ -3,16 +3,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { formatPhaseSummary, partitionByScript, scopeIntg } from "./drill.mjs";
 
-const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html"];
+const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-jq"];
 
 describe("drill scopeIntg — changed-workspace intg scoping", () => {
-    it("scopes to the single workspace whose files changed", () => {
-        assert.deepEqual([...scopeIntg(["plurnk-contracts/plurnk.md"], DIRS)], ["plurnk-contracts"]);
+    it("scopes to the single leaf workspace whose files changed", () => {
+        assert.deepEqual([...scopeIntg(["plurnk-execs-jq/src/x.ts"], DIRS)], ["plurnk-execs-jq"]);
     });
 
-    it("scopes to every changed workspace", () => {
-        const s = scopeIntg(["plurnk-contracts/plurnk.md", "plurnk-core/src/x.ts"], DIRS);
-        assert.deepEqual([...s].sort(), ["plurnk-contracts", "plurnk-core"]);
+    it("scopes to every changed leaf workspace", () => {
+        const s = scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-mimetypes-text-html/src/y.ts"], DIRS);
+        assert.deepEqual([...s].sort(), ["plurnk-execs-jq", "plurnk-mimetypes-text-html"]);
+    });
+
+    it("returns null (full intg) on a change under a framework package", () => {
+        assert.equal(scopeIntg(["plurnk-core/src/x.ts"], DIRS), null);
+        assert.equal(scopeIntg(["plurnk-contracts/plurnk.md"], DIRS), null);
+        assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-core/SPEC.md"], DIRS), null);
     });
 
     it("returns null (full intg) on any root-level change", () => {
@@ -21,8 +27,8 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
         assert.equal(scopeIntg(["AGENTS.md"], DIRS), null);
     });
 
-    it("a root change alongside a workspace change → full (conservative)", () => {
-        assert.equal(scopeIntg(["plurnk-contracts/plurnk.md", "package.json"], DIRS), null);
+    it("a root change alongside a leaf change → full (conservative)", () => {
+        assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "package.json"], DIRS), null);
     });
 
     it("an empty diff scopes to nothing (lint+unit already ran full)", () => {
