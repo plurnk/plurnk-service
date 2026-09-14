@@ -25,9 +25,9 @@ Your `add` is admitted against the operator's ceiling
 
 | Scope | A model definition may include |
 | --- | --- |
-| `none` (shipped default) | nothing — every `add` from the model is refused `403 model-scope` |
+| `none` | nothing — every `add` from the model is refused `403 model-scope` |
 | `root` | paths inside the project root |
-| `namespace` | those plus canonical `../` paths outside the root |
+| `namespace` (shipped default) | those plus canonical `../` paths outside the root |
 
 The scope refuses an `add` you author from a turn; a client's `/members add`
 and the operator's `PLURNK_MEMBERS_<ALIAS>=<glob>` definitions are not bound
@@ -47,7 +47,7 @@ says `tracked`, `included by …`, `a creation record`, `excluded by …`,
   {"alias": "reports", "definition": {"glob": "build/*.json"}}
   ````
 
-- **Untracked and the scope is `none`** (the shipped default): the refusal
+- **Untracked and the scope is `none`** (an operator narrowed it): the refusal
   names the recovery, and it is not a trick — make git track the file. Staging
   is enough; no commit is needed, and membership refreshes at your next turn.
 

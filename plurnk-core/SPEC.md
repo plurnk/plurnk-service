@@ -3199,7 +3199,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`                   | `32768` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
-| `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`                       | `none` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
+| `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`                       | `namespace` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY`                          | `12` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 | §operator-config-worker-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | `900000` | Milliseconds a lease-free workspace Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
@@ -4117,7 +4117,7 @@ and never re-fetch a match.
   exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
   is not projected. (4) A definition the model proposes through the `members`
   family ({§members-functionality}), admitted only under the operator's ceiling
-  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (shipped `none`), projected with source
+  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (shipped `namespace`), projected with source
   `model`, and never admitted past the repository's ignore rules or an exclusion.
   Nothing else.
 - §membership-git-membership The workspace owns the Git repository containing
@@ -4867,10 +4867,11 @@ or an unknown enabled alias fails the daemon at boot.
 
 §members-model-scope *The model's authority.* A model's `add` is admitted against
 `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the file-creation lattice `none < root <
-namespace`, narrowed by `settings.membersModelScope` (most restrictive wins). Shipped `none`
+namespace`, narrowed by `settings.membersModelScope` (most restrictive wins). `none`
 refuses every model definition — inclusion or exclusion — as `403
 members/functionality/model-scope`, naming `git add` and the operator's `/members add` as
-the paths that remain; `root` admits patterns inside the root; `namespace` admits `../` too.
+the paths that remain; `root` admits patterns inside the root; `namespace`, the shipped
+default, admits `../` too.
 `auto` loops self-approve proposals, so the ceiling — not the proposal — is the guard
 ({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
 so the family bounds the model without a second grammar.

@@ -82,7 +82,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
     await withEnv({
         PLURNK_SERVICE_GIT_ALLOWED: "1",
         PLURNK_SERVICE_GIT_AUTO: "1",
-        PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: undefined,   // shipped: none
+        PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: undefined,   // unset reads as none; the shipped default lives in .env.defaults
         PLURNK_MEMBERS_DOCS: "docs/**",
         PLURNK_MEMBERS_ENABLED: "[\"docs\"]",
     }, async () => {
