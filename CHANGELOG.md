@@ -127,6 +127,9 @@ Daemon and database:
 - The service database runs one writer Worker and no read-only Workers by default
   (`PLURNK_SERVICE_SQLITE_READERS=0`); a positive count adds that many reader Workers, each its
   own thread and isolate. The installed sqlrite previously sized the pool to the host's cores.
+- Opening a database from an earlier schema baseline now says so and names the remedy (stop the
+  daemons holding it, delete it with its -wal and -shm sidecars, start again) instead of
+  surfacing SQLite's bare `no such column`.
 - Search-index maintenance judges an entry channel from its stored content hash and reads a
   body only for a derivation that runs; an unchanged workspace acquires none of its channel
   bodies (every body was read twice per model turn). Every stored derivation identity changes

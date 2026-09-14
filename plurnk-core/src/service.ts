@@ -194,7 +194,14 @@ export default class Service {
             const hint = sidecars.length > 0
                 ? ` — stale sidecar(s) present (${sidecars.join(", ")}): a prior daemon may still hold the old database; stop it and delete the sidecars`
                 : "";
-            throw new Error(`open ${dbPath} failed${hint}`, { cause });
+            // A missing column or table on an existing database is the pre-migration phase at work
+            // ({§db-schema-baseline}): a chapter changed under it, and the remedy is deletion. Say
+            // so; the bare cause reads like a bug.
+            const diagnosis = cause instanceof Error ? cause.message : String(cause);
+            const baseline = /^no such (?:column|table)\b/.test(diagnosis)
+                ? ` — the database predates the current schema baseline: stop every daemon that holds it, delete ${dbPath} with its -wal and -shm sidecars, then start again`
+                : "";
+            throw new Error(`open ${dbPath} failed${hint}${baseline}`, { cause });
         }
     }
 
