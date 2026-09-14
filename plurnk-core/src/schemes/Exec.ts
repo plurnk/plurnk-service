@@ -18,7 +18,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
-import EnvFunctionality, { ENV_OWNER } from "../server/EnvFunctionality.ts";
+import EnvFunctionality, { ENV_OWNER, type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
 import { entryCoordinateOf, generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
@@ -98,10 +98,18 @@ export default class Exec extends CoreSchemeAdapterBase {
     // {§exec-env-scoped} — the environment one spawn receives: the ambient ceiling, then the Worker's
     // own `env` state over it ({§env-functionality}), read here rather than held anywhere. No row is
     // the ordinary case: a Worker that never set anything.
-    static async #composedEnv(db: PlurnkSchemeContext["db"], workerId: number): Promise<NodeJS.ProcessEnv> {
+    static async #composedEnv(db: PlurnkSchemeContext["db"], workerId: number): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const ambient = ExecEnv.scoped();
         const row = await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
-        return row === undefined ? ambient : EnvFunctionality.compose(ambient, JSON.parse(row.state));
+        return EnvFunctionality.compose(ambient, row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state));
+    }
+
+    // The record goes on the output the spawn produces ({§execution-output-identity}) — the log row
+    // is the model's proposal and stays immutable. An output that is not there is a defect in the
+    // provenance chain, never a spawn that quietly runs unrecorded.
+    static async #recordEnv(db: PlurnkSchemeContext["db"], entryId: number, record: Record<string, EnvRecord>): Promise<void> {
+        const { changes } = await db.execution_record_env.run({ entry_id: entryId, env: JSON.stringify(record) });
+        if (changes !== 1) throw new Error(`spawn output entry ${entryId} is not there to record the environment on`);
     }
 
     // The slot contract, stated when a resource source cannot be read: the resource IS the
@@ -1045,6 +1053,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (signal.aborted) {
                 result = cancelled();
             } else try {
+                const composed = await Exec.#composedEnv(db, ctx.workerId);
+                await Exec.#recordEnv(db, entryId, composed.record);
                 const reported: ExecutorResult = await executor.run({
                     registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,
@@ -1055,7 +1065,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         }
                         return ctx.requestInteraction(request, signal);
                     },
-                    env: await Exec.#composedEnv(db, ctx.workerId),  // SPEC {§exec} {§exec-env-scoped}
+                    env: composed.env,  // SPEC {§exec} {§exec-env-scoped}
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         producerWorkerId: ctx.workerId,
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,

@@ -2776,7 +2776,10 @@ entry of either origin withholds the name, and what `list` projects is what the 
 receives. Then the **invariant**, which is not a knob:
 `PLURNK_*` config and every provider credential name are stripped last and unconditionally,
 so no policy, document or modifier can readmit plurnk's own secrets. The service composes;
-the executor spawns with the environment it is handed.
+the executor spawns with the environment it is handed. Each spawn records the environment it
+received on the output it produces — every name with its provenance: the host through the
+ceiling, this Worker, an ancestor by name, or masked — and the digest renders it beside the
+operation, which closes the host-versus-container confound where it starts.
 
 The ceiling exists because the invariant protects the wrong secrets. It knows plurnk's
 credentials and nothing about the operator's, so a denylist alone hands `SSH_AUTH_SOCK` and

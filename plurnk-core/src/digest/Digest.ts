@@ -58,6 +58,7 @@ import type {
     LogCurationEffectRow,
     WorkerRollupRow,
     OpMixRow,
+    ExecutionEnvironmentRow,
     SearchStateRow,
     DispositionCountRow,
     DispositionRow,
@@ -151,6 +152,7 @@ export default class Digest {
         let curationEffects = (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all();
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
         let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
+        const environmentRows = (db.digest_execution_environments as SyncPrep<ExecutionEnvironmentRow>).all();
         const searchState = (db.digest_channel_search_state as SyncPrep<SearchStateRow>).get();
         const derivationState = (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get();
         if (searchState === undefined || derivationState === undefined) throw new Error("digest: search aggregate returned no row");
@@ -237,6 +239,7 @@ export default class Digest {
         const loopsById = new Map(loops.map((l) => [l.id, l]));
         const workersById = new Map(workers.map((r) => [r.id, r]));
         const workerRollups = new Map(workerRollupRows.map((r) => [r.worker_id, r]));
+        const environments = new Map(environmentRows.map((row) => [`${row.workspace_id}:${row.stream}`, JSON.parse(row.env) as Record<string, unknown>]));
         const opMixByWorker = new Map<number, OpMixRow[]>();
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
@@ -244,7 +247,7 @@ export default class Digest {
             dbPath, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
-            logEntriesByTurn, loopsById, workersById,
+            logEntriesByTurn, environments, loopsById, workersById,
             workerRollups, opMixByWorker, search,
         };
 

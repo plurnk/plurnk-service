@@ -3,8 +3,11 @@
 // the model's manager bound to the invoking worker: the same six verbs, acting for one worker.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import Digest from "../../src/digest/Digest.ts";
 import type { FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -49,8 +52,11 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
     const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
     process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,ENV_WITNESS";
     process.env.ENV_WITNESS = "ambient";
-    const db = await openMigrated();
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-env-family-"));
+    const dbPath = join(scratch, "plurnk.db");
+    const db = await openMigrated(dbPath);
     let daemon = await boot(db);
+    let quiescent = false;
     try {
         const workspaceId = await insertWorkspace(db, `env-family-${crypto.randomUUID()}`);
         const alice = await insertWorker(db, workspaceId, null, "alice", "client");
@@ -186,16 +192,52 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
 
             const command = "```sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n```";
-            assert.match(await stdoutOf((await accepted(alice, command)).logEntryId), /target=\[\/tmp\/shared\] witness=\[\] bob=\[\]/,
+            // The record lives on the spawn's output entry ({§execution-output-identity}), never on the
+            // model's own log row.
+            const recorded = async (logEntryId: number) => {
+                const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+                const { pathname } = JSON.parse(log!.attrs) as { pathname: string };
+                const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "sh", authority: "", pathname });
+                return (JSON.parse(output!.attributes) as { env: Record<string, { source: string; from?: string; value?: string }> }).env;
+            };
+            const aliceRun = await accepted(alice, command);
+            assert.match(await stdoutOf(aliceRun.logEntryId), /target=\[\/tmp\/shared\] witness=\[\] bob=\[\]/,
                 "alice's command receives what she set and not the ambient name she disabled");
-            assert.match(await stdoutOf((await accepted(bob, command)).logEntryId), /target=\[\] witness=\[ambient\] bob=\[1\]/,
+            const bobRun = await accepted(bob, command);
+            assert.match(await stdoutOf(bobRun.logEntryId), /target=\[\] witness=\[ambient\] bob=\[1\]/,
                 "bob's command receives his own entry and the untouched ceiling");
+
+            // The spawn records what it received, name by name with provenance, on its own log row.
+            const aliceEnv = await recorded(aliceRun.logEntryId);
+            assert.deepEqual(aliceEnv.CARGO_TARGET_DIR, { source: "worker", value: "/tmp/shared" });
+            assert.deepEqual(aliceEnv.ENV_WITNESS, { source: "masked" }, "a name alice withheld is recorded as masked, by her");
+            assert.equal(aliceEnv.PATH?.source, "host");
+            assert.deepEqual((await recorded(bobRun.logEntryId)).ENV_WITNESS, { source: "host", value: "ambient" });
+            const carolRun = await accepted(carol, command);
+            assert.match(await stdoutOf(carolRun.logEntryId), /target=\[\/tmp\/shared\] witness=\[ambient\] bob=\[\]/,
+                "carol's command receives the value she inherited and the name she re-enabled");
+            assert.deepEqual((await recorded(carolRun.logEntryId)).CARGO_TARGET_DIR, { source: "worker", from: "alice", value: "/tmp/shared" },
+                "the record names the Worker that set an inherited value");
         } finally {
             unsubscribe();
         }
-    } finally {
+
+        // The digest renders what each spawn recorded, beside its operation ({§exec-env-scoped}):
+        // alice's own value and her masked name, carol's inherited value by its source.
         await daemon.stop();
         await db.close();
+        quiescent = true;
+        Digest.run({ dbPath, digestDir: join(scratch, "digest") });
+        const waterfall = await readFile(join(scratch, "digest", "digest.md"), "utf8");
+        assert.match(waterfall, /env: host [A-Z_,]+ · CARGO_TARGET_DIR=\/tmp\/shared \(worker\) · ENV_WITNESS \(masked\)/u,
+            "the waterfall names alice's spawn environment with each value's provenance");
+        assert.match(waterfall, /CARGO_TARGET_DIR=\/tmp\/shared \(from alice\)/u, "and carol's inherited value by the Worker that set it");
+    } finally {
+        if (!quiescent) {
+            await daemon.stop();
+            await db.close();
+        }
+        await rm(scratch, { recursive: true, force: true });
         delete process.env.ENV_WITNESS;
         if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
         else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;

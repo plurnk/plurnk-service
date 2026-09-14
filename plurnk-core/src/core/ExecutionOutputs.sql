@@ -11,3 +11,11 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e.authority = $authority
   AND e.output = 1 AND ($pathname IS NULL OR e.pathname = $pathname);
+
+-- {§exec-env-scoped} — the environment a spawn received, name by name with provenance, recorded on
+-- the output it produces as the process starts; the digest renders it beside the operation. The
+-- log row stays exactly what the model proposed.
+-- PREP: execution_record_env
+UPDATE entries
+   SET attributes = json_set(attributes, '$.env', json($env))
+ WHERE id = $entry_id AND output = 1;

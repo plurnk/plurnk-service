@@ -141,3 +141,10 @@ ORDER BY d.disposition, e.scheme, e.authority, e.pathname, channel;
 SELECT COALESCE(SUM(CASE WHEN state = 'complete' THEN 1 ELSE 0 END), 0) AS complete,
        COALESCE(SUM(CASE WHEN state = 'building' THEN 1 ELSE 0 END), 0) AS building
 FROM derivations;
+
+-- PREP: digest_execution_environments
+-- {§exec-env-scoped} — each output's recorded environment, keyed the way the log row's
+-- `attrs.stream` names it (scheme://pathname), so the waterfall renders it beside the operation.
+SELECT e.workspace_id, (e.scheme || '://' || e.pathname) AS stream, json_extract(e.attributes, '$.env') AS env
+FROM entries e
+WHERE e.output = 1 AND json_type(e.attributes, '$.env') = 'object';

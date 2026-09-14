@@ -147,23 +147,46 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     // name. One rule with `list`, which projects the same state, so what a Worker sees listed is what
     // its command receives. The state is the coordinator's persisted shape ({§functionality-state});
     // anything else is a defect, not a fallback. The invariant runs last, as at every layer.
-    static compose(ambient: NodeJS.ProcessEnv, state: unknown): NodeJS.ProcessEnv {
+    //
+    // Beside the environment comes its record: every name with its provenance, which the spawn
+    // writes on its own log row and the digest renders — the host-versus-container confound closed
+    // where it starts.
+    static compose(ambient: NodeJS.ProcessEnv, state: unknown): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
         if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
-        const out: NodeJS.ProcessEnv = { ...ambient };
+        const env: NodeJS.ProcessEnv = { ...ambient };
+        const record: Record<string, EnvRecord> = {};
         let reserved: ((name: string) => boolean) | undefined;
-        for (const [name, record] of Object.entries(state.definitions)) {
-            if (!isRecord(record) || typeof record.enabled !== "boolean") throw new Error(`env state for '${name}' is malformed`);
-            if (!record.enabled) {
-                delete out[name];
+        for (const [name, entry] of Object.entries(state.definitions)) {
+            if (!isRecord(entry) || typeof entry.enabled !== "boolean") throw new Error(`env state for '${name}' is malformed`);
+            const from = typeof entry.inherited === "string" ? { from: entry.inherited } : {};
+            if (!entry.enabled) {
+                delete env[name];
+                record[name] = { source: "masked", ...from };
                 continue;
             }
-            if (record.origin === "service") continue;
-            if (record.origin !== "worker") throw new Error(`env state for '${name}' has origin '${String(record.origin)}'`);
-            if (!isRecord(record.definition) || typeof record.definition.value !== "string") throw new Error(`env state for '${name}' holds no string value`);
+            if (entry.origin === "service") continue;
+            if (entry.origin !== "worker") throw new Error(`env state for '${name}' has origin '${String(entry.origin)}'`);
+            if (!isRecord(entry.definition) || typeof entry.definition.value !== "string") throw new Error(`env state for '${name}' holds no string value`);
             reserved ??= ExecEnv.ownSecretTest();
-            if (reserved(name)) continue;
-            out[name] = record.definition.value;
+            if (reserved(name)) {
+                record[name] = { source: "masked" };
+                continue;
+            }
+            env[name] = entry.definition.value;
+            record[name] = { source: "worker", ...from, value: entry.definition.value };
         }
-        return out;
+        for (const [name, value] of Object.entries(env)) {
+            if (record[name] === undefined && value !== undefined) record[name] = { source: "host", value };
+        }
+        return { env, record };
     }
+}
+
+// One name's provenance in a spawn's environment ({§exec-env-scoped}): the host through the
+// ceiling, this Worker's own value (`from` names an ancestor when it was inherited), or a name
+// withheld — by this Worker, by the ancestor named, or by the invariant.
+export interface EnvRecord {
+    readonly source: "host" | "worker" | "masked";
+    readonly from?: string;
+    readonly value?: string;
 }

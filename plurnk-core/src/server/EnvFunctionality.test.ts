@@ -112,3 +112,26 @@ test("{§env-functionality} prepare publishes no runtime and marks every enabled
     assert.deepEqual([...prepared.outcomes.keys()], ["PAGER", "CI"]);
     assert.deepEqual([...prepared.outcomes.values()], [{ state: "active" }, { state: "active" }]);
 });
+
+// {§exec-env-scoped} — one rule for the spawn and its record: what the command receives and why.
+test("{§exec-env-scoped} compose applies the Worker's state over the ambient ceiling and records each name's provenance", () => {
+    const { env, record } = EnvFunctionality.compose({ PATH: "/usr/bin", CI: "1", TERM: "xterm" }, { version: 1, definitions: {
+        CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
+        TOOLCHAIN: { origin: "worker", enabled: true, definition: { value: "stable" }, inherited: "alice" },
+        CI: { origin: "service", enabled: false, inherited: "alice" },
+        TERM: { origin: "service", enabled: true },
+        OFF: { origin: "worker", enabled: false, definition: { value: "x" } },
+        PLURNK_SERVICE_DB_PATH: { origin: "worker", enabled: true, definition: { value: "/tmp/steal.db" } },
+    } });
+    assert.deepEqual(env, { PATH: "/usr/bin", TERM: "xterm", CARGO_TARGET_DIR: "/tmp/shared", TOOLCHAIN: "stable" });
+    assert.deepEqual(record, {
+        PATH: { source: "host", value: "/usr/bin" },
+        TERM: { source: "host", value: "xterm" },
+        CARGO_TARGET_DIR: { source: "worker", value: "/tmp/shared" },
+        TOOLCHAIN: { source: "worker", from: "alice", value: "stable" },
+        CI: { source: "masked", from: "alice" },
+        OFF: { source: "masked" },
+        PLURNK_SERVICE_DB_PATH: { source: "masked" },
+    });
+    assert.throws(() => EnvFunctionality.compose({}, { version: 2 }), /not a version 1 record/u, "a foreign state shape is a defect, never a fallback");
+});

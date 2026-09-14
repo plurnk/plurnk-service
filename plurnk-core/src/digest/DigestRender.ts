@@ -94,7 +94,34 @@ export default class DigestRender {
         return typeof stream === "string" ? stream : null;
     }
 
-    static #renderOpLine(le: LogRow, label: string = le.op ?? "source artifact"): string {
+    // {§exec-env-scoped} — the environment a spawn received, as recorded on its row: host names by
+    // name, the Worker's own values, inherited values by their source, masked names. Host values
+    // stay in digest.json. Part of the rendered line, so spawns under different environments never
+    // collapse into one group.
+    static envLine(env: unknown): string | null {
+        if (env === undefined || env === null || typeof env !== "object") return null;
+        const host: string[] = [];
+        const rest: string[] = [];
+        for (const [name, raw] of Object.entries(env as Record<string, unknown>).toSorted(([left], [right]) => left.localeCompare(right))) {
+            const record = raw as { source?: unknown; from?: unknown; value?: unknown };
+            const from = typeof record.from === "string" ? record.from : null;
+            if (record.source === "host") host.push(name);
+            else if (record.source === "masked") rest.push(`${name} (masked${from === null ? "" : ` by ${from}`})`);
+            else rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (${from === null ? "worker" : `from ${from}`})`);
+        }
+        const parts = [...(host.length === 0 ? [] : [`host ${host.join(",")}`]), ...rest];
+        return `env: ${parts.length === 0 ? "(empty)" : parts.join(" · ")}`;
+    }
+
+    // The environment a spawn recorded on its output, found through the row's stream address.
+    static #environmentOf(le: LogRow, m: DigestModel): unknown {
+        const stream = DigestRender.#renderStream(le);
+        if (stream === null) return undefined;
+        const worker = m.workersById.get(le.worker_id);
+        return worker === undefined ? undefined : m.environments.get(`${worker.workspace_id}:${stream}`);
+    }
+
+    static #renderOpLine(le: LogRow, label: string = le.op ?? "source artifact", environment?: unknown): string {
         const target = DigestRender.#renderTarget(le) ?? "—";
         const stream = DigestRender.#renderStream(le);
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
@@ -108,27 +135,29 @@ export default class DigestRender {
         if (le.status_rx >= 400) {
             errLine = `\n    -> ${DigestRender.#summarize(DigestRender.#rowProblem(le).detail, 140)}`;
         }
-        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${source}${state}${outcome}${streamLink}${fail}${errLine}`;
+        const envLine = DigestRender.envLine(environment);
+        const envText = envLine === null ? "" : `\n    ${envLine}`;
+        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${source}${state}${outcome}${streamLink}${fail}${errLine}${envText}`;
     }
 
-    static #renderGroupedOpLine(row: LogRow): string {
+    static #renderGroupedOpLine(row: LogRow, m: DigestModel): string {
         const attrs = DigestRender.parseJson(row.attrs, {}) as { kind?: unknown };
         const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"
             ? "emission attempt"
             : row.op ?? `unrecognized actionless row (kind=${JSON.stringify(actionlessKind) ?? "absent"})`;
-        return DigestRender.#renderOpLine(row, materialized ? "materialized entry" : label);
+        return DigestRender.#renderOpLine(row, materialized ? "materialized entry" : label, DigestRender.#environmentOf(row, m));
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
     // collapse identical rendered outcomes in the Markdown waterfall. Using the
     // rendered line itself as the key keeps actor, complete target, lifecycle,
     // stream, and visible failure detail structurally aligned with the grouping.
-    static #renderOpLines(rows: LogRow[]): string[] {
+    static #renderOpLines(rows: LogRow[], m: DigestModel): string[] {
         const groups = new Map<string, { line: string; count: number; firstSeq: number; lastSeq: number }>();
         for (const row of rows) {
-            const line = DigestRender.#renderGroupedOpLine(row);
+            const line = DigestRender.#renderGroupedOpLine(row, m);
             const group = groups.get(line);
             if (group === undefined) {
                 groups.set(line, { line, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
@@ -225,7 +254,7 @@ export default class DigestRender {
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${DigestRender.#summarize(reasoning, 100)}`
             : null;
-        const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? []);
+        const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? [], m);
         return [head, ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...opLines].join("\n");
     }
 
@@ -610,6 +639,7 @@ export default class DigestRender {
                 ...(DigestRender.#renderStream(le) === null
                     ? {}
                     : { stream: DigestRender.#renderStream(le) }),
+                ...(DigestRender.#environmentOf(le, m) === undefined ? {} : { env: DigestRender.#environmentOf(le, m) }),
                 ...(le.status_rx >= 400 ? { problem: DigestRender.#rowProblem(le) } : {}),
             })),
             log_curation_effects: m.curationEffects.map(({ active_before, active_after, folded_before, folded_after, ...effect }) => ({

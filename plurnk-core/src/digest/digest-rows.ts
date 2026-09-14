@@ -121,6 +121,8 @@ export interface LogRow {
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
     initial_folded: string; projection_active: 0 | 1; projection_folded: string;
 }
+// {§exec-env-scoped} — one output's recorded environment; `stream` is the log row's stream address.
+export interface ExecutionEnvironmentRow { workspace_id: number; stream: string; env: string }
 export interface LogCurationEffectRow {
     operation_log_entry_id: number;
     target_log_entry_id: number;
@@ -178,6 +180,8 @@ export interface DigestModel {
     requestsByWorker: Map<number, ProviderRequestRow[]>;
     requestsByWorkspace: Map<number, ProviderRequestRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
+    // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§exec-env-scoped})
+    environments: Map<string, Record<string, unknown>>;
     loopsById: Map<number, LoopRow>;
     workersById: Map<number, WorkerRow>;
     workerRollups: Map<number, WorkerRollupRow>;
