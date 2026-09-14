@@ -96,14 +96,19 @@ test("a pattern READ over a glob fans out into one exact pattern READ receipt pe
             sequence += ((result.rowsWritten as number | undefined) ?? 1) - 1;
             return result;
         };
-        const rows = async () => (await db.test_log_entries_by_loop.all<{ op: string; pathname: string | null; status_rx: number; rx: string; sequence: number }>({ loop_id: env.loopId }))
+        const rows = async () => (await db.test_log_entries_by_loop.all<{ op: string; pathname: string | null; status_rx: number; rx: string; attrs: string; sequence: number }>({ loop_id: env.loopId }))
             .filter((row) => row.op === "READ" || row.op === "FIND").sort((a, b) => a.sequence - b.sequence);
 
-        const grep = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "regex", raw: "/dogs/i", pattern: "dogs", flags: "i" }));
+        const globTarget = urlPath("worker", "/pets_*.md");
+        const grep = await dispatch(readStmt(globTarget, null, { dialect: "regex", raw: "/dogs/i", pattern: "dogs", flags: "i" }));
         assert.equal(grep.status, 200, JSON.stringify(grep));
         assert.equal(grep.rowsWritten, 2, "one receipt per matching path; the fishless file writes none");
         const receipts = await rows();
         assert.deepEqual(receipts.map(({ op, pathname, status_rx }) => [op, pathname, status_rx]), [["READ", "/pets_cats.md", 200], ["READ", "/pets_dogs.md", 200]], "each receipt is an exact READ of one matching path, in the FIND's order");
+        assert.deepEqual(receipts.map(({ attrs }) => (JSON.parse(attrs) as { fanout: unknown }).fanout), [
+            { target: globTarget.raw, matched: 2, index: 0, count: 2 },
+            { target: globTarget.raw, matched: 2, index: 1, count: 2 },
+        ], "every fanned-out row names the authored glob and its place in the fan-out ({§read-fan-out})");
         const dogs = JSON.parse(receipts[1]!.rx) as { content: string; lineOrdinals: number[]; matched: number; lineAnchors: string[] };
         assert.equal(dogs.content, "but I love dogs.\nHistorically, dogs have been...");
         assert.deepEqual(dogs.lineOrdinals, [2, 4], "the lines keep their physical ordinals inside their own file");

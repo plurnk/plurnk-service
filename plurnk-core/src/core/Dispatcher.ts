@@ -65,6 +65,9 @@ export type DispatchContext = {
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
     onSettled?: (logEntryId: number) => void | Promise<void>;
+    // {§read-fan-out} — set on a READ dispatched on behalf of a glob: the row it writes
+    // carries this under `attrs.fanout`, so a client presents the authored statement once.
+    fanout?: { readonly target: string; readonly matched: number; readonly index: number; readonly count: number };
 };
 
 export type DispatchResult = SchemeResult;
@@ -481,13 +484,14 @@ export default class Dispatcher {
             context.onDispatch?.(logEntryId);
             return result;
         }
+        const matchingPathCount = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
         const results: DispatchResult[] = [];
         for (const [index, path] of paths.entries()) {
             const target = parsePath(path);
             if (target === null) throw new InvalidOperationResultError(`FIND named an unparseable path: ${path}`);
-            results.push(await this.dispatch({ ...context, statement: { ...statement, target }, sequence: context.sequence + index }));
+            const fanout = { target: statement.target!.raw, matched: matchingPathCount, index, count: paths.length };
+            results.push(await this.dispatch({ ...context, statement: { ...statement, target }, sequence: context.sequence + index, fanout }));
         }
-        const matchingPathCount = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
         if (matchingPathCount > paths.length) {
             this.#notices.push(context.workspaceId, context.workerId, context.loopId, {
                 source: "engine:dispatcher",
@@ -589,6 +593,11 @@ export default class Dispatcher {
                     );
                 }
             }
+        }
+        // {§read-fan-out} — a row read on behalf of a glob names the statement it came from.
+        if (context.fanout !== undefined) {
+            const attrs = typeof result.attrs === "object" && result.attrs !== null ? result.attrs as Record<string, unknown> : {};
+            result = { ...result, attrs: { ...attrs, fanout: context.fanout } };
         }
         // Persist log curation for forensics; packet rendering suppresses its
         // successful receipts while the exact state effects remain durable.

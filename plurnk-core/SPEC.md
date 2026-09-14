@@ -1971,6 +1971,9 @@ READ is the one fan-out core performs ({§read-fan-out}).
   scope, matcher and aside ({§read-selection-projection}, {§read-pattern}), one
   receipt row per path in the FIND's order, so every rendered line keeps its path,
   physical ordinal and anchor and remains a coordinate source for EDIT and KILL.
+  Each such row carries `attrs.fanout` (`target`, the authored glob; `matched`, the
+  survey's matching path count; `index`; `count`), so a client presents the authored
+  statement once and folds the paths beneath it without inferring the group.
   Without a scope each path renders its ordinary `<1,16>` preview; with a pattern
   only the matching lines, `grep -n` style. The authored statement contributes
   `rowsWritten`, the receipt count, to its turn's sequence. No path is one 204
