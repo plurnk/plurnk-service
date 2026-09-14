@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { formatPhaseSummary, partitionByScript, scopeIntg } from "./drill.mjs";
+import { docsOnly, formatPhaseSummary, partitionByScript, scopeIntg } from "./drill.mjs";
 
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-jq"];
 
@@ -83,5 +83,18 @@ describe("drill tier inventory", () => {
             excluded: [{ dir: "not-applicable" }],
             elapsedSeconds: 95,
         }), "intg: 1/3 green in 95s; red: red-one, red-two; 1 n/a: not-applicable");
+    });
+});
+
+describe("drill docsOnly — a Markdown-only push runs the root lint alone", () => {
+    it("README, CHANGELOG, and a SPEC are documentation", () => {
+        assert.equal(docsOnly(["README.md", "CHANGELOG.md", "plurnk-core/SPEC.md"]), true);
+    });
+    it("plurnk.md is model-facing teaching that tests parse, never documentation-only", () => {
+        assert.equal(docsOnly(["README.md", "plurnk-contracts/plurnk.md"]), false);
+    });
+    it("any non-Markdown file, or no file at all, is not a documentation-only push", () => {
+        assert.equal(docsOnly(["README.md", "scripts/drill.mjs"]), false);
+        assert.equal(docsOnly([]), false);
     });
 });

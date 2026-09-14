@@ -44,14 +44,24 @@ const gitDiff = (base, head) => new Promise((resolve) => {
     child.once("error", () => resolve(null));
 });
 
-// The workspace subset for the intg phase. null → full (no base, a diff failure,
-// or a root-level change); otherwise only the changed workspaces.
-const intgTargets = async () => {
+// A push that changes only Markdown is covered by the root lint (markdownlint, the
+// specification-reference check, the generated changelog); no integration or conformance
+// lane reads it. `plurnk.md` is the exception: it is model-facing teaching that tests parse.
+export const docsOnly = (files) => files.length > 0
+    && files.every((file) => file.endsWith(".md") && !file.endsWith("plurnk.md"));
+
+// The changed files of the push, or null when there is no base or the diff failed.
+const changedFiles = async () => {
     const base = process.env.PLURNK_GATE_BASE;
     if (!base) return null;
     // {#642} — diff to the sha being pushed, not to HEAD: a push of a ref that is not
     // the checked-out branch would otherwise scope intg against the wrong commit.
-    const files = await gitDiff(base, process.env.PLURNK_GATE_HEAD ?? "HEAD");
+    return gitDiff(base, process.env.PLURNK_GATE_HEAD ?? "HEAD");
+};
+
+// The workspace subset for the intg phase. null → full (no base, a diff failure,
+// or a root-level change); otherwise only the changed workspaces.
+const intgTargets = (files) => {
     if (files === null) return null;
     const changed = scopeIntg(files, workspaces.map((w) => w.dir));
     return changed === null ? null : workspaces.filter((w) => changed.has(w.dir));
@@ -118,14 +128,19 @@ if (import.meta.main) {
     if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);
     if (!(await phase("unit", "test:unit", workspaces))) process.exit(1);
 
-    const targets = await intgTargets();
-    if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level or framework change" : "no base"})`);
-    else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
+    const files = await changedFiles();
+    if (files !== null && docsOnly(files)) {
+        console.log(`intg and conformance: skipped (${files.length} Markdown file(s) only; the root lint covers them)`);
+    } else {
+        const targets = intgTargets(files);
+        if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level or framework change" : "no base"})`);
+        else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
 
-    if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);
-    // Sibling client conformance manifests against live discovery — a service
-    // surface change fails this push, not the sibling's next dogfood (#331).
-    if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) process.exit(1);
+        if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);
+        // Sibling client conformance manifests against live discovery — a service
+        // surface change fails this push, not the sibling's next dogfood (#331).
+        if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) process.exit(1);
+    }
     // Packet Token Floor — a REPORT, never a gate (operator ruling 2026-08-23:
     // no floor tripwire). The script always exits 0 and its output IS the
     // deliverable, so it runs outside phase() and prints directly.
