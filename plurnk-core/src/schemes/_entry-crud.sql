@@ -113,6 +113,24 @@ WHERE entry_id = $entry_id
         AND e.pathname = $pathname
   );
 
+-- PREP: crud_attach_channel_derivation_by_hash
+-- The same guard by stored identity ({§tokenomics-content-hash-identity}): a channel whose
+-- artifact is already complete attaches without its body crossing into the process.
+UPDATE entry_channels
+SET deep_hash = $deep_hash
+WHERE entry_id = $entry_id
+  AND name = $channel
+  AND content_hash = $content_hash
+  AND mimetype = $mimetype
+  AND EXISTS (
+      SELECT 1
+      FROM entries e
+      WHERE e.id = entry_channels.entry_id
+        AND e.scheme = $scheme
+        AND e.authority = $authority
+        AND e.pathname = $pathname
+  );
+
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;
 

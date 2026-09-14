@@ -124,6 +124,10 @@ Daemon and database:
   default and transient data is collected.
 - A worker's obligations are one view; cancellation is one bound statement; a fork is the
   claim of its branch row.
+- Search-index maintenance judges an entry channel from its stored content hash and reads a
+  body only for a derivation that runs; an unchanged workspace acquires none of its channel
+  bodies (every body was read twice per model turn). Every stored derivation identity changes
+  once, so an existing database re-derives on its first pass.
 
 ## Before 1.16.5 — notes recorded during stabilization
 

@@ -13,17 +13,21 @@ import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility from "../core/LogVisibility.ts";
 import matchSearchExclusion from "./_search-exclusion.ts";
+import { contentHash } from "../core/content-hash.ts";
 
-type EntryRow = {
+// {§derivation-dedup-parallel} — an entry channel is judged from stored identity; no body here.
+type EntryCandidate = {
     entry_id: number;
     scheme: string;
     authority: string;
     pathname: string;
     channel: string;
-    content: string;
     mimetype: string;
+    content_length: number;
+    content_hash: string | null;
     deep_hash: string | null;
 };
+export type MaintenanceReport = { derived: number; acquiredBytes: number };
 type DerivationArtifact = {
     id: number;
     state: "building" | "complete";
@@ -33,10 +37,16 @@ type DerivationArtifact = {
 type DerivationRow = {
     id: number;
     pathname: string;
-    content: string;
     mimetype: string;
+    contentLength: number;
+    // SHA-256 of the exact representation: the channel's stored identity, or computed from a
+    // body the pass had to read.
+    contentHash: string;
+    // The body, acquired only when its derivation runs; null when the representation moved on
+    // since it was judged, which the next pass judges afresh.
+    body: () => Promise<string | null>;
 } & (
-    | { attachment: "entry-channel"; scheme: string; authority: string; channel: string }
+    | { attachment: "entry-channel"; scheme: string; authority: string; channel: string; hashed: boolean }
     | { attachment: "log"; folded: string }
     | { attachment: "turn-source"; kind: "ops" | "reasoning" }
 );
@@ -77,18 +87,18 @@ export default class SearchIndex {
     static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
-        const attach = async (): Promise<void> => {
+        // Attach while the channel still denotes the derived representation: by its stored identity
+        // when it has one, by the exact body otherwise ({§derivation-dedup-parallel}).
+        const attach = async (content: string | null): Promise<void> => {
             if (r.attachment === "entry-channel") {
-                await db.crud_attach_channel_derivation.run({
-                    entry_id: r.id,
-                    scheme: r.scheme,
-                    authority: r.authority,
-                    pathname: r.pathname,
-                    channel: r.channel,
-                    content: r.content,
-                    mimetype: r.mimetype,
-                    deep_hash: hash,
-                });
+                const identity = { entry_id: r.id, scheme: r.scheme, authority: r.authority, pathname: r.pathname, channel: r.channel, mimetype: r.mimetype, deep_hash: hash };
+                if (r.hashed) {
+                    await db.crud_attach_channel_derivation_by_hash.run({ ...identity, content_hash: r.contentHash });
+                    return;
+                }
+                const body = content ?? await r.body();
+                if (body === null) return;
+                await db.crud_attach_channel_derivation.run({ ...identity, content: body });
             } else if (r.attachment === "log") {
                 await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash, folded: r.folded });
             } else {
@@ -97,7 +107,7 @@ export default class SearchIndex {
         };
         let artifact = await db.derivation_get.get<DerivationArtifact>({ deep_hash: hash });
         if (artifact?.state === "complete") {
-            await attach();
+            await attach(null);
             return;
         }
         if (artifact === undefined) {
@@ -105,6 +115,10 @@ export default class SearchIndex {
         }
         if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
         const derivationId = artifact.id;
+        // The body crosses into the process here and nowhere earlier; a representation that moved
+        // on since it was judged leaves the artifact building for the next pass to judge afresh.
+        const content = await r.body();
+        if (content === null) return;
         let parseIssues: number | null = null;
         let summary: string | null = null;
         const attachComplete = async (disposition: "indexed" | "excluded" | "unsearchable" | "failed", reason: string | null = null): Promise<void> => {
@@ -115,22 +129,22 @@ export default class SearchIndex {
                 parse_issues: parseIssues,
                 summary,
             });
-            await attach();
+            await attach(content);
         };
-        const wantGraph = r.content.length > 0 && !binary;
+        const wantGraph = content.length > 0 && !binary;
         if (!wantGraph) {
             await EntryGraph.populateFrom(db, derivationId, [], []);
             await EntryFts.index(db, derivationId, "");
             await attachComplete(
                 searchExcluded === undefined ? "unsearchable" : "excluded",
-                searchExcluded ?? (r.content.length === 0 ? "empty" : "binary"),
+                searchExcluded ?? (content.length === 0 ? "empty" : "binary"),
             );
             return;
         }
         let result: ProcessResult;
         try {
             result = await mimetypes.process(
-                { content: r.content, hint: r.mimetype, path: r.pathname },
+                { content, hint: r.mimetype, path: r.pathname },
                 {
                     channels: searchExcluded === undefined ? ["symbols", "references"] : [],
                     summary: true,
@@ -167,7 +181,7 @@ export default class SearchIndex {
         // mislabeled as one malformed resource.
         await EntryGraph.populateFrom(db, derivationId, result.symbols ?? [], result.references ?? []);
         // Index exactly the addressed READ representation.
-        await EntryFts.index(db, derivationId, r.content);
+        await EntryFts.index(db, derivationId, content);
         await attachComplete("indexed");
     }
 
@@ -201,7 +215,7 @@ export default class SearchIndex {
         return `${error.message} ${detail}`;
     }
 
-    static async maintain(ctx: PlurnkSchemeContext): Promise<number> {
+    static async maintain(ctx: PlurnkSchemeContext): Promise<MaintenanceReport> {
         const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("SearchIndex.maintain: ctx.mimetypes is required");
         ctx.signal?.throwIfAborted();
@@ -209,7 +223,18 @@ export default class SearchIndex {
         // Validate global graph persistence tuning before resource-local
         // derivation containment can classify a handler failure.
         EntryGraph.storeBatch();
-        const entryRows = await db.engine_list_workspace_entries.all<EntryRow>({ workspace_id: workspaceId });
+        // {§derivation-dedup-parallel} — entry channels are judged from stored identity: the
+        // candidate statement carries no body, and a body crosses into the process only for a
+        // derivation that runs, or for a channel with no stored identity (a stream), which must be
+        // read to be judged. Log rows and turn sources still arrive whole.
+        let acquiredBytes = 0;
+        const candidates = await db.search_index_entry_candidates.all<EntryCandidate>({ workspace_id: workspaceId });
+        const acquire = async (entryId: number, channel: string, storedHash: string | null): Promise<string | null> => {
+            const row = await db.search_index_entry_body.get<{ content: string }>({ entry_id: entryId, channel, content_hash: storedHash });
+            if (row === undefined) return null;
+            acquiredBytes += row.content.length;
+            return row.content;
+        };
         const logRows = await db.log_derivation_rows.all<{
             id: number;
             coordinate: string;
@@ -223,14 +248,15 @@ export default class SearchIndex {
             attrs: string;
             folded: string;
         }>({ workspace_id: workspaceId });
+        for (const row of logRows) acquiredBytes += row.tx.length + row.rx.length;
         const projectionIdentities = new Map<string, Promise<string>>();
         const projectionIdentityFor = (
             mimetype: string,
-            content: string,
+            contentLength: number,
             binary: boolean,
             searchExcluded: string | undefined,
         ): Promise<string> => {
-            if (searchExcluded !== undefined || content.length === 0 || binary) {
+            if (searchExcluded !== undefined || contentLength === 0 || binary) {
                 return Promise.resolve(NO_PROJECTION_IDENTITY);
             }
             const cached = projectionIdentities.get(mimetype);
@@ -242,38 +268,41 @@ export default class SearchIndex {
         // Compute the changed-representation worklist before scheduling so aggregate
         // progress has a stable total. {§derivation-dedup-parallel}
         const pending: PendingDerivation[] = [];
-        for (const r of entryRows) {
-            const searchExcluded = matchSearchExclusion(r);
+        for (const c of candidates) {
+            const searchExcluded = matchSearchExclusion(c);
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
-            const binary = (await mimetypes.classify(r.mimetype)).binary;
-            const projectionIdentity = await projectionIdentityFor(
-                r.mimetype,
-                r.content,
-                binary,
-                searchExcluded,
-            );
-            const hash = derivationHash({
-                content: r.content,
-                mimetype: r.mimetype,
-                binary,
-                projectionIdentity,
-                dispositionIdentity,
-            });
-            if (hash !== r.deep_hash) pending.push({
+            const binary = (await mimetypes.classify(c.mimetype)).binary;
+            const projectionIdentity = await projectionIdentityFor(c.mimetype, c.content_length, binary, searchExcluded);
+            // A channel without a stored identity (an open or streamed channel) is the one body the
+            // metadata cannot judge; it is read now and hashed.
+            let preloaded: string | null = null;
+            let identity = c.content_hash;
+            if (identity === null) {
+                preloaded = await acquire(c.entry_id, c.channel, null);
+                if (preloaded === null) continue;
+                identity = contentHash(preloaded);
+            }
+            const hash = derivationHash({ contentHash: identity, mimetype: c.mimetype, binary, projectionIdentity, dispositionIdentity });
+            if (hash === c.deep_hash) continue; // unchanged since last derivation → deep rows persist
+            const body = preloaded;
+            pending.push({
                 r: {
-                    id: r.entry_id,
+                    id: c.entry_id,
                     attachment: "entry-channel",
-                    scheme: r.scheme,
-                    authority: r.authority,
-                    channel: r.channel,
-                    pathname: r.pathname,
-                    content: r.content,
-                    mimetype: r.mimetype,
+                    scheme: c.scheme,
+                    authority: c.authority,
+                    channel: c.channel,
+                    pathname: c.pathname,
+                    mimetype: c.mimetype,
+                    contentLength: c.content_length,
+                    contentHash: identity,
+                    hashed: c.content_hash !== null,
+                    body: body === null ? () => acquire(c.entry_id, c.channel, c.content_hash) : () => Promise.resolve(body),
                 },
                 hash,
                 searchExcluded,
                 binary,
-            }); // unchanged since last derivation → deep rows persist
+            });
         }
         for (const row of logRows) {
             const projection = LogBody.readable({
@@ -287,12 +316,12 @@ export default class SearchIndex {
             const binary = (await mimetypes.classify(projection.mimetype)).binary;
             const projectionIdentity = await projectionIdentityFor(
                 projection.mimetype,
-                projection.content,
+                projection.content.length,
                 binary,
                 undefined,
             );
             const hash = derivationHash({
-                content: projection.content,
+                contentHash: contentHash(projection.content),
                 mimetype: projection.mimetype,
                 binary,
                 projectionIdentity,
@@ -304,8 +333,10 @@ export default class SearchIndex {
                     attachment: "log",
                     folded: row.folded,
                     pathname: LogEntryProjection.coordinate(row.coordinate, row),
-                    content: projection.content,
                     mimetype: projection.mimetype,
+                    contentLength: projection.content.length,
+                    contentHash: contentHash(projection.content),
+                    body: () => Promise.resolve(projection.content),
                 },
                 hash,
                 searchExcluded: undefined,
@@ -316,22 +347,27 @@ export default class SearchIndex {
             turn_id: number; kind: "ops" | "reasoning"; pathname: string; content: string; deep_hash: string | null;
         }>({ workspace_id: workspaceId });
         for (const source of sources) {
+            acquiredBytes += source.content.length;
             const mimetype = source.kind === "ops" ? "text/vnd.plurnk" : "text/plain";
-            const projectionIdentity = await projectionIdentityFor(mimetype, source.content, false, undefined);
-            const hash = derivationHash({ content: source.content, mimetype, binary: false, projectionIdentity, dispositionIdentity: "included" });
+            const projectionIdentity = await projectionIdentityFor(mimetype, source.content.length, false, undefined);
+            const identity = contentHash(source.content);
+            const hash = derivationHash({ contentHash: identity, mimetype, binary: false, projectionIdentity, dispositionIdentity: "included" });
             if (hash !== source.deep_hash) pending.push({
                 r: {
                     id: source.turn_id, attachment: "turn-source", kind: source.kind,
-                    pathname: source.pathname, content: source.content, mimetype,
+                    pathname: source.pathname, mimetype,
+                    contentLength: source.content.length, contentHash: identity,
+                    body: () => Promise.resolve(source.content),
                 },
                 hash, searchExcluded: undefined, binary: false,
             });
         }
         // {§derivation-dedup-parallel} — warm smaller projections before an
-        // expensive outlier; ordering never changes exhaustive derivation.
-        pending.sort((a, b) => a.r.content.length - b.r.content.length);
+        // expensive outlier; ordering never changes exhaustive derivation. The
+        // stored length orders without a body.
+        pending.sort((a, b) => a.r.contentLength - b.r.contentLength);
         const total = pending.length;
-        if (total === 0) return 0;
+        if (total === 0) return { derived: 0, acquiredBytes };
         let completed = 0;
         const memberFailures: MemberFailure[] = [];
         const projectionNotices = new Set<string>();
@@ -417,7 +453,7 @@ export default class SearchIndex {
                     "warn",
                 );
             }
-            return total;
+            return { derived: total, acquiredBytes };
         } catch (error) {
             publish("failed", `Search indexing failed: ${error instanceof Error ? error.message : String(error)}`, "error");
             throw error;
@@ -428,15 +464,18 @@ export default class SearchIndex {
 
 }
 
+// {§derivation-dedup-parallel} — the identity is a hash over the representation's own SHA-256
+// ({§tokenomics-content-hash-identity}), never over its body, so a stored channel identity
+// decides dirtiness without the body crossing into the process.
 function derivationHash(input: {
-    content: string;
+    contentHash: string;
     mimetype: string;
     binary: boolean;
     projectionIdentity: string;
     dispositionIdentity: string;
 }): string {
     return createHash("sha256")
-        .update(input.content)
+        .update(input.contentHash)
         .update("\0")
         .update(input.mimetype)
         .update("\0")

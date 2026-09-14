@@ -84,7 +84,7 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         const readable = await EntryCrud.readEntry({ authority: "", pathname }, ctx, "file");
         assert.equal(readable.entry?.channels.body?.content, identical, "search exclusion does not alter direct readability");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
-        assert.equal(await SearchIndex.maintain(ctx), 0, "a second pass reuses the terminal exclusion and indexed artifacts");
+        assert.equal((await SearchIndex.maintain(ctx)).derived, 0, "a second pass reuses the terminal exclusion and indexed artifacts");
     } finally {
         db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_SEARCH_EXCLUDE; else process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = prev;

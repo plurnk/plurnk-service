@@ -65,6 +65,7 @@ export class SqlRiteSync {
 	crud_delete_channels: SqlRiteSyncPreparedStatements;
 	crud_delete_channel: SqlRiteSyncPreparedStatements;
 	crud_attach_channel_derivation: SqlRiteSyncPreparedStatements;
+	crud_attach_channel_derivation_by_hash: SqlRiteSyncPreparedStatements;
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_list_workspace_constraints: SqlRiteSyncPreparedStatements;
@@ -102,6 +103,8 @@ export class SqlRiteSync {
 	ops_update_channel_if_content: SqlRiteSyncPreparedStatements;
 	ops_read_channel: SqlRiteSyncPreparedStatements;
 	engine_list_workspace_entries: SqlRiteSyncPreparedStatements;
+	search_index_entry_candidates: SqlRiteSyncPreparedStatements;
+	search_index_entry_body: SqlRiteSyncPreparedStatements;
 	engine_initialize_ambient_cursor: SqlRiteSyncPreparedStatements;
 	engine_pull_ambient_events: SqlRiteSyncPreparedStatements;
 	engine_insert_ambient_delta: SqlRiteSyncPreparedStatements;
@@ -324,6 +327,7 @@ export default class SqlRite {
 	crud_delete_channels: SqlRitePreparedStatements;
 	crud_delete_channel: SqlRitePreparedStatements;
 	crud_attach_channel_derivation: SqlRitePreparedStatements;
+	crud_attach_channel_derivation_by_hash: SqlRitePreparedStatements;
 	crud_delete_entry: SqlRitePreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_list_workspace_constraints: SqlRitePreparedStatements;
@@ -361,6 +365,8 @@ export default class SqlRite {
 	ops_update_channel_if_content: SqlRitePreparedStatements;
 	ops_read_channel: SqlRitePreparedStatements;
 	engine_list_workspace_entries: SqlRitePreparedStatements;
+	search_index_entry_candidates: SqlRitePreparedStatements;
+	search_index_entry_body: SqlRitePreparedStatements;
 	engine_initialize_ambient_cursor: SqlRitePreparedStatements;
 	engine_pull_ambient_events: SqlRitePreparedStatements;
 	engine_insert_ambient_delta: SqlRitePreparedStatements;
