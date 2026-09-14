@@ -238,7 +238,7 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-test("{§send-final-strike-retrieval}: retiring a failed receipt cannot make it eligible for completion", async () => {
+test("{§completion-defers-to-results}: retiring a failed receipt does not make it observed", async () => {
     const { db, engine, env } = await setup();
     try {
         const failed = await engine.dispatch({
@@ -258,11 +258,12 @@ test("{§send-final-strike-retrieval}: retiring a failed receipt cannot make it 
 
         const result = await engine.dispatch({
             statement: continuationStmt({ body: '[{"content":"Finished.","status":"completed"}]' }),
-            ...env, sequence: 3, origin: "model", allowUnobservedRetrievalCompletion: true,
+            ...env, sequence: 3, origin: "model",
         });
-        assert.equal(result.status, 409);
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/unobserved-failures");
-        assert.equal(result.problem?.failures, 1);
+        assert.equal(result.status, 102, "the unseen failure defers the completion; it does not refuse it");
+        assert.equal(result.problem, undefined, "a deferral carries no Problem and no strike");
+        assert.deepEqual(result.attrs, { failures: 1 });
+        assert.equal(result.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet; address it or complete with a TASK now.");
     } finally { await db.close(); }
 });
 

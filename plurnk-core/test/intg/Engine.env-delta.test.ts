@@ -757,8 +757,8 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
             499,
         );
 
-        // A's turn 2 pulls both terminations from the shared log: the 2xx
-        // deliverable born visible, the failure body-suppressed.
+        // A's turn 2 pulls every termination from the shared log: each conclusion born
+        // visible, a failure with its Problem beside its message ({§worker-scheme-collect}).
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string | null; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string; attrs: string }>({ worker_id: workerA });
@@ -791,12 +791,12 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
         assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
-        assert.equal(failed!.initial_folded, "[[1,-1]]", "a failure stays body-suppressed — only a 2xx deliverable is born visible");
+        assert.equal(failed!.initial_folded, "[]", "a failure is born visible too — its explanation is the deliverable");
         assert.equal(failed!.folded, "[]", "the failure is still READable");
         const cancelled = terminations.find((r) => r.source === "worker://cancelled-worker");
         assert.ok(cancelled, "a KILLed child concludes to its parent through the same untargeted occurrence");
         assert.equal((JSON.parse(cancelled!.attrs) as { terminatedBy?: string }).terminatedBy, "cancel", "cancellation authorship rides the attrs, not a target");
-        assert.equal(cancelled!.initial_folded, "[[1,-1]]", "a cancellation is body-suppressed like any non-2xx conclusion");
+        assert.equal(cancelled!.initial_folded, "[]", "a cancellation is born visible like every conclusion");
         const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
         assert.equal(
             independentRows.some(({ source }) => source?.startsWith("worker://") === true),

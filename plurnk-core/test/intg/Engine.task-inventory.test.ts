@@ -166,8 +166,9 @@ test("{§task-inventory-intent} an observed cleanup failure does not invalidate 
     const denied = rows.find(({ op }) => op === "KILL");
     assert.equal(denied?.status_rx, 403, "the read-only reasoning source remains protected");
     assert.equal(JSON.parse(denied!.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
-    assert.ok(rows.some(({ op, status_rx }) => op === "TASK" && status_rx === 409),
-        "the failed operation still requires observation before completion");
+    const deferred = rows.find(({ op, rx }) => op === "TASK" && /failed in the same turn/.test(rx));
+    assert.ok(deferred, "the failed operation still requires observation before completion");
+    assert.equal(deferred!.status_rx, 102, "a deferral over the unseen failure, never a refusal ({§completion-defers-to-results})");
     assert.equal(provider.received.length, 3);
     assert.equal(result.result.status, 200);
     assert.equal(result.result.problem, undefined);

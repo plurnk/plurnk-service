@@ -60,8 +60,6 @@ export type DispatchContext = {
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
     editSequence?: EditSequence;
-    // {§send-final-strike-retrieval}: private loop-rail decision, never a model operand.
-    allowUnobservedRetrievalCompletion?: boolean;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -207,7 +205,7 @@ export default class Dispatcher {
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
-        this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
+        this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
@@ -540,7 +538,6 @@ export default class Dispatcher {
                         turnId,
                         sequence,
                         origin,
-                        allowUnobservedRetrievalCompletion: context.allowUnobservedRetrievalCompletion,
                     });
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
@@ -1310,20 +1307,6 @@ export default class Dispatcher {
     async #unobservedFailureCount(turnId: number): Promise<number> {
         const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
         return failedRows.length;
-    }
-
-    static #unobservedFailures(failCount: number): DispatchResult {
-        return Dispatcher.#failure(
-            "unobserved-failures",
-            409,
-            `Completion deferred: ${failCount} operation${failCount === 1 ? "" : "s"} failed in the same turn. The failure${failCount === 1 ? " is" : "s are"} in this packet; address ${failCount === 1 ? "it" : "them"} or complete with a TASK now.`,
-            {},
-            {
-                failures: failCount,
-                stage: "completion",
-                retryable: true,
-            },
-        );
     }
 
     // A live obligation to wait on: a spawned child or an open stream (not retrievals, which land

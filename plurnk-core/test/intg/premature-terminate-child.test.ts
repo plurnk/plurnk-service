@@ -128,7 +128,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
 // The unified PENDING SET (grammar 0.75.0 / the terminal redesign): a [200] is judged at its own
 // dispatch, post-batch — streams, live children, and this turn's retrievals are ONE rule.
 
-test("READ + completed inventory in the same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
+test("{§completion-defers-to-results}: READ + completed inventory in the same turn is deferred — the pending set includes this turn's retrievals", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
@@ -142,9 +142,9 @@ test("READ + completed inventory in the same turn is refused 409 — the pending
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
-        assert.equal(result.steerStruck, true, "the false terminal claim strikes while the turn still demotes");
+        assert.equal(result.steerStruck, false, "a claim over a settled result defers; only live work strikes");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
-        assert.equal(rows.find((r) => r.op === "TASK")?.status_rx, 409, "the TASK row records the refusal as 409");
+        assert.equal(rows.find((r) => r.op === "TASK")?.status_rx, 102, "the TASK row records the deferral");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
         // provisional status pre-dispatch; the refusal must demote the row too, not just the return).
         const storedTurn = await db.test_get_turn.get<{ status: number }>({ id: result.turnId });
@@ -353,7 +353,7 @@ test("a model that won't stop premature-200ing with a live child STRIKES OUT (50
     } finally { await db.close(); }
 });
 
-test("499 is never gated and recursively cancels unresolved descendants", async () => {
+test("499 is never gated by live work: it recursively cancels unresolved descendants", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `guard-499-${crypto.randomUUID()}`);
@@ -370,11 +370,11 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
             cancelDescendants: async (root, reason) => { await lifecycle.cancelTree(root, reason, false); },
         });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), dispositionStmt("failed", "abandoning")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("failed", "abandoning")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        assert.equal(result.status, 499, "the abandon lands — pending work never gates a 499");
+        assert.equal(result.status, 499, "the abandon lands — live work never gates a 499 ({§completion-defers-to-results} defers only settled results)");
         assert.equal(result.steerStruck, false, "no strike for a legal abandon");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop }))?.status;
         assert.equal(loopStatus, 499, "the loop is terminal");
@@ -391,8 +391,8 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
 });
 
 
-test("a retrieval-only refusal states the observation boundary, not a live-work remedy menu", async () => {
-    // {§send-premature-terminate}: name the actual observation boundary without a remedy menu.
+test("{§completion-defers-to-results}: a retrieval-only deferral states the observation boundary, not a live-work remedy menu", async () => {
+    // Name the actual observation boundary without a remedy menu.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `steer-ret-${crypto.randomUUID()}`);
@@ -405,24 +405,23 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const refusals = await db.test_disposition_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
-        const refused = refusals.find((r) => r.status_rx === 409);
-        assert.ok(refused, "the retrieval gate refused");
-        const problem = (JSON.parse(refused!.rx) as { problem?: Record<string, unknown> }).problem;
-        assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
+        const rows = await db.test_disposition_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const deferred = rows.find((r) => r.status_rx === 102);
+        assert.ok(deferred, "the retrieval gate deferred");
+        const deferral = JSON.parse(deferred!.rx) as { problem?: unknown; detail?: string; attrs?: { pending?: string[] }; recovery?: unknown };
+        assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
         assert.equal(
-            problem?.detail,
+            deferral.detail,
             "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.",
         );
-        assert.deepEqual(problem?.pending, ["receipts"]);
-        assert.equal(problem?.recovery, undefined);
-        assert.equal(problem?.retryable, true, "the same TASK is the correct next request");
-        assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
+        assert.deepEqual(deferral.attrs?.pending, ["receipts"]);
+        assert.equal(deferral.recovery, undefined);
+        assert.doesNotMatch(deferred!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
 });
 
 for (const statuses of [["completed"], ["failed", "completed"]] as const) {
-    test(`{§send-final-strike-retrieval}: ${statuses.join(" + ")} allows completion at the existing strike limit`, async () => {
+    test(`{§completion-defers-to-results}: ${statuses.join(" + ")} beside new work each turn defers each turn and completes once the claim stands alone`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
@@ -435,25 +434,31 @@ for (const statuses of [["completed"], ["failed", "completed"]] as const) {
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
             const provider = new Mock({
                 contextWindow: 100000,
-                responses: paths.map((pathname) => ({
-                    assistant: { content: "", reasoning: null, ops: [
-                        readStmt(knownPath(pathname)), sendStmt(null, `read ${pathname}`),
-                        { ...dispositionStmt("completed"), body: statuses.map((status) => ({ content: `read ${pathname}`, status })) },
-                    ] },
-                })),
+                responses: [
+                    ...paths.map((pathname) => ({
+                        assistant: { content: "", reasoning: null, ops: [
+                            readStmt(knownPath(pathname)), sendStmt(null, `read ${pathname}`),
+                            { ...dispositionStmt("completed"), body: statuses.map((status) => ({ content: `read ${pathname}`, status })) },
+                        ] },
+                    })),
+                    { assistant: { content: "", reasoning: null, ops: [
+                        sendStmt(null, "read them all"),
+                        { ...dispositionStmt("completed"), body: statuses.map((status) => ({ content: "read them all", status })) },
+                    ] } },
+                ],
             });
-            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
+            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 11, maxStrikes: 1 });
 
-            assert.equal(result.result.status, 200, "the final-strike completion TASK is accepted independently of cycle detection");
-            assert.equal(result.result.content, "read /page-2.html", "the last delivered message is the response; the refused turns' messages stay log rows");
-            assert.equal(result.turnIds.length, 4, "initialization, two refusals, and the accepted conclusion form the chronology");
-            const refusals = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-            assert.equal(refusals.filter((r) => r.status_rx === 409).length, 2, "earlier correction receipts remain unchanged");
+            assert.equal(result.result.status, 200, "ten deferrals never struck: at one strike any refusal would have ended the loop");
+            assert.equal(result.result.content, "read them all", "the last delivered message is the response; the deferred turns' messages stay log rows");
+            assert.equal(result.turnIds.length, 12, "initialization, ten deferred claims, and the accepted conclusion form the chronology");
+            const rows = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
+            assert.deepEqual(rows.map((r) => r.status_rx), [...Array.from({ length: 10 }, () => 102), 200], "every early claim is a deferral, never a refusal");
         } finally { await db.close(); }
     });
 }
 
-test("{§inventory-only-turn} a retrieval refusal does not make subsequent inventory-only turns invalid", async () => {
+test("{§inventory-only-turn} a retrieval deferral does not make subsequent inventory-only turns invalid", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `grace-${crypto.randomUUID()}`);
@@ -469,19 +474,19 @@ test("{§inventory-only-turn} a retrieval refusal does not make subsequent inven
         for (let i = 0; i < 5; i++) {
             const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             assert.equal(turn.status, 102);
-            assert.equal(turn.steerStruck, i === 0, "only the premature completion is refused");
+            assert.equal(turn.steerStruck, false, "the premature completion is deferred, never struck");
         }
         const errRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length;
         assert.equal(idleStrikes, 0, "no operationless-turn error is manufactured");
         const rows = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.deepEqual(rows.map(({ status_rx }) => status_rx), [409, 102, 102, 102, 102]);
+        assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 102, 102, 102, 102]);
     } finally { await db.close(); }
 });
 
-test("a FAILED op row carries its failure message on its META LINE — the record states its why, suppressed or visible", async () => {
-    // {§log-row-self-explains}: Problem Details stay on the operation's metadata
-    // line even when its body is suppressed; the errors section is only a pointer.
+test("a deferred TASK row carries its deferral detail on its META LINE — the record states its why, suppressed or visible", async () => {
+    // {§log-row-self-explains}: a row's why stays on its metadata line even when its body is
+    // suppressed; a deferral's detail rides there exactly as a Problem would.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `steer-meta-${crypto.randomUUID()}`);
@@ -497,7 +502,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        // The next packet renders the refused TASK row with its Problem on the metadata line.
+        // The next packet renders the deferred TASK row with its detail on the metadata line.
         const t2 = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } }] }),
             workspaceId, workerId, loopId,
@@ -505,9 +510,11 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
-        const inventory = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/TASK") && status === 409);
-        assert.ok(inventory !== undefined, "the refused TASK row renders");
-        assert.equal((inventory.problem as { detail?: string } | undefined)?.detail, "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
+        const inventory = parseLogRecords(log).find((record) => typeof record.path === "string" && record.path.endsWith("/TASK")
+            && record.status === 102 && typeof (record as { detail?: unknown }).detail === "string");
+        assert.ok(inventory !== undefined, "the deferred TASK row renders");
+        assert.equal((inventory as { detail?: string }).detail, "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.", "the compact detail rides the metadata line - visible in every packet, never hidden with the body");
+        assert.equal((inventory as { problem?: unknown }).problem, undefined, "a deferral carries no Problem");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

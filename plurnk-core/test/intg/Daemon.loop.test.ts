@@ -203,7 +203,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
             assert.equal(first.entry.origin, "model");
             const second = authored[3] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "TASK");
-            assert.equal(second.entry.status_rx, 409, "the same-turn [200] is refused over the unseen EDIT receipt ({§send-premature-terminate})");
+            assert.equal(second.entry.status_rx, 102, "the same-turn [200] is deferred over the unseen EDIT receipt ({§completion-defers-to-results})");
             const concluding = authored[5] as { entry: { op: string; status_rx: number } };
             assert.equal(concluding.entry.op, "TASK");
             assert.equal(concluding.entry.status_rx, 200, "the observation turn concludes");

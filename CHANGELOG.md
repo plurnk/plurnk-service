@@ -22,6 +22,11 @@ Breaking for external AG-UI and RPC clients:
 - A loop's result is its last delivered message. Earlier `SEND` bodies stay log rows and are
   no longer concatenated into `loop/terminated.result`; a parent receives its child's last
   message as the conclusion.
+- A completion or abandonment claimed over results the model has not yet seen is deferred one
+  packet (the TASK row answers 102 with a detail, no Problem, no strike) instead of refused 409
+  with a strike; only a completion over live work still refuses and strikes. The receipts-only
+  completion at the final strike is gone. A child's failed or cancelled conclusion now reaches
+  its parent's packet visible, with its Problem beside its last message.
 - `workspace/branch-batch` (`CUSTOM plurnk.branch_batch`) is gone: branch delegation was deleted
   before 1.17.0 and nothing produced the event. The hooks event list no longer names it.
 

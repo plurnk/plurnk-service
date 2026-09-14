@@ -18,10 +18,10 @@ const response = (operation: string, status: string, timing = "") => ({
 });
 const invalidFind = "```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```";
 
-test("{§loop-rail-continuity}: a resumed task retains its final-strike retrieval allowance", async (t) => {
+test("{§loop-rail-continuity}: a resumed task retains its strike streak across a wait and engine reconstruction", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
-    const workspaceId = await insertWorkspace(db, "wait-final-allowance");
+    const workspaceId = await insertWorkspace(db, "wait-streak-continuity");
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "Read the answer and conclude.");
     await seedEntryWithChannel(db, {
@@ -31,14 +31,16 @@ test("{§loop-rail-continuity}: a resumed task retains its final-strike retrieva
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(invalidFind, "in_progress"),
         response(invalidFind, "waiting", " <60>"),
-        response("```READ (worker:///answer)```", "completed"),
+        response(invalidFind, "in_progress"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4, maxStrikes: 3,
     });
-    assert.equal((await run()).result.status, 202);
+    assert.equal((await run()).result.status, 202, "two operation-contract strikes, then the park");
     assert.equal(await new LoopLifecycle(db).wake(loopId), true);
-    assert.equal((await run()).result.status, 200, "the third-strike allowance is the same after a wait and engine reconstruction");
+    const resumed = await run();
+    assert.equal(resumed.result.status, 500, "the third strike crosses the threshold: the streak survived the wait and the engine reconstruction");
+    assert.equal(resumed.reason, "strike_threshold");
     assert.equal(provider.received.length, 3);
 });
 

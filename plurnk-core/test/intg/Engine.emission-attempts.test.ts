@@ -790,7 +790,7 @@ ${renderedRead}
     }
 });
 
-test("a bounded malformed operation prevents same-turn completion until the model observes it", async () => {
+test("a bounded malformed operation defers same-turn completion until the model observes it", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -815,8 +815,8 @@ test("a bounded malformed operation prevents same-turn completion until the mode
             "the syntax failure participates in strike accounting",
         );
         assert.ok(
-            result.outcomes.some(({ op, status }) => op === "TASK" && status === 409),
-            "completed TASK inventory cannot conclude past the unseen failure",
+            result.outcomes.some(({ op, status }) => op === "TASK" && status === 102),
+            "completed TASK inventory defers past the unseen failure ({§completion-defers-to-results})",
         );
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
@@ -830,7 +830,7 @@ test("a bounded malformed operation prevents same-turn completion until the mode
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
                 { op: "error", status_rx: 400 },
-                { op: "TASK", status_rx: 409 },
+                { op: "TASK", status_rx: 102 },
             ],
         );
     } finally {

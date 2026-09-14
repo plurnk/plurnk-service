@@ -462,9 +462,10 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            // The rejected EXEC is a same-turn failure — {§send-premature-terminate} refuses a [200] over
-            // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
-            sendOnly("```EXEC\ntrue\n```\n\n```SEND\nloop 1 abandons at turn 1\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),  // pause, then end
+            // The frames arrive during turn 1, so a model terminal over them defers
+            // ({§completion-defers-to-prompts}); loop 1 ends turn 1 at its turn ceiling instead
+            // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
+            sendOnly("```EXEC\ntrue\n```\n\n```SEND\nloop 1 ends at turn 1\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),  // pause, then end
             sendOnly("```SEND\nreconciled loop ran\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),                              // the promoted loop
         ],
     });
@@ -479,6 +480,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             const firstPromise = rpcCall(ws, 2, "loop.run", {
                 prompt: "kick off",
                 policy: { proposals: "review" },
+                maxTurns: 1,
             });
             const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (p) => p.length >= 1);
 
@@ -516,7 +518,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             );
             assert.equal(ts.length, 2, "the orphaned wake was reconciled into a second loop (would be 1 if lost)");
             const statuses = ts.map((t) => t.result.status).toSorted((a, b) => a - b);
-            assert.deepEqual(statuses, [200, 499], "loop 1 abandoned (499, over the rejected EXEC); the reconciled loop concluded 200");
+            assert.deepEqual(statuses, [200, 429], "loop 1 ended at its turn ceiling with the frames unpublished; the reconciled loop concluded 200");
             const promoted = ts.find((event) => event.loopId !== firstLoopId);
             assert.ok(promoted, "the orphaned frame was promoted into a distinct loop");
             const sourcePosture = await db.test_get_loop_posture.get<{

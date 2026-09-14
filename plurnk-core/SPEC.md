@@ -165,15 +165,14 @@ more contract violations earns a strike. A turn without any contract violations
 clears the strikes. Three (not four) strikes and you're out, by default.*
 The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
 threshold, crossed ON the third strike; the crossing turn terminates at **508
-Loop Detected** when cycle-detected, otherwise **500**. Retrieval-only completion
-may instead be admitted on that attempt under {§send-final-strike-retrieval}.
+Loop Detected** when cycle-detected, otherwise **500**.
 
 The contracts, and the violation of each that strikes:
 
 | Contract | Violation that strikes |
 |---|---|
 | operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
-| review contract | a refused completion (turntrieval steer); every other TASK 409 — empty inventory, already-terminal loop — is soft |
+| review contract | a completion claimed over live work (409 `work-remains`, {§send-premature-terminate}); every other TASK answer — a deferral over settled results ({§completion-defers-to-results}), an empty inventory, an already-terminal loop — is soft |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
 | provider response contract | the provider returned an invalid response |
@@ -708,11 +707,13 @@ EXEC git — never engine machinery.
 
 - §worker-scheme-collect **Collect** — a worker's loop reaching a terminal status
   surfaces to its direct parent as an ambient delta ({§env-delta}): a `SEND` from
-  `worker://<name>` carrying the loop's exact terminal operation result. A
-  **2xx deliverable is born visible** (its body
-  materialized into the parent's packet, not body-suppressed): a child's
-  success must reach the parent visible and awakening, never a bodyless row. An
-  non-2xx result surfaces body-suppressed; a failure retains its exact status and Problem. Every death-path is stamped uniformly —
+  `worker://<name>` carrying the loop's exact terminal operation result. **Every
+  conclusion is born visible** (its body materialized into the parent's packet,
+  not body-suppressed): a child's last message must reach the parent visible and
+  awakening whatever the status, never a bodyless row, because a failure's
+  explanation is its deliverable (operator, 2026-09-14: fail is completed with a
+  frowny face); a failure retains its exact status and Problem beside that
+  message. Every death-path is stamped uniformly —
   including a spawn that dies before its first turn — so no child termination is
   silent to its owner; collection is lineage
   supervision, never a
@@ -2318,10 +2319,11 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
-| complete | The loop holds prompt frames it has not yet published ({§completion-defers-to-prompts}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new prompt arrived during this turn. It is in this packet; a response and a TASK now complete.` |
-| complete | Model fired an operation other than SEND/TASK/KILL, or has unobserved failures or pending work/results | 409; continue with one strike, except {§send-final-strike-retrieval} | Factual pending-result Problem |
+| complete, fail | The loop holds prompt frames it has not yet published ({§completion-defers-to-prompts}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new prompt arrived during this turn. It is in this packet; a response and a TASK now complete.` |
+| complete | Live work: an open stream or a live child worker ({§send-premature-terminate}) | 409; continue with one strike | Factual pending-work Problem naming the wait |
+| complete, fail | Same-turn failures, or settled results the next packet carries — this turn's receipts, a concluded stream, a terminated child ({§completion-defers-to-results}) | 102; no strike; the next packet carries them | Read-time deferral detail naming them |
 | complete | No blocking obligation, or administrative producer | 200 | None |
-| fail | Always | 499; cancel unresolved descendant scope | `All tasks in the final inventory failed.` |
+| fail | Otherwise; live work is cancelled, never waited for | 499; cancel unresolved descendant scope | `All tasks in the final inventory failed.` |
 
 A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
@@ -2417,36 +2419,43 @@ violations follow the current admission and strike contracts
   results** (every same-turn non-SEND/TASK/KILL operation, terminal stream output
   without a terminal foisted READ, and child results queued for the next packet).
   The set is judged at the disposition's own dispatch, after
-  earlier operations in the emission. `[200]` over a pending member is refused
-  409 and the loop continues, except {§send-final-strike-retrieval}; every refusal
-  strikes uniformly, including a retrieval-only refusal. Its Problem reports the bounded pending kinds
-  `streams`, `workers`, `receipts`, `failed-stream-results`, and
-  `worker-results`. A receipts-only refusal also names the distinct blocking
-  operations in execution order using their model-facing log names
-  ({§log-coordinate-hierarchy}), plus `stream completion` for undelivered terminal
-  stream results. The receipt is read one packet later, beside the results it
-  names, and speaks from that moment: a receipts-only or results-only refusal
-  says the deferred results are in the packet being read and that a TASK now
-  completes; a live obligation names the wait (a TASK with a pending task, or
-  KILL for an execution); a same-turn failure says the failure is in the packet
-  and asks for it to be addressed or completed over. Every completion refusal
-  is `retryable: true`, because the same TASK is the correct next request;
-  none of them names an action to observe, and none describes a persistent
-  unacknowledged obligation.
-  That list obeys the configured error-detail limit; it never
+  earlier operations in the emission. `[200]` over a **live** member is refused
+  409 `work-remains` and the loop continues; that refusal is the one completion
+  answer that strikes ({§engine-rails}): the model claimed done while its own
+  work runs. Its Problem reports the bounded pending kinds `streams`, `workers`,
+  `receipts`, `failed-stream-results`, and `worker-results`, names the wait (a
+  TASK with a pending task, or KILL for an execution) and what has meanwhile
+  landed, and is `retryable: true`, because the same TASK is the correct next
+  request; it never names an action to observe or describes a persistent
+  unacknowledged obligation. A claim over only completed-but-unobserved members
+  is not a refusal but a deferral ({§completion-defers-to-results}). A nonempty
+  all-`failed` inventory crosses that same deferral and then abandons regardless
+  of live work, which it cancels rather than waits for.
+  The Problem obeys the configured error-detail limit; it never
   embeds commands, stream handles, result bodies, or a presumed recovery.
   The pending kind changes the factual Problem class, not
-  rail accounting. A nonempty all-`failed` inventory deliberately abandons regardless.
-- §send-final-strike-retrieval **Receipt-only completion at the final strike.**
-  If refusing a model's completion TASK would reach the loop's existing
-  consecutive-strike limit, accept it when `receipts` is the only pending kind
-  and this turn has no failed operations. Receipts include successful execution
-  results, not only READ/FIND. The same streak and configured limit
-  apply; a clean turn resets the streak and there is no separate refusal counter.
-  Live work, undelivered child results, and failed stream results remain blocking.
-  Decide at TASK dispatch: record the accepted TASK and terminal normally,
-  retain all earlier refusals and retrieval results unchanged, and do not invent
-  another model turn or an observation of the pending receipts.
+  rail accounting.
+- §completion-defers-to-results **Settled results defer a terminal; they never strike.**
+  A completion or abandonment claimed over results the model could not yet have
+  seen — this turn's failed operations, this turn's receipts (successful execution
+  results included, not only READ/FIND), a concluded stream's result, a terminated
+  child's result — is deferred: the TASK answers 102 with no Problem and no strike,
+  the loop continues, and the next packet carries what deferred it. The engine
+  owns every observe edge, so such a claim is early in the observation order, not
+  false about the world; the same TASK is the correct next request and completes,
+  or abandons, once the packet has shown the results ({§send-undelivered-child-term}).
+  The deferral's `detail` is read one packet later, beside the results it names,
+  and speaks from that moment: a receipts-only deferral names the distinct
+  blocking operations in execution order using their model-facing log names
+  ({§log-coordinate-hierarchy}), plus `stream completion` for undelivered terminal
+  stream results; a results deferral names the landed kinds; a failure deferral
+  counts the failures and asks for them to be addressed or concluded over. Its
+  `attrs` carry the pending kinds or the failure count. The rail's streak never
+  enters the decision: a deferral is admissible at any streak, and a loop that
+  keeps issuing operations before each claim pays one packet per claim, never a
+  strike, until the cycle detector rules its repetition ({§engine-cycle-evidence}).
+  Operator, 2026-09-14: the barrier is safety and the rail is liveness; fail is
+  completed with a frowny face and crosses the same barrier.
 - §send-administrative-terminal **An administrative terminal closes its own
   transaction.** A client, plugin, or `_plurnk` operation program runs in its
   own administrative loop. Its all-`completed` TASK concludes exactly that loop;

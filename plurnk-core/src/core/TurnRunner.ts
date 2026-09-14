@@ -307,7 +307,6 @@ type TurnArgs = {
     readonly onDispatch: ((logEntryId: number) => void) | undefined;
     readonly onSettled: ((logEntryId: number) => void | Promise<void>) | undefined;
     readonly turnNumber: number;
-    readonly allowUnobservedRetrievalCompletion: boolean;
     readonly invalidEmissionRecoveryEntryId: number | null | undefined;
 };
 
@@ -668,7 +667,7 @@ export default class TurnRunner {
     // this cycle opened.
     async runTurn({
         provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
-        turnNumber = 1, invalidEmissionRecoveryEntryId, allowUnobservedRetrievalCompletion = false,
+        turnNumber = 1, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
         childProvider?: Provider;
@@ -682,14 +681,13 @@ export default class TurnRunner {
         // Model-attempt ordinal in the surrounding loop. Attempt 1 admits the
         // initial prompt only while its durable publication is still absent.
         turnNumber?: number;
-        allowUnobservedRetrievalCompletion?: boolean;
         // An id identifies the rejected row informing this turn ({§engine-rails}
         // Contract Strikes: recovery is informed when the rail permits continuation).
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
         const args: TurnArgs = {
             provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
-            turnNumber, invalidEmissionRecoveryEntryId, allowUnobservedRetrievalCompletion,
+            turnNumber, invalidEmissionRecoveryEntryId,
         };
         const createdTurnIds: number[] = [];
         try {
@@ -1800,7 +1798,7 @@ export default class TurnRunner {
     // Phase 6 — the admitted program runs under the workspace's command ceiling and
     // the turn settles on the executor's verdict.
     async #settleAdmittedTurn(args: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
-        const { childProvider, workspaceId, workerId, loopId, onDispatch, onSettled, allowUnobservedRetrievalCompletion } = args;
+        const { childProvider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
         const { split } = emission;
         // {§operator-config-workspace-max-commands} — workspace maxCommands
         // narrows the operator ceiling before the admitted program reaches the
@@ -1817,7 +1815,6 @@ export default class TurnRunner {
             turnId: request.turnId,
             fromSequence: request.nextActionIndex,
             maxCommands,
-            allowUnobservedRetrievalCompletion,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
             bare: {

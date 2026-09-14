@@ -244,11 +244,12 @@ for (const specimen of [
                 statement: dispositionStmt("completed"),
                 workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
             });
-            assert.equal(completed.status, 409);
-            assert.deepEqual(completed.problem?.pending, specimen.status === 200
+            assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
+            assert.equal(completed.problem, undefined);
+            assert.deepEqual((completed.attrs as { pending?: string[] }).pending, specimen.status === 200
                 ? ["receipts"] : ["receipts", "failed-stream-results"]);
             if (specimen.status === 200) {
-                assert.equal(completed.problem?.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet; a TASK now completes.`,
+                assert.equal(completed.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet; a TASK now completes.`,
                     "the executor's public name is used, not the internal EXEC operation");
             }
         } finally { await db.close(); }
@@ -267,8 +268,8 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
             statement: dispositionStmt("completed"),
             workspaceId, workerId, loopId, turnId: nextTurnId, sequence: 1, origin: "model",
         });
-        assert.equal(completed.status, 409);
-        assert.equal(completed.problem?.detail, "Completion deferred until stream completion reached a packet. It is in this packet; a TASK now completes.");
-        assert.deepEqual(completed.problem?.pending, ["receipts"]);
+        assert.equal(completed.status, 102);
+        assert.equal(completed.detail, "Completion deferred until stream completion reached a packet. It is in this packet; a TASK now completes.");
+        assert.deepEqual((completed.attrs as { pending?: string[] }).pending, ["receipts"]);
     } finally { await db.close(); }
 });

@@ -21,8 +21,9 @@ export interface CompletionEvidence {
 }
 
 export default class TurnDispositionHandler {
-    // {§engine-rails} review contract: only a refused completion (turntrieval steer) is a
-    // strike. Every other TASK 409 — an empty inventory, an already-terminal loop — is a
+    // {§engine-rails} review contract: only a completion claimed over live work (409
+    // `work-remains`) is a strike. Every other TASK answer — a deferral over settled results
+    // ({§completion-defers-to-results}), an empty inventory, an already-terminal loop — is a
     // soft receipt the model answers on the next turn.
     static refusedCompletion(result: DispatchResult): boolean {
         return result.status === 409 && (result.problem as { stage?: unknown } | undefined)?.stage === "completion";
@@ -37,9 +38,8 @@ export default class TurnDispositionHandler {
     readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
     readonly #statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
-    readonly #unobservedFailures: (failCount: number) => DispatchResult;
 
-    constructor({ db, cancelDescendants, lifecycle, nextPacketBoundaries, unobservedFailureCount, pendingSet, hasLiveWork, failure, statusResult, unobservedFailures }: {
+    constructor({ db, cancelDescendants, lifecycle, nextPacketBoundaries, unobservedFailureCount, pendingSet, hasLiveWork, failure, statusResult }: {
         db: Db;
         cancelDescendants: CancelDescendantsNotify | undefined;
         lifecycle: LoopLifecycle;
@@ -49,7 +49,6 @@ export default class TurnDispositionHandler {
         hasLiveWork: (workerId: number) => Promise<boolean>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
         statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
-        unobservedFailures: (failCount: number) => DispatchResult;
     }) {
         this.#db = db;
         this.#cancelDescendants = cancelDescendants;
@@ -60,7 +59,6 @@ export default class TurnDispositionHandler {
         this.#hasLiveWork = hasLiveWork;
         this.#failure = failure;
         this.#statusResult = statusResult;
-        this.#unobservedFailures = unobservedFailures;
     }
 
     async handle(statement: DispositionStatement, ctx: {
@@ -70,7 +68,6 @@ export default class TurnDispositionHandler {
         turnId: number;
         sequence: number;
         origin: WriterTier;
-        allowUnobservedRetrievalCompletion?: boolean;
     }): Promise<DispatchResult> {
         const { workerId, loopId, turnId } = ctx;
         const intent = TurnDisposition.intent(statement.body);
@@ -121,64 +118,21 @@ export default class TurnDispositionHandler {
             return { status: 102, detail: "Nothing is in flight and no timed or polled wait is set. Continuing." };
         }
 
-        // [200] — terminate, gated by the pending set (post-batch). The row records the refused
-        // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
-        // couples in runTurn. [499] abandons and cancels the descendant scope.
+        // Both terminals cross the observation barrier ({§completion-defers-to-results}): a
+        // model's claim over prompts the loop has not published, failures this turn has not
+        // seen, or settled results the next packet carries is deferred one packet and never
+        // struck. Only a live obligation is the model's to resolve: a completion over it is
+        // refused with a strike ({§send-premature-terminate}); an abandonment cancels it. A
+        // `_plurnk` maintenance program closes only its own administrative loop; it must not
+        // claim, consume, or be blocked by model work elsewhere in the same Worker.
+        if ((status === 200 || status === 499) && ctx.origin === "model") {
+            const deferred = await this.#barrier(ctx, status === 200 ? "Completion" : "Abandonment");
+            if (deferred !== null) return withTimingDetail(deferred);
+        }
+        // [200] — terminate. A refused attempt is recorded faithfully (status_rx=409, never
+        // erased); the loop stays a continue; the strike couples in runTurn. [499] abandons and
+        // cancels the descendant scope.
         if (status === 200) {
-            // Model completion is a claim about the Worker's observed work and
-            // therefore crosses the pending-result rails. A `_plurnk`
-            // maintenance program closes only its own administrative loop; it
-            // must not claim, consume, or be blocked by model work elsewhere in
-            // the same Worker.
-            if (ctx.origin === "model") {
-                // {§completion-defers-to-prompts} — a prompt that arrived during this turn is
-                // published by the next packet; completing over it would answer a conversation
-                // the model has not seen. Not the model's fault, so a deferral, never a strike.
-                const undelivered = await this.#undeliveredPromptCount(workerId, loopId);
-                if (undelivered > 0) {
-                    return withTimingDetail({
-                        status: 102,
-                        detail: `Completion deferred: ${undelivered} new prompt${undelivered === 1 ? "" : "s"} arrived during this turn. `
-                            + `${undelivered === 1 ? "It is" : "They are"} in this packet; a response and a TASK now complete.`,
-                    });
-                }
-                // {§send-premature-terminate} — same-turn failures are unobserved
-                // pending results and therefore refuse completion.
-                const failCount = await this.#unobservedFailureCount(turnId);
-                if (failCount > 0) return withTimingDetail(this.#unobservedFailures(failCount));
-                const { pending, receipts } = await this.#pendingSet(workerId, turnId);
-                const receiptsOnly = pending.length > 0 && pending.every((kind) => kind === "receipts");
-                if (pending.length > 0 && !(receiptsOnly && ctx.allowUnobservedRetrievalCompletion)) {
-                    // {§send-premature-terminate} — the receipt is read one packet later,
-                    // beside the results it names, so it speaks from that moment: what
-                    // deferred completion is now in the packet, and the same TASK is the
-                    // correct next request (retryable), never an action to "observe".
-                    if (receiptsOnly) {
-                        return withTimingDetail(this.#failure(
-                            "retrieval-results-unobserved",
-                            409,
-                            TurnDispositionHandler.deferredReceiptsDetail(receipts),
-                            {},
-                            {
-                                pending: [...pending],
-                                stage: "completion",
-                                retryable: true,
-                            },
-                        ));
-                    }
-                    return withTimingDetail(this.#failure(
-                        "work-remains",
-                        409,
-                        TurnDispositionHandler.deferredWorkDetail(pending),
-                        {},
-                        {
-                            pending: [...pending],
-                            stage: "completion",
-                            retryable: true,
-                        },
-                    ));
-                }
-            }
             const finished = await this.#lifecycle.finish(
                 loopId,
                 TerminalResult.success(null),
@@ -231,14 +185,71 @@ export default class TurnDispositionHandler {
         return rows.filter((row) => typeof row.content === "string" && row.content.length > 0).length;
     }
 
-    // {§send-premature-terminate} Receipts-only deferral, worded at read time.
-    static deferredReceiptsDetail(receipts: readonly string[]): string {
-        const plural = receipts.length > 1;
-        return `Completion deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet; a TASK now completes.`;
+    // {§completion-defers-to-results} — the observation barrier, in the order the graph demands:
+    // a prompt the loop has not published; then, for a completion, live work, which is refused
+    // with the one completion answer that strikes; then this turn's unseen failures; then the
+    // settled results the next packet carries. Every deferral is 102 with the read-time receipt
+    // and its pending facts in `attrs`; null means the claim may conclude now.
+    async #barrier(
+        { workerId, loopId, turnId }: { workerId: number; loopId: number; turnId: number },
+        verb: "Completion" | "Abandonment",
+    ): Promise<DispatchResult | null> {
+        const concludes = verb === "Completion" ? "complete" : "conclude";
+        // {§completion-defers-to-prompts} — a prompt that arrived during this turn is published
+        // by the next packet; concluding over it would answer a conversation the model has not
+        // seen. Not the model's fault, so a deferral, never a strike.
+        const undelivered = await this.#undeliveredPromptCount(workerId, loopId);
+        if (undelivered > 0) {
+            return {
+                status: 102,
+                detail: `${verb} deferred: ${undelivered} new prompt${undelivered === 1 ? "" : "s"} arrived during this turn. `
+                    + `${undelivered === 1 ? "It is" : "They are"} in this packet; a response and a TASK now ${concludes}.`,
+            };
+        }
+        const { pending, receipts } = await this.#pendingSet(workerId, turnId);
+        const live = pending.filter((kind) => kind === "streams" || kind === "workers");
+        if (verb === "Completion" && live.length > 0) {
+            // {§send-premature-terminate} — a completion over live work is the model claiming
+            // done while its own work runs: refused, retryable, and struck.
+            return this.#failure(
+                "work-remains",
+                409,
+                TurnDispositionHandler.deferredWorkDetail(pending),
+                {},
+                { pending: [...pending], stage: "completion", retryable: true },
+            );
+        }
+        // A failed operation is also an unobserved result: it does not enter the model's Log
+        // until the next packet.
+        const failCount = await this.#unobservedFailureCount(turnId);
+        if (failCount > 0) {
+            return {
+                status: 102,
+                detail: `${verb} deferred: ${failCount} operation${failCount === 1 ? "" : "s"} failed in the same turn. `
+                    + `The failure${failCount === 1 ? " is" : "s are"} in this packet; address ${failCount === 1 ? "it" : "them"} or ${concludes} with a TASK now.`,
+                attrs: { failures: failCount },
+            };
+        }
+        const settled = pending.filter((kind) => kind !== "streams" && kind !== "workers");
+        if (settled.length === 0) return null;
+        // The receipt is read one packet later, beside the results it names, so it speaks from
+        // that moment: what deferred the claim is now in the packet, and the same TASK is the
+        // correct next request.
+        const detail = settled.every((kind) => kind === "receipts")
+            ? TurnDispositionHandler.deferredReceiptsDetail(receipts, verb)
+            : TurnDispositionHandler.deferredWorkDetail(settled, verb);
+        return { status: 102, detail, attrs: { pending: settled } };
     }
 
-    // {§send-premature-terminate} Live obligations name the wait; observed-now results name the packet.
-    static deferredWorkDetail(pending: readonly string[]): string {
+    // {§completion-defers-to-results} Receipts-only deferral, worded at read time.
+    static deferredReceiptsDetail(receipts: readonly string[], verb: "Completion" | "Abandonment" = "Completion"): string {
+        const plural = receipts.length > 1;
+        return `${verb} deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`;
+    }
+
+    // {§send-premature-terminate} Live obligations name the wait; {§completion-defers-to-results}
+    // observed-now results name the packet.
+    static deferredWorkDetail(pending: readonly string[], verb: "Completion" | "Abandonment" = "Completion"): string {
         const live: string[] = [];
         if (pending.includes("workers")) live.push("child workers are still running");
         if (pending.includes("streams")) live.push("an execution is still running");
@@ -251,7 +262,7 @@ export default class TurnDispositionHandler {
             sentences.push(`Completion deferred: ${live.join(" and ")}. A TASK with a pending task waits for ${live.length > 1 || pending.includes("workers") ? "them" : "it"}${pending.includes("streams") ? ", or KILL ends the execution" : ""}.`);
             if (landed.length > 0) sentences.push(`${landed.join(" and ")} ${landed.length > 1 ? "are" : "is"} in this packet.`);
         } else {
-            sentences.push(`Completion deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet; a TASK now completes.`);
+            sentences.push(`${verb} deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`);
         }
         return sentences.join(" ");
     }

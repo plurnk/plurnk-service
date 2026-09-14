@@ -117,11 +117,9 @@ export default class TurnMaterialization {
                 }, this.#weighContent),
                 state: r.state,
                 outcome: r.outcome,
-                folded: LogVisibility.serialize(
-                    terminal !== null && terminal.status >= 200 && terminal.status < 300
-                        ? LogVisibility.OPEN
-                        : LogVisibility.FOLDED,
-                ),
+                // {§worker-scheme-collect} — every conclusion is born visible, whatever its status;
+                // a child's activity rows fold.
+                folded: LogVisibility.serialize(terminal !== null ? LogVisibility.OPEN : LogVisibility.FOLDED),
                 attrs,
             });
             const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({

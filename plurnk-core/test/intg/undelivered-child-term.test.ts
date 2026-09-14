@@ -72,9 +72,9 @@ test("completion over a just-concluded child is refused with the steer", async (
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
         const r = await engine.dispatch({ statement: dispositionStmt("completed", "done"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 409, "concluding over an undelivered worker result is refused");
-        assert.equal(r.problem?.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet; a TASK now completes.");
-        assert.equal(r.problem?.retryable, true);
-        assert.deepEqual(r.problem?.pending, ["worker-results"], "the structured fact names the pending kind");
+        assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
+        assert.equal(r.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet; a TASK now completes.");
+        assert.equal(r.problem, undefined, "a deferral carries no Problem and no strike");
+        assert.deepEqual((r.attrs as { pending?: string[] }).pending, ["worker-results"], "the structured fact names the pending kind");
     } finally { await db.close(); }
 });

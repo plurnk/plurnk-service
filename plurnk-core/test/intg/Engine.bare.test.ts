@@ -534,7 +534,7 @@ test("one BARE provider failure is an ordered operation result and does not canc
 });
 
 // {§bare-inference} {§send-premature-terminate}
-test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", async () => {
+test("a same-turn BARE response is unseen retrieval work and defers completion", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
@@ -551,7 +551,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [{ op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }]);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [{ op: "TASK", status: 102, problemType: null }], "deferred, never refused ({§completion-defers-to-results})");
     } finally {
         await db.close();
     }
@@ -581,11 +581,9 @@ question
             assert.equal(result.status, 102);
             assert.deepEqual(child.completions, ["question"], "the isolated call was made although BARE was authored after TASK");
             assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "TASK"], "the disposition is scheduled last");
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [
-                state === "completed"
-                    ? { op: "TASK", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }
-                    : { op: "TASK", status: 102, problemType: null },
-            ]);
+            // A completion over the unseen BARE result defers ({§completion-defers-to-results}); the
+            // other inventories continue: every state answers 102 without a Problem.
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [{ op: "TASK", status: 102, problemType: null }]);
         } finally {
             await db.close();
         }

@@ -223,8 +223,12 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
         try { return await runLoop.call(this, args); }
         finally { if (args.workerId === childId) childSettled.resolve(); }
     });
+    // The WORK receipt is a settled result, so the same-turn abandonment defers one packet
+    // ({§completion-defers-to-results}); the abandonment lands on the next turn, and the child's
+    // own response stays unused because the child is cancelled before it ever calls the model.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```WORK (worker://child)\nkeep working until cancelled\n```\n\n```SEND\nabandon this scope\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
+        makeMockResponse("```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
         makeMockResponse("```TASK\n[{\"content\":\"still working\",\"status\":\"in_progress\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

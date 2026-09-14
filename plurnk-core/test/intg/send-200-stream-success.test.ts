@@ -40,11 +40,11 @@ for (const command of ["true", "hostname"]) {
                 const observedPacket = JSON.stringify(provider.received[1]);
                 assert.match(observedPacket, /terminal/, "the next packet contains the stream conclusion");
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
-                const rows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
+                const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
                 assert.ok(rows.some((r) => r.op === "EXEC"), "the stream ran");
                 assert.equal(rows.filter((r) => r.op === "SEND" && r.status_rx === 200).length, 2, "both messages were delivered");
-                assert.equal(rows.filter((r) => r.op === "TASK" && r.status_rx === 409).length, hasTask ? 1 : 0,
-                    "an explicit blind completion is refused; omission continues silently");
+                assert.equal(rows.filter((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102).length, hasTask ? 1 : 0,
+                    "an explicit blind completion is deferred; omission continues silently");
             } finally {
                 ws.close();
             }
@@ -52,35 +52,38 @@ for (const command of ["true", "hostname"]) {
     });
 }
 
-test("{§send-final-strike-retrieval}: successful EXEC receipts retain the complete-rather-than-fail escape hatch", async (t) => {
+test("{§completion-defers-to-results}: a successful EXEC receipt defers completion one packet without a strike", async (t) => {
     const previous = process.env.PLURNK_SERVICE_MAX_STRIKES;
-    process.env.PLURNK_SERVICE_MAX_STRIKES = "3";
+    process.env.PLURNK_SERVICE_MAX_STRIKES = "1";
     t.after(() => {
         if (previous === undefined) delete process.env.PLURNK_SERVICE_MAX_STRIKES;
         else process.env.PLURNK_SERVICE_MAX_STRIKES = previous;
     });
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: Array.from({ length: 4 }, () => makeMockResponse("```sh\ntrue\n```\n```SEND\nCompleted.\n```\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```")),
+        responses: [
+            makeMockResponse("```sh\ntrue\n```\n```SEND\nCompleted.\n```\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND\nCompleted.\n```\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```"),
+        ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "stream-final-strike" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "run the command", policy: { proposals: "accept" } });
-            assert.equal(result.finalStatus, 200, "the final refusal becomes completion, not a strike-threshold failure");
-            assert.equal(provider.received.length, 3);
-            assert.equal(provider.remaining, 1, "the allowance requires no additional inference");
+            assert.equal(result.finalStatus, 200, "the deferred completion concludes on the next packet; at MAX_STRIKES 1 a strike would have ended the loop");
+            assert.equal(provider.received.length, 2);
+            assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            assert.deepEqual(rows.filter(({ op, origin }) => op === "TASK" && origin === "model").map(({ status_rx }) => status_rx), [409, 409, 200]);
-            assert.equal(rows.filter(({ op, origin }) => op === "EXEC" && origin === "model").length, 3, "every submitted command was executed");
+            assert.deepEqual(rows.filter(({ op, origin }) => op === "TASK" && origin === "model").map(({ status_rx }) => status_rx), [102, 200]);
+            assert.equal(rows.filter(({ op, origin }) => op === "EXEC" && origin === "model").length, 1, "the submitted command was executed");
         } finally {
             ws.close();
         }
     }));
 });
 
-test("a failed same-turn stream still refuses completion without echoing its command", async () => {
+test("{§completion-defers-to-results}: a failed same-turn stream defers completion without echoing its command", async () => {
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
@@ -94,15 +97,15 @@ test("a failed same-turn stream still refuses completion without echoing its com
             await rpcCall(ws, 1, "workspace.create", { name: "stream-failure-terminal" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", policy: { proposals: "accept" } });
             assert.equal(result.finalStatus, 200);
-            assert.equal(provider.remaining, 0, "the refusal cost exactly one more provider turn");
-            const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            const refused = rows.find((r) => r.op === "TASK" && r.status_rx === 409);
-            assert.ok(refused, "the blind conclusion was refused 409");
-            const entry = await db.test_get_log_entry_by_id.get<{ rx: string | null }>({ id: refused.id });
-            const problem = (JSON.parse(entry?.rx ?? "{}") as { problem?: Record<string, unknown> }).problem;
-            assert.deepEqual(problem?.pending, ["receipts", "failed-stream-results"]);
-            assert.equal(problem?.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet; a TASK now completes.");
-            assert.equal(problem?.retryable, true);
+            assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
+            const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
+            const deferred = rows.find((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102);
+            assert.ok(deferred, "the blind conclusion was deferred");
+            const entry = await db.test_get_log_entry_by_id.get<{ rx: string | null }>({ id: deferred.id });
+            const deferral = JSON.parse(entry?.rx ?? "{}") as { problem?: unknown; detail?: string; attrs?: { pending?: string[] } };
+            assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
+            assert.deepEqual(deferral.attrs?.pending, ["receipts", "failed-stream-results"]);
+            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet; a TASK now completes.");
             assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the EXEC row");
         } finally {
             ws.close();
