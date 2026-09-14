@@ -133,15 +133,15 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 
 ## `pattern`
 
-| prefix | dialect                  | example                         |
-|--------|--------------------------|---------------------------------|
-| `/`    | regex (ECMAScript)       | `/\btimeout\b/i`                |
-| `^`    | regex anchored to a line | `^Note:.*`                      |
-| `//`   | xpath (1.0)              | `//dependencies/*`              |
-| `$`    | jsonpath (RFC 9535)      | `$.items[?(@.price>500)]`       |
-| `~`    | full-text (SQLite FTS5)  | `~retry`                        |
-| `&`    | graph: `&sym` all relations, `&<sym` referrers, `&>sym` referents | `&<parseTurn` |
-| none   | glob, or a literal       | `?(export )?(async )function *` |
+| prefix | dialect                     | example                         |
+|--------|-----------------------------|---------------------------------|
+| `/`    | regex (ECMAScript)          | `/\btimeout\b/i`                |
+| `^`    | regex anchored to a line    | `^Note:.*`                      |
+| `//`   | xpath (1.0)                 | `//dependencies/*`              |
+| `$`    | jsonpath (RFC 9535)         | `$.items[?(@.price>500)]`       |
+| `~`    | full-text (SQLite FTS5)     | `~retry`                        |
+| `&`    | graph: (treesitter symbols) | `&sym`, `&<sym`, `&>sym`        |
+| none   | literal or extglob          | `?(export )?(async )function *` |
 
 > [!TIP]
 > The `[metadata]` parameter accepts a `[{"pattern":"matcher"}]` option for patterns that cannot be inline.
