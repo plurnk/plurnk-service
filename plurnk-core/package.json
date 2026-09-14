@@ -138,7 +138,7 @@
         "@plurnk/plurnk-schemes": "1.17.0",
         "@plurnk/plurnk-schemes-http": "1.17.0",
         "@plurnk/plurnk-schemes-http-tavily": "^1.8.0",
-        "@possumtech/sqlrite": "^6.5.2",
+        "@possumtech/sqlrite": "^6.5.3",
         "diff": "^9.0.0",
         "yaml": "^2.9.0"
     },

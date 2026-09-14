@@ -5,6 +5,10 @@ export interface SqlRiteOptions {
 	dir?: string | string[];
 	functions?: string | string[];
 	params?: Record<string, string | number | boolean | null>;
+	/**
+	 * Read-only Workers per file-backed async instance (default 0).
+	 * Total Workers are `1 + readers`; positive values are invalid with `:memory:`.
+	 */
 	readers?: number;
 	timeout?: number;
 	cacheSize?: number;
