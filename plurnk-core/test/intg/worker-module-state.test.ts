@@ -62,3 +62,44 @@ test("{§module-workspace-state} put replaces in place, keyed by (worker, owner)
         assert.doesNotMatch(row!.state, /"A"/u, "one snapshot per (worker, owner), replaced whole");
     } finally { await db.close(); }
 });
+
+// {§functionality-scope} — inheritance is a row copy at the child's creation, marked with its source.
+const definitionsOf = async (db: Awaited<ReturnType<typeof openMigrated>>, workerId: number): Promise<Record<string, Record<string, unknown>>> => {
+    const row = await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: OWNER });
+    return row === undefined ? {} : (JSON.parse(row.state) as { definitions: Record<string, Record<string, unknown>> }).definitions;
+};
+
+test("{§functionality-scope} a child starts with a copy of its parent's state, every entry named for its source", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `worker-state-inherit-${crypto.randomUUID()}`);
+        const alice = await insertWorker(db, workspaceId, null, "alice");
+        await db.worker_module_state_put.run({
+            worker_id: alice, namespace_owner: OWNER,
+            state: JSON.stringify({ version: 1, definitions: {
+                CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
+                CI: { origin: "service", enabled: false },
+            } }),
+        });
+        const bob = await insertWorker(db, workspaceId, alice, "bob");
+        assert.deepEqual(await definitionsOf(db, bob), {
+            CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" }, inherited: "alice" },
+            CI: { origin: "service", enabled: false, inherited: "alice" },
+        }, "copied faithfully, disabled entries included, each named for the Worker that set it");
+
+        // A snapshot, not a link: alice's later edit never reaches bob.
+        await db.worker_module_state_put.run({
+            worker_id: alice, namespace_owner: OWNER,
+            state: JSON.stringify({ version: 1, definitions: { LATER: { origin: "worker", enabled: true, definition: { value: "x" } } } }),
+        });
+        assert.deepEqual(Object.keys(await definitionsOf(db, bob)), ["CARGO_TARGET_DIR", "CI"]);
+
+        // Depth is transitive and provenance names the origin, not the intermediate.
+        const carol = await insertWorker(db, workspaceId, bob, "carol");
+        assert.equal((await definitionsOf(db, carol)).CARGO_TARGET_DIR!.inherited, "alice", "a grandchild still names the Worker that set the entry");
+
+        // A parentless Worker inherits nothing.
+        const loner = await insertWorker(db, workspaceId, null, "loner");
+        assert.deepEqual(await definitionsOf(db, loner), {});
+    } finally { await db.close(); }
+});

@@ -17,6 +17,11 @@
             "enum": ["disabled", "active", "unavailable", "authorization-required"]
         },
         "definition": { "type": "object" },
+        "inherited": {
+            "description": "The Worker this entry was copied from when this Worker was created (WORK or FORK), preserved across generations until this Worker changes the entry. Absent for an entry this Worker set itself. Worker-scoped families only.",
+            "type": "string",
+            "minLength": 1
+        },
         "detail": {
             "description": "Family-owned presentation facts about an active definition (a server's protocol version and tool names, an agent card summary). Never credentials, never authority.",
             "type": "object"

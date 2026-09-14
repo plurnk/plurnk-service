@@ -3523,6 +3523,13 @@ resident changes, and the next spawn reads the state, so a Worker shapes its own
 while its siblings run. Its preparation yields outcomes only — no runtimes, documents or
 snapshot — and the coordinator refuses one that does more.
 
+A Worker created with a parent — WORK and FORK alike — starts with a copy of the parent's
+worker-scoped state, taken at creation. The child owns its copy: neither side's later edits
+reach the other, and depth is transitive with no further rule. Each copied entry carries
+`inherited`, the Worker that set it, preserved across generations until the child changes that
+entry, so `list` never claims the child set what it inherited; a parent's masking of an
+ambient name travels the same way.
+
 §functionality-state **One durable value per workspace and family.**
 `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
 is stored under the provider namespace in `workspace_module_state`; a

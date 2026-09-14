@@ -19,7 +19,9 @@ alone, without the operator changing anything. `remove` forgets your own entry;
 an ambient name of the same alias reappears, disabled, so removal never quietly
 changes what your next command sees.
 
-Your entries are yours: another worker's commands do not see them.
+Your entries are yours: another worker's commands do not see them. A worker
+you spawn starts with a copy of them — `list` shows those as inherited from
+you — and its changes never reach yours.
 
 ## Names you cannot set
 

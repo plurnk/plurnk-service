@@ -72,6 +72,9 @@ interface DefinitionRecord {
     readonly origin: Origin;
     readonly definition?: object;
     readonly enabled: boolean;
+    // {§functionality-scope} — the Worker a copied entry came from at this Worker's creation. Written
+    // by the copy, never by a verb: a mutation makes the entry the Worker's own and drops it.
+    readonly inherited?: string;
 }
 
 // {§functionality-state} — one durable value per (workspace, family) in
@@ -89,6 +92,7 @@ interface EffectiveDefinition {
     readonly origin: Origin;
     readonly definition: object;
     readonly enabled: boolean;
+    readonly inherited?: string;
 }
 
 interface WorkspaceFamily {
@@ -364,17 +368,21 @@ export default class Functionality {
         const definitions: Record<string, DefinitionRecord> = {};
         for (const [alias, value] of Object.entries(raw.definitions)) {
             if (!aliasPattern(adapter).test(alias) || !isRecord(value)) throw new Error(`Functionality state for ${adapter.family} has an invalid alias '${alias}'.`);
-            const { origin, enabled, definition } = value;
+            const { origin, enabled, definition, inherited } = value;
             if ((origin !== "service" && origin !== "workspace" && origin !== "worker") || typeof enabled !== "boolean") {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' is malformed.`);
             }
+            if (inherited !== undefined && (typeof inherited !== "string" || inherited.length === 0 || adapter.scope !== "worker")) {
+                throw new Error(`Functionality state for ${adapter.family} alias '${alias}' carries an invalid inheritance.`);
+            }
+            const provenance = inherited === undefined ? {} : { inherited };
             if (origin === Functionality.#localOrigin(adapter)) {
                 const result = Validator.validateJsonSchemaInstance(adapter.definitionSchema, definition);
                 if (!result.valid) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' holds an invalid definition.`);
-                definitions[alias] = { origin, enabled, definition: definition as object };
+                definitions[alias] = { origin, enabled, definition: definition as object, ...provenance };
             } else {
                 if (definition !== undefined) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' persists a service definition.`);
-                definitions[alias] = { origin, enabled };
+                definitions[alias] = { origin, enabled, ...provenance };
             }
         }
         return { version: STATE_VERSION, definitions };
@@ -390,28 +398,29 @@ export default class Functionality {
             if (!aliasPattern(adapter).test(service.alias)) throw new Error(`${adapter.family} service alias '${service.alias}' must match ${aliasPattern(adapter)}.`);
             const record = state.definitions[service.alias];
             const enabled = record?.origin === "service" ? record.enabled : service.enabled;
-            effective.set(service.alias, { alias: service.alias, origin: "service", definition: service.definition, enabled });
+            const inherited = record?.origin === "service" && record.inherited !== undefined ? { inherited: record.inherited } : {};
+            effective.set(service.alias, { alias: service.alias, origin: "service", definition: service.definition, enabled, ...inherited });
         }
         for (const [alias, record] of Object.entries(state.definitions)) {
             const local = Functionality.#localOrigin(adapter);
             if (record.origin !== local) continue;
-            effective.set(alias, { alias, origin: local, definition: record.definition!, enabled: record.enabled });
+            const inherited = record.inherited === undefined ? {} : { inherited: record.inherited };
+            effective.set(alias, { alias, origin: local, definition: record.definition!, enabled: record.enabled, ...inherited });
         }
         return new Map([...effective].toSorted(([left], [right]) => left.localeCompare(right)));
     }
 
     #projection(definition: EffectiveDefinition, outcome: FunctionalityOutcome | undefined): FunctionalityDefinitionState {
-        if (!definition.enabled) {
-            return { alias: definition.alias, origin: definition.origin, state: "disabled", definition: definition.definition };
-        }
+        const base = {
+            alias: definition.alias, origin: definition.origin, definition: definition.definition,
+            ...(definition.inherited === undefined ? {} : { inherited: definition.inherited }),
+        };
+        if (!definition.enabled) return { ...base, state: "disabled" };
         if (outcome === undefined) throw new Error(`enabled ${definition.alias} has no preparation outcome`);
         switch (outcome.state) {
-            case "active": return {
-                alias: definition.alias, origin: definition.origin, state: "active", definition: definition.definition,
-                ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
-            };
-            case "unavailable": return { alias: definition.alias, origin: definition.origin, state: "unavailable", definition: definition.definition, problem: outcome.problem };
-            case "authorization-required": return { alias: definition.alias, origin: definition.origin, state: "authorization-required", definition: definition.definition, authorization: outcome.authorization };
+            case "active": return { ...base, state: "active", ...(outcome.detail === undefined ? {} : { detail: outcome.detail }) };
+            case "unavailable": return { ...base, state: "unavailable", problem: outcome.problem };
+            case "authorization-required": return { ...base, state: "authorization-required", authorization: outcome.authorization };
         }
     }
 

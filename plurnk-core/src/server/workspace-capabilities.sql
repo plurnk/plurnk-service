@@ -39,3 +39,26 @@ ON CONFLICT (worker_id, namespace_owner) DO UPDATE SET
 DELETE FROM worker_module_state
 WHERE worker_id = $worker_id
   AND namespace_owner = $namespace_owner;
+
+-- INIT: workers_inherit_module_state
+-- {§functionality-scope} — a Worker created with a parent (WORK and FORK alike) starts with a copy
+-- of the parent's worker-scoped state, taken at creation: the child owns its copy, and neither
+-- side's later edits reach the other. Each copied entry names its source Worker (`inherited`),
+-- preserved across generations, so `list` renders provenance rather than claiming the child set it.
+DROP TRIGGER IF EXISTS workers_inherit_module_state;
+CREATE TRIGGER workers_inherit_module_state
+AFTER INSERT ON workers
+WHEN NEW.parent_worker_id IS NOT NULL
+BEGIN
+    INSERT INTO worker_module_state (worker_id, namespace_owner, state)
+    SELECT NEW.id, s.namespace_owner,
+           json_set(s.state, '$.definitions', coalesce(
+               (SELECT json_group_object(key,
+                           CASE WHEN json_extract(value, '$.inherited') IS NULL
+                                THEN json_set(value, '$.inherited', (SELECT name FROM workers WHERE id = NEW.parent_worker_id))
+                                ELSE json(value) END)
+                FROM json_each(s.state, '$.definitions')),
+               json('{}')))
+    FROM worker_module_state s
+    WHERE s.worker_id = NEW.parent_worker_id;
+END;

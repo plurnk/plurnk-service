@@ -741,6 +741,10 @@ definition?: {
 
 }
 /**
+ * The Worker this entry was copied from when this Worker was created (WORK or FORK), preserved across generations until this Worker changes the entry. Absent for an entry this Worker set itself. Worker-scoped families only.
+ */
+inherited?: string
+/**
  * Family-owned presentation facts about an active definition (a server's protocol version and tool names, an agent card summary). Never credentials, never authority.
  */
 detail?: {

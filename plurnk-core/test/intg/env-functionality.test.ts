@@ -116,6 +116,21 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(await stateOf(bob, "ENV_WITNESS"), "service:active");
         assert.equal(await stateOf(bob, "CARGO_TARGET_DIR"), undefined);
 
+        // Inheritance: a child of alice starts with her entries, each named for her; the child's own
+        // entries carry no such name, and touching an inherited entry makes it the child's own.
+        const carol = await insertWorker(db, workspaceId, alice, "carol", "client");
+        const inheritedOf = async (workerId: number, alias: string) => (await listed(workerId)).find((entry) => entry.alias === alias)?.inherited;
+        assert.equal(await stateOf(carol, "CARGO_TARGET_DIR"), "worker:active");
+        assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Worker that set an inherited value");
+        assert.equal(await stateOf(carol, "ENV_WITNESS"), "service:disabled", "a parent's masking of an ambient name travels too");
+        assert.equal(await inheritedOf(carol, "ENV_WITNESS"), "alice");
+        await invoke(carol, "add", { alias: "CAROL_ONLY", definition: { value: "c" } });
+        assert.equal(await inheritedOf(carol, "CAROL_ONLY"), undefined, "an entry the child set itself names no source");
+        await invoke(carol, "enable", { alias: "ENV_WITNESS" });
+        assert.equal(await inheritedOf(carol, "ENV_WITNESS"), undefined, "a changed entry is the child's own");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "the child's change never reaches the parent");
+        assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
+
         // The model's projection: `env` is one published manager, and Core binds it to the invoking
         // worker at the operation, so alice's `list` is alice's and bob's is bob's.
         const outputs = async (): Promise<number> =>
