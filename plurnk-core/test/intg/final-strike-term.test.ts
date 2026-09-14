@@ -58,7 +58,7 @@ for (const { name, operation, maxStrikes } of [
         });
 
         assert.equal(result.result.status, 200, "the final retrieval-only completion is accepted, not converted into loop failure");
-        assert.equal(result.result.content, Array.from({ length: attempts }, () => "The answer is 42.").join("\n\n"), "all delivered messages are retained in order");
+        assert.equal(result.result.content, "The answer is 42.", "the repeated answer is delivered once");
         assert.equal(provider.received.length, attempts, "the existing threshold controls the allowance");
         assert.equal(provider.remaining, 1, "completion requires no extra inference");
         assert.deepEqual((await sends()).map(({ status_rx }) => status_rx), [

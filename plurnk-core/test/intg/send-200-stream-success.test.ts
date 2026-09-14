@@ -36,12 +36,13 @@ for (const command of ["true", "hostname"]) {
                 assert.equal(result.finalStatus, 200);
                 assert.equal(provider.remaining, 0, "the model gets exactly one observation turn before completing");
                 assert.equal(provider.received.length, 2);
-                assert.equal(result.result.content, `The hostname is plurnk-sandbox.\n\n${answer}`, "continuation cannot retract the deliberate first SEND");
+                assert.equal(result.result.content, answer, "the corrected answer is the response; the blind first SEND stays a log row");
                 const observedPacket = JSON.stringify(provider.received[1]);
                 assert.match(observedPacket, /terminal/, "the next packet contains the stream conclusion");
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
                 assert.ok(rows.some((r) => r.op === "EXEC"), "the stream ran");
+                assert.equal(rows.filter((r) => r.op === "SEND" && r.status_rx === 200).length, 2, "both messages were delivered");
                 assert.equal(rows.filter((r) => r.op === "TASK" && r.status_rx === 409).length, hasTask ? 1 : 0,
                     "an explicit blind completion is refused; omission continues silently");
             } finally {

@@ -5,7 +5,7 @@ import { liveLoop } from "../_live-harness.ts";
 import { connect, makeMockResponse, rpcCall, withDaemon } from "./_rpc.ts";
 
 for (const terminal of ["completed", "failed"] as const) {
-    test(`{§loop-response-messages} the live harness retains earlier SENDs when TASK ends ${terminal} without a new message`, async () => {
+    test(`{§loop-response-messages} the live harness delivers the last SEND when TASK ends ${terminal} without a new message`, async () => {
         const provider = new Mock({ contextWindow: 100_000, responses: [
             makeMockResponse('```SEND\nFirst answer.\n```\n```TASK\n[{"content":"Continue the work.","status":"in_progress"}]\n```'),
             makeMockResponse('```SEND\nSecond answer.\n```\n```TASK\n[{"content":"Review the outcome.","status":"in_progress"}]\n```'),
@@ -17,8 +17,8 @@ for (const terminal of ["completed", "failed"] as const) {
                 await rpcCall(ws, 1, "workspace.create", { name: `live-response-${terminal}` });
                 const result = await liveLoop({ db, ws }, 2, { prompt: "Answer in two parts.", maxTurns: 5 });
                 assert.equal(result.finalStatus, terminal === "completed" ? 200 : 499);
-                assert.equal(result.lastContent, "First answer.\n\nSecond answer.",
-                    "the specimen evaluates the daemon's complete response, not only the terminal packet");
+                assert.equal(result.lastContent, "Second answer.",
+                    "the specimen evaluates the daemon's response: the last delivered message, not the terminal packet");
             } finally { ws.close(); }
         });
     });

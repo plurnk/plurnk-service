@@ -19,6 +19,9 @@ Breaking for external AG-UI and RPC clients:
 - `@plurnk/plurnk-execs` no longer exports the frozen `Advertise` helper.
 - `@plurnk/plurnk-plurnkdown` is retired; the packet Markdown projection is specified in
   `plurnk-core/SPEC.md` (`§packet-markdown`).
+- A loop's result is its last delivered message. Earlier `SEND` bodies stay log rows and are
+  no longer concatenated into `loop/terminated.result`; a parent receives its child's last
+  message as the conclusion.
 
 Language and teaching:
 

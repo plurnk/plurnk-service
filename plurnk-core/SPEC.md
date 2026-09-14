@@ -2325,7 +2325,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 
 A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
-§loop-response-messages **Replies and outcome are independent.** Each successful targetless SEND, and a SEND to one of this loop's own prompts ({§send-prompt-acceptance}), contributes its complete authored body to the loop's response, in turn and operation order, separated by a blank line. Other directed SEND, TASK, asides, interstitial text, inherited rows and ambient observations do not contribute. Collection reads immutable executed operation evidence, not the curated log projection. KILL cannot retract a delivered message. A later failure, cancellation or refused completion preserves prior messages; a task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content.
+§loop-response-messages **The response is the last message.** The loop's response is the complete authored body of its last successful targetless SEND, or SEND to one of this loop's own prompts ({§send-prompt-acceptance}), in turn and operation order. Earlier messages reach the client as they are delivered and stay log rows; they are not part of the response, so a corrected answer or a repeated one after a refused completion delivers once. Other directed SEND, TASK, asides, interstitial text, inherited rows and ambient observations never count. The projection reads immutable executed operation evidence, not the curated log projection: KILL cannot retract a delivered message, and a later failure, cancellation or refused completion keeps the last message. A task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content. A parent receives its child's response as the child's conclusion (operator, 2026-09-11).
 
 §loop-terminal-authorship **Terminal authorship is explicit when external.**
 
@@ -2364,8 +2364,8 @@ violations follow the current admission and strike contracts
   lists `prompt://<worker>/<loop>/<id>` addresses under Active Prompts, and a model that
   addresses one of them means what an untargeted SEND means. The engine accepts a model
   SEND to a prompt of the current worker and loop as exactly that response: it dispatches
-  as the untargeted case, the row keeps the address the model wrote, and the body joins the
-  loop's response under {§loop-response-messages}. Nothing is taught about the form and it
+  as the untargeted case, the row keeps the address the model wrote, and the body counts as
+  the loop's response under {§loop-response-messages}. Nothing is taught about the form and it
   creates no per-prompt result structure; a prompt of another loop or another worker stays
   `400 send-target-not-a-recipient`. An undocumented acceptance in the same spirit as KILL
   in the completion turn, not a recipient.

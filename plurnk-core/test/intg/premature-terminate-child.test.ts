@@ -445,7 +445,7 @@ for (const statuses of [["completed"], ["failed", "completed"]] as const) {
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
 
             assert.equal(result.result.status, 200, "the final-strike completion TASK is accepted independently of cycle detection");
-            assert.equal(result.result.content, "read /page-0.html\n\nread /page-1.html\n\nread /page-2.html", "delivered responses survive refused completion attempts");
+            assert.equal(result.result.content, "read /page-2.html", "the last delivered message is the response; the refused turns' messages stay log rows");
             assert.equal(result.turnIds.length, 4, "initialization, two refusals, and the accepted conclusion form the chronology");
             const refusals = await db.test_disposition_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
             assert.equal(refusals.filter((r) => r.status_rx === 409).length, 2, "earlier correction receipts remain unchanged");

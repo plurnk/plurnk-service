@@ -112,22 +112,25 @@ CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (l
 -- {§db-fk-indexes} Derivation replacement checks the rows that cite the hash.
 CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (deep_hash) WHERE deep_hash IS NOT NULL;
 
--- {§loop-response-messages}: executed messages survive curation. This projection
--- is also used inside atomic cancellation; no second response accumulator exists.
+-- {§loop-response-messages}: the response is the last delivered message, read from
+-- executed evidence so curation cannot retract it. This projection is also used inside
+-- atomic cancellation; no second response projection exists.
 CREATE VIEW IF NOT EXISTS loop_responses AS
-SELECT le.loop_id,
-    group_concat(json_extract(le.tx, '$.body.raw'), char(10) || char(10)
-        ORDER BY t.sequence, le.sequence) AS content
-FROM log_entries le JOIN turns t ON t.id = le.turn_id
-WHERE le.op = 'SEND' AND le.state = 'resolved' AND le.status_rx BETWEEN 200 AND 299
-  AND le.source IS NULL AND le.inherited_history = 0
-  AND json_valid(le.tx)
-  -- {§send-prompt-acceptance}: a SEND to one of this loop's own prompts is the response too;
-  -- the dispatcher admits only own-loop prompt addresses, so the scheme alone identifies them.
-  AND (json_type(le.tx, '$.target') = 'null' OR json_extract(le.tx, '$.target.scheme') = 'prompt')
-  AND json_type(le.tx, '$.body.raw') = 'text'
-  AND length(json_extract(le.tx, '$.body.raw')) > 0
-GROUP BY le.loop_id;
+SELECT loop_id, content FROM (
+    SELECT le.loop_id,
+        json_extract(le.tx, '$.body.raw') AS content,
+        ROW_NUMBER() OVER (PARTITION BY le.loop_id ORDER BY t.sequence DESC, le.sequence DESC) AS recency
+    FROM log_entries le JOIN turns t ON t.id = le.turn_id
+    WHERE le.op = 'SEND' AND le.state = 'resolved' AND le.status_rx BETWEEN 200 AND 299
+      AND le.source IS NULL AND le.inherited_history = 0
+      AND json_valid(le.tx)
+      -- {§send-prompt-acceptance}: a SEND to one of this loop's own prompts is the response too;
+      -- the dispatcher admits only own-loop prompt addresses, so the scheme alone identifies them.
+      AND (json_type(le.tx, '$.target') = 'null' OR json_extract(le.tx, '$.target.scheme') = 'prompt')
+      AND json_type(le.tx, '$.body.raw') = 'text'
+      AND length(json_extract(le.tx, '$.body.raw')) > 0
+)
+WHERE recency = 1;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
     ON log_entries (model_call_id)

@@ -43,9 +43,13 @@ for (const [name, first, detail, strikes] of [
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
         assert.equal(result.result.status, 200);
-        assert.equal(result.result.content, name === "missing inventory" ? "First message.\n\nAnswer." : "Answer.");
+        assert.equal(result.result.content, "Answer.");
         assert.deepEqual(seenStrikes, [0, strikes]);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; status_rx: number }>({ loop_id: loopId });
+        if (name === "missing inventory") {
+            assert.equal(rows.filter(({ op, status_rx }) => op === "SEND" && status_rx === 200).length, 2,
+                "the earlier message stays a delivered log row outside the response");
+        }
         if (detail !== null) {
             assert.equal(rows.filter(({ rx }) => {
                 const result = JSON.parse(rx);
@@ -87,25 +91,25 @@ for (const [statuses, expectedStatus] of [
     [["completed", "failed"], 200],
     [["failed", "completed"], 200],
 ] as const) {
-    test(`{§loop-response-messages} ${statuses.join(" + ")} preserves every targetless SEND despite curation`, async (t) => {
+    test(`{§loop-response-messages} ${statuses.join(" + ")} keeps the last message despite its curation`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "response-evidence");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Answer in two parts.");
+        const loopId = await insertLoop(db, workerId, 1, "Answer, then tidy up.");
         const inventory = statuses.map((status, index) => ({ content: `Task ${index + 1}`, status }));
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(`${send("First.")}\n${task("in_progress")}`),
-            response(`\`\`\`KILL (log:///1/2/*/SEND)\`\`\`\n${send("Second.")}\n\`\`\`TASK\n${JSON.stringify(inventory)}\n\`\`\``),
+            response(`${send("The answer.")}\n${task("in_progress")}`),
+            response(`\`\`\`KILL (log:///1/2/*/SEND)\`\`\`\n\`\`\`TASK\n${JSON.stringify(inventory)}\n\`\`\``),
         ] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3,
         });
         assert.equal(result.result.status, expectedStatus);
-        assert.equal(result.result.content, "First.\n\nSecond.");
-        assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "First.\n\nSecond.");
+        assert.equal(result.result.content, "The answer.");
+        assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "The answer.");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string }>({ loop_id: loopId });
-        assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200), "the earlier SEND was actually curated");
+        assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200), "the delivered SEND was actually curated");
         assert.deepEqual(JSON.parse(rows.findLast(({ op }) => op === "TASK")!.tx).body, inventory,
             "the loop outcome does not rewrite individual task outcomes");
         assert.equal(provider.received.length, 2, "final housekeeping requires no extra inference");
@@ -113,6 +117,29 @@ for (const [statuses, expectedStatus] of [
         else assert.equal(result.result.problem, undefined);
     });
 }
+
+test("{§loop-response-messages} the response is the last message; earlier messages stay log rows", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "response-last-message");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "What is the codename?");
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        response(`${send("The codename is Bumblebee.")}\n${task("in_progress")}`),
+        response(`${send("The codename is phoenix.")}\n${task("completed")}`),
+    ] });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
+        workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3,
+    });
+    assert.equal(result.result.status, 200);
+    assert.equal(result.result.content, "The codename is phoenix.", "the corrected answer is the response");
+    assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "The codename is phoenix.");
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string }>({ loop_id: loopId });
+    assert.deepEqual(rows.filter(({ op }) => op === "SEND").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
+        [[200, "The codename is Bumblebee."], [200, "The codename is phoenix."]],
+        "both messages were delivered and both stay log rows");
+    assert.equal(provider.received.length, 2);
+});
 
 test("{§task-inventory-intent} an observed cleanup failure does not invalidate completed work", async (t) => {
     const db = await openMigrated();
