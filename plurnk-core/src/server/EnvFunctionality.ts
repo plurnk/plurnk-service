@@ -41,6 +41,10 @@ const actionError = (code: string, status: number, detail: string, extensions: R
 export const ENV_FAMILY = "env";
 const ENV_OWNER = "@plurnk/plurnk-service";
 
+// POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's
+// alias grammar ({§functionality-adapter}) — the alias IS the variable name, and case is semantic.
+const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
 // One variable. The alias IS the name, so the definition carries only what the name does not.
 const DEFINITION: JsonSchema = {
     type: "object",
@@ -57,6 +61,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     readonly summary = "Read and shape the environment your commands run in";
     readonly definitionSchema = DEFINITION;
     readonly scope = "worker" as const;
+    readonly aliasPattern = NAME;
     readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
     readonly discovery = {
         details: "`discover` is this installation's configuration catalog: every knob an installed "
@@ -102,7 +107,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
         const record = input as { alias?: unknown; definition?: unknown };
         const alias = typeof record.alias === "string" ? record.alias : "";
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(alias)) {
+        if (!NAME.test(alias)) {
             throw actionError("name-invalid", 400,
                 `'${alias}' is not a name a shell can export.`, { retryable: false });
         }

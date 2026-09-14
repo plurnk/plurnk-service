@@ -146,6 +146,10 @@ export interface FunctionalityAdapter {
     // is context rather than capability. Absent means workspace, so every existing family is
     // unchanged. The coordinator keys durable state and the locally-owned origin by this.
     readonly scope?: "workspace" | "worker";
+    // The alias grammar the coordinator enforces for this family. Absent means the shared default
+    // (`[a-z][a-z0-9-]*`, the shape skill names and MCP server ids already take); env declares the
+    // shell's, because the alias IS the variable name and case is semantic there.
+    readonly aliasPattern?: RegExp;
     // The one publication owner for this family's runtimes and state.
     readonly namespaceOwner: string;
     readonly summary: string;

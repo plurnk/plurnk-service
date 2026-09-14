@@ -93,6 +93,9 @@ interface WorkspaceFamily {
 const STATE_VERSION = 1;
 const FAMILY = /^[a-z][a-z0-9]*$/u;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
+// A family may declare its own alias grammar ({§functionality-adapter}); the coordinator enforces it
+// wherever an alias enters: admission, the service projection, and persisted state.
+const aliasPattern = (adapter: FunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
 const SCHEMA = (name: string): JsonSchema => ({ $ref: `https://schemas.plurnk.xyz/v0/${name}.json` });
 const ALIAS_INPUT: JsonSchema = Object.freeze({
@@ -329,7 +332,7 @@ export default class Functionality {
         }
         const definitions: Record<string, DefinitionRecord> = {};
         for (const [alias, value] of Object.entries(raw.definitions)) {
-            if (!ALIAS.test(alias) || !isRecord(value)) throw new Error(`Functionality state for ${adapter.family} has an invalid alias '${alias}'.`);
+            if (!aliasPattern(adapter).test(alias) || !isRecord(value)) throw new Error(`Functionality state for ${adapter.family} has an invalid alias '${alias}'.`);
             const { origin, enabled, definition } = value;
             if ((origin !== "service" && origin !== "workspace" && origin !== "worker") || typeof enabled !== "boolean") {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' is malformed.`);
@@ -353,7 +356,7 @@ export default class Functionality {
     async #effective(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
         const effective = new Map<string, EffectiveDefinition>();
         for (const service of await adapter.available(identity)) {
-            if (!ALIAS.test(service.alias)) throw new Error(`${adapter.family} service alias '${service.alias}' must match ${ALIAS}.`);
+            if (!aliasPattern(adapter).test(service.alias)) throw new Error(`${adapter.family} service alias '${service.alias}' must match ${aliasPattern(adapter)}.`);
             const record = state.definitions[service.alias];
             const enabled = record?.origin === "service" ? record.enabled : service.enabled;
             effective.set(service.alias, { alias: service.alias, origin: "service", definition: service.definition, enabled });
@@ -416,7 +419,7 @@ export default class Functionality {
             case "add": {
                 const admitted = await adapter.admit(input, identity, caller);
                 alias = admitted.alias;
-                if (!ALIAS.test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${ALIAS}.`, { alias, retryable: false });
+                if (!aliasPattern(adapter).test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${aliasPattern(adapter)}.`, { alias, retryable: false });
                 // A workspace definition may shadow a service definition of the same
                 // alias; removing it reveals the service baseline again, disabled.
                 const current = effective.get(alias);

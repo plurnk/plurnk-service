@@ -23,6 +23,17 @@ test("{§functionality-scope} env declares worker scope; its definitions belong 
     assert.equal(adapter.family, "env");
 });
 
+// The coordinator's shared grammar is lowercase-hyphen (skill names, MCP server ids). An
+// environment variable is uppercase with underscores, and its case is semantic, so the family
+// declares the shell's grammar and the coordinator enforces that one instead.
+test("{§functionality-adapter} env declares the shell's alias grammar: PATH is an alias, path-1 is not", () => {
+    assert.equal(adapter.aliasPattern.test("PATH"), true);
+    assert.equal(adapter.aliasPattern.test("CARGO_TARGET_DIR"), true);
+    assert.equal(adapter.aliasPattern.test("_leading_underscore"), true);
+    assert.equal(adapter.aliasPattern.test("path-1"), false, "the shared lowercase-hyphen shape is not a shell name");
+    assert.equal(adapter.aliasPattern.test("9NOPE"), false);
+});
+
 test("{§env-functionality} admit accepts a name a shell can export", async () => {
     const admitted = await adapter.admit({ alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } }, identity);
     assert.deepEqual(admitted, { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });

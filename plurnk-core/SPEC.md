@@ -3460,7 +3460,11 @@ Retryability describes the actual failed condition, not its numeric status.
 
 §functionality-adapter **An adapter owns protocol truth.** It declares its
 family, namespace owner, definition schema, contributed defaults, discovery,
-admission, preparation, and teardown. Admission distinguishes explicit client
+admission, preparation, and teardown, and its alias grammar when that is not
+the shared lowercase-hyphen one: the coordinator enforces whichever grammar the
+family declares, at admission, in the service projection, and on persisted
+state, so an environment variable's name is an alias exactly as a skill name
+is. Admission distinguishes explicit client
 actions from model operations where the family contract requires it
 ({§members-model-scope}). Preparation returns runtimes, documents, per-alias
 outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
