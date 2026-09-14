@@ -125,7 +125,7 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 |-----------------|--------------------------------|
 | `<L>`, `<@hash>` | one line |
 | `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
-| `<SL,SC,EL,EC>` | start included, end excluded — `<2,1,2,5>` is columns 1-4 of line 2 |
+| `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
 > [!CAUTION]
@@ -145,3 +145,6 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 
 > [!TIP]
 > The `[metadata]` parameter accepts a `[{"pattern":"matcher"}]` option for patterns that cannot be inline.
+
+> [!TIP]
+> All pattern dialects are valid for all mimetypes.
