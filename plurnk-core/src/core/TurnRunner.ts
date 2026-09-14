@@ -5,7 +5,7 @@ import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@p
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
-import type { Notice } from "@plurnk/plurnk-contracts";
+import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
@@ -22,7 +22,7 @@ import Meta, { type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
-import GitState from "./git-state.ts";
+import GitState, { type GitStatusSnapshot } from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -50,7 +50,7 @@ export const resolveOperatorGrammarPath = (value: string): string => {
 import PacketWire from "./packet-wire.ts";
 import ReasoningView from "./ReasoningView.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
-import Turn, { type InferenceEvidence } from "./Turn.ts";
+import Turn, { type InferenceEvidence, type TurnRow } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 
 // TurnRunner owns one inference cycle and any initialization turn
@@ -288,6 +288,153 @@ type WarmWorkspace = (
     materialize?: boolean,
 ) => Promise<void>;
 
+// runTurn is six phases over four records. The turn container (phase 1) is what
+// derivation (2) and the initialization turn read; the request (3) is what the
+// provider attempt loop (4) sends and may rebuild, over its own bookkeeping; the
+// emission (4) is what admission (5) and settlement (6) consume. Each record names
+// exactly the locals that cross its phase boundary.
+
+// runTurn's arguments with their defaults applied.
+type TurnArgs = {
+    readonly provider: Provider;
+    readonly childProvider: Provider;
+    readonly messages: ChatMessage[];
+    readonly recap: string;
+    readonly workspaceId: number;
+    readonly workerId: number;
+    readonly loopId: number;
+    readonly signal: AbortSignal | undefined;
+    readonly onDispatch: ((logEntryId: number) => void) | undefined;
+    readonly onSettled: ((logEntryId: number) => void | Promise<void>) | undefined;
+    readonly turnNumber: number;
+    readonly allowUnobservedRetrievalCompletion: boolean;
+    readonly invalidEmissionRecoveryEntryId: number | null | undefined;
+};
+
+type LoopPromptRow = {
+    prompt: string;
+    prompt_source: string | null;
+    sequence: number;
+    open_paths: string;
+    prompt_published: number;
+    prompt_pathname: string | null;
+};
+
+// {§prompt-entry} — the loop's prompt, framed for its one durable publication.
+type PromptPublication = {
+    readonly content: string;
+    readonly source: string | null;
+    readonly path: UrlPath;
+    readonly openPaths: string[];
+};
+
+// Phase 1 — the producer-neutral turn container: the turns opened for this cycle
+// and the initialization plan the worker's first turn executes. The model turn is
+// opened here only when no initialization turn precedes it.
+type TurnContainer = {
+    readonly workerName: string;
+    readonly transientOpenLogEntryId: number | null;
+    readonly loopRow: LoopPromptRow | undefined;
+    readonly createdTurnIds: number[];
+    readonly initializationTurn: TurnRow | null;
+    readonly initializationPolicies: CapabilityPolicy[];
+    readonly initializationStatements: InternalTurnStatement[];
+    readonly modelTurn: TurnRow | null;
+    readonly systemCtx: PlurnkSchemeContext;
+    readonly promptPublication: PromptPublication | null;
+};
+
+// What packet assembly reads from the turn; capacity recovery rebuilds from the same facts.
+type PacketFacts = {
+    readonly turnId: number;
+    readonly seq: number;
+    readonly gitStatus: GitStatusSnapshot | null;
+    readonly notices: Notice[];
+    readonly transientOpenLogEntryId: number | null;
+    promptProjection: "automatic" | "withheld";
+};
+
+// Phase 3 — the model request: the inference turn's identity, its action cursor and
+// the packet, which the attempt loop re-attributes per call and capacity recovery rebuilds.
+type TurnRequest = PacketFacts & {
+    readonly createdTurnIds: number[];
+    readonly loopSeq: number;
+    readonly systemCtx: PlurnkSchemeContext;
+    nextActionIndex: number;
+    packet: RequestPacket;
+};
+
+// Phase 4 — the attempt loop's bookkeeping: every logical provider call's durable
+// identities, the recovery clock ({§provider-recovery}) and the wire spend, shared
+// with the failure handler.
+type ProviderAttempts = {
+    wire: MaterializedModelRequest;
+    response: ProviderAttempt | undefined;
+    split: SplitProviderResponse | undefined;
+    railGrammar: string | undefined;
+    railEvidence: GrammarEvidence | undefined;
+    emissionAttempts: number;
+    callInFlight: boolean;
+    modelCallSequence: number;
+    currentEmissionAttempt: number;
+    attemptId: number | null;
+    modelCall: ModelCall | null;
+    recoveryStartedAt: number | null;
+    recoveryFailures: number;
+    parked: boolean;
+    attributions: string[];
+    readonly recoveryBudget: number;
+    readonly recoveryBackoff: number;
+    readonly signal: AbortSignal | undefined;
+    readonly client: string | null;
+    readonly providerWorkerId: string;
+    readonly primaryWorkerId: string;
+    // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
+    // for, successes and failed calls alike, so the completion notice carries
+    // the exact settled wire spend.
+    readonly turnWireAccounting: ProviderRequestAccounting[];
+};
+
+// The completed exchange the attempt loop settled on, as admission and settlement read it.
+type ProviderEmission = {
+    readonly response: ProviderAttempt;
+    readonly split: SplitProviderResponse;
+    readonly modelCallId: number;
+    readonly railGrammar: string | undefined;
+    readonly railEvidence: GrammarEvidence | undefined;
+    readonly emissionAttempts: number;
+    readonly signal: AbortSignal | undefined;
+    readonly primaryWorkerId: string;
+};
+
+// {§notifications-reasoning-event} — the per-call observer a provider streams reasoning through.
+type ReasoningObserver = {
+    readonly observeRequest: (...args: Parameters<ModelCall["observeRequest"]>) => ReturnType<ModelCall["observeRequest"]>;
+    readonly observeReasoning: ((delta: string) => void) | undefined;
+    readonly end: () => void;
+};
+
+// Every turn result carries the same shape; a diversion names only what differs.
+const turnResult = (
+    { createdTurnIds, turnId }: Pick<TurnRequest, "createdTurnIds" | "turnId">,
+    status: number,
+    facts: Partial<EngineTurnResult> = {},
+): EngineTurnResult => ({
+    createdTurnIds,
+    turnId,
+    producer: "model",
+    kind: "inference",
+    status,
+    outcomes: [],
+    fingerprint: "",
+    capacityHardStop: false,
+    providerParked: false,
+    steerStruck: false,
+    emptyTurn: false,
+    emissionAttempts: 0,
+    emissionExhausted: false,
+    ...facts,
+});
 export default class TurnRunner {
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
@@ -515,10 +662,13 @@ export default class TurnRunner {
         return { messages, nativeInputs: [...nativeInputs] };
     }
 
+    // One inference cycle: the six phases in order, over the records declared above.
+    // A diversion (curation overflow, a provider failure, an exhausted emission)
+    // completes the turn and returns; anything else that throws fails every turn
+    // this cycle opened.
     async runTurn({
         provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
-        turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
-        allowUnobservedRetrievalCompletion = false,
+        turnNumber = 1, invalidEmissionRecoveryEntryId, allowUnobservedRetrievalCompletion = false,
     }: {
         provider: Provider;
         childProvider?: Provider;
@@ -532,21 +682,61 @@ export default class TurnRunner {
         // Model-attempt ordinal in the surrounding loop. Attempt 1 admits the
         // initial prompt only while its durable publication is still absent.
         turnNumber?: number;
-        maxTurns?: number;
         allowUnobservedRetrievalCompletion?: boolean;
         // An id identifies the rejected row informing this turn ({§engine-rails}
         // Contract Strikes: recovery is informed when the rail permits continuation).
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
+        const args: TurnArgs = {
+            provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
+            turnNumber, invalidEmissionRecoveryEntryId, allowUnobservedRetrievalCompletion,
+        };
+        const createdTurnIds: number[] = [];
+        try {
+            const container = await this.#openTurnContainer(args, createdTurnIds);
+            const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
+            if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn);
+            const request = await this.#composeRequest(args, container, gitStatus);
+            const overflow = this.#packets.curationOverflow(request.packet);
+            if (overflow !== null) return await this.#failCuration(request, overflow);
+            const attempts = await this.#prepareProviderAttempts(args, request);
+            let emission: ProviderEmission;
+            try {
+                emission = await this.#attemptProvider(args, request, attempts);
+            } catch (error) {
+                return await this.#settleProviderFailure(error, args, request, attempts);
+            }
+            if (!emission.split.emissionValid) return await this.#rejectExhaustedEmission(args, request, emission);
+            await this.#recordAdmittedEmission(args, request, emission);
+            return await this.#settleAdmittedTurn(args, request, emission);
+        } catch (cause) {
+            const completionFailures: unknown[] = [];
+            for (const createdTurnId of createdTurnIds) {
+                try {
+                    await Turn.failOpen(this.#db, createdTurnId);
+                } catch (completionCause) {
+                    completionFailures.push(completionCause);
+                }
+            }
+            if (completionFailures.length > 0) {
+                throw new AggregateError(
+                    [cause, ...completionFailures],
+                    "turn execution failed and its open turn containers could not all be completed",
+                );
+            }
+            throw cause;
+        }
+    }
+
+    // Phase 1 — the producer-neutral turn container. Every producer opens the same
+    // durable turn and completes it only after its ordered operations settle; model
+    // packets and provider metadata are optional inference evidence, not turn identity.
+    async #openTurnContainer(args: TurnArgs, createdTurnIds: number[]): Promise<TurnContainer> {
+        const { workspaceId, workerId, loopId, turnNumber, invalidEmissionRecoveryEntryId } = args;
         const workerName = await WorkerName.forId(this.#db, workerId);
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
             ? invalidEmissionRecoveryEntryId
             : null;
-        // === Producer-neutral turn container ===
-        //
-        // Every producer opens the same durable turn and completes it only
-        // after its ordered operations settle. Model packets and provider
-        // metadata are optional inference evidence, not turn identity.
         const initialSequence = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         if (initialSequence === undefined) throw new Error("Engine.runTurn: next turn sequence is unavailable");
         // Turn-0 foists that belong to the Worker (catalog preview, AGENTS) gate
@@ -556,20 +746,11 @@ export default class TurnRunner {
         // {§prompt-entry} still fires once per loop. Durable publication state,
         // rather than the model-turn ordinal, prevents an overflow diversion
         // from replaying the prompt and its automatic path READs.
-        const loopRow = await this.#db.engine_get_loop_prompt.get<{
-            prompt: string;
-            prompt_source: string | null;
-            sequence: number;
-            open_paths: string;
-            prompt_published: number;
-            prompt_pathname: string | null;
-        }>({ loop_id: loopId });
+        const loopRow = await this.#db.engine_get_loop_prompt.get<LoopPromptRow>({ loop_id: loopId });
         const priorInference = await this.#db.engine_worker_has_inference_history.get<{ present: number }>({
             worker_id: workerId,
         });
         const workerFirstInference = priorInference?.present === 0;
-        const createdTurnIds: number[] = [];
-        try {
         // {§worker-initialization-entry} — turn zero is an ordinary `_plurnk`
         // operation turn. Its model-facing zero is a phase label; durable turn
         // coordinates remain one-based.
@@ -579,13 +760,8 @@ export default class TurnRunner {
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
         const initializationPolicies = initializationTurn === null
             ? []
-            : (await CapabilityPolicies.layers(
-                this.#db,
-                workspaceId,
-            )).map((layer) => layer.policy);
-        const initializationAdmits = (statement: InternalTurnStatement): boolean =>
-            this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies);
-        let modelTurn = initializationTurn === null
+            : (await CapabilityPolicies.layers(this.#db, workspaceId)).map((layer) => layer.policy);
+        const modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
         if (modelTurn !== null) createdTurnIds.push(modelTurn.id);
@@ -598,25 +774,7 @@ export default class TurnRunner {
         if (ambientCursor?.ambient_event_cursor === null || ambientCursor === undefined) {
             throw new Error(`worker ${workerId} has no durable ambient observation boundary`);
         }
-        // Threaded per turn, never engine state, so concurrent loops on
-        // different providers each read their own honest tokenizer values.
-        const systemContext = (contextTurnId: number): PlurnkSchemeContext => ({
-            db: this.#db, workspaceId, workerId, loopId, turnId: contextTurnId,
-            writer: "_plurnk",
-            signal: this.#loopSignal(loopId),
-            streamEventNotify: this.#streamEventNotify,
-            wakeWorkerNotify: this.#wakeWorkerNotify,
-            weigh: this.#weighContent,
-            mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
-            pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
-            requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
-                request,
-                { workspaceId, workerId, loopId, turnId: contextTurnId },
-                signal,
-            ),
-        });
-        let systemCtx = systemContext(initializationTurn?.id ?? modelTurn!.id);
+        const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
         // {§prompt-entry} — the prompt entry exists before any turn of the loop
         // runs; its `prompt` log row is published to the model turn below (one
         // durable publication per loop, decided by that row).
@@ -636,32 +794,62 @@ export default class TurnRunner {
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and an ordinary TASK.
+        // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
+        // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
+        // loop, so local repo guidance is visible turn-0 content. Global policy
+        // stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
-            // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
-            // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
-            // loop, so local repo guidance is visible turn-0 content. Global policy
-            // stays in the system prompt; nothing else is force-read.
-            if (workerFirstInference) {
-                const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId,
-                    scheme: "worker",
-                    authority: "",
-                    pathname: generatedPathname("/agents.md"),
-                });
-                if (agentsEntry !== undefined) {
-                    const agentsTarget: UrlPath = {
-                        kind: "url", raw: "worker:///_plurnk/agents.md", scheme: "worker",
-                        username: null, password: null, hostname: null, port: null,
-                        pathname: generatedPathname("/agents.md"), query: null, fragment: null,
-                    };
-                    const agentsRead: ReadStatement = {
-                        op: "READ", aside: null, target: agentsTarget,
-                        metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
-                    };
-                    initializationStatements.push(agentsRead);
-                }
+            const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
+                workspace_id: workspaceId,
+                scheme: "worker",
+                authority: "",
+                pathname: generatedPathname("/agents.md"),
+            });
+            if (agentsEntry !== undefined) {
+                const agentsTarget: UrlPath = {
+                    kind: "url", raw: "worker:///_plurnk/agents.md", scheme: "worker",
+                    username: null, password: null, hostname: null, port: null,
+                    pathname: generatedPathname("/agents.md"), query: null, fragment: null,
+                };
+                const agentsRead: ReadStatement = {
+                    op: "READ", aside: null, target: agentsTarget,
+                    metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+                };
+                initializationStatements.push(agentsRead);
             }
         }
+        return {
+            workerName, transientOpenLogEntryId, loopRow, createdTurnIds,
+            initializationTurn, initializationPolicies, initializationStatements,
+            modelTurn, systemCtx, promptPublication,
+        };
+    }
+
+    // The `_plurnk` scheme context for one turn. Threaded per turn, never engine
+    // state, so concurrent loops on different providers each read their own honest
+    // tokenizer values.
+    #schemeContext({ workspaceId, workerId, loopId }: TurnArgs, turnId: number): PlurnkSchemeContext {
+        return {
+            db: this.#db, workspaceId, workerId, loopId, turnId,
+            writer: "_plurnk",
+            signal: this.#loopSignal(loopId),
+            streamEventNotify: this.#streamEventNotify,
+            wakeWorkerNotify: this.#wakeWorkerNotify,
+            weigh: this.#weighContent,
+            mimetypes: this.#mimetypes,
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
+            pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+            requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
+                request,
+                { workspaceId, workerId, loopId, turnId },
+                signal,
+            ),
+        };
+    }
+
+    // Phase 2 — membership and derivation to completion, then the one git snapshot
+    // every packet rebuild reads.
+    async #deriveWorkspace({ workspaceId, loopId }: TurnArgs, systemCtx: PlurnkSchemeContext): Promise<GitStatusSnapshot | null> {
         // The persistent search-index pass (_search-index.maintain) attaches
         // every readable entry/log projection to complete graph/FTS derivations.
         // NOT an action: no log entry, no sequence slot,
@@ -690,193 +878,230 @@ export default class TurnRunner {
         // construction. Membership is already current, so this pass does not
         // consume the filesystem divergences a second time.
         await this.#warmWorkspace(systemCtx, true, false);
+        return gitStatus;
+    }
 
+    // {§worker-initialization-entry} — the worker's first turn is the worked example
+    // itself: the actual orienting operations and an ordinary TASK, executed as a
+    // complete turn before the model boundary.
+    async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow): Promise<void> {
+        const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
+        const { loopRow, initializationStatements, initializationPolicies } = container;
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
         // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
         // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
         // and named scratch, in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
-        if (initializationTurn !== null) {
-            // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
-            const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
-            const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-            if (filesItems !== null && workerFirstInference) { // {§actor-boundary-catalog-preview} — once per worker
-                const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
-                const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
-                const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-                // {§tools-resource-materialization} — expanded families project complete
-                // invocation blocks, paged through ordinary FIND result ranges.
-                const registry = this.#executors();
-                const plurnkCatalog = workerCatalogTarget("plurnk");
-                const toolsCatalog = workerCatalogTarget("tools");
-                const toolExpansions: Array<{ statement: FindStatement | ReadStatement }> = [];
-                for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
-                    const entry = registry?.entry(tag, workspaceId);
-                    if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
-                    const tools = registry?.toolRegistry(tag, workspaceId);
-                    const admittedTools = tools?.tools.filter((tool) =>
-                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, initializationPolicies)) ?? [];
-                    if (admittedTools.length === 0) continue;
-                    const targetFilter = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
-                        ? " \\((?:" + admittedTools.map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target))).join("|") + ")\\)"
-                        : " ";
-                    const pattern = "^(\x60{3,})" + regexLiteral(tag) + targetFilter + "[^\\n]*?(?:\\1|\\n[\\s\\S]*?\\n\\1)$";
-                    toolExpansions.push({
-                        statement: {
-                            op: "FIND", aside: null,
-                            target: { kind: "url", raw: `worker:///_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
-                            metadata: null,
-                            matcher: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
-                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
-                        },
-                    });
-                }
-                const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
-                    {
-                        statement: {
-                            op: "FIND", aside: null,
-                            target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                    },
-                    ...(plurnkCatalog === null ? [] : [{
-                        statement: {
-                            op: "FIND", aside: null,
-                            target: plurnkCatalog,
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        } satisfies FindStatement,
-                    }]),
-                    ...(toolsCatalog === null ? [] : [{
-                        // {§tools-resource-materialization} — enabled tool families
-                        // (MCP servers) survey at family level; each row's summary is
-                        // the server one-liner or its flagship invocation form, so the
-                        // discovery row itself orients. Servers named in
-                        // PLURNK_MCP_EXPANDED add a second survey of their complete
-                        // tool tree.
-                        statement: {
-                            op: "FIND", aside: null,
-                            target: toolsCatalog,
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        } satisfies FindStatement,
-                    }]),
-                    ...toolExpansions,
-                    {
-                        // {§a2a-agents-catalog} — enabled outbound agents survey at
-                        // alias level; each row's summary is the agent's identity line,
-                        // the exact card stays pullable through READ a2a://<alias>.
-                        statement: {
-                            op: "FIND", aside: null,
-                            target: { kind: "url", raw: "worker:///_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                    },
-                    {
-                        // {§members-projection} — enabled members definitions survey at alias
-                        // level; each row's summary is what its glob resolved to.
-                        statement: {
-                            op: "FIND", aside: null,
-                            target: { kind: "url", raw: "worker:///_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                    },
-                    {
-                        statement: {
-                            op: "FIND", aside: "project root member files",
-                            target: { kind: "local", raw: "*" },
-                            metadata: null,
-                            matcher: null,
-                            body: null,
-                            lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
-                            position: UNKNOWN_POSITION,
-                        },
-                    },
-                    {
-                        statement: {
-                            op: "FIND", aside: "shared worker Extended Context",
-                            target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-                        },
-                    },
-                    {
-                        statement: {
-                            op: "FIND", aside: "private worker Extended Context",
-                            target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
-                            metadata: null,
-                            matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-                        },
-                    },
-                ];
-                initializationStatements.push(...surveys.map(({ statement }) => statement).filter(({ target }) =>
-                    this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined));
-            }
-            const task: DispositionStatement = {
-                op: "TASK", aside: null, target: null, metadata: null, lineMarker: null,
-                body: [{ content: "Address the prompt.", status: "in_progress" }],
-                position: UNKNOWN_POSITION,
-            };
-            const pathname = `/${loopRow!.sequence}/${initializationTurn.sequence}`;
-            await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", ReasoningView.initialSource());
-            // {§reasoning-initial-read} — the pattern READ needs a text/plain projection to run the regex.
-            const pluck = await this.#mimetypes.getHandler("text/plain") !== null;
-            const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence, pluck);
-            if (reasoningRead !== null) initializationStatements.push(reasoningRead);
-            initializationStatements.push({
-                op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
-                target: {
-                    kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
-                    username: null, password: null, hostname: null, port: null, query: null, fragment: null,
-                },
-                lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            });
-            // {§prompt-entry} — the prompt reaches the model as its `prompt` row in the first
-            // model turn; initialization does not READ it a second time.
-            initializationStatements.push(task);
-            const admittedInitializationStatements = initializationStatements.filter(initializationAdmits);
-            const source = TurnOps.renderInternal(admittedInitializationStatements);
-            const admitted = TurnOps.parseInternal(source);
-            const result = await this.executeAdmittedTurn({
-                statements: admitted,
-                source,
-                origin: "_plurnk",
-                workspaceId,
-                workerId,
-                loopId,
-                turnId: initializationTurn.id,
-                fromSequence: 1,
-                failOnOperationError: true,
-                signal: this.#loopSignal(loopId),
-                onDispatch,
-                onSettled,
-            });
-            if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-                throw new Error(`initialization TASK returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
-            }
+        // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
+        const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
+        const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
+        if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
+            initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
+        const task: DispositionStatement = {
+            op: "TASK", aside: null, target: null, metadata: null, lineMarker: null,
+            body: [{ content: "Address the prompt.", status: "in_progress" }],
+            position: UNKNOWN_POSITION,
+        };
+        const pathname = `/${loopRow!.sequence}/${initializationTurn.sequence}`;
+        await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", ReasoningView.initialSource());
+        // {§reasoning-initial-read} — the pattern READ needs a text/plain projection to run the regex.
+        const pluck = await this.#mimetypes.getHandler("text/plain") !== null;
+        const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence, pluck);
+        if (reasoningRead !== null) initializationStatements.push(reasoningRead);
+        initializationStatements.push({
+            op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
+            target: {
+                kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
+                username: null, password: null, hostname: null, port: null, query: null, fragment: null,
+            },
+            lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+        });
+        // {§prompt-entry} — the prompt reaches the model as its `prompt` row in the first
+        // model turn; initialization does not READ it a second time.
+        initializationStatements.push(task);
+        const admittedInitializationStatements = initializationStatements.filter((statement) =>
+            this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies));
+        const source = TurnOps.renderInternal(admittedInitializationStatements);
+        const admitted = TurnOps.parseInternal(source);
+        const result = await this.executeAdmittedTurn({
+            statements: admitted,
+            source,
+            origin: "_plurnk",
+            workspaceId,
+            workerId,
+            loopId,
+            turnId: initializationTurn.id,
+            fromSequence: 1,
+            failOnOperationError: true,
+            signal: this.#loopSignal(loopId),
+            onDispatch,
+            onSettled,
+        });
+        if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
+            throw new Error(`initialization TASK returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+        }
+    }
 
+    // {§actor-boundary-catalog-preview} — the opening surveys, each admitted only when
+    // its scheme is registered for the workspace. A positive filesItems caps the
+    // project rows.
+    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies }: TurnContainer, filesItems: number): Promise<InternalTurnStatement[]> {
+        const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
+        const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
+        const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
+        const surveys: Array<FindStatement | ReadStatement> = [
+            {
+                op: "FIND", aside: null,
+                target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            {
+                op: "FIND", aside: null,
+                target: workerCatalogTarget("plurnk"),
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            {
+                // {§tools-resource-materialization} — enabled tool families
+                // (MCP servers) survey at family level; each row's summary is
+                // the server one-liner or its flagship invocation form, so the
+                // discovery row itself orients. Servers named in
+                // PLURNK_MCP_EXPANDED add a second survey of their complete
+                // tool tree.
+                op: "FIND", aside: null,
+                target: workerCatalogTarget("tools"),
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            ...this.#toolExpansions(workspaceId, initializationPolicies),
+            {
+                // {§a2a-agents-catalog} — enabled outbound agents survey at
+                // alias level; each row's summary is the agent's identity line,
+                // the exact card stays pullable through READ a2a://<alias>.
+                op: "FIND", aside: null,
+                target: { kind: "url", raw: "worker:///_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            {
+                // {§members-projection} — enabled members definitions survey at alias
+                // level; each row's summary is what its glob resolved to.
+                op: "FIND", aside: null,
+                target: { kind: "url", raw: "worker:///_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            {
+                op: "FIND", aside: "project root member files",
+                target: { kind: "local", raw: "*" },
+                metadata: null,
+                matcher: null,
+                body: null,
+                lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
+                position: UNKNOWN_POSITION,
+            },
+            {
+                op: "FIND", aside: "shared worker Extended Context",
+                target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            },
+            {
+                op: "FIND", aside: "private worker Extended Context",
+                target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            },
+        ];
+        return surveys.filter(({ target }) =>
+            this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined);
+    }
+
+    // {§tools-resource-materialization} — expanded families project complete
+    // invocation blocks, paged through ordinary FIND result ranges: one pattern FIND
+    // per family, naming the admitted tools when the policy narrows them.
+    #toolExpansions(workspaceId: number, policies: CapabilityPolicy[]): FindStatement[] {
+        const registry = this.#executors();
+        const expansions: FindStatement[] = [];
+        for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
+            const entry = registry?.entry(tag, workspaceId);
+            if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
+            const tools = registry?.toolRegistry(tag, workspaceId);
+            const admittedTools = tools?.tools.filter((tool) =>
+                this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)) ?? [];
+            if (admittedTools.length === 0) continue;
+            const targetFilter = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
+                ? " \\((?:" + admittedTools.map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target))).join("|") + ")\\)"
+                : " ";
+            const pattern = "^(\x60{3,})" + regexLiteral(tag) + targetFilter + "[^\\n]*?(?:\\1|\\n[\\s\\S]*?\\n\\1)$";
+            expansions.push({
+                op: "FIND", aside: null,
+                target: { kind: "url", raw: `worker:///_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
+                metadata: null,
+                matcher: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
+                body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            });
+        }
+        return expansions;
+    }
+
+    // Phase 3 — the inference turn and its request: the prompts the model has not
+    // seen, their open-path READs, the ambient and stream deltas, then the packet
+    // ({§packet-stored-shape}).
+    async #composeRequest(args: TurnArgs, container: TurnContainer, gitStatus: GitStatusSnapshot | null): Promise<TurnRequest> {
+        const { workspaceId, workerId, loopId } = args;
         // Initialization is a complete preceding turn, not a set of rows
         // interleaved with the model boundary. The engine may now acquire the
         // inference turn inside the same warmed workspace cycle.
-        if (modelTurn === null) {
-            modelTurn = await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" });
-            createdTurnIds.push(modelTurn.id);
-        }
-        const seq = modelTurn.sequence;
-        const turnId = modelTurn.id;
-        systemCtx = systemContext(turnId);
+        const modelTurn = container.modelTurn ?? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" });
+        if (container.modelTurn === null) container.createdTurnIds.push(modelTurn.id);
+        const { id: turnId, sequence: seq } = modelTurn;
+        const systemCtx = this.#schemeContext(args, turnId);
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        const prompts = await this.#publishPrompts(args, container, turnId, loopSeq);
+        let nextActionIndex = await this.#readOpenPaths(args, turnId, prompts.openPaths, prompts.nextActionIndex);
+        // {§env-delta-log-pull} — materialize ambient observations before packet
+        // composition and reserve their action indices. {§exec-stream} owns the
+        // distinct byte-cursor path for this worker's streams.
+        // {§exec-poll} — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
+        // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
+        // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
+        await this.#reapTurnScopedStreams(workerId);
+        nextActionIndex += await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        // The post-reconciliation Git snapshot above is threaded into the packet
+        // and every budget rebuild; overflow never shells again.
+        // Notices are non-terminal observations, never operation-failure truth.
+        // Drain once and thread the same set through every overflow rebuild.
+        const notices = this.#notices.drain(loopId)
+            .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
+        // Build the model request packet ({§packet-stored-shape}). The log build
+        // queries log_entries scoped to the worker — the prompt entry just
+        // written (if turn 1) is part of that query result.
+        const facts: PacketFacts = { turnId, seq, gitStatus, notices, transientOpenLogEntryId: container.transientOpenLogEntryId, promptProjection: "automatic" };
+        let packet = await this.#buildPacket(args, facts);
+        // {§context-output-admission} — output admission changes no operation
+        // outcome, authored inventory, or turn identity.
+        if (await this.#packets.admitOutput(packet, turnId)) packet = await this.#buildPacket(args, facts);
+        return { ...facts, createdTurnIds: container.createdTurnIds, loopSeq, systemCtx, nextActionIndex, packet };
+    }
 
-        // Pre-model writes. Each prompt the model has not seen yet becomes a
-        // `prompt` operation row whose target is its durable prompt:// entry.
-        // Model operations continue the same turn sequence after these rows.
+    // Pre-model writes. Each prompt the model has not seen yet becomes a `prompt`
+    // operation row whose target is its durable prompt:// entry; model operations
+    // continue the same turn sequence after these rows. Returns the next action index
+    // and the frames' open paths.
+    async #publishPrompts(
+        { workerId, loopId, onDispatch, onSettled }: TurnArgs,
+        { workerName, promptPublication }: TurnContainer,
+        turnId: number,
+        loopSeq: number,
+    ): Promise<{ nextActionIndex: number; openPaths: string[] }> {
         let nextActionIndex = 1;
-        const turnOpenPaths: string[] = [];
+        const openPaths: string[] = [];
         if (promptPublication !== null) { // {§prompt-entry} — one durable publication per loop
-            turnOpenPaths.push(...promptPublication.openPaths);
+            openPaths.push(...promptPublication.openPaths);
             const promptLogId = await this.#materialization.writePromptLog({
                 workerId,
                 loopId,
@@ -889,46 +1114,45 @@ export default class TurnRunner {
             onDispatch?.(promptLogId);
             await onSettled?.(promptLogId);
         }
-
         // {§prompt-loop-containment}: the loop contains every prompt that arrived
         // while it ran. Publish each undelivered frame oldest-first exactly once.
-        {
-            const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
-            const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const prefix = promptLoopPrefix(loopSeq);
-            const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
-                worker_id: workerId,
-                pattern: `${prefix}%`,
-                prefix_len: prefix.length,
-                loop_id: loopId,
-            }))
-                .filter((row) => typeof row.content === "string" && row.content.length > 0);
-            for (const injectedRow of undelivered) {
-                const attributes = parsePromptAttributes(injectedRow.attributes, `Prompt ${injectedRow.pathname} attributes`);
-                if (attributes.openPaths !== undefined) {
-                    turnOpenPaths.push(...assertOpenPaths(attributes.openPaths, `Prompt ${injectedRow.pathname} openPaths`));
-                }
-                const promptLogId = await this.#materialization.writePromptLog({
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: nextActionIndex++,
-                    target: promptTarget(workerName, injectedRow.pathname),
-                    content: injectedRow.content,
-                    source: promptSourceFromAttributes(
-                        attributes,
-                        `Prompt ${injectedRow.pathname} attributes`,
-                    ),
-                });
-                onDispatch?.(promptLogId);
-                await onSettled?.(promptLogId);
+        const prefix = promptLoopPrefix(loopSeq);
+        const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
+            worker_id: workerId,
+            pattern: `${prefix}%`,
+            prefix_len: prefix.length,
+            loop_id: loopId,
+        }))
+            .filter((row) => typeof row.content === "string" && row.content.length > 0);
+        for (const injectedRow of undelivered) {
+            const attributes = parsePromptAttributes(injectedRow.attributes, `Prompt ${injectedRow.pathname} attributes`);
+            if (attributes.openPaths !== undefined) {
+                openPaths.push(...assertOpenPaths(attributes.openPaths, `Prompt ${injectedRow.pathname} openPaths`));
             }
+            const promptLogId = await this.#materialization.writePromptLog({
+                workerId,
+                loopId,
+                turnId,
+                sequence: nextActionIndex++,
+                target: promptTarget(workerName, injectedRow.pathname),
+                content: injectedRow.content,
+                source: promptSourceFromAttributes(
+                    attributes,
+                    `Prompt ${injectedRow.pathname} attributes`,
+                ),
+            });
+            onDispatch?.(promptLogId);
+            await onSettled?.(promptLogId);
         }
+        return { nextActionIndex, openPaths };
+    }
 
-        // {§methods-loop-run-open-paths}: selected workspace paths belong to
-        // the prompt frame. Publish the frame, then dispatch ordinary core READs
-        // in that same turn; missing/non-member paths retain their normal 4xx.
-        for (const raw of turnOpenPaths) {
+    // {§methods-loop-run-open-paths}: selected workspace paths belong to the prompt
+    // frame. Publish the frame, then dispatch ordinary core READs in that same turn;
+    // missing/non-member paths retain their normal 4xx. Returns the next action index.
+    async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number): Promise<number> {
+        let nextActionIndex = fromSequence;
+        for (const raw of openPaths) {
             const pathname = raw.startsWith("/") ? raw : `/${raw}`;
             const fileRead: ReadStatement = {
                 op: "READ", aside: null, lineMarker: null, matcher: null,
@@ -946,635 +1170,582 @@ export default class TurnRunner {
             });
             nextActionIndex++;
         }
+        return nextActionIndex;
+    }
 
-        // {§env-delta-log-pull} — materialize ambient observations before packet
-        // composition and reserve their action indices. {§exec-stream} owns the
-        // distinct byte-cursor path for this worker's streams.
-        // {§exec-poll} — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
-        // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
-        // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
-        await this.#reapTurnScopedStreams(workerId);
-        nextActionIndex += await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+    #buildPacket({ messages, recap, workspaceId, workerId, loopId, provider }: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {
+        return this.#packets.buildRequestPacket({
+            initialMessages: messages,
+            recap,
+            workspaceId,
+            workerId,
+            loopId,
+            currentTurnSeq: facts.seq,
+            provider,
+            gitStatus: facts.gitStatus,
+            notices: facts.notices,
+            transientOpenLogEntryId: facts.transientOpenLogEntryId,
+            promptProjection: facts.promptProjection,
+            turnId: facts.turnId,
+        });
+    }
 
-        // The post-reconciliation Git snapshot above is threaded into the packet
-        // and every budget rebuild; overflow never shells again.
-        // Notices are non-terminal observations, never operation-failure truth.
-        // Drain once and thread the same set through every overflow rebuild.
-        const notices = this.#notices.drain(loopId)
-            .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
+    // Retained context cannot fit: the turn completes on the curation failure and
+    // the loop rules the terminal.
+    async #failCuration(request: TurnRequest, overflow: CurationOverflow): Promise<EngineTurnResult> {
+        const curationFailure = curationOverflowFailure(overflow);
+        await Turn.complete(this.#db, request.turnId, curationFailure.status);
+        return turnResult(request, curationFailure.status, { curationFailure });
+    }
 
-        // Build the model request packet ({§packet-stored-shape}). The log build
-        // queries log_entries scoped to the worker — the prompt entry just
-        // written (if turn 1) is part of that query result.
-        let promptProjection: "automatic" | "withheld" = "automatic";
-        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        const buildPacket = (): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
-            this.#packets.buildRequestPacket({
-                initialMessages: messages,
-                recap,
-                workspaceId,
-                workerId,
-                loopId,
-                currentTurnSeq: seq,
-                provider,
-                gitStatus,
-                notices,
-                transientOpenLogEntryId,
-                promptProjection,
-                turnId,
-            });
-        let requestPacket = await buildPacket();
-        // {§context-output-admission} — output admission changes no operation
-        // outcome, authored inventory, or turn identity.
-        if (await this.#packets.admitOutput(requestPacket, turnId)) requestPacket = await buildPacket();
-        const remaining = this.#packets.curationOverflow(requestPacket);
-        if (remaining !== null) {
-            const curationFailure = curationOverflowFailure(remaining);
-            await Turn.complete(this.#db, turnId, curationFailure.status);
-            return {
-                createdTurnIds,
-                turnId,
-                producer: "model",
-                kind: "inference",
-                status: curationFailure.status,
-                outcomes: [],
-                fingerprint: "",
-                capacityHardStop: false,
-                providerParked: false,
-                steerStruck: false,
-                emptyTurn: false,
-                emissionAttempts: 0,
-                emissionExhausted: false,
-                curationFailure,
-            };
-        }
-        let materializedRequest = await this.#wireMessages(requestPacket, systemCtx, provider);
-        let modelMessages = materializedRequest.messages;
-        let nativeInputs = materializedRequest.nativeInputs;
-        // Curation pressure and provider generation are independent. The
-        // provider owns its configured total output envelope.
-        let response: ProviderAttempt | undefined;
-        let splitResponse: SplitProviderResponse | undefined;
-        let railGrammar: string | undefined;
-        let railEvidence: GrammarEvidence | undefined;
-        let emissionAttempts = 0;
-        let providerCallInFlight = false;
-        let modelCallSequence = 0;
-        let currentEmissionAttempt = 0;
-        let providerAttemptId: number | null = null;
-        let providerModelCall: ModelCall | null = null;
+    // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
+    // provider sees, the client id and the worker's provider identity.
+    async #prepareProviderAttempts({ provider, workspaceId, workerId, loopId, signal }: TurnArgs, request: TurnRequest): Promise<ProviderAttempts> {
+        const wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
-        let recoveryStartedAt: number | null = null;
-        let recoveryFailures = 0;
-        let providerParked = false;
         const recoveryBudget = readProviderRecovery();
         const recoveryBackoff = readProviderRecoveryBackoff();
-        let providerAttemptAttributions: string[] = [];
         const providerSignal = this.#loopSignal(loopId) ?? signal;
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const providerIdentity = await this.#resolveWorkerProviderIdentity(workerId);
-        const { workerId: providerWorkerId, primaryWorkerId } = providerIdentity;
-        const classifyProviderAttempt = async (
-            id: number,
-            attemptSplit: SplitProviderResponse,
-            emissionAttempt: number,
-            accepted: boolean,
-        ): Promise<void> => {
-            const result = await this.#db.engine_classify_turn_attempt_response.run({
-                id,
-                accepted: accepted ? 1 : 0,
-                parse_errors: JSON.stringify(attemptSplit.parseErrors),
+        const { workerId: providerWorkerId, primaryWorkerId } = await this.#resolveWorkerProviderIdentity(workerId);
+        return {
+            wire,
+            response: undefined,
+            split: undefined,
+            railGrammar: undefined,
+            railEvidence: undefined,
+            emissionAttempts: 0,
+            callInFlight: false,
+            modelCallSequence: 0,
+            currentEmissionAttempt: 0,
+            attemptId: null,
+            modelCall: null,
+            recoveryStartedAt: null,
+            recoveryFailures: 0,
+            parked: false,
+            attributions: [],
+            recoveryBudget,
+            recoveryBackoff,
+            signal: providerSignal,
+            client,
+            providerWorkerId,
+            primaryWorkerId,
+            turnWireAccounting: [],
+        };
+    }
+
+    // Phase 4 — the provider attempt loop. Each iteration is one logical call: a
+    // recoverable failure or a capacity rebuild re-issues the same emission attempt,
+    // an invalid emission spends one, and a valid emission ends the loop
+    // ({§invalid-emission-attempts}).
+    async #attemptProvider(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<ProviderEmission> {
+        const { provider, workspaceId, workerId, loopId, signal } = args;
+        // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
+        if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
+        attempts.railGrammar = await this.#operatorGrammar(provider);
+        const attemptLimit = readEmissionAttempts();
+        const strikeStreak = await this.#strikes.streak(loopId);
+        for (let attempt = 1; attempt <= attemptLimit;) {
+            const verdict = await this.#issueProviderCall(args, request, attempts, attempt, strikeStreak);
+            if (verdict === "admitted") break;
+            if (verdict === "rejected") attempt++;
+        }
+        if (!signal?.aborted) {
+            const wire = aggregateProviderAccounting(attempts.turnWireAccounting);
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn",
+                kind: "turn_generated",
+                level: "info",
+                message: "parsing model response",
+                // {§turn-accounting-notice} (#465) — the exact settled derivation,
+                // never a second stored fact: a live watcher accrues loop cost per turn.
+                accounting: {
+                    requests: attempts.turnWireAccounting.length,
+                    costUsd: wire.costUsd,
+                    inputTokens: wire.usage?.inputTokens ?? null,
+                    outputTokens: wire.usage?.outputTokens ?? null,
+                    reasoningTokens: wire.usage?.outputTokenDetails?.reasoningTokens ?? null,
+                    cacheReadTokens: wire.usage?.inputTokenDetails?.cacheReadTokens ?? null,
+                },
             });
-            if (result.changes !== 1) {
-                throw new Error(`emission attempt ${id} was not awaiting classification`);
-            }
-            emissionAttempts = emissionAttempt;
+        }
+        if (attempts.response === undefined || attempts.split === undefined || attempts.modelCall === null) {
+            throw new Error("provider attempt loop completed without a response");
+        }
+        const emission: ProviderEmission = {
+            response: attempts.response,
+            split: attempts.split,
+            modelCallId: attempts.modelCall.id,
+            railGrammar: attempts.railGrammar,
+            railEvidence: attempts.railEvidence,
+            emissionAttempts: attempts.emissionAttempts,
+            signal: attempts.signal,
+            primaryWorkerId: attempts.primaryWorkerId,
         };
-        const recoverCapacityPacket = async (): Promise<boolean> => {
-            let baselineMessages = modelMessages;
-            if (promptProjection === "automatic") {
-                promptProjection = "withheld";
-                const candidate = await buildPacket();
-                const candidateRequest = await this.#wireMessages(candidate, systemCtx, provider);
-                if (JSON.stringify(candidateRequest.messages) !== JSON.stringify(baselineMessages)) {
-                    requestPacket = candidate;
-                    materializedRequest = candidateRequest;
-                    modelMessages = materializedRequest.messages;
-                    nativeInputs = materializedRequest.nativeInputs;
-                    return true;
-                }
-                baselineMessages = candidateRequest.messages;
-            }
-            return false;
-        };
+        if (emission.split.packetAssistant.reasoning?.length) {
+            await Turn.recordSource(this.#db, request.turnId, "reasoning", emission.split.packetAssistant.reasoning, { modelCallId: emission.modelCallId });
+        }
+        return emission;
+    }
+
+    // One logical provider call: its durable model call and attempt row, the exchange
+    // under the reasoning observer, and its classification. Capacity recovery and
+    // {§provider-recovery} re-issue the same emission attempt; the parser's admission
+    // is the one verdict on a completed exchange.
+    async #issueProviderCall(
+        args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, attempt: number, strikeStreak: number,
+    ): Promise<"admitted" | "rejected" | "reissued"> {
+        const { provider, workspaceId, workerId, loopId } = args;
+        // Capacity recovery may rebuild and resend the request without
+        // consuming a grammar-emission attempt. Every logical provider
+        // call still receives its own durable sequence and accounting.
+        attempts.currentEmissionAttempt = attempt;
+        attempts.modelCallSequence++;
+        const attributionContext: PluginAttributionContext = Object.freeze({
+            workspaceId: String(workspaceId),
+            workerId: attempts.providerWorkerId,
+            primaryWorkerId: attempts.primaryWorkerId,
+            loop: request.loopSeq,
+            turn: request.seq,
+            attempt: attempts.modelCallSequence,
+        });
+        attempts.attributions = await this.#attemptAttributions(provider, attributionContext);
+        request.packet = { ...request.packet, attributions: attempts.attributions };
+        const modelCall = await ModelCall.open(this.#db, {
+            turnId: request.turnId,
+            kind: "emission",
+            attributions: attempts.attributions,
+            model: provider.model,
+        });
+        attempts.modelCall = modelCall;
+        const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
+            model_call_id: modelCall.id,
+        });
+        if (attemptRow === undefined) {
+            throw new Error(`Engine.runTurn: provider call ${attempts.modelCallSequence} did not open`);
+        }
+        attempts.attemptId = attemptRow.id;
+        attempts.callInFlight = true;
+        const reasoning = this.#reasoningObserver(args, request.turnId, modelCall);
+        let completedResponse: ProviderResponse;
         try {
-            // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
-            if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            railGrammar = await this.#operatorGrammar(provider);
-            const attemptLimit = readEmissionAttempts();
-            const strikeStreak = await this.#strikes.streak(loopId);
-            // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
-            // for, successes and failed calls alike, so the completion notice carries
-            // the exact settled wire spend.
-            const turnWireAccounting: ProviderRequestAccounting[] = [];
-            for (let attempt = 1; attempt <= attemptLimit;) {
-                // Capacity recovery may rebuild and resend the request without
-                // consuming a grammar-emission attempt. Every logical provider
-                // call still receives its own durable sequence and accounting.
-                currentEmissionAttempt = attempt;
-                modelCallSequence++;
-                const attributionContext: PluginAttributionContext = Object.freeze({
-                    workspaceId: String(workspaceId),
-                    workerId: providerWorkerId,
-                    primaryWorkerId,
-                    loop: loopSeq,
-                    turn: seq,
-                    attempt: modelCallSequence,
-                });
-                providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
-                requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
-                providerModelCall = await ModelCall.open(this.#db, {
-                    turnId,
-                    kind: "emission",
-                    attributions: providerAttemptAttributions,
-                    model: provider.model,
-                });
-                const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
-                    model_call_id: providerModelCall.id,
-                });
-                if (attemptRow === undefined) {
-                    throw new Error(`Engine.runTurn: provider call ${modelCallSequence} did not open`);
+            completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning, strikeStreak);
+        } catch (error) {
+            if (error instanceof ProviderError
+                && RECOVERABLE_PROVIDER_FAILURES.has(error.kind)
+                && attempts.signal?.aborted !== true) {
+                await this.#recoverProviderFailure(args, request, attempts, modelCall, attemptRow.id, error);
+                return "reissued";
+            }
+            if (!(error instanceof ProviderError)
+                || error.kind !== "capacity_exceeded"
+                || attempts.signal?.aborted === true
+                || !await this.#recoverCapacityPacket(args, request, attempts)) {
+                throw error;
+            }
+            await this.#resendForCapacity(args, request, attempts, modelCall, error);
+            return "reissued";
+        } finally {
+            reasoning.end();
+        }
+        if (attempts.recoveryFailures > 0) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:provider",
+                kind: "provider_recovered",
+                level: "info",
+                message: `Provider recovered after ${attempts.recoveryFailures} failed call${attempts.recoveryFailures === 1 ? "" : "s"}.`,
+            });
+            attempts.recoveryFailures = 0;
+            attempts.recoveryStartedAt = null;
+        }
+        attempts.response = completedResponse;
+        attempts.turnWireAccounting.push(...completedResponse.accounting);
+        await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
+        attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
+        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
+        attempts.split = split;
+        await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
+        return split.emissionValid ? "admitted" : "rejected";
+    }
+
+    // {§notifications-reasoning-event} — only the parent emission is conversational;
+    // BARE has no observer on its isolated calls. Reasoning deltas cite the physical
+    // request they stream in; a new request or the call's end closes the open span.
+    #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, turnId: number, modelCall: ModelCall): ReasoningObserver {
+        let reasoningStarted = false;
+        let reasoningRequestSequence = 0;
+        const end = (): void => {
+            if (!reasoningStarted) return;
+            this.#reasoningEventNotify!(workspaceId, {
+                workerId,
+                loopId,
+                turnId,
+                modelCallId: modelCall.id,
+                requestSequence: reasoningRequestSequence,
+                phase: "end",
+            });
+            reasoningStarted = false;
+        };
+        const observeRequest = async (...args: Parameters<ModelCall["observeRequest"]>) => {
+            end();
+            const settle = await modelCall.observeRequest(...args);
+            reasoningRequestSequence = modelCall.requestSequence;
+            return settle;
+        };
+        const observeReasoning = this.#reasoningEventNotify === undefined
+            ? undefined
+            : (delta: string): void => {
+                if (reasoningRequestSequence === 0) {
+                    throw new Error("provider emitted reasoning before opening its physical request");
                 }
-                providerAttemptId = attemptRow.id;
-                providerCallInFlight = true;
-                const currentModelCall = providerModelCall;
-                let reasoningStarted = false;
-                let reasoningRequestSequence = 0;
-                const endReasoning = (): void => {
-                    if (!reasoningStarted) return;
+                if (!reasoningStarted) {
+                    reasoningStarted = true;
                     this.#reasoningEventNotify!(workspaceId, {
                         workerId,
                         loopId,
                         turnId,
-                        modelCallId: currentModelCall.id,
+                        modelCallId: modelCall.id,
                         requestSequence: reasoningRequestSequence,
-                        phase: "end",
+                        phase: "start",
                     });
-                    reasoningStarted = false;
-                };
-                const observeRequest = async (...args: Parameters<typeof currentModelCall.observeRequest>) => {
-                    endReasoning();
-                    const settle = await currentModelCall.observeRequest(...args);
-                    reasoningRequestSequence = currentModelCall.requestSequence;
-                    return settle;
-                };
-                // {§notifications-reasoning-event} Only the parent emission is
-                // conversational; BARE has no observer on its isolated calls.
-                const observeReasoning = this.#reasoningEventNotify === undefined
-                    ? undefined
-                    : (delta: string): void => {
-                        if (reasoningRequestSequence === 0) {
-                            throw new Error("provider emitted reasoning before opening its physical request");
-                        }
-                        if (!reasoningStarted) {
-                            reasoningStarted = true;
-                            this.#reasoningEventNotify!(workspaceId, {
-                                workerId,
-                                loopId,
-                                turnId,
-                                modelCallId: currentModelCall.id,
-                                requestSequence: reasoningRequestSequence,
-                                phase: "start",
-                            });
-                        }
-                        this.#reasoningEventNotify!(workspaceId, {
-                            workerId,
-                            loopId,
-                            turnId,
-                            modelCallId: currentModelCall.id,
-                            requestSequence: reasoningRequestSequence,
-                            phase: "content",
-                            delta,
-                        });
-                    };
-                let completedResponse: ProviderResponse;
-                try {
-                    completedResponse = await observed( // {§observability-boundary}
-                        GEN_AI_REQUEST_SPAN,
-                        { model: provider.model, attempt: modelCallSequence },
-                        async (span) => {
-                            try {
-                                await this.#packets.recordObservations(requestPacket);
-                                const generated = await provider.generate({
-                                    messages: modelMessages,
-                                    workerId: providerWorkerId,
-                                    primaryWorkerId,
-                                    signal: providerSignal,
-                                    grammar: railGrammar,
-                                    strikes: strikeStreak,
-                                    attributions: providerAttemptAttributions.length > 0
-                                        ? providerAttemptAttributions
-                                        : undefined,
-                                    client: client ?? undefined,
-                                    workspaceId: String(workspaceId),
-                                    loop: loopSeq,
-                                    turn: seq,
-                                    observeRequest,
-                                    observeReasoning,
-                                    callKind: "emission",
-                                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
-                                currentModelCall.assertAccounting(generated.accounting);
-                                providerCallInFlight = false;
-                                recordCounter(PROVIDER_CALLS, {
-                                    model: provider.model,
-                                    attempt: modelCallSequence,
-                                    status: "resolved",
-                                });
-                                span.setAttribute("status", "resolved");
-                                settleGenAiResponse(span, generated);
-                                return generated;
-                            } catch (error) {
-                                if (error instanceof ProviderError) {
-                                    currentModelCall.assertAccounting(error.accounting);
-                                    turnWireAccounting.push(...error.accounting);
-                                }
-                                throw error;
-                            }
-                        },
-                        genAiRequestOptions(
-                            ProviderInstantiate.aliasOf(provider) ?? "plurnk",
-                            provider.model,
-                        ),
-                    );
-                } catch (error) {
-                    if (error instanceof ProviderError
-                        && RECOVERABLE_PROVIDER_FAILURES.has(error.kind)
-                        && providerSignal?.aborted !== true) {
-                        // {§provider-recovery} — a transient provider failure never ends the loop:
-                        // record it, wait, and re-issue the same turn; once the budget is spent the
-                        // outer handler parks the loop instead of failing it.
-                        recoveryStartedAt ??= Date.now();
-                        const elapsed = Date.now() - recoveryStartedAt;
-                        if (elapsed >= recoveryBudget) {
-                            providerParked = true;
-                            throw error;
-                        }
-                        recoveryFailures += 1;
-                        const failure = TurnRunner.#providerFailure(error, providerSignal);
-                        if (error.attempt !== undefined) {
-                            // {§provider-interrupted-attempt} — the interrupted response stays durable
-                            // as an unaccepted attempt; it is never admitted or replayed.
-                            await currentModelCall.observeResponse(error.attempt, failure, nativeInputs);
-                            await classifyProviderAttempt(providerAttemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []), currentEmissionAttempt, false);
-                        } else {
-                            await currentModelCall.fail(failure, error.capacity ?? null);
-                        }
-                        providerCallInFlight = false;
-                        await this.#problems.record({
-                            workerId,
-                            loopId,
-                            turnId,
-                            sequence: nextActionIndex++,
-                            origin: "_plurnk",
-                            source: "provider",
-                            result: failure,
-                        });
-                        const wait = Math.min(recoveryBackoff * 2 ** (recoveryFailures - 1), recoveryBackoff * 12);
-                        this.#notices.push(workspaceId, workerId, loopId, {
-                            source: "engine:provider",
-                            kind: "provider_unavailable",
-                            level: "warn",
-                            message: `${failure.problem?.title ?? "Provider failure"}: retrying in ${Math.round(wait / 1000)}s (${Math.round(elapsed / 1000)}s of the ${Math.round(recoveryBudget / 1000)}s recovery budget spent).`,
-                        });
-                        // An abort during the wait re-enters generate, which refuses on the aborted signal.
-                        await delay(wait, undefined, { signal: providerSignal }).catch(() => undefined);
-                        // The response is still owed for this exact input. Failure rows remain
-                        // durable, but recursively materializing them would mutate and cache-bust
-                        // the request being recovered. {§provider-recovery}
-                        continue;
-                    }
-                    if (!(error instanceof ProviderError)
-                        || error.kind !== "capacity_exceeded"
-                        || providerSignal?.aborted === true
-                        || !await recoverCapacityPacket()) {
-                        throw error;
-                    }
-                    const failure = TurnRunner.#providerFailure(error, providerSignal);
-                    await currentModelCall.fail(failure, error.capacity ?? null);
-                    providerCallInFlight = false;
-                    await this.#problems.record({
-                        workerId,
-                        loopId,
-                        turnId,
-                        sequence: nextActionIndex++,
-                        origin: "_plurnk",
-                        source: "provider",
-                        result: failure,
-                    });
-                    // Include the durable recovery signal in the replacement
-                    // request while preserving the selected recovery posture.
-                    requestPacket = await buildPacket();
-                    materializedRequest = await this.#wireMessages(requestPacket, systemCtx, provider);
-                    modelMessages = materializedRequest.messages;
-                    nativeInputs = materializedRequest.nativeInputs;
-                    continue;
-                } finally {
-                    endReasoning();
                 }
-                if (recoveryFailures > 0) {
-                    this.#notices.push(workspaceId, workerId, loopId, {
-                        source: "engine:provider",
-                        kind: "provider_recovered",
-                        level: "info",
-                        message: `Provider recovered after ${recoveryFailures} failed call${recoveryFailures === 1 ? "" : "s"}.`,
-                    });
-                    recoveryFailures = 0;
-                    recoveryStartedAt = null;
-                }
-                response = completedResponse;
-                turnWireAccounting.push(...completedResponse.accounting);
-                await currentModelCall.observeResponse(completedResponse, null, nativeInputs);
-                railEvidence = railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-                splitResponse = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
-                await classifyProviderAttempt(
-                    attemptRow.id,
-                    splitResponse,
-                    attempt,
-                    splitResponse.emissionValid,
-                );
-                if (splitResponse.emissionValid) break;
-                attempt++;
-            }
-            if (!signal?.aborted) {
-                const wire = aggregateProviderAccounting(turnWireAccounting);
-                this.#notices.push(workspaceId, workerId, loopId, {
-                    source: "engine:turn",
-                    kind: "turn_generated",
-                    level: "info",
-                    message: "parsing model response",
-                    // {§turn-accounting-notice} (#465) — the exact settled derivation,
-                    // never a second stored fact: a live watcher accrues loop cost per turn.
-                    accounting: {
-                        requests: turnWireAccounting.length,
-                        costUsd: wire.costUsd,
-                        inputTokens: wire.usage?.inputTokens ?? null,
-                        outputTokens: wire.usage?.outputTokens ?? null,
-                        reasoningTokens: wire.usage?.outputTokenDetails?.reasoningTokens ?? null,
-                        cacheReadTokens: wire.usage?.inputTokenDetails?.cacheReadTokens ?? null,
-                    },
-                });
-            }
-        } catch (err) {
-            // This handler owns only provider-call failures. Parser, cost, SQL,
-            // and engine-contract failures retain their original source.
-            if (err instanceof ModelCallPersistenceError || err instanceof ProviderAccountingIntegrityError) throw err;
-            if (!providerCallInFlight) throw err;
-            providerCallInFlight = false;
-            if (providerAttemptId === null || providerModelCall === null) {
-                throw new Error("provider call failed without durable model-call and attempt identities", { cause: err });
-            }
-            const failure = TurnRunner.#providerFailure(err, providerSignal);
-            const capacityFailure = err instanceof ProviderError && err.kind === "capacity_exceeded";
-            // {§provider-interrupted-attempt} — a provider-declared interruption
-            // carries response evidence without becoming a completed exchange.
-            // Persist it as an unaccepted attempt before settling the failure.
-            if (err instanceof ProviderError && err.attempt !== undefined) {
-                response = err.attempt;
-                await providerModelCall.observeResponse(response, failure, nativeInputs);
-                splitResponse = this.#splitResponse(response, this.#executors()?.availableRuntimes(workspaceId) ?? []);
-                await classifyProviderAttempt(
-                    providerAttemptId,
-                    splitResponse,
-                    currentEmissionAttempt,
-                    false,
-                );
-            } else {
-                await providerModelCall.fail(
-                    failure,
-                    err instanceof ProviderError ? err.capacity ?? null : null,
-                );
-                if (!capacityFailure) emissionAttempts = currentEmissionAttempt;
-            }
-            // {§turn-never-blank} — a ProviderError means no completed exchange exists.
-            // Persist its exact RFC 9457 result before propagating it. Grammar transport
-            // evidence exists only on completed responses ({§operator-grammar}).
-            // Cancellation is lifecycle truth, not a provider failure. Close the
-            // attempted turn without inventing an assistant response, then let
-            // runLoop/Daemon settle the exact 504/499 loop result.
-            if (providerSignal?.aborted) {
-                const status = providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499;
-                await this.#recordInference({
-                    workspaceId, workerId, loopId, turnId,
-                    evidence: {
-                        packet: StoredPacket.stringify(requestPacket),
-                        sections: StoredPacket.sections(requestPacket),
-                        usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
-                        finishReason: splitResponse?.callMetadata.finishReason ?? null,
-                        model: splitResponse?.callMetadata.model ?? provider.model,
-                        meta: JSON.stringify(response?.meta ?? {}),
-                    },
-                });
-                await Turn.complete(this.#db, turnId, status);
-                throw err;
-            }
-            const recorded = await this.#problems.record({
-                workerId,
-                loopId,
-                turnId,
-                sequence: nextActionIndex,
-                origin: "_plurnk",
-                source: "provider",
-                result: failure,
-            });
-            // The provider call was attempted, but no completed exchange exists.
-            // Persist the exact request half and failure status; omitting assistant
-            // is materially different from fabricating an empty model turn.
-            await this.#recordInference({
-                workspaceId, workerId, loopId, turnId,
-                evidence: {
-                    packet: StoredPacket.stringify(requestPacket),
-                        sections: StoredPacket.sections(requestPacket),
-                    usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
-                    finishReason: splitResponse?.callMetadata.finishReason ?? null,
-                    model: splitResponse?.callMetadata.model ?? provider.model,
-                    meta: JSON.stringify(response?.meta ?? {}),
-                },
-            });
-            await Turn.complete(this.#db, turnId, providerParked ? 202 : recorded.result.status);
-            if (providerParked) {
-                // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
-                // [202] wait and resumes on the next prompt or wake; the failure stays durable.
-                this.#notices.push(workspaceId, workerId, loopId, {
-                    source: "engine:provider",
-                    kind: "provider_unavailable",
-                    level: "error",
-                    message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(recoveryBudget / 1000)}s recovery budget is spent; the loop is parked and resumes on the next prompt or wake.`,
-                });
-                return {
-                    createdTurnIds,
-                    turnId,
-                    producer: "model",
-                    kind: "inference",
-                    status: 202,
-                    outcomes: [],
-                    fingerprint: "",
-                    capacityHardStop: false, providerParked: true,
-                    providerFailure: recorded.result,
-                    steerStruck: false,
-                emptyTurn: false,
-                    emissionAttempts,
-                    emissionExhausted: false,
-                };
-            }
-            if (capacityFailure) {
-                return {
-                    createdTurnIds,
-                    turnId,
-                    producer: "model",
-                    kind: "inference",
-                    status: recorded.result.status,
-                    outcomes: [],
-                    fingerprint: "",
-                    capacityHardStop: true,
-                    providerParked: false,
-                    capacityFailure: recorded.result,
-                    steerStruck: false,
-                emptyTurn: false,
-                    emissionAttempts,
-                    emissionExhausted: false,
-                };
-            }
-            if (err instanceof ProviderError
-                && err.kind === "invalid_response"
-                && providerSignal?.aborted !== true) {
-                // {§engine-rails} Contract Strikes: the provider violated its response
-                // contract. The failure is durable and the turn is complete; the strike
-                // rail — never an instant loop death — rules whether the streak ends it.
-                return {
-                    createdTurnIds,
-                    turnId,
-                    producer: "model",
-                    kind: "inference",
-                    status: recorded.result.status,
-                    outcomes: [{ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null }],
-                    fingerprint: `provider-contract-violation:${turnId}`,
-                    capacityHardStop: false,
-                    providerParked: false,
-                    providerFailure: recorded.result,
-                    steerStruck: false,
-                emptyTurn: false,
-                    emissionAttempts,
-                    emissionExhausted: false,
-                };
-            }
-            throw new OperationFailureError(recorded.result, { cause: err });
-        }
-
-        if (response === undefined || splitResponse === undefined || providerModelCall === null) {
-            throw new Error("provider attempt loop completed without a response");
-        }
-        const emissionModelCallId = providerModelCall.id;
-        if (splitResponse.packetAssistant.reasoning?.length) {
-            await Turn.recordSource(this.#db, turnId, "reasoning", splitResponse.packetAssistant.reasoning, { modelCallId: emissionModelCallId });
-        }
-        if (!splitResponse.emissionValid) {
-            // {§invalid-emission-attempts} Every exhaustion publishes the raw final
-            // response and its recovery fact; {§engine-rails} Contract Strikes rule
-            // how many consecutive frame-contract violations the loop survives.
-            let rejectedModelEntryId: number | undefined;
-            {
-                rejectedModelEntryId = await this.#dispatcher.writeEmissionAttempt({
-                    verbatim: splitResponse.packetAssistant.content,
+                this.#reasoningEventNotify!(workspaceId, {
                     workerId,
                     loopId,
                     turnId,
-                    sequence: nextActionIndex,
-                    modelCallId: emissionModelCallId,
+                    modelCallId: modelCall.id,
+                    requestSequence: reasoningRequestSequence,
+                    phase: "content",
+                    delta,
                 });
-                // {§invalid-emission-attempts} — the informed turn carries the parser's own
-                // diagnostic and position: the model sees WHY, not only that it was refused.
-                const diagnostic = splitResponse.parseErrors[0];
-                const cut = allowanceCutMessage(splitResponse.callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
-                if (cut !== null) {
-                    this.#notices.push(workspaceId, workerId, loopId, {
-                        source: "engine:capacity",
-                        kind: "output_truncated",
-                        level: "error",
-                        message: `${cut}; no operations were performed`,
-                    });
-                } else {
-                    this.#notices.push(workspaceId, workerId, loopId, {
-                        source: "engine:grammar",
-                        kind: "invalid_emission",
-                        level: "error",
-                        message: diagnostic === undefined
-                            ? INVALID_EMISSION_RECOVERY_MESSAGE
-                            : `${INVALID_EMISSION_RECOVERY_MESSAGE} Parser: ${diagnostic.message}`,
-                        ...(diagnostic !== undefined && diagnostic.line > 0
-                            ? { position: { type: "content-offset", line: diagnostic.line, column: diagnostic.column } }
-                            : {}),
-                    });
-                }
-            }
-            const status = TURN_STATUS_IMPLICIT_CONTINUE;
-            await this.#recordInference({
-                workspaceId, workerId, loopId, turnId,
-                evidence: {
-                    packet: StoredPacket.stringify(requestPacket),
-                        sections: StoredPacket.sections(requestPacket),
-                    usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
-                    finishReason: splitResponse.callMetadata.finishReason,
-                    model: splitResponse.callMetadata.model,
-                    meta: JSON.stringify(response.meta ?? {}),
-                },
-            });
-            await Turn.complete(this.#db, turnId, status);
-            return {
-                createdTurnIds,
-                turnId,
-                producer: "model",
-                kind: "inference",
-                status: TURN_STATUS_IMPLICIT_CONTINUE,
-                outcomes: [{ op: null, status: 500, problemType: "https://problems.plurnk.xyz/engine/invalid-emission-exhausted" }],
-                fingerprint: `frame-contract-violation:${turnId}`,
-                capacityHardStop: false,
-                providerParked: false,
-                steerStruck: false,
-                emptyTurn: false,
-                emissionAttempts,
-                emissionExhausted: true,
-                ...(rejectedModelEntryId === undefined ? {} : { rejectedModelEntryId }),
             };
-        }
+        return { observeRequest, observeReasoning, end };
+    }
 
-        // {§packet-stored-shape} — admitted emission data extends the packet;
-        // provider-call metadata remains on the Turn row.
-        const {
-            packetAssistant,
-            callMetadata,
-            parseNotices,
-            recoverableParseErrors,
-        } = splitResponse; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
+    // The exchange under its GenAI span: the packet's observations are recorded, the
+    // provider generates against the wire request, and the call's accounting is
+    // asserted whether it resolved or failed.
+    async #generate(
+        { provider, workspaceId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
+        modelCall: ModelCall, reasoning: ReasoningObserver, strikeStreak: number,
+    ): Promise<ProviderResponse> {
+        return await observed( // {§observability-boundary}
+            GEN_AI_REQUEST_SPAN,
+            { model: provider.model, attempt: attempts.modelCallSequence },
+            async (span) => {
+                try {
+                    await this.#packets.recordObservations(request.packet);
+                    const generated = await provider.generate({
+                        messages: attempts.wire.messages,
+                        workerId: attempts.providerWorkerId,
+                        primaryWorkerId: attempts.primaryWorkerId,
+                        signal: attempts.signal,
+                        grammar: attempts.railGrammar,
+                        strikes: strikeStreak,
+                        attributions: attempts.attributions.length > 0
+                            ? attempts.attributions
+                            : undefined,
+                        client: attempts.client ?? undefined,
+                        workspaceId: String(workspaceId),
+                        loop: request.loopSeq,
+                        turn: request.seq,
+                        observeRequest: reasoning.observeRequest,
+                        observeReasoning: reasoning.observeReasoning,
+                        callKind: "emission",
+                    }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                    modelCall.assertAccounting(generated.accounting);
+                    attempts.callInFlight = false;
+                    recordCounter(PROVIDER_CALLS, {
+                        model: provider.model,
+                        attempt: attempts.modelCallSequence,
+                        status: "resolved",
+                    });
+                    span.setAttribute("status", "resolved");
+                    settleGenAiResponse(span, generated);
+                    return generated;
+                } catch (error) {
+                    if (error instanceof ProviderError) {
+                        modelCall.assertAccounting(error.accounting);
+                        attempts.turnWireAccounting.push(...error.accounting);
+                    }
+                    throw error;
+                }
+            },
+            genAiRequestOptions(
+                ProviderInstantiate.aliasOf(provider) ?? "plurnk",
+                provider.model,
+            ),
+        );
+    }
+
+    // {§provider-recovery} — a transient provider failure never ends the loop: record
+    // it, wait, and re-issue the same turn; once the budget is spent the failure
+    // handler parks the loop instead of failing it.
+    async #recoverProviderFailure(
+        { workspaceId, workerId, loopId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
+        modelCall: ModelCall, attemptId: number, error: ProviderError,
+    ): Promise<void> {
+        attempts.recoveryStartedAt ??= Date.now();
+        const elapsed = Date.now() - attempts.recoveryStartedAt;
+        if (elapsed >= attempts.recoveryBudget) {
+            attempts.parked = true;
+            throw error;
+        }
+        attempts.recoveryFailures += 1;
+        const failure = TurnRunner.#providerFailure(error, attempts.signal);
+        if (error.attempt !== undefined) {
+            // {§provider-interrupted-attempt} — the interrupted response stays durable
+            // as an unaccepted attempt; it is never admitted or replayed.
+            await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
+            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
+        } else {
+            await modelCall.fail(failure, error.capacity ?? null);
+        }
+        attempts.callInFlight = false;
+        await this.#problems.record({
+            workerId,
+            loopId,
+            turnId: request.turnId,
+            sequence: request.nextActionIndex++,
+            origin: "_plurnk",
+            source: "provider",
+            result: failure,
+        });
+        const wait = Math.min(attempts.recoveryBackoff * 2 ** (attempts.recoveryFailures - 1), attempts.recoveryBackoff * 12);
+        this.#notices.push(workspaceId, workerId, loopId, {
+            source: "engine:provider",
+            kind: "provider_unavailable",
+            level: "warn",
+            message: `${failure.problem?.title ?? "Provider failure"}: retrying in ${Math.round(wait / 1000)}s (${Math.round(elapsed / 1000)}s of the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget spent).`,
+        });
+        // An abort during the wait re-enters generate, which refuses on the aborted signal.
+        await delay(wait, undefined, { signal: attempts.signal }).catch(() => undefined);
+        // The response is still owed for this exact input. Failure rows remain
+        // durable, but recursively materializing them would mutate and cache-bust
+        // the request being recovered. {§provider-recovery}
+    }
+
+    // The first capacity rejection withholds the automatic prompt projection; the
+    // rebuilt request is resent only when it actually changed the wire messages.
+    async #recoverCapacityPacket(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<boolean> {
+        if (request.promptProjection !== "automatic") return false;
+        request.promptProjection = "withheld";
+        const candidate = await this.#buildPacket(args, request);
+        const candidateRequest = await this.#wireMessages(candidate, request.systemCtx, args.provider);
+        if (JSON.stringify(candidateRequest.messages) === JSON.stringify(attempts.wire.messages)) return false;
+        request.packet = candidate;
+        attempts.wire = candidateRequest;
+        return true;
+    }
+
+    // The capacity rejection is durable as a failed call and a problem row; the
+    // replacement request is rebuilt to include that recovery signal while keeping
+    // the selected projection.
+    async #resendForCapacity(
+        args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, modelCall: ModelCall, error: ProviderError,
+    ): Promise<void> {
+        const { workerId, loopId, provider } = args;
+        const failure = TurnRunner.#providerFailure(error, attempts.signal);
+        await modelCall.fail(failure, error.capacity ?? null);
+        attempts.callInFlight = false;
+        await this.#problems.record({
+            workerId,
+            loopId,
+            turnId: request.turnId,
+            sequence: request.nextActionIndex++,
+            origin: "_plurnk",
+            source: "provider",
+            result: failure,
+        });
+        // Include the durable recovery signal in the replacement
+        // request while preserving the selected recovery posture.
+        request.packet = await this.#buildPacket(args, request);
+        attempts.wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
+    }
+
+    // The attempt row's verdict: accepted, or rejected with the parser's errors. The
+    // classified emission attempt is the turn's spent count.
+    async #classifyProviderAttempt(attempts: ProviderAttempts, id: number, split: SplitProviderResponse, emissionAttempt: number, accepted: boolean): Promise<void> {
+        const result = await this.#db.engine_classify_turn_attempt_response.run({
+            id,
+            accepted: accepted ? 1 : 0,
+            parse_errors: JSON.stringify(split.parseErrors),
+        });
+        if (result.changes !== 1) {
+            throw new Error(`emission attempt ${id} was not awaiting classification`);
+        }
+        attempts.emissionAttempts = emissionAttempt;
+    }
+
+    // The provider-call failure handler. It owns only failures raised while a call
+    // was in flight; parser, cost, SQL, and engine-contract failures retain their
+    // original source.
+    async #settleProviderFailure(err: unknown, args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<EngineTurnResult> {
+        if (err instanceof ModelCallPersistenceError || err instanceof ProviderAccountingIntegrityError) throw err;
+        if (!attempts.callInFlight) throw err;
+        attempts.callInFlight = false;
+        if (attempts.attemptId === null || attempts.modelCall === null) {
+            throw new Error("provider call failed without durable model-call and attempt identities", { cause: err });
+        }
+        const { provider, workspaceId, workerId, loopId } = args;
+        const { turnId } = request;
+        const failure = TurnRunner.#providerFailure(err, attempts.signal);
+        const capacityFailure = err instanceof ProviderError && err.kind === "capacity_exceeded";
+        // {§provider-interrupted-attempt} — a provider-declared interruption
+        // carries response evidence without becoming a completed exchange.
+        // Persist it as an unaccepted attempt before settling the failure.
+        if (err instanceof ProviderError && err.attempt !== undefined) {
+            attempts.response = err.attempt;
+            await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
+            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []);
+            await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
+        } else {
+            await attempts.modelCall.fail(
+                failure,
+                err instanceof ProviderError ? err.capacity ?? null : null,
+            );
+            if (!capacityFailure) attempts.emissionAttempts = attempts.currentEmissionAttempt;
+        }
+        const evidence = this.#requestEvidence(provider, request.packet, attempts.split, attempts.response);
+        // {§turn-never-blank} — a ProviderError means no completed exchange exists.
+        // Persist its exact RFC 9457 result before propagating it. Grammar transport
+        // evidence exists only on completed responses ({§operator-grammar}).
+        // Cancellation is lifecycle truth, not a provider failure. Close the
+        // attempted turn without inventing an assistant response, then let
+        // runLoop/Daemon settle the exact 504/499 loop result.
+        if (attempts.signal?.aborted) {
+            const status = attempts.signal.reason === LOOP_TIMEOUT_REASON ? 504 : 499;
+            await this.#recordInference({ workspaceId, workerId, loopId, turnId, evidence });
+            await Turn.complete(this.#db, turnId, status);
+            throw err;
+        }
+        const recorded = await this.#problems.record({
+            workerId,
+            loopId,
+            turnId,
+            sequence: request.nextActionIndex,
+            origin: "_plurnk",
+            source: "provider",
+            result: failure,
+        });
+        // The provider call was attempted, but no completed exchange exists.
+        // Persist the exact request half and failure status; omitting assistant
+        // is materially different from fabricating an empty model turn.
+        await this.#recordInference({ workspaceId, workerId, loopId, turnId, evidence });
+        await Turn.complete(this.#db, turnId, attempts.parked ? 202 : recorded.result.status);
+        const { emissionAttempts } = attempts;
+        if (attempts.parked) {
+            // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
+            // [202] wait and resumes on the next prompt or wake; the failure stays durable.
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:provider",
+                kind: "provider_unavailable",
+                level: "error",
+                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; the loop is parked and resumes on the next prompt or wake.`,
+            });
+            return turnResult(request, 202, { providerParked: true, providerFailure: recorded.result, emissionAttempts });
+        }
+        if (capacityFailure) {
+            return turnResult(request, recorded.result.status, { capacityHardStop: true, capacityFailure: recorded.result, emissionAttempts });
+        }
+        if (err instanceof ProviderError && err.kind === "invalid_response") {
+            // {§engine-rails} Contract Strikes: the provider violated its response
+            // contract. The failure is durable and the turn is complete; the strike
+            // rail — never an instant loop death — rules whether the streak ends it.
+            return turnResult(request, recorded.result.status, {
+                outcomes: [{ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null }],
+                fingerprint: `provider-contract-violation:${turnId}`,
+                providerFailure: recorded.result,
+                emissionAttempts,
+            });
+        }
+        throw new OperationFailureError(recorded.result, { cause: err });
+    }
+
+    // Inference evidence for a turn without an admitted exchange: the exact request
+    // half, the last attempt's metadata when one exists, the provider's own model otherwise.
+    #requestEvidence(provider: Provider, packet: RequestPacket, split: SplitProviderResponse | undefined, response: ProviderAttempt | undefined): InferenceEvidence {
+        return {
+            packet: StoredPacket.stringify(packet),
+            sections: StoredPacket.sections(packet),
+            usageCurationBudget: this.#packets.curationBudgetFor(packet),
+            finishReason: split?.callMetadata.finishReason ?? null,
+            model: split?.callMetadata.model ?? provider.model,
+            meta: JSON.stringify(response?.meta ?? {}),
+        };
+    }
+
+    // Phase 5, refused — {§invalid-emission-attempts}: every exhaustion publishes the
+    // raw final response and its recovery fact; {§engine-rails} Contract Strikes rule
+    // how many consecutive frame-contract violations the loop survives.
+    async #rejectExhaustedEmission({ provider, workspaceId, workerId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
+        const { split, response } = emission;
+        const { turnId } = request;
+        const rejectedModelEntryId = await this.#dispatcher.writeEmissionAttempt({
+            verbatim: split.packetAssistant.content,
+            workerId,
+            loopId,
+            turnId,
+            sequence: request.nextActionIndex,
+            modelCallId: emission.modelCallId,
+        });
+        // {§invalid-emission-attempts} — the informed turn carries the parser's own
+        // diagnostic and position: the model sees WHY, not only that it was refused.
+        const diagnostic = split.parseErrors[0];
+        const cut = allowanceCutMessage(split.callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
+        if (cut !== null) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:capacity",
+                kind: "output_truncated",
+                level: "error",
+                message: `${cut}; no operations were performed`,
+            });
+        } else {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:grammar",
+                kind: "invalid_emission",
+                level: "error",
+                message: diagnostic === undefined
+                    ? INVALID_EMISSION_RECOVERY_MESSAGE
+                    : `${INVALID_EMISSION_RECOVERY_MESSAGE} Parser: ${diagnostic.message}`,
+                ...(diagnostic !== undefined && diagnostic.line > 0
+                    ? { position: { type: "content-offset", line: diagnostic.line, column: diagnostic.column } }
+                    : {}),
+            });
+        }
+        await this.#recordInference({ workspaceId, workerId, loopId, turnId, evidence: this.#requestEvidence(provider, request.packet, split, response) });
+        await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
+        return turnResult(request, TURN_STATUS_IMPLICIT_CONTINUE, {
+            outcomes: [{ op: null, status: 500, problemType: "https://problems.plurnk.xyz/engine/invalid-emission-exhausted" }],
+            fingerprint: `frame-contract-violation:${turnId}`,
+            emissionAttempts: emission.emissionAttempts,
+            emissionExhausted: true,
+            rejectedModelEntryId,
+        });
+    }
+
+    // Phase 5, admitted — the emission's notices, then {§packet-stored-shape}: admitted
+    // emission data extends the packet while provider-call metadata remains on the
+    // Turn row.
+    async #recordAdmittedEmission({ provider, workspaceId, workerId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<void> {
+        const { split, response } = emission;
+        const { packetAssistant, callMetadata, parseNotices } = split; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, workerId, loopId, notice);
         }
+        const allowanceCut = allowanceCutMessage(callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
         // {§empty-turn} — a response cut at the output allowance with nothing admitted names the
         // cut, so the model reads the ceiling, never a parser symptom (#478).
-        if (splitResponse.emptyTurn && callMetadata.finishReason === "length") {
-            const cut = allowanceCutMessage(callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
-            if (cut !== null) {
-                this.#notices.push(workspaceId, workerId, loopId, {
-                    source: "engine:turn",
-                    kind: "output_truncated",
-                    level: "warn",
-                    message: `${cut}; no operations were performed`,
-                });
-            }
+        if (split.emptyTurn && allowanceCut !== null) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn",
+                kind: "output_truncated",
+                level: "warn",
+                message: `${allowanceCut}; no operations were performed`,
+            });
         }
-
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
         // the model resolves it against its own emission — READ ops:///<loop>/<turn> at the
@@ -1593,7 +1764,6 @@ export default class TurnRunner {
                     : {}),
             });
         }
-        const allowanceCut = allowanceCutMessage(splitResponse.callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
         if (allowanceCut !== null) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:capacity",
@@ -1605,19 +1775,19 @@ export default class TurnRunner {
         // {§operator-grammar} — transport evidence only: the turn records whether the operator's
         // grammar reached the wire. Nothing grades the response against it; the parser's
         // admission is the one verdict (#588).
-        const railKeys = railGrammar === undefined
+        const railKeys = emission.railGrammar === undefined
             ? undefined
-            : { railsAttached: railEvidence?.transported === true ? "client" : "withheld" };
+            : { railsAttached: emission.railEvidence?.transported === true ? "client" : "withheld" };
         // Attach the admitted inference evidence. The turn remains open until
         // the producer-neutral admitted-turn executor settles every operation
         // and its exact source artifact.
-        const packet = StoredPacket.admit(requestPacket, packetAssistant, response.assistantRaw);
+        const packet = StoredPacket.admit(request.packet, packetAssistant, response.assistantRaw);
         await this.#recordInference({
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId: request.turnId,
             evidence: {
                 packet: StoredPacket.stringify(packet),
                 sections: StoredPacket.sections(packet),
-                usageCurationBudget: this.#packets.curationBudgetFor(requestPacket), // {§tokenomics-client-gauge}
+                usageCurationBudget: this.#packets.curationBudgetFor(request.packet), // {§tokenomics-client-gauge}
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,
                 // Opaque provider metadata plus the grammar transport key.
@@ -1625,68 +1795,49 @@ export default class TurnRunner {
                 meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
             },
         });
+    }
 
+    // Phase 6 — the admitted program runs under the workspace's command ceiling and
+    // the turn settles on the executor's verdict.
+    async #settleAdmittedTurn(args: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
+        const { childProvider, workspaceId, workerId, loopId, onDispatch, onSettled, allowUnobservedRetrievalCompletion } = args;
+        const { split } = emission;
         // {§operator-config-workspace-max-commands} — workspace maxCommands
         // narrows the operator ceiling before the admitted program reaches the
         // shared executor.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
         const executed = await this.executeAdmittedTurn({
-            statements: packetAssistant.ops,
-            source: splitResponse.sourceBacked ? packetAssistant.content : null,
-            sourceModelCallId: emissionModelCallId,
+            statements: split.packetAssistant.ops,
+            source: split.sourceBacked ? split.packetAssistant.content : null,
+            sourceModelCallId: emission.modelCallId,
             origin: "model",
             workspaceId,
             workerId,
             loopId,
-            turnId,
-            fromSequence: nextActionIndex,
+            turnId: request.turnId,
+            fromSequence: request.nextActionIndex,
             maxCommands,
             allowUnobservedRetrievalCompletion,
-            recoverableParseErrors,
-            emptyTurn: splitResponse.emptyTurn,
+            recoverableParseErrors: split.recoverableParseErrors,
+            emptyTurn: split.emptyTurn,
             bare: {
                 provider: childProvider,
-                primaryWorkerId,
-                loopSequence: loopSeq,
-                turnSequence: seq,
-                signal: providerSignal,
+                primaryWorkerId: emission.primaryWorkerId,
+                loopSequence: request.loopSeq,
+                turnSequence: request.seq,
+                signal: emission.signal,
             },
-            signal: providerSignal,
+            signal: emission.signal,
             onDispatch,
             onSettled,
         });
-        return {
-            createdTurnIds,
-            turnId,
-            producer: "model",
-            kind: "inference",
-            status: executed.status,
+        return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             fingerprint: executed.fingerprint,
-            capacityHardStop: false,
-                providerParked: false,
             steerStruck: executed.steerStruck,
             emptyTurn: executed.emptyTurn,
-            emissionAttempts,
-            emissionExhausted: false,
-        };
-        } catch (cause) {
-            const completionFailures: unknown[] = [];
-            for (const createdTurnId of createdTurnIds) {
-                try {
-                    await Turn.failOpen(this.#db, createdTurnId);
-                } catch (completionCause) {
-                    completionFailures.push(completionCause);
-                }
-            }
-            if (completionFailures.length > 0) {
-                throw new AggregateError(
-                    [cause, ...completionFailures],
-                    "turn execution failed and its open turn containers could not all be completed",
-                );
-            }
-            throw cause;
-        }
+            emissionAttempts: emission.emissionAttempts,
+        });
     }
 
     // Split the wire-level ProviderResponse into the two destinations:

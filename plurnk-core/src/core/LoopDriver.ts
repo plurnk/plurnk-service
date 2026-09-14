@@ -222,7 +222,7 @@ export default class LoopDriver {
                         async (span) => {
                             const t = await this.#runTurn({
                                 provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal: executionSignal, onDispatch, onSettled,
-                                turnNumber: modelTurnCount + 1, maxTurns,
+                                turnNumber: modelTurnCount + 1,
                                 allowUnobservedRetrievalCompletion: await this.#strikes.streak(loopId) + 1 >= maxStrikes,
                                 invalidEmissionRecoveryEntryId });
                             span.setAttribute("turn.id", t.turnId);
