@@ -32,14 +32,22 @@ while [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "idle-park" });
                 const running = runLoopToTerminal(ws, 2, { prompt: "run and wait", policy: { proposals: "accept" } }, { timeoutMs: 20_000 });
-                await waitForDb(
-                    async () => (await db.test_get_loop_status.get<{ status: number }>({ id: 1 }))?.status,
-                    (status) => status === 202,
-                );
+                let taskStatuses: number[];
+                try {
+                    // The park lands the loop's status before the TASK row's receipt is durable, so
+                    // wait for the rows the assertion reads, not for the status.
+                    taskStatuses = await waitForDb(
+                        async () => (await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({}))
+                            .filter(({ op }) => op === "TASK").map(({ status_rx }) => status_rx),
+                        (statuses) => statuses.length === 3,
+                    );
+                } finally {
+                    // Release the command whatever the wait said: a failed assertion must not leave
+                    // the loop parked past the end of the test.
+                    await writeFile(releasePath, "");
+                }
                 assert.equal(mock.remaining, 3, "both actionable turns ran before the explicit waiting inventory parked");
-                const parkedRows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
-                assert.deepEqual(parkedRows.filter(({ op }) => op === "TASK").map(({ status_rx }) => status_rx), [102, 102, 202], "launch, independent work, then explicit wait");
-                await writeFile(releasePath, "");
+                assert.deepEqual(taskStatuses, [102, 102, 202], "launch, independent work, then explicit wait");
                 const parked = await running;
                 assert.equal(parked.result.status, 200, "the loop concludes after the parked turn wakes on the stream's end");
                 const errBefore = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: parked.modelWorkerId! });
