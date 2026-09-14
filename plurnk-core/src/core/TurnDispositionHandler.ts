@@ -83,10 +83,7 @@ export default class TurnDispositionHandler {
             return withTimingDetail(this.#failure("task-inventory-missing", 409,
                 "No tasks were supplied. Submit a nonempty TASK inventory."));
         }
-        if (intent === "continue" || intent === "pending") {
-            return withTimingDetail({ status: 102, ...(intent === "pending"
-                ? { detail: "Pending tasks remain. Review their dependencies." } : {}) });
-        }
+        if (intent === "continue" || intent === "todo") return withTimingDetail({ status: 102 });
 
         // {§worker-wait-timing}: explicit timing is an obligation in its own
         // right; otherwise {§wait-obligation-matrix} decides an untimed join.

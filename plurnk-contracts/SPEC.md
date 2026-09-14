@@ -521,11 +521,11 @@ of entry order. Actual execution adjudicates intent under {§wait-obligation-mat
 | Explicit empty inventory | Recover empty inventory | 102 |
 | Any `in_progress` | Continue independent actionable work | 102 |
 | Any `waiting`, no `in_progress` | Await work or an event | 202 |
-| Any `pending`, no actionable or waiting entry | Review blocked dependencies | 102 |
+| Any `todo`, no actionable or waiting entry | Continue | 102 |
 | All terminal, any `completed` | End successfully | 200 |
 | All `failed`, nonempty | End unsuccessfully | 499 |
 
-`pending` is blocked on another task; `in_progress` can be actively advanced;
+`todo` is not started; `in_progress` can be actively advanced;
 `waiting` awaits an ongoing stream, worker or external event. `completed` is
 successful resolution; `failed` is unsuccessful resolution. A failed sibling
 does not terminate independent unfinished work. The engine does not infer a
@@ -535,6 +535,7 @@ dependency graph from task text.
 Plan.** It constructs ACP's `{ "entries": [...] }` Plan object from the internal
 array, synthesizes the ACP-required neutral `medium` priority on every entry
 (the model-native Plan carries none). The internal value is never mutated.
+Native `todo` maps to ACP `pending`: the same state under ACP's name, so it carries no marker.
 Native `waiting` maps to ACP `in_progress`, with `Waiting:` and a space prepended
 to its display content; native `failed` maps to ACP `completed`, with `Failed:` and a space.
 Both carry their native status in `_meta["plurnk.xyz/status"]`, an edge-owned
@@ -898,7 +899,7 @@ results, obligations and timing:
 | Intent | Nominal status | Meaning |
 |---|---|---|
 | TASK omitted | 102 | Continue silently, without a receipt or strike for omission |
-| empty, continue, pending | 102 | Continue or recover; an explicit empty inventory is refused with a soft 409 receipt, no strike |
+| empty, continue, todo | 102 | Continue or recover; an explicit empty inventory is refused with a soft 409 receipt, no strike |
 | wait | 202 | Park when a live obligation or explicit timing exists |
 | complete | 200 | Conclude once execution results permit completion |
 | fail | 499 | End unsuccessfully and cancel unresolved descendant scope |

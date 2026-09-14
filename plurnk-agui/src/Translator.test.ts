@@ -80,7 +80,7 @@ test("{§agui-plan-activity}: task status and content survive standards projecti
     const tr = t();
     const native = [
         { content: "Memory: Verify the root lockfile.", status: "completed" },
-        { content: "Review the changes.", status: "pending" },
+        { content: "Review the changes.", status: "todo" },
         { content: "Run the focused tests.", status: "in_progress" },
     ];
     const events = tr.logEntry(entry({ op: "TASK", tx: { body: native } }));

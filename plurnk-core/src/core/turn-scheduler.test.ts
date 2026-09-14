@@ -46,7 +46,7 @@ test("scheduling preserves operation identity and does not mutate its input", ()
 });
 
 test("every disposition follows trailing operations without reordering those operations", () => {
-    for (const status of ["pending", "in_progress", "waiting", "completed", "failed"]) {
+    for (const status of ["todo", "in_progress", "waiting", "completed", "failed"]) {
         const authored = statements(`\`\`\`TASK
 [{"content":"Task progress.","status":"${status}"}]
 \`\`\`

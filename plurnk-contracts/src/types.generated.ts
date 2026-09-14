@@ -624,7 +624,7 @@ content: string
 /**
  * The current execution status of this task.
  */
-status: ("pending" | "in_progress" | "waiting" | "completed" | "failed")
+status: ("todo" | "in_progress" | "waiting" | "completed" | "failed")
 /**
  * Opaque entry metadata preserved through standards projection.
  */

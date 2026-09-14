@@ -32,10 +32,10 @@
 ## Workflow Management
 
     ````TASK <!-- status of tasks necessary to resolve Active Prompts -->
-    [{"content": string, "status": "pending" | "waiting" | "in_progress" | "completed" | "failed"}]
+    [{"content": string, "status": "todo" | "waiting" | "in_progress" | "completed" | "failed"}]
     ````
 
-* `pending`: blocked until a task it depends on is `completed`.
+* `todo`: not started.
 * `waiting`: parked until a stream or worker finishes (doesn't block other in_progress work).
 * `in_progress`: active work.
 * `completed`, `failed`: resolved, successfully or not.

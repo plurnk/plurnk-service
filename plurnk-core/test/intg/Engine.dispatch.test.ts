@@ -207,13 +207,13 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: pending TASK inventory continues and its canonical Plurnk value survives into tx", async () => {
+test("Engine.dispatch: todo TASK inventory continues and its canonical Plurnk value survives into tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
             statement: continuationStmt({ body: JSON.stringify([{
                 content: "The capital of France remains unverified.",
-                status: "pending",
+                status: "todo",
             }]) }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
@@ -224,7 +224,7 @@ test("Engine.dispatch: pending TASK inventory continues and its canonical Plurnk
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
-                status: "pending",
+                status: "todo",
         }], "persistence retains the model-native status without ACP projection");
     } finally { await db.close(); }
 });
@@ -272,7 +272,7 @@ test("Engine.dispatch: a KILL line scope trims one item of a projected TASK row 
     try {
         await engine.dispatch({
             statement: continuationStmt({ body: JSON.stringify([
-                { content: "Verify the finding.", status: "pending" },
+                { content: "Verify the finding.", status: "todo" },
                 { content: "Done: the finished action.", status: "completed" },
                 { content: "Next: the open inquiry.", status: "in_progress" },
             ]) }),

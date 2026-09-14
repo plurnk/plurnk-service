@@ -1494,13 +1494,13 @@ test("TASK/READ/FIND bodies bypass the ordinary preview", () => {
 
 test("{§body-projection}: TASK reaches the next model packet without ACP priority or envelope", () => {
     const plan = [
-        { content: "Verify the baseline schema.", status: "pending" },
+        { content: "Verify the baseline schema.", status: "todo" },
     ];
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: plan } },
     ], tok);
 
-    assert.match(out, /"status":"pending"/, "the model sees its authored task status in the durable log");
+    assert.match(out, /"status":"todo"/, "the model sees its authored task status in the durable log");
     assert.doesNotMatch(out, /"priority"|"entries"/, "ACP framing is absent from model packet materialization");
 });
 

@@ -7,18 +7,18 @@ const inventory = (statuses: readonly string[]) => statuses.map((status, index) 
 test("{§task-inventory-intent} the native inventory determines one outcome irrespective of entry order", () => {
     const cases = [
         [[], "missing"],
-        [["pending"], "pending"],
+        [["todo"], "todo"],
         [["completed"], "complete"],
         [["failed"], "fail"],
         [["completed", "completed"], "complete"],
         [["failed", "failed"], "fail"],
         [["completed", "failed"], "complete"],
         [["failed", "completed", "failed"], "complete"],
-        [["failed", "pending"], "pending"],
-        [["failed", "pending", "completed"], "pending"],
-        [["waiting", "pending", "failed"], "wait"],
-        [["waiting", "pending", "failed", "completed"], "wait"],
-        [["in_progress", "pending", "waiting", "failed", "completed"], "continue"],
+        [["failed", "todo"], "todo"],
+        [["failed", "todo", "completed"], "todo"],
+        [["waiting", "todo", "failed"], "wait"],
+        [["waiting", "todo", "failed", "completed"], "wait"],
+        [["in_progress", "todo", "waiting", "failed", "completed"], "continue"],
     ] as const;
     for (const [statuses, expected] of cases) {
         for (const ordered of [statuses, statuses.toReversed()]) {
@@ -29,7 +29,7 @@ test("{§task-inventory-intent} the native inventory determines one outcome irre
 });
 
 test("{§turn-disposition} TASK is the only lifecycle operation and retains native inventory and timing", () => {
-    const body = inventory(["pending", "waiting", "in_progress", "completed", "failed"]);
+    const body = inventory(["todo", "waiting", "in_progress", "completed", "failed"]);
     const source = `${PlurnkParser.frame("SEND", "First finding.")}\n${PlurnkParser.frame("TASK <60,5>", JSON.stringify(body))}`;
     const parsed = PlurnkParser.parse(source);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);

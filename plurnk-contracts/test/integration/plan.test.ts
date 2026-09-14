@@ -34,13 +34,13 @@ test("{§plan-value}: PLAN admission supplies the neutral priority once", () => 
 });
 
 test("{§plan-value}: explicit priority and an empty complete plan remain exact", () => {
-    const explicit = parsePlan('[{"content":"Verify the result.","status":"pending"}]');
+    const explicit = parsePlan('[{"content":"Verify the result.","status":"todo"}]');
     const empty = parsePlan('[]');
 
     assert.deepEqual(explicit.errors, []);
     assert.deepEqual(explicit.plan?.body, [{
         content: "Verify the result.",
-        status: "pending",
+        status: "todo",
     }]);
     assert.deepEqual(empty.errors, []);
     assert.deepEqual(empty.plan?.body, []);
@@ -49,14 +49,14 @@ test("{§plan-value}: explicit priority and an empty complete plan remain exact"
 test("{§plan-value}: opaque entry metadata survives admission without Plurnk interpretation", () => {
     const result = parsePlan(JSON.stringify([{
         content: "Preserve foreign metadata.",
-        status: "pending",
+        status: "todo",
         _meta: { "example.dev/entry": 7 },
     }]));
 
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.plan?.body, [{
         content: "Preserve foreign metadata.",
-        status: "pending",
+        status: "todo",
         _meta: { "example.dev/entry": 7 },
     }]);
 });
@@ -67,8 +67,8 @@ test("{§plan-value}: broken JSON, plain text, and invalid Plans normalize witho
         '{}',
         '[{"content":"Missing status"}]',
         '[{"content":"Bad status","status":"cancelled"}]',
-        '[{"content":7,"status":"pending"}]',
-        '{"entries":[{"content":"Object-wrapped input is not model-native.","status":"pending"}]}',
+        '[{"content":7,"status":"todo"}]',
+        '{"entries":[{"content":"Object-wrapped input is not model-native.","status":"todo"}]}',
     ];
 
     for (const specimen of specimens) {
@@ -90,13 +90,13 @@ test("{§plan-value}: an empty tolerated PLAN becomes the planless Plurnk value"
 });
 
 test("{§plan-value}: the canonical Plan is {content, status} — a priority never enters", () => {
-    const canonical = [{ content: "The model-facing Plan carries no priority.", status: "pending" }];
+    const canonical = [{ content: "The model-facing Plan carries no priority.", status: "todo" }];
     assert.equal(Validator.validatePlan(canonical).valid, true);
-    const stale = [{ content: "Struck 2026-08-24.", priority: "medium", status: "pending" }];
+    const stale = [{ content: "Struck 2026-08-24.", priority: "medium", status: "todo" }];
     assert.equal(Validator.validatePlan(stale).valid, false, "a present priority is non-canonical");
     assert.deepEqual(
         PlanValue.admit(JSON.stringify(stale)),
-        [{ content: "Struck 2026-08-24.", status: "pending" }],
+        [{ content: "Struck 2026-08-24.", status: "todo" }],
         "admission strips the stale field so the log echoes only the canonical shape",
     );
 });
@@ -116,9 +116,9 @@ test("{§plan-value}: unrecognized statuses use ordinary lossless plaintext admi
     assert.equal(Validator.validatePlan(JSON.parse(body)).valid, false);
 });
 
-test("{§plan-acp-projection}: the ACP boundary supplies priority without interpreting content or changing status", () => {
+test("{§plan-acp-projection}: the ACP boundary supplies priority and names todo pending without interpreting content", () => {
     const plan = PlanValue.admit(JSON.stringify([
-        { content: "Check the baseline schema.", status: "pending" },
+        { content: "Check the baseline schema.", status: "todo" },
         { content: "Memory: preserve this literal task text.", status: "completed" },
         { content: "Ship the implementation.", status: "in_progress" },
     ]));
@@ -156,7 +156,7 @@ test("{§plan-value}: the {§json-result-rendering} spread is the projection lay
     assert.deepEqual(readmitted.plan?.body, plan);
 
     // Non-array and per-line forms remain the soft fallback — no list inference.
-    for (const specimen of ['{"content":"Solo.","status":"pending"}', '{"a":1}\n{"b":2}']) {
+    for (const specimen of ['{"content":"Solo.","status":"todo"}', '{"a":1}\n{"b":2}']) {
         assert.deepEqual(
             PlanValue.admit(specimen),
             [{ content: specimen, status: "in_progress" }],

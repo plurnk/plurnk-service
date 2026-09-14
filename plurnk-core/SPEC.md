@@ -2314,7 +2314,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | TASK omitted | At least one authored operation | 102; no synthetic TASK, warning, or strike | None |
 | explicit empty inventory | Always | 409 receipt; continue, no strike (operator, 2026-09-12) | `No tasks were supplied. Submit a nonempty TASK inventory.` |
 | continue | Always | 102; no implicit join or idle strike | None |
-| pending | Always | 102 | `Pending tasks remain. Review their dependencies.` |
+| todo | Always | 102; no strike | None |
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |

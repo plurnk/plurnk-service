@@ -41,7 +41,7 @@
             "oneOf": [
                 {
                     "type": "string",
-                    "const": "pending"
+                    "const": "todo"
                 },
                 {
                     "type": "string",

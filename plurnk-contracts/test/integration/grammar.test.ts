@@ -325,7 +325,7 @@ test("empty sections normalize to their operation-owned empty values", () => {
 // {§plan-slotless}: bracketed inline JSON is structurally a signal modifier;
 // it must never be admitted as an empty semantic Plan.
 test("TASK takes a heading-line inventory block with one advisory ({§one-line-turn}) and still rejects a path slot", () => {
-    const inlineArray = "```TASK [{\"content\":\"keep this\",\"status\":\"pending\"}]\n```";
+    const inlineArray = "```TASK [{\"content\":\"keep this\",\"status\":\"todo\"}]\n```";
     const result = PlurnkParser.parseStatements(inlineArray);
     const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
     assert.deepEqual(errors.map(({ message, source, severity }) => ({ message, source, severity })), [{
@@ -335,7 +335,7 @@ test("TASK takes a heading-line inventory block with one advisory ({§one-line-t
     }]);
     const task = result.items.find((item) => item.kind === "statement" && item.statement.op === "TASK");
     assert.ok(task !== undefined && task.kind === "statement" && task.statement.op === "TASK");
-    assert.deepEqual(task.statement.body, [{ content: "keep this", status: "pending" }], "the block is the inventory, not a modifier");
+    assert.deepEqual(task.statement.body, [{ content: "keep this", status: "todo" }], "the block is the inventory, not a modifier");
 
     const all = firstError("```TASK (notes.md) <1>\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```");
     assert.equal(all.message, "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, closing fence, or body content");

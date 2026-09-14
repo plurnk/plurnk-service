@@ -13,7 +13,7 @@ const parse = (header: string, body: string | null, warnings = 0) => {
 };
 
 test("{§plan-value} TASK carries canonical inventory with whole-body plaintext tolerance", () => {
-    for (const status of ["pending", "in_progress", "waiting", "completed", "failed"] as const) {
+    for (const status of ["todo", "in_progress", "waiting", "completed", "failed"] as const) {
         const op = "TASK";
         const inventory = [{ content: "Review the results.", status }];
         const statement = parse(op, JSON.stringify(inventory));

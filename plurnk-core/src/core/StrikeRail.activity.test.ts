@@ -37,7 +37,7 @@ test("{§engine-cycle-evidence} source decoration does not disguise a cycle", ()
 
 test("{§engine-cycle-evidence} native inventory changes are workflow changes", () => {
     const task = (content: string, status: string) => PlurnkParser.frame("TASK", JSON.stringify([{ content, status }]));
-    assert.notEqual(fingerprint(task("Inspect.", "pending")), fingerprint(task("Inspect.", "in_progress")));
+    assert.notEqual(fingerprint(task("Inspect.", "todo")), fingerprint(task("Inspect.", "in_progress")));
     assert.notEqual(fingerprint(task("Inspect.", "in_progress")), fingerprint(task("Implement.", "in_progress")));
 });
 

@@ -16,13 +16,13 @@ export default class TurnDisposition {
     }
 
     // {§task-inventory-intent}: order-independent intent, not a second scheduler.
-    static intent(value: Plan): "missing" | "continue" | "wait" | "pending" | "complete" | "fail" {
+    static intent(value: Plan): "missing" | "continue" | "wait" | "todo" | "complete" | "fail" {
         const plan = PlanValue.assertCanonical(value);
         if (plan.length === 0) return "missing";
         const states = new Set(plan.map(({ status }) => status));
         if (states.has("in_progress")) return "continue";
         if (states.has("waiting")) return "wait";
-        if (states.has("pending")) return "pending";
+        if (states.has("todo")) return "todo";
         return states.has("completed") ? "complete" : "fail";
     }
 

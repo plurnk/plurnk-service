@@ -80,6 +80,8 @@ Language and teaching:
 - READ receipts name a resource's other channels with their tokens; a fetched page's source
   is its body and its curated Markdown is `#readable`; the Tavily materializer ships by default.
 - A lean `plurnk.md`, one `## Delegation` section, and a lean turn 0.
+- A task not yet started is `todo`; `pending` left the model-native vocabulary. ACP clients
+  still receive `pending` through the plan projection.
 
 Daemon and database:
 

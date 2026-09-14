@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser, Validator } from "../../src/index.ts";
 
-for (const status of ["pending", "in_progress", "waiting", "completed", "failed"]) {
+for (const status of ["todo", "in_progress", "waiting", "completed", "failed"]) {
     test(`TASK ${status} is durable inventory, not an executor or SEND alias`, () => {
         const body = JSON.stringify([{ content: "Task state.", status }]);
         const result = PlurnkParser.parse(`\`\`\`READ (notes.md)\`\`\`
@@ -40,7 +40,7 @@ test("TASK admits timing independent of intent but never a resource operand", ()
     if (statement?.kind === "statement") {
         assert.equal(statement.statement.op, "TASK");
         assert.deepEqual(statement.statement.lineMarker, { marks: [5, 1] });
-        for (const status of ["pending", "in_progress", "completed", "failed"]) {
+        for (const status of ["todo", "in_progress", "completed", "failed"]) {
             const body = [{ content: "Task state.", status }];
             assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, body }).valid, true);
             assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, body, lineMarker: null }).valid, true);

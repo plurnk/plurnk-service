@@ -96,7 +96,7 @@ test("parseLog retains consecutive turns with independently chosen fence lengths
 
 // {§disposition-anywhere}
 test("operations after a disposition are admitted in authored order without a diagnostic", () => {
-    for (const status of ["pending", "in_progress", "waiting", "completed", "failed"] as const) {
+    for (const status of ["todo", "in_progress", "waiting", "completed", "failed"] as const) {
         for (const precedingRead of [false, true]) {
             const input = [
                 ...(precedingRead ? [frame("READ (early.md)", null)] : []),

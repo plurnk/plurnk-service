@@ -12,7 +12,7 @@ export default class AcpPlanValue {
                 const { _meta: _ignored, ...fields } = entry;
                 if (entry.status !== "waiting" && entry.status !== "failed") return {
                     ...fields,
-                    status: entry.status,
+                    status: entry.status === "todo" ? "pending" as const : entry.status,
                     priority: "medium" as const,
                     ...(Object.keys(metadata).length === 0 ? {} : { _meta: metadata }),
                 };
