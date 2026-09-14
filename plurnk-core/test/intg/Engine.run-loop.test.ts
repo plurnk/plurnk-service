@@ -8,7 +8,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -134,24 +134,27 @@ test("Engine.runLoop: repeated identical TASK-only turns remain subject to the c
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
+test("{§completion-joins-live-work} Engine.runLoop: a completion over a live stream joins it — the loop parks, never a false 200", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Seed a live stream the worker holds: an open subscription (closed_at NULL) against a real entry.
         const entryId = await seedEntryWithChannel(db, { workspaceId, authority: await WorkerName.forId(db, workerId), pathname: "/live-stream" });
         await db.open_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response([dispositionStmt("completed", "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
-            response([dispositionStmt("failed", "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
+            response([dispositionStmt("completed", "all done")]),   // turn 1: a live stream makes this a join → 202 park
+            response([dispositionStmt("failed", "abandoning")]),  // never reached: the loop parks until the stream concludes
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.turnIds.length, 3, "initialization plus two model turns prove the premature 200 was not honored");
-        assert.equal(result.result.status, 499, "the loop ended on the model's 499, never the premature 200");
-        // The premature steer is a terse op='error' log row (409 Premature Termination); its derived
-        // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
-        const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":409,"path":"log:\/\/\/[^"]+\/TASK"/, "the premature SEND failure surfaced as a terse log-coordinate pointer");
+        assert.equal(result.turnIds.length, 2, "initialization plus the one model turn: the join parked the loop on its first claim");
+        assert.equal(result.result.status, 202, "the loop parked on the live stream, never a false 200");
+        assert.equal(provider.remaining, 1, "no further turn runs until the stream concludes and wakes the loop");
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
+        const joined = rows.findLast((r) => r.op === "TASK" && r.origin === "model");
+        assert.equal(joined?.status_rx, 202, "the TASK row records the join as the park it is");
+        const join = JSON.parse(joined!.rx) as { problem?: unknown; detail?: string; attrs?: { waiting?: number; pending?: string[] } };
+        assert.equal(join.problem, undefined, "a join carries no Problem and no strike");
+        assert.deepEqual(join.attrs, { waiting: -1, pending: ["streams"] });
+        assert.equal(join.detail, "Completion joined: an execution was still running. The loop waited, and what concluded is in this packet; a TASK now completes.");
     } finally { await db.close(); }
 });
 

@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 
-// {§engine-rails}: discovery misses and not-ready results are soft. Refused dispositions strike via
-// steerStruck, never by counting their raw 409 a second time. Executor evidence
-// is soft wherever it surfaces, including a completion READ ({§exec-stream}).
+// {§engine-rails}: discovery misses and not-ready results are soft, and no TASK answer strikes
+// (a completion joins live work, {§completion-joins-live-work}; a claim over settled results
+// defers, {§completion-defers-to-results}). Executor evidence is soft wherever it surfaces,
+// including a completion READ ({§exec-stream}).
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
 
@@ -95,7 +96,6 @@ export default class StrikeRail {
         waitRevision: number;
         fingerprint: string;
         outcomes: ReadonlyArray<StrikeOutcome>;
-        steerStruck: boolean;
         emptyTurn?: boolean;
         minCycles: number;
         maxCyclePeriod: number;
@@ -120,7 +120,7 @@ export default class StrikeRail {
                 && !isExecutorEvidence(outcome),
         );
         // {§empty-turn} — a turn with no operation is one progress-contract strike.
-        const struck = recordedFailed || turn.steerStruck || cycle.detected || turn.emptyTurn === true;
+        const struck = recordedFailed || cycle.detected || turn.emptyTurn === true;
         const streak = struck ? state.strike_streak + 1 : 0;
         const saved = await this.#db.strike_rail_assess.run({
             loop_id: loopId,

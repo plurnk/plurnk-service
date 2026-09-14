@@ -272,7 +272,6 @@ export default class LoopDriver {
                     waitRevision: row.wait_revision,
                     fingerprint: turn.fingerprint,
                     outcomes: turn.outcomes,
-                    steerStruck: turn.steerStruck,
                     emptyTurn: turn.emptyTurn,
                     minCycles, maxCyclePeriod, maxStrikes });
                 if (verdict.thresholdCrossed) {

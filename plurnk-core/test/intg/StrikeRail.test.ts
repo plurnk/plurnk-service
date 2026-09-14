@@ -15,22 +15,14 @@ test.beforeEach(async () => {
 });
 test.afterEach(async () => { await db.close(); });
 
-const base = { waitRevision: 0, fingerprint: "READ(x)", steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
+const base = { waitRevision: 0, fingerprint: "READ(x)", minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
-test("a 409 status alone is soft because Engine supplies the premature-terminate strike", async () => {
+test("a 409 status alone is soft; no TASK answer strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
     const rail = new StrikeRail(db);
     const verdict = await rail.assess(loopId, { ...base, outcomes: [outcome("SEND", 409)] });
     assert.equal(verdict.thresholdCrossed, false);
-    assert.equal(await rail.streak(loopId), 0, "the status is not counted separately from Engine's steerStruck ruling");
-});
-
-test("a premature-terminate 409 strikes through steerStruck", async () => {
-    const rail = new StrikeRail(db);
-    // Same 409 status, but steerStruck TRUE (Engine sets it for a live-work refusal). Strikes.
-    let crossed = false;
-    for (const fp of ["SEND(a)", "SEND(b)", "SEND(c)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [outcome("SEND", 409)], steerStruck: true })).thresholdCrossed || crossed;
-    assert.equal(crossed, true, "discarding live work strikes out — steerStruck decides, not the raw 409");
+    assert.equal(await rail.streak(loopId), 0, "a soft status is never counted");
 });
 
 test("a genuinely-spinning model is still caught — identical turns cycle-strike (508 backstop)", async () => {
@@ -71,11 +63,11 @@ test("EXEC errors are soft regardless of status", async () => {
     assert.equal(await rail.streak(loopId), 0, "an executor error remains evidence without pricing experimentation into the strike rail");
 });
 
-test("hard outcomes and terminal steering are the two non-cycle strike sources", async () => {
+test("hard outcomes are the non-cycle strike source and accumulate a streak", async () => {
     const rail = new StrikeRail(db);
     assert.equal((await rail.assess(loopId, { ...base, fingerprint: "hard", outcomes: [outcome(null, 400)] })).thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 1);
-    assert.equal((await rail.assess(loopId, { ...base, fingerprint: "steer", outcomes: [], steerStruck: true })).thresholdCrossed, false);
+    assert.equal((await rail.assess(loopId, { ...base, fingerprint: "hard2", outcomes: [outcome("EDIT", 500)] })).thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 2);
 });
 
@@ -84,7 +76,6 @@ test("multiple sources still count once per turn, and a clean turn resets the st
     const struck = await rail.assess(loopId, {
         ...base,
         outcomes: [outcome("EDIT", 500)],
-        steerStruck: true,
         maxStrikes: 2,
     });
     assert.equal(struck.thresholdCrossed, false);

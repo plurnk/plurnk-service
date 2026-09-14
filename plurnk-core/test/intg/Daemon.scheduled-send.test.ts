@@ -422,11 +422,10 @@ test("{§worker-scheduled-send}: AG-UI reattachment exposes durable timing witho
     });
 });
 
-test("{§worker-scheduled-send}: a scheduled child's future work is visible, prevents completion, and belongs to parent cancellation", async () => {
+test("{§worker-scheduled-send}: a scheduled child's future work is visible, joins a completion, and belongs to parent cancellation", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```SEND (worker://reviewer) <60,60>\nCheck for updated revenue figures.\n```\n```TASK\n[{\"content\":\"Inspect scheduling.\",\"status\":\"in_progress\"}]\n```"),
         makeMockResponse("```SEND\nThe ongoing assignment is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-        makeMockResponse("```TASK\n[{\"content\":\"Wait for the scheduled child.\",\"status\":\"waiting\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-child-obligation" });
@@ -436,9 +435,9 @@ test("{§worker-scheduled-send}: a scheduled child's future work is visible, pre
         try {
             const initial = await daemon.runLoop({ workspaceId, workerId, prompt: "Have reviewer perform an hourly check.", policy: { proposals: "accept" } });
             await waitForDb(() => db.test_get_loop_status.get({ id: initial.loopId }), (row) => row?.status === 202);
-            assert.equal(provider.received.length, 3, "only the parent ran; the scheduled child is not due");
+            assert.equal(provider.received.length, 2, "only the parent ran, and its completion joined the scheduled child; the child is not due");
             const receipts = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: initial.loopId });
-            assert.ok(receipts.some(({ op, rx }) => op === "TASK" && JSON.parse(rx).status === 409), "completion is refused while the scheduled child remains live");
+            assert.ok(receipts.some(({ op, rx }) => op === "TASK" && JSON.parse(rx).status === 202), "the completion joins the scheduled child: the TASK row parks at 202 ({§completion-joins-live-work})");
             const childLoops = await daemon.listWorkerLoops({ workspaceId, workerId: childId });
             const child = childLoops.find(({ prompt }) => prompt === "Check for updated revenue figures.");
             assert.equal(child?.status, 100);

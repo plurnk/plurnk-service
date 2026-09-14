@@ -118,12 +118,12 @@ These are the complete strike sources:
 | Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
 | Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
-| Inventory steering  | A refused completion at 409 sets the turn's steering ruling ({§send}); an empty TASK is a soft 409 receipt, never a strike. | The TASK receipt. |
+| Inventory steering  | Retired (2026-09-14): a completion claimed over live work joins it ({§completion-joins-live-work}) and one over settled results defers ({§completion-defers-to-results}); every TASK answer, an empty TASK's soft 409 included, is a receipt and never a strike. | The TASK receipt. |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
 
 `EXEC` results remain exact model-visible evidence but are always soft: an
-executor error is not a PLURNK contract violation. Cycle and terminal steering
-remain independent strike sources.
+executor error is not a PLURNK contract violation. Cycle detection remains an
+independent strike source.
 
 A `425` not-ready result describes unfinished work, not a contract violation.
 It retains its exact receipt, without scheduling side effects ({§join-blocking-collect});
@@ -172,7 +172,7 @@ The contracts, and the violation of each that strikes:
 | Contract | Violation that strikes |
 |---|---|
 | operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
-| review contract | a completion claimed over live work (409 `work-remains`, {§send-premature-terminate}); every other TASK answer — a deferral over settled results ({§completion-defers-to-results}), an empty inventory, an already-terminal loop — is soft |
+| review contract | none since 2026-09-14: a completion claimed over live work joins it ({§completion-joins-live-work}), one over settled results defers ({§completion-defers-to-results}), and an empty inventory or an already-terminal loop is a soft receipt |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
 | provider response contract | the provider returned an invalid response |
@@ -2320,7 +2320,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
 | complete, fail | The loop holds prompt frames it has not yet published ({§completion-defers-to-prompts}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new prompt arrived during this turn. It is in this packet; a response and a TASK now complete.` |
-| complete | Live work: an open stream or a live child worker ({§send-premature-terminate}) | 409; continue with one strike | Factual pending-work Problem naming the wait |
+| complete | Live work: an open stream or a live child worker ({§completion-joins-live-work}) | 202; durable park and wake of the same loop; no strike | Join detail naming the work, read when the wake lands |
 | complete, fail | Same-turn failures, or settled results the next packet carries — this turn's receipts, a concluded stream, a terminated child ({§completion-defers-to-results}) | 102; no strike; the next packet carries them | Read-time deferral detail naming them |
 | complete | No blocking obligation, or administrative producer | 200 | None |
 | fail | Otherwise; live work is cancelled, never waited for | 499; cancel unresolved descendant scope | `All tasks in the final inventory failed.` |
@@ -2419,22 +2419,30 @@ violations follow the current admission and strike contracts
   results** (every same-turn non-SEND/TASK/KILL operation, terminal stream output
   without a terminal foisted READ, and child results queued for the next packet).
   The set is judged at the disposition's own dispatch, after
-  earlier operations in the emission. `[200]` over a **live** member is refused
-  409 `work-remains` and the loop continues; that refusal is the one completion
-  answer that strikes ({§engine-rails}): the model claimed done while its own
-  work runs. Its Problem reports the bounded pending kinds `streams`, `workers`,
-  `receipts`, `failed-stream-results`, and `worker-results`, names the wait (a
-  TASK with a pending task, or KILL for an execution) and what has meanwhile
-  landed, and is `retryable: true`, because the same TASK is the correct next
-  request; it never names an action to observe or describes a persistent
-  unacknowledged obligation. A claim over only completed-but-unobserved members
-  is not a refusal but a deferral ({§completion-defers-to-results}). A nonempty
-  all-`failed` inventory crosses that same deferral and then abandons regardless
-  of live work, which it cancels rather than waits for.
-  The Problem obeys the configured error-detail limit; it never
-  embeds commands, stream handles, result bodies, or a presumed recovery.
-  The pending kind changes the factual Problem class, not
-  rail accounting.
+  earlier operations in the emission. `[200]` over a **live** member joins it
+  ({§completion-joins-live-work}); a claim over only completed-but-unobserved
+  members is a deferral ({§completion-defers-to-results}). Neither is a refusal
+  and neither strikes. The pending kinds are `streams`, `workers`, `receipts`,
+  `failed-stream-results`, and `worker-results`; a receipt names them and never
+  embeds commands, stream handles, result bodies, or a presumed recovery. A
+  nonempty all-`failed` inventory crosses the same deferral and then abandons
+  regardless of live work, which it cancels rather than waits for.
+- §completion-joins-live-work **A completion over live work is a join.** A scope
+  that says done while its own work runs — an open stream, a live child worker —
+  is asking to leave with that work unfinished, and the two exits structured
+  concurrency allows are join and cancel. The `completed` inventory takes the
+  join: the TASK answers 202, the loop parks untimed on the live obligation
+  exactly as a `waiting` inventory would, and the settle edge wakes it with what
+  concluded in the packet; the model's next TASK decides with that result in
+  front of it, so nothing completes on an answer written before the work
+  finished. The `failed` inventory takes the cancel. The join's `detail` is read
+  when the wake lands and speaks from that moment; its `attrs` carry `waiting`
+  and the pending kinds. It is never a strike: the review contract has no
+  violation left, and the rail's remaining sources are hard results, cycles and
+  empty turns ({§engine-rails}). A stream the model meant to leave running parks
+  the loop until it ends, as a model-written `waiting` would; KILL before the
+  claim is the way to leave it running (operator, 2026-09-14: "politely
+  converting completed into waiting when there are streams or workers in-flight").
 - §completion-defers-to-results **Settled results defer a terminal; they never strike.**
   A completion or abandonment claimed over results the model could not yet have
   seen — this turn's failed operations, this turn's receipts (successful execution

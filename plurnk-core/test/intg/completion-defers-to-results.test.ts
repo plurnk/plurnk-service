@@ -1,6 +1,7 @@
 // {§completion-defers-to-results} {§send-premature-terminate} — the observation barrier: a
-// terminal claimed over settled results defers one packet and never strikes; only a completion
-// over live work refuses and strikes; an abandonment takes the same look, then cancels live work.
+// terminal claimed over settled results defers one packet and never strikes; a completion over
+// live work joins it ({§completion-joins-live-work}); an abandonment takes the same look, then
+// cancels live work.
 import WorkerName from "../../src/core/WorkerName.ts";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
@@ -113,13 +114,12 @@ test("{§completion-defers-to-results}: repeated early claims cost packets, neve
 
 for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-stream-results", "worker-results", "operation-failure", "kill-failure"] as const) {
     const live = kind === "workers" || kind === "streams";
-    test(`{§completion-defers-to-results}: a completion over ${kind} ${live ? "refuses with a strike each turn" : "defers one packet, then completes"}`, async (t) => {
+    test(`{§completion-defers-to-results}: a completion over ${kind} ${live ? "joins it: the loop parks without a strike" : "defers one packet, then completes"}`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
         const read = "```READ (worker:///answer.md)```";
         const second = kind === "operation-failure" ? "```READ (worker:///missing.md)```" : kind === "kill-failure" ? "```KILL (worker:///missing.md)```" : "";
-        // Live claims carry distinct messages so the rail counts strikes, not a cycle (508).
         const provider = new Mock({ contextWindow: 100_000, responses: live
-            ? [response(read), response("", "completed", "Done, I think."), response("", "completed", "Done, really."), response("", "completed", "Done, honestly.")]
+            ? [response(read), response("")]
             : [response(read), response(second), response("")] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
@@ -167,15 +167,16 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
         const finalTurnId = result.turnIds.at(-1);
         assert.ok(finalTurnId !== undefined);
         if (live) {
-            assert.equal(result.result.status, 500, "three completions claimed over live work are three strikes");
-            assert.equal(result.reason, "strike_threshold");
-            assert.equal(provider.received.length, 4);
-            assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 409, 409, 409]);
-            const problem = JSON.parse(rows.at(-1)!.rx).problem;
-            assert.equal(problem.type, "https://problems.plurnk.xyz/engine/dispatcher/work-remains");
-            assert.deepEqual(problem.pending, [kind]);
-            assert.equal(problem.retryable, true);
-            assert.equal((await db.test_get_turn.get<{ status: number }>({ id: finalTurnId }))?.status, 102);
+            assert.equal(result.result.status, 202, "a completion over live work joins it: the loop parks until the work settles");
+            assert.equal(provider.received.length, 2);
+            assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 202]);
+            const join = JSON.parse(rows.at(-1)!.rx) as Deferral;
+            assert.equal(join.problem, undefined, "a join carries no Problem and no strike");
+            assert.deepEqual(join.attrs, { waiting: -1, pending: [kind] });
+            assert.equal(join.detail, kind === "workers"
+                ? "Completion joined: child workers were still running. The loop waited, and what concluded is in this packet; a TASK now completes."
+                : "Completion joined: an execution was still running. The loop waited, and what concluded is in this packet; a TASK now completes.");
+            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 202, "parked on the live obligation, like a waiting inventory");
             return;
         }
         assert.equal(result.result.status, 200, "the settled result is shown, then the same TASK completes");

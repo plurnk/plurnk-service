@@ -199,7 +199,7 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     assert.equal(cancelled.loops[0].result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
 });
 
-test("{§send-premature-terminate} mixed terminal outcomes cannot abandon a live child", async (t) => {
+test("{§completion-joins-live-work} mixed terminal outcomes join a live child, never cancel it", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "mixed-outcomes-live-child");
@@ -217,14 +217,15 @@ test("{§send-premature-terminate} mixed terminal outcomes cannot abandon a live
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
         workspaceId, workerId, loopId, provider, messages: [],
     });
-    assert.equal(result.status, 102);
-    assert.equal(result.steerStruck, true);
-    assert.equal(await new LoopLifecycle(db).status(loopId), 102);
+    assert.equal(result.status, 202, "a mixed inventory with a completed task is a completion: it joins the live child");
+    assert.equal(await new LoopLifecycle(db).status(loopId), 202, "parked on the child");
     assert.equal(await new LoopLifecycle(db).status(childLoopId), 102, "a mixed inventory does not cancel its child");
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
-    const refused = rows.findLast(({ op }) => op === "TASK");
-    assert.equal(refused?.status_rx, 409);
-    assert.equal(JSON.parse(refused!.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/work-remains");
+    const joined = rows.findLast(({ op }) => op === "TASK");
+    assert.equal(joined?.status_rx, 202);
+    const join = JSON.parse(joined!.rx) as { problem?: unknown; attrs?: { pending?: string[] } };
+    assert.equal(join.problem, undefined, "a join carries no Problem and no strike");
+    assert.deepEqual(join.attrs?.pending, ["workers"]);
 });
 
 test("{§loop-response-messages} completion without SEND does not invent an answer from task text", async (t) => {

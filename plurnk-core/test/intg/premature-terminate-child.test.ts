@@ -18,39 +18,37 @@ const knownPath = (pathname: string): ParsedPath => ({
     username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null,
 });
 
-test("completion with a live child worker is refused 409 on the record (no erasure) + steers", async () => {
+test("{§completion-joins-live-work} completion with a live child worker joins it on the record (no erasure), never a strike", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const send200 = () => engine.runTurn({
+        const send200 = (loopId: number) => engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } }] }),
-            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            workspaceId, workerId: parentWorker, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
 
         // Baseline: no child → completed inventory can conclude.
-        const clean = await send200();
+        const clean = await send200(parentLoop);
         assert.equal(clean.status, 200, "with no live child, completed inventory terminates cleanly");
-        assert.equal(clean.steerStruck, false);
 
         // Spawn a live child worker (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child");
 
-        // Completion is now premature — the child is still live.
-        const premature = await send200();
-        assert.equal(premature.status, 102, "the TURN stays a continue (102) — the loop never went terminal");
-        assert.equal(premature.steerStruck, true, "and the premature-terminate steer fired");
+        // Completion over a live child is a join ({§completion-joins-live-work}): the loop parks.
+        const joiningLoop = await insertLoop(db, parentWorker, 2, "parent again");
+        const premature = await send200(joiningLoop);
+        assert.equal(premature.status, 202, "the completion joins the live child: the loop parks, it never went terminal");
 
-        // The record is faithful, NOT erased: the SEND row keeps its [200] emission but is stamped 409
-        // (refused — Conflict), auto-surfacing in the errors section (status≥400). The old downgrade
-        // rewrote the row to 102, erasing what the model did.
+        // The record is faithful, NOT erased: the TASK row keeps its completed inventory and is
+        // stamped 202, the park, preserving the model's completion intent.
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: premature.turnId });
         const sendRow = rows.find((r) => r.op === "TASK");
-        assert.equal(sendRow?.status_rx, 409, "the SEND row records the refusal as 409, preserving the model's termination attempt");
+        assert.equal(sendRow?.status_rx, 202, "the TASK row records the join as 202, preserving the model's completion intent");
     } finally { await db.close(); }
 });
 
@@ -107,8 +105,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        assert.equal(refused.status, 102, "the older unresolved loop keeps the child live");
-        assert.equal(refused.steerStruck, true, "the attempted completion is refused visibly");
+        assert.equal(refused.status, 202, "the older unresolved loop keeps the child live: the completion joins it");
 
         await db.test_set_loop_status.run({
             id: unresolvedLoop,
@@ -121,7 +118,6 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(completed.status, 200, "completion succeeds only after every child loop is terminal");
-        assert.equal(completed.steerStruck, false);
     } finally { await db.close(); }
 });
 
@@ -142,7 +138,6 @@ test("{§completion-defers-to-results}: READ + completed inventory in the same t
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
-        assert.equal(result.steerStruck, false, "a claim over a settled result defers; only live work strikes");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "TASK")?.status_rx, 102, "the TASK row records the deferral");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
@@ -166,7 +161,6 @@ test("a direct actionable TASK ignores wait timing with factual feedback", async
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102);
-        assert.equal(result.steerStruck, false);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "timing never overrides the actionable inventory");
         const row = await db.test_disposition_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
@@ -191,7 +185,6 @@ test("model actionable TASK with timing retains valid work and reports unapplied
             messages: [{ role: "user", content: "read the note" }],
         });
         assert.equal(result.status, 102);
-        assert.equal(result.steerStruck, false);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.find(({ op }) => op === "READ")?.status_rx, 200, "the valid sibling executes");
         assert.equal(rows.some(({ op }) => op === "error"), false);
@@ -234,7 +227,6 @@ test("waiting cannot complete an empty join over a same-turn failed operation", 
         });
 
         assert.equal(result.status, 102, "the failed operation remains unobserved, so the turn continues");
-        assert.equal(result.steerStruck, false, "waiting makes no completion claim; ordinary operation-error accounting remains separate");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "the loop never records a false successful terminal");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
@@ -304,11 +296,9 @@ test("a successful same-turn scoped KILL continues an empty wait and permits exp
             102,
             "the curated loop remains available for its next reasoning turn",
         );
-        assert.equal(continued.result.steerStruck, false, "the normalized continuation is not a model error");
 
         const concluded = await run(200);
         assert.equal(concluded.result.status, 200, "log curation is permitted in a completion turn");
-        assert.equal(concluded.result.steerStruck, false, "final housekeeping does not strike");
     } finally { await db.close(); }
 });
 
@@ -325,14 +315,14 @@ test("a READ with in_progress TASK inventory continues without a completion stri
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        assert.equal(result.steerStruck, false, "READ with in_progress inventory does not request premature completion");
+        assert.equal(result.status, 102, "READ with an in_progress inventory continues; no completion is claimed");
     } finally { await db.close(); }
 });
 
-test("a model that won't stop premature-200ing with a live child STRIKES OUT (500)", async () => {
-    // The 200-vs-202 robustness: a confused model that keeps declaring done while its child workers is
-    // not allowed to falsely complete — each premature 200 strikes, and it abandons at 500. It can't
-    // hang the runtime, and it can't lie about being done.
+test("{§completion-joins-live-work} a model declaring done with a live child parks on the first claim: no false 200, no spin", async () => {
+    // The 200-vs-202 robustness: a model that declares done while its child works is joined to that
+    // work — the loop parks and the wake brings the result — so it can never falsely complete, and it
+    // never spins through turns claiming done.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-strike-${crypto.randomUUID()}`);
@@ -344,11 +334,8 @@ test("a model that won't stop premature-200ing with a live child STRIKES OUT (50
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed")] } })) });
         const result = await engine.runLoop({ provider, workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
-        // The engine rails abandon it: identical repeated premature-200 turns trip CYCLE detection (508)
-        // before the plain strike threshold (500) — defense in depth. Either way the model is terminated
-        // and never gets a false 200. The robustness guarantee: a confused model can't falsely complete
-        // (no 200 terminal) and can't hang (it terminates), it just abandons via the rails.
-        assert.ok([500, 508].includes(result.result.status), `premature-200 spammer abandons via the rails (500 strike / 508 cycle); got ${result.result.status}`);
+        assert.equal(result.result.status, 202, "the first claim joins the live child: the loop parks");
+        assert.equal(provider.received.length, 1, "no further turn runs until the child concludes and wakes the loop");
         assert.notEqual(result.result.status, 200, "a model declaring done with work running NEVER gets a false 200");
     } finally { await db.close(); }
 });
@@ -375,7 +362,6 @@ test("499 is never gated by live work: it recursively cancels unresolved descend
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 499, "the abandon lands — live work never gates a 499 ({§completion-defers-to-results} defers only settled results)");
-        assert.equal(result.steerStruck, false, "no strike for a legal abandon");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop }))?.status;
         assert.equal(loopStatus, 499, "the loop is terminal");
         const childStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: childLoop }))?.status;
@@ -474,7 +460,6 @@ test("{§inventory-only-turn} a retrieval deferral does not make subsequent inve
         for (let i = 0; i < 5; i++) {
             const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             assert.equal(turn.status, 102);
-            assert.equal(turn.steerStruck, false, "the premature completion is deferred, never struck");
         }
         const errRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length;

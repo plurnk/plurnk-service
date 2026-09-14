@@ -195,7 +195,6 @@ type EngineTurnResult = {
     // {§provider-recovery} — the recovery budget is spent: the loop parks instead of failing.
     providerParked: boolean;
     providerFailure?: SchemeResult;
-    steerStruck: boolean;
     emptyTurn: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
@@ -224,7 +223,6 @@ export type AdmittedTurnResult = {
     readonly status: number;
     readonly outcomes: StrikeOutcome[];
     readonly fingerprint: string;
-    readonly steerStruck: boolean;
     readonly emptyTurn: boolean;
 };
 
@@ -428,7 +426,6 @@ const turnResult = (
     fingerprint: "",
     capacityHardStop: false,
     providerParked: false,
-    steerStruck: false,
     emptyTurn: false,
     emissionAttempts: 0,
     emissionExhausted: false,
@@ -1831,7 +1828,6 @@ export default class TurnRunner {
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             fingerprint: executed.fingerprint,
-            steerStruck: executed.steerStruck,
             emptyTurn: executed.emptyTurn,
             emissionAttempts: emission.emissionAttempts,
         });

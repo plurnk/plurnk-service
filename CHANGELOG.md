@@ -27,6 +27,9 @@ Breaking for external AG-UI and RPC clients:
   with a strike; only a completion over live work still refuses and strikes. The receipts-only
   completion at the final strike is gone. A child's failed or cancelled conclusion now reaches
   its parent's packet visible, with its Problem beside its last message.
+- A completion claimed while a stream or a child worker is still live now parks the loop (the
+  TASK row answers 202) until that work settles, instead of refusing 409 with a strike; the
+  review-contract strike is retired, so no TASK answer strikes.
 - `workspace/branch-batch` (`CUSTOM plurnk.branch_batch`) is gone: branch delegation was deleted
   before 1.17.0 and nothing produced the event. The hooks event list no longer names it.
 

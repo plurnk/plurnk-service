@@ -21,14 +21,6 @@ export interface CompletionEvidence {
 }
 
 export default class TurnDispositionHandler {
-    // {§engine-rails} review contract: only a completion claimed over live work (409
-    // `work-remains`) is a strike. Every other TASK answer — a deferral over settled results
-    // ({§completion-defers-to-results}), an empty inventory, an already-terminal loop — is a
-    // soft receipt the model answers on the next turn.
-    static refusedCompletion(result: DispatchResult): boolean {
-        return result.status === 409 && (result.problem as { stage?: unknown } | undefined)?.stage === "completion";
-    }
-
     readonly #db: Db;
     readonly #cancelDescendants: CancelDescendantsNotify | undefined;
     readonly #lifecycle: LoopLifecycle;
@@ -121,8 +113,8 @@ export default class TurnDispositionHandler {
         // Both terminals cross the observation barrier ({§completion-defers-to-results}): a
         // model's claim over prompts the loop has not published, failures this turn has not
         // seen, or settled results the next packet carries is deferred one packet and never
-        // struck. Only a live obligation is the model's to resolve: a completion over it is
-        // refused with a strike ({§send-premature-terminate}); an abandonment cancels it. A
+        // struck. A completion over live work is the join a scope's exit implies: the loop parks
+        // until the work settles ({§completion-joins-live-work}); an abandonment cancels it. A
         // `_plurnk` maintenance program closes only its own administrative loop; it must not
         // claim, consume, or be blocked by model work elsewhere in the same Worker.
         if ((status === 200 || status === 499) && ctx.origin === "model") {
@@ -186,8 +178,8 @@ export default class TurnDispositionHandler {
     }
 
     // {§completion-defers-to-results} — the observation barrier, in the order the graph demands:
-    // a prompt the loop has not published; then, for a completion, live work, which is refused
-    // with the one completion answer that strikes; then this turn's unseen failures; then the
+    // a prompt the loop has not published; then, for a completion, live work, which parks the
+    // loop as a join; then this turn's unseen failures; then the
     // settled results the next packet carries. Every deferral is 102 with the read-time receipt
     // and its pending facts in `attrs`; null means the claim may conclude now.
     async #barrier(
@@ -209,15 +201,13 @@ export default class TurnDispositionHandler {
         const { pending, receipts } = await this.#pendingSet(workerId, turnId);
         const live = pending.filter((kind) => kind === "streams" || kind === "workers");
         if (verb === "Completion" && live.length > 0) {
-            // {§send-premature-terminate} — a completion over live work is the model claiming
-            // done while its own work runs: refused, retryable, and struck.
-            return this.#failure(
-                "work-remains",
-                409,
-                TurnDispositionHandler.deferredWorkDetail(pending),
-                {},
-                { pending: [...pending], stage: "completion", retryable: true },
-            );
+            // {§completion-joins-live-work} — a completion over live work is the join a scope's
+            // exit implies: the loop parks until the work settles, the wake carries what concluded,
+            // and the next TASK decides with it in the packet. Never a strike.
+            if (!await this.#lifecycle.park(loopId)) {
+                return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when TASK attempted to conclude it.");
+            }
+            return { status: 202, detail: TurnDispositionHandler.joinDetail(live), attrs: { waiting: -1, pending: [...pending] } };
         }
         // A failed operation is also an unobserved result: it does not enter the model's Log
         // until the next packet.
@@ -247,24 +237,21 @@ export default class TurnDispositionHandler {
         return `${verb} deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`;
     }
 
-    // {§send-premature-terminate} Live obligations name the wait; {§completion-defers-to-results}
-    // observed-now results name the packet.
+    // {§completion-joins-live-work} The join receipt, read when the wake lands.
+    static joinDetail(live: readonly string[]): string {
+        const parts: string[] = [];
+        if (live.includes("workers")) parts.push("child workers were still running");
+        if (live.includes("streams")) parts.push("an execution was still running");
+        return `Completion joined: ${parts.join(" and ")}. The loop waited, and what concluded is in this packet; a TASK now completes.`;
+    }
+
+    // {§completion-defers-to-results} Observed-now results name the packet.
     static deferredWorkDetail(pending: readonly string[], verb: "Completion" | "Abandonment" = "Completion"): string {
-        const live: string[] = [];
-        if (pending.includes("workers")) live.push("child workers are still running");
-        if (pending.includes("streams")) live.push("an execution is still running");
         const landed: string[] = [];
         if (pending.includes("worker-results")) landed.push("a child worker's result");
         if (pending.includes("failed-stream-results")) landed.push("a failed execution result");
         if (pending.includes("receipts")) landed.push("operation receipts");
-        const sentences: string[] = [];
-        if (live.length > 0) {
-            sentences.push(`Completion deferred: ${live.join(" and ")}. A TASK with a pending task waits for ${live.length > 1 || pending.includes("workers") ? "them" : "it"}${pending.includes("streams") ? ", or KILL ends the execution" : ""}.`);
-            if (landed.length > 0) sentences.push(`${landed.join(" and ")} ${landed.length > 1 ? "are" : "is"} in this packet.`);
-        } else {
-            sentences.push(`${verb} deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`);
-        }
-        return sentences.join(" ");
+        return `${verb} deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`;
     }
 
 }
