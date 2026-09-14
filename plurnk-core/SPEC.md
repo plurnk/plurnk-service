@@ -2540,21 +2540,10 @@ A timing scope on a non-waiting inventory is ignored with `Wait timing was not a
 
 The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The surface is small on purpose: the model says done, waiting, or giving up, and is never asked to hold a correct opinion about *how* it failed or *whether* it can be woken — the engine decides those from state.
 
-**Rail accounting is separate from model-facing evidence.** The model sees the
-specific correction on its next packet, never the private strike count
-({§rail-accounting-private}). Each state below contributes one strike and lets
-the loop continue; repeated offenses terminate through the engine's 500.
-
-| state               | model-facing evidence                                      | accounting |
-|---------------------|------------------------------------------------------------|------------|
-| Explicit empty inventory | The TASK's 409 row; preceding valid operations remain executed | No strike (soft 409) |
-| Refused disposition | The disposition's 409 row with its exact Problem Detail   | One strike |
-
-Executor results are evidence, never strikes: a command's nonzero exit — surfaced
-as its completion READ ({§exec-stream}) or read by the model from the stream —
-carries an `executor/*` problem identity and does not enter the streak. Structural
-violations follow the current admission and strike contracts
-({§emission-admission}, {§engine-rails}).
+Disposition outcomes follow {§wait-obligation-matrix},
+{§completion-joins-live-work}, and {§completion-defers-to-results}. Strike
+accounting and model-visible failure evidence remain separately owned by
+{§engine-rails} and {§rail-accounting-private}.
 
 - §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
   addresses a worker (```` ```SEND (worker://<name>) ````), an outbound agent (`a2a://`),
