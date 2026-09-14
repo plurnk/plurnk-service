@@ -17,6 +17,7 @@ import type {
     FunctionalityAdapter,
     FunctionalityCaller,
     FunctionalityFamilyHandle,
+    FunctionalityIdentity,
     FunctionalityOutcome,
     FunctionalityPrepared,
     ModuleActionRegistration,
@@ -43,6 +44,10 @@ export interface FunctionalityHost {
         replacement: WorkspaceCapabilityReplacement,
         options?: WorkspaceCapabilityPublication,
     ): Promise<void>;
+    // {§functionality-scope} — a worker-scoped family's durable value: the same shape, keyed by the
+    // Worker, replaced without runtimes and without workspace exclusivity.
+    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
+    replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void>;
     mutateWorkspace<T>(workspaceId: number, namespaceOwner: string, caller: FunctionalityCaller, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
 }
@@ -70,9 +75,10 @@ interface DefinitionRecord {
 }
 
 // {§functionality-state} — one durable value per (workspace, family) in
-// `workspace_module_state` under the adapter's namespace owner. Service-origin
-// aliases persist only enabledness; workspace-origin aliases persist the exact
-// definition. Workers reference this state without copying it.
+// `workspace_module_state` under the adapter's namespace owner, or per (worker, family) in
+// `worker_module_state` for a worker-scoped family ({§functionality-scope}). Service-origin
+// aliases persist only enabledness; locally-owned aliases persist the exact definition.
+// Workers reference workspace state without copying it.
 interface FamilyState {
     readonly version: 1;
     readonly definitions: Readonly<Record<string, DefinitionRecord>>;
@@ -170,10 +176,14 @@ export default class Functionality {
             activate: (context) => this.#activate(adapter, context),
             deactivate: (identity) => this.#deactivate(adapter, identity),
         });
+        // {§functionality-scope} — a worker-scoped family projects `worker.<family>.<verb>`, whose
+        // context names the Worker the verb acts for; every other family projects
+        // `workspace.<family>.<verb>`. One implementation sits beneath both.
+        const scope = adapter.scope ?? "workspace";
         for (const verb of FUNCTIONALITY_VERBS) {
             this.#host.registerModuleAction({
-                name: `workspace.${family}.${verb}`,
-                scope: "workspace",
+                name: `${scope}.${family}.${verb}`,
+                scope,
                 inputSchema: schemas[verb],
                 outputSchema: SCHEMA(verb === "list"
                     ? "FunctionalityListResult"
@@ -181,9 +191,11 @@ export default class Functionality {
                         ? "FunctionalityDiscoverResult"
                         : "FunctionalityMutationResult"),
                 handler: async (params, context) => {
-                    if (context.scope !== "workspace") throw new Error(`workspace.${family}.${verb} requires a workspace-scoped context.`);
-                    const { workspaceId } = context;
-                    return (await this.invoke(family, verb, params, { workspaceId }, "action")).body;
+                    if (context.scope === "worldless" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
+                    const identity: FunctionalityIdentity = context.scope === "worker"
+                        ? { workspaceId: context.workspaceId, workerId: context.workerId }
+                        : { workspaceId: context.workspaceId };
+                    return (await this.invoke(family, verb, params, identity, "action")).body;
                 },
             });
         }
@@ -200,7 +212,7 @@ export default class Functionality {
     // workspace exclusivity it could never win.
     async refresh(family: string, identity: WorkspaceCapabilityIdentity, options: { readonly gate?: WorkspaceCapabilityGate } = {}): Promise<void> {
         const adapter = this.#adapter(family);
-        await this.#serialize(identity.workspaceId, family, async () => {
+        await this.#serialize(this.#key(identity.workspaceId, family), async () => {
             const current = this.#families.get(this.#key(identity.workspaceId, family));
             if (current === undefined) return;
             await this.#publish(adapter, identity, current.state, {
@@ -257,7 +269,7 @@ export default class Functionality {
         family: string,
         verb: FunctionalityVerb,
         params: unknown,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
@@ -271,14 +283,27 @@ export default class Functionality {
             });
         }
         const input = params as Record<string, unknown>;
-        switch (verb) {
-            case "list": return { status: 200, body: await this.#list(adapter, identity) };
-            case "discover": return { status: 200, body: await this.#discover(adapter, input, identity) };
-            default: return this.#host.mutateWorkspace(
-                identity.workspaceId, adapter.namespaceOwner, caller,
-                () => this.#serialize(identity.workspaceId, family, () => this.#mutate(adapter, verb, input, identity, caller)),
-            );
+        if (verb === "discover") return { status: 200, body: await this.#discover(adapter, input, identity) };
+        // {§functionality-scope} — a worker-scoped family's list and mutations act for the invoking
+        // Worker. The state is that Worker's and nothing resident changes, so they serialize on the
+        // Worker's own lane and take no workspace exclusivity: a Worker shapes its environment while
+        // its siblings run.
+        if (adapter.scope === "worker") {
+            const workerId = Functionality.#workerOf(adapter, identity);
+            return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller));
         }
+        if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
+        return this.#host.mutateWorkspace(
+            identity.workspaceId, adapter.namespaceOwner, caller,
+            () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller)),
+        );
+    }
+
+    // A worker-scoped verb that names no Worker is a defect at the projection, never a client
+    // failure: both projections name the Worker ({§functionality-model-projection}).
+    static #workerOf(adapter: FunctionalityAdapter, identity: FunctionalityIdentity): number {
+        if (identity.workerId === undefined) throw new Error(`${adapter.family} is worker-scoped; the invocation names no Worker.`);
+        return identity.workerId;
     }
 
     // The origin a definition carries when this family owns it locally. Service definitions
@@ -297,8 +322,7 @@ export default class Functionality {
         return `${workspaceId}:${family}`;
     }
 
-    #serialize<T>(workspaceId: number, family: string, work: () => Promise<T>): Promise<T> {
-        const key = this.#key(workspaceId, family);
+    #serialize<T>(key: string, work: () => Promise<T>): Promise<T> {
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const next = previous.catch(() => undefined).then(work);
         this.#queues.set(key, next);
@@ -307,14 +331,14 @@ export default class Functionality {
 
     async #activate(adapter: FunctionalityAdapter, context: WorkspaceCapabilityIdentity & { retain(): () => void }): Promise<void> {
         const identity = { workspaceId: context.workspaceId };
-        await this.#serialize(identity.workspaceId, adapter.family, async () => {
+        await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             const state = await this.#loadState(adapter, identity.workspaceId);
             await this.#publish(adapter, identity, state, { failure: "publish-unavailable", retain: context.retain, gate: "none" });
         });
     }
 
     async #deactivate(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<void> {
-        await this.#serialize(identity.workspaceId, adapter.family, async () => {
+        await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             const key = this.#key(identity.workspaceId, adapter.family);
             const family = this.#families.get(key);
             this.#families.delete(key);
@@ -325,10 +349,17 @@ export default class Functionality {
     }
 
     async #loadState(adapter: FunctionalityAdapter, workspaceId: number): Promise<FamilyState> {
-        const raw = await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner);
+        return Functionality.#parseState(adapter, await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner), `workspace ${workspaceId}`);
+    }
+
+    async #loadWorkerState(adapter: FunctionalityAdapter, workerId: number): Promise<FamilyState> {
+        return Functionality.#parseState(adapter, await this.#host.readWorkerModuleState(workerId, adapter.namespaceOwner), `worker ${workerId}`);
+    }
+
+    static #parseState(adapter: FunctionalityAdapter, raw: unknown | null, where: string): FamilyState {
         if (raw === null) return EMPTY_STATE;
         if (!isRecord(raw) || raw.version !== STATE_VERSION || !isRecord(raw.definitions)) {
-            throw new Error(`Functionality state for ${adapter.family} in workspace ${workspaceId} is not a version ${STATE_VERSION} record.`);
+            throw new Error(`Functionality state for ${adapter.family} in ${where} is not a version ${STATE_VERSION} record.`);
         }
         const definitions: Record<string, DefinitionRecord> = {};
         for (const [alias, value] of Object.entries(raw.definitions)) {
@@ -400,18 +431,20 @@ export default class Functionality {
         return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
     }
 
-    async #mutate(
+    // The verb semantics, one implementation for every family ({§functionality-scope}): the next
+    // state, the alias it concerns, and how the mutation reports. Only publication differs by scope.
+    async #transition(
         adapter: FunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
-    ): Promise<FunctionalityInvocation> {
-        const key = this.#key(identity.workspaceId, adapter.family);
-        const family = this.#families.get(key);
-        if (family === undefined) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
-        const effective = await this.#effective(adapter, identity, family.state);
-        const definitions: Record<string, DefinitionRecord> = { ...family.state.definitions };
+        state: FamilyState,
+        effective: ReadonlyMap<string, EffectiveDefinition>,
+    ): Promise<{ definitions: Record<string, DefinitionRecord>; alias: string; status: 200 | 201; removed: boolean }> {
+        const local = Functionality.#localOrigin(adapter);
+        const here = adapter.scope === "worker" ? "this worker" : "this workspace";
+        const definitions: Record<string, DefinitionRecord> = { ...state.definitions };
         let alias: string;
         let status: 200 | 201 = 200;
         let removed = false;
@@ -420,30 +453,30 @@ export default class Functionality {
                 const admitted = await adapter.admit(input, identity, caller);
                 alias = admitted.alias;
                 if (!aliasPattern(adapter).test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${aliasPattern(adapter)}.`, { alias, retryable: false });
-                // A workspace definition may shadow a service definition of the same
+                // A local definition may shadow a service definition of the same
                 // alias; removing it reveals the service baseline again, disabled.
                 const current = effective.get(alias);
-                if (current?.origin === "workspace" && !isDeepStrictEqual(current.definition, admitted.definition)) {
-                    throw failure(adapter.family, "alias-exists", 409, `'${alias}' already has a different workspace definition.`, { alias, recovery: "Use the existing definition, or remove it before adding its replacement.", retryable: false });
+                if (current?.origin === local && !isDeepStrictEqual(current.definition, admitted.definition)) {
+                    throw failure(adapter.family, "alias-exists", 409, `'${alias}' already has a different ${local} definition.`, { alias, recovery: "Use the existing definition, or remove it before adding its replacement.", retryable: false });
                 }
-                definitions[alias] = { origin: "workspace", definition: admitted.definition, enabled: true };
-                status = current?.origin === "workspace" ? 200 : 201;
+                definitions[alias] = { origin: local, definition: admitted.definition, enabled: true };
+                status = current?.origin === local ? 200 : 201;
                 break;
             }
             case "enable":
             case "disable": {
                 alias = input.alias as string;
                 const current = effective.get(alias);
-                if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to this workspace.`, { alias, retryable: false });
-                definitions[alias] = current.origin === "workspace"
-                    ? { origin: "workspace", definition: current.definition, enabled: verb === "enable" }
+                if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
+                definitions[alias] = current.origin === local
+                    ? { origin: local, definition: current.definition, enabled: verb === "enable" }
                     : { origin: "service", enabled: verb === "enable" };
                 break;
             }
             case "remove": {
                 alias = input.alias as string;
                 const current = effective.get(alias);
-                if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to this workspace.`, { alias, retryable: false });
+                if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
                 if (current.origin === "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is a service definition and cannot be removed here.`, { alias, recovery: `Disable it, or change the service configuration that contributes it.`, retryable: false });
                 await adapter.forget?.({ alias, definition: current.definition }, identity);
                 delete definitions[alias];
@@ -454,19 +487,17 @@ export default class Functionality {
             }
             default: throw new Error(`unreachable verb ${verb}`);
         }
-        const nextState: FamilyState = { version: STATE_VERSION, definitions };
-        // Re-enabling an alias that is not active retries its preparation; an
-        // already-active alias keeps its live attachment.
-        const retry = verb === "enable" && family.prepared?.outcomes.get(alias)?.state !== "active";
-        const publication = await this.#publish(adapter, identity, nextState, {
-            failure: caller === "action" ? "reject" : "publish-unavailable",
-            retain: () => this.#host.retainWorkspace(identity.workspaceId),
-            gate: "none",
-            forceAlias: retry ? alias : null,
-        });
-        const effectiveAfter = await this.#effective(adapter, identity, nextState);
+        return { definitions, alias, status, removed };
+    }
+
+    #mutationResult(
+        adapter: FunctionalityAdapter,
+        { alias, status, removed }: { alias: string; status: 200 | 201; removed: boolean },
+        effectiveAfter: ReadonlyMap<string, EffectiveDefinition>,
+        outcomes: ReadonlyMap<string, FunctionalityOutcome>,
+    ): FunctionalityInvocation {
         const definition = effectiveAfter.get(alias);
-        const projection = definition === undefined ? undefined : this.#projection(definition, publication.outcomes.get(alias));
+        const projection = definition === undefined ? undefined : this.#projection(definition, outcomes.get(alias));
         const body = Validator.assertFunctionalityMutationResult({
             status: projection?.state === "authorization-required" ? 202 : status,
             family: adapter.family,
@@ -475,6 +506,106 @@ export default class Functionality {
             ...(removed ? { removed: true } : {}),
         });
         return { status: body.status, body };
+    }
+
+    async #mutate(
+        adapter: FunctionalityAdapter,
+        verb: FunctionalityVerb,
+        input: Record<string, unknown>,
+        identity: FunctionalityIdentity,
+        caller: FunctionalityCaller,
+    ): Promise<FunctionalityInvocation> {
+        const key = this.#key(identity.workspaceId, adapter.family);
+        const family = this.#families.get(key);
+        if (family === undefined) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
+        const effective = await this.#effective(adapter, identity, family.state);
+        const transition = await this.#transition(adapter, verb, input, identity, caller, family.state, effective);
+        const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
+        // Re-enabling an alias that is not active retries its preparation; an
+        // already-active alias keeps its live attachment.
+        const retry = verb === "enable" && family.prepared?.outcomes.get(transition.alias)?.state !== "active";
+        const publication = await this.#publish(adapter, identity, nextState, {
+            failure: caller === "action" ? "reject" : "publish-unavailable",
+            retain: () => this.#host.retainWorkspace(identity.workspaceId),
+            gate: "none",
+            forceAlias: retry ? transition.alias : null,
+        });
+        const effectiveAfter = await this.#effective(adapter, identity, nextState);
+        return this.#mutationResult(adapter, transition, effectiveAfter, publication.outcomes);
+    }
+
+    // {§functionality-scope} — the Worker's own lane. State is read at each verb rather than held: the
+    // spawn reads the same row, and a Worker's row is written at its creation, so nothing in memory
+    // could be more current than the table.
+    async #invokeForWorker(
+        adapter: FunctionalityAdapter,
+        verb: FunctionalityVerb,
+        input: Record<string, unknown>,
+        identity: FunctionalityIdentity,
+        workerId: number,
+        caller: FunctionalityCaller,
+    ): Promise<FunctionalityInvocation> {
+        if (!this.#families.has(this.#key(identity.workspaceId, adapter.family))) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
+        const state = await this.#loadWorkerState(adapter, workerId);
+        const effective = await this.#effective(adapter, identity, state);
+        if (verb === "list") {
+            const prepared = await this.#prepareForWorker(adapter, identity, effective, "publish-unavailable");
+            await prepared.commit();
+            return { status: 200, body: Validator.assertFunctionalityListResult({
+                family: adapter.family,
+                definitions: [...effective.values()].map((definition) => this.#projection(definition, prepared.outcomes.get(definition.alias))),
+            }) };
+        }
+        const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective);
+        const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
+        const effectiveAfter = await this.#effective(adapter, identity, nextState);
+        const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" ? "reject" : "publish-unavailable");
+        try {
+            await this.#host.replaceWorkerModuleState(workerId, adapter.namespaceOwner, Functionality.#persisted(nextState));
+        } catch (cause) {
+            return Functionality.#abort(prepared, cause);
+        }
+        await prepared.commit();
+        return this.#mutationResult(adapter, transition, effectiveAfter, prepared.outcomes);
+    }
+
+    // A worker-scoped family's preparation yields outcomes only. It holds no residency — no runtimes,
+    // documents or snapshot ({§module-workspace-residency}) — because its definitions are read at the
+    // spawn that uses them rather than leased and cooled; the coordinator enforces that here.
+    async #prepareForWorker(
+        adapter: FunctionalityAdapter,
+        identity: FunctionalityIdentity,
+        effective: ReadonlyMap<string, EffectiveDefinition>,
+        failureMode: "publish-unavailable" | "reject",
+    ): Promise<FunctionalityPrepared> {
+        const enabled = Functionality.#enabled(effective);
+        const prepared = await adapter.prepare({
+            workspaceId: identity.workspaceId, enabled, previous: null, failure: failureMode,
+            retain: () => this.#host.retainWorkspace(identity.workspaceId),
+        });
+        try {
+            Functionality.#checkOutcomes(adapter, enabled, prepared);
+            if (prepared.runtimes.length > 0 || prepared.documents.length > 0 || prepared.snapshot !== null) {
+                throw new Error(`${adapter.family} is worker-scoped and holds no residency, yet its preparation published runtimes, documents or a snapshot.`);
+            }
+        } catch (cause) {
+            return Functionality.#abort(prepared, cause);
+        }
+        return prepared;
+    }
+
+    static #enabled(effective: ReadonlyMap<string, EffectiveDefinition>): Map<string, object> {
+        const enabled = new Map<string, object>();
+        for (const definition of effective.values()) {
+            if (definition.enabled) enabled.set(definition.alias, definition.definition);
+        }
+        return enabled;
+    }
+
+    static #checkOutcomes(adapter: FunctionalityAdapter, enabled: ReadonlyMap<string, object>, prepared: FunctionalityPrepared): void {
+        for (const alias of enabled.keys()) {
+            if (!prepared.outcomes.has(alias)) throw new Error(`${adapter.family} preparation reported no outcome for enabled alias '${alias}'.`);
+        }
     }
 
     // {§functionality-publication} — prepare, publish runtimes and state in one
@@ -494,11 +625,10 @@ export default class Functionality {
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const previous = this.#families.get(key)?.prepared ?? null;
-        const effective = await this.#effective(adapter, identity, nextState);
-        const enabled = new Map<string, object>();
-        for (const definition of effective.values()) {
-            if (definition.enabled) enabled.set(definition.alias, definition.definition);
-        }
+        // A worker-scoped family's workspace publication carries only its manager: what is enabled
+        // is decided per Worker, at each verb and each spawn ({§functionality-scope}).
+        const effective = adapter.scope === "worker" ? new Map<string, EffectiveDefinition>() : await this.#effective(adapter, identity, nextState);
+        const enabled = Functionality.#enabled(effective);
         const prepared = await adapter.prepare({
             workspaceId: identity.workspaceId,
             enabled,
@@ -509,9 +639,7 @@ export default class Functionality {
         });
         let runtimes: RuntimeRegistration[];
         try {
-            for (const alias of enabled.keys()) {
-                if (!prepared.outcomes.has(alias)) throw new Error(`${adapter.family} preparation reported no outcome for enabled alias '${alias}'.`);
-            }
+            Functionality.#checkOutcomes(adapter, enabled, prepared);
             for (const runtime of prepared.runtimes) {
                 if (runtime.namespaceOwner !== adapter.namespaceOwner) {
                     throw new Error(`${adapter.family} prepared a runtime owned by '${runtime.namespaceOwner}' instead of '${adapter.namespaceOwner}'.`);

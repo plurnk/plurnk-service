@@ -34,6 +34,7 @@ import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
+import EnvFunctionality from "./EnvFunctionality.ts";
 import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import Fork from "../core/fork.ts";
@@ -172,6 +173,8 @@ export default class Daemon implements ApplicationPort {
             registerWorkspaceCapabilityProvider: (owner, provider) => this.registerWorkspaceCapabilityProvider(owner, provider),
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
             replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
+            readWorkerModuleState: (workerId, owner) => this.#residency.readWorkerModuleState(workerId, owner),
+            replaceWorkerModuleState: (workerId, owner, state) => this.#residency.replaceWorkerModuleState(workerId, owner, state),
             mutateWorkspace: (workspaceId, owner, caller, run) => this.#residency.exclusively(workspaceId, owner, caller === "operation" ? "wait" : "try", run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
@@ -188,6 +191,8 @@ export default class Daemon implements ApplicationPort {
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
+        // {§env-functionality} — Core's own family: the environment a Worker's commands run in.
+        this.#functionality.register(new EnvFunctionality(EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath)));
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights

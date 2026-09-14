@@ -68,13 +68,24 @@ export const functionalityRuntimeDecl = (family: string, summary: string, detail
 export default class FunctionalityManager extends BaseExecutor {
     readonly #coordinator: Functionality;
     readonly #workspaceId: number;
+    readonly #workerId: number | undefined;
     readonly #teaching: FunctionalityTeaching;
 
-    constructor(args: { family: string; workspaceId: number; coordinator: Functionality } & FunctionalityTeaching) {
+    constructor(args: { family: string; workspaceId: number; workerId?: number; coordinator: Functionality } & FunctionalityTeaching) {
         super({ runtime: args.family, glyph: "🧩" });
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId;
+        this.#workerId = args.workerId;
         this.#teaching = { inputSchemas: args.inputSchemas, example: args.example, discovery: args.discovery };
+    }
+
+    // {§functionality-model-projection} — the published manager closes over the workspace; Core binds
+    // the invoking Worker at the operation ({§functionality-scope}), so a worker-scoped family's verbs
+    // act for that Worker. A bound instance is per operation, never retained on the published one.
+    forWorker(workerId: number): FunctionalityManager {
+        return new FunctionalityManager({
+            family: this.runtime, workspaceId: this.#workspaceId, workerId, coordinator: this.#coordinator, ...this.#teaching,
+        });
     }
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
@@ -144,7 +155,7 @@ export default class FunctionalityManager extends BaseExecutor {
                 });
             }
         }
-        const identity = { workspaceId: this.#workspaceId };
+        const identity = { workspaceId: this.#workspaceId, ...(this.#workerId === undefined ? {} : { workerId: this.#workerId }) };
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {

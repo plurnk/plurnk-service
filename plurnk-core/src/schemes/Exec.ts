@@ -8,7 +8,7 @@ import {
     type WebFetchResult,
     type WebMaterializedResult,
 } from "@plurnk/plurnk-schemes-http";
-import type { Executor } from "../core/ExecutorRegistry.ts";
+import { isWorkerBound, type Executor } from "../core/ExecutorRegistry.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -801,7 +801,10 @@ export default class Exec extends CoreSchemeAdapterBase {
         tempPath: string | null;
         input: ExecutionInput;
     }): Promise<SchemeResult> {
-        const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
+        const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
+        // {§functionality-model-projection} — a Core-owned manager acts for the invoking Worker. The
+        // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
+        const executor = isWorkerBound(opts.executor) ? opts.executor.forWorker(ctx.workerId) : opts.executor;
         const db = ctx.db;
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.

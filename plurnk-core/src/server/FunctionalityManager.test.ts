@@ -5,6 +5,7 @@ import type { JsonSchema } from "@plurnk/plurnk-contracts";
 import type Functionality from "./Functionality.ts";
 
 const invocations: Array<{ family: string; verb: string; params: unknown; caller: string }> = [];
+const identities: unknown[] = [];
 const emptySchema = { type: "object" };
 const inputSchemas: Record<FunctionalityVerb, JsonSchema> = {
     list: emptySchema, discover: emptySchema, add: emptySchema,
@@ -12,7 +13,8 @@ const inputSchemas: Record<FunctionalityVerb, JsonSchema> = {
 };
 const coordinator = {
     invoke: async (family: string, verb: string, params: unknown, identity: unknown, caller: string) => {
-        assert.deepEqual(identity, { workspaceId: 1 }, "the manager closes over only workspace identity");
+        assert.equal((identity as { workspaceId: number }).workspaceId, 1, "every invocation carries the workspace the manager closed over");
+        identities.push(identity);
         invocations.push({ family, verb, params, caller });
         return { status: verb === "add" ? 201 : 200, body: { family, verb, params } };
     },
@@ -97,4 +99,18 @@ test("{§functionality-model-projection} an empty body is an empty argument obje
     assert.equal(unknown.status, 400);
     assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
     assert.equal(invocations.length, 1, "refusals never reach the coordinator");
+});
+
+// {§functionality-scope} — the published manager is one per workspace and closes over only the
+// workspace. Core binds the invoking worker per operation; the binding is never retained.
+test("{§functionality-model-projection} Core binds the invoking worker at the operation; the published manager stays workspace-wide", async () => {
+    invocations.length = 0;
+    identities.length = 0;
+    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
+    assert.equal((await manager.run(args("list", "").args)).status, 200);
+    assert.equal((await manager.forWorker(7).run(args("list", "").args)).status, 200);
+    assert.equal((await manager.run(args("list", "").args)).status, 200);
+    assert.deepEqual(identities, [{ workspaceId: 1 }, { workspaceId: 1, workerId: 7 }, { workspaceId: 1 }],
+        "the bound instance names its worker; the published instance never does");
+    assert.deepEqual(manager.forWorker(7).toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS], "binding changes the identity, not the teaching");
 });

@@ -14,32 +14,22 @@ import type {
     FunctionalityPreparation, FunctionalityPrepared, FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "./DaemonModule.ts";
-import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema, ProblemDetails } from "@plurnk/plurnk-contracts";
-import { Problems } from "@plurnk/plurnk-contracts";
+import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema } from "@plurnk/plurnk-contracts";
 import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
+import Results, { OperationFailureError } from "../core/results.ts";
 import ExecEnv from "../schemes/exec-env.ts";
-
-
-class EnvActionError extends Error {
-    readonly problem: ProblemDetails;
-
-    constructor(problem: ProblemDetails) {
-        super(problem.detail);
-        this.name = "EnvActionError";
-        this.problem = problem;
-    }
-}
-
-const actionError = (code: string, status: number, detail: string, extensions: Readonly<Record<string, unknown>> = {}): EnvActionError =>
-    new EnvActionError(Problems.create("env:functionality", code, status, detail, {
-        stage: "env-functionality",
-        retryable: status === 409 || status >= 500,
-        ...extensions,
-    }));
+import Paths from "../Paths.ts";
 
 export const ENV_FAMILY = "env";
 const ENV_OWNER = "@plurnk/plurnk-service";
+
+// A refusal is the verb's own operation result, the shape both projections convert; anything else
+// thrown here would surface as a fault of the action or the manager rather than as the outcome.
+const actionError = (code: string, status: number, detail: string, extensions: Readonly<Record<string, unknown>> = {}): OperationFailureError =>
+    new OperationFailureError(
+        Results.failure("env:functionality", code, status, detail, {}, { family: ENV_FAMILY, retryable: false, ...extensions }),
+    );
 
 // POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's
 // alias grammar ({§functionality-adapter}) — the alias IS the variable name, and case is semantic.
@@ -62,6 +52,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     readonly definitionSchema = DEFINITION;
     readonly scope = "worker" as const;
     readonly aliasPattern = NAME;
+    readonly docsDir = Paths.packageRoot;
     readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
     readonly discovery = {
         details: "`discover` is this installation's configuration catalog: every knob an installed "

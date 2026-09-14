@@ -59,6 +59,13 @@ export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
 }
 
+// {§functionality-scope} — the identity a verb acts under. Every invocation names the workspace; one
+// that arrives through a Worker (a worker-scoped client action, or any EXEC operation) also names
+// that Worker, which a worker-scoped family acts for. Adapters keep seeing the workspace identity.
+export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
+    readonly workerId?: number;
+}
+
 interface WorkspaceCapabilityContext extends WorkspaceCapabilityIdentity {
     retain(): () => void;
 }
@@ -139,7 +146,8 @@ export interface FunctionalityPrepared {
 }
 
 export interface FunctionalityAdapter {
-    // The action segment (`workspace.<family>.<verb>`) and the EXEC family tag.
+    // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
+    // worker-scoped family) and the EXEC family tag.
     readonly family: string;
     // {§functionality-scope} — who owns this family's definitions. Skills, MCP, members and
     // outbound A2A describe what exists in a WORKSPACE; env describes how one WORKER works, which
@@ -179,7 +187,7 @@ export interface FunctionalityFamilyHandle {
     invoke(
         verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
         params: unknown,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
     refresh(identity: WorkspaceCapabilityIdentity, options?: { readonly gate?: WorkspaceCapabilityGate }): Promise<void>;
 }

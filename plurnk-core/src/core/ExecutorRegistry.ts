@@ -41,6 +41,16 @@ export interface Executor {
     toolRegistry?(): RuntimeToolRegistry;
 }
 
+// {§functionality-model-projection} — a Core-owned runtime whose verbs act for the invoking Worker.
+// The framework's ExecArgs carries no Worker identity by design; Core, which owns execution
+// identity, binds it at the operation and leaves the published workspace-wide instance untouched.
+export interface WorkerBoundExecutor extends Executor {
+    forWorker(workerId: number): Executor;
+}
+
+export const isWorkerBound = (executor: Executor): executor is WorkerBoundExecutor =>
+    typeof (executor as Partial<WorkerBoundExecutor>).forWorker === "function";
+
 export type RuntimeNamespaceOwner =
     | { readonly kind: "package"; readonly name: string }
     | { readonly kind: "module"; readonly name: string };

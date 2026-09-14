@@ -155,6 +155,24 @@ export default class WorkspaceResidency {
         return row === undefined ? null : JSON.parse(row.state) as unknown;
     }
 
+    // The worker-scoped counterpart of `replace`: state alone, no runtimes, no workspace exclusivity.
+    // A Worker's context changes nothing resident; the next spawn reads it ({§functionality-scope}).
+    // The real foreign key refuses a Worker that does not exist.
+    async replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void> {
+        if (namespaceOwner.trim().length === 0) throw new Error("worker module state requires a non-empty namespace owner");
+        const key = { worker_id: workerId, namespace_owner: namespaceOwner };
+        if (state === null) {
+            await this.#db.worker_module_state_delete.run(key);
+            return;
+        }
+        const encoded = JSON.stringify(state);
+        if (encoded === undefined) throw residencyFailure(
+            "state-not-json", 400, "Worker module state is not JSON-serializable.",
+            { namespaceOwner, retryable: false },
+        );
+        await this.#db.worker_module_state_put.run({ ...key, state: encoded });
+    }
+
     async reconcile(workspaceId: number): Promise<void> {
         await LoopDocs.materialize(this.#engine(), this.#db, workspaceId);
     }

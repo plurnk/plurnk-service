@@ -3385,7 +3385,7 @@ flowchart LR
 | `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction({ name, scope, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
-| §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. |
+| §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |
 | §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the shared coordinator ({§functionality-coordinator}). |
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
 
@@ -3511,11 +3511,22 @@ workspace set a value one Worker set for itself. Nothing else in the contract va
 verbs, the two projections, enabledness, and the service-baseline rules are one implementation
 across every family, which is what keeps their idioms from drifting apart.
 
+A worker-scoped family projects `worker.<family>.<verb>` in place of
+`workspace.<family>.<verb>`; the action's context names the Worker, as every EXEC operation
+does. Its durable value is the same shape per (worker, family) in `worker_module_state`, read
+at each verb and at each spawn rather than held in the workspace snapshot. Its `list` and
+mutations serialize on the Worker's own lane and take no workspace exclusivity: nothing
+resident changes, and the next spawn reads the state, so a Worker shapes its own environment
+while its siblings run. Its preparation yields outcomes only — no runtimes, documents or
+snapshot — and the coordinator refuses one that does more.
+
 §functionality-state **One durable value per workspace and family.**
 `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
-is stored under the provider namespace in `workspace_module_state`.
-A `service` entry persists enabledness; a `workspace` entry persists its exact
-definition. Active, unavailable, and authorization-required are preparation
+is stored under the provider namespace in `workspace_module_state`; a
+worker-scoped family ({§functionality-scope}) stores the same value per worker
+and family in `worker_module_state`.
+A `service` entry persists enabledness; a `workspace` or `worker` entry persists
+its exact definition. Active, unavailable, and authorization-required are preparation
 outcomes, not durable desired state. The configuration cascade contributes
 defaults; one workspace snapshot is effective authority.
 
@@ -3546,6 +3557,10 @@ effects and use normal proposals. Summary, signatures, and deep docs derive
 from the same registry ({§tools-resource-materialization},
 {§executor-input-schema-preview}). Outcomes stream into the invoking operation's
 output entry. The manager closes over workspace identity, not worker identity.
+A worker-scoped family's verbs nonetheless act for the invoking Worker: Core
+binds that Worker to the manager at the operation, so the published manager
+stays one per workspace and the executor framework's arguments carry no
+identity ({§functionality-scope}).
 
 §functionality-document-body **A family's teaching is an authored file beneath
 its generated header.** The adapter names its package directory (`docsDir`);

@@ -77,7 +77,9 @@ Loop, or workspace invoked it beyond the arguments given. A runtime whose
 behavior depends on a workspace — an attached MCP server or Functionality
 manager — is published per workspace by its module, closing over that
 identity at publication ({§functionality-model-projection}). Consumers must not smuggle
-identity through `env` or `body` conventions.
+identity through `env` or `body` conventions; a consumer that owns both a
+runtime and the execution identity binds the two to each other outside these
+arguments, at the operation.
 
 interface RuntimeAvailability {
     available: boolean;
