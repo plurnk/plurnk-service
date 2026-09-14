@@ -91,6 +91,9 @@ Daemon and database:
   `root` and `none` are the operator's narrowing.
 - `entry_channels.lines` is a stored generated column; the catalog lists each channel's extent
   and weight from storage without reading its body.
+- A model call's response body lives in `model_call_responses`; one observation view settles a
+  call. `PLURNK_SERVICE_RETAIN_RESPONSE_TURNS` and `PLURNK_SERVICE_RETAIN_RESPONSE_MS` (both
+  `-1`) retire bodies while the call's evidence, admission and accounting stay.
 - A READ of a stream channel carries `terminal: false` while the command runs and `terminal: true`
   once it has concluded.
 - A concluded stream lands one conclusion row per channel with content; an empty sibling channel

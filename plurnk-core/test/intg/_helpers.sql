@@ -108,7 +108,7 @@ SELECT id, loop_id, sequence, producer, kind, status, completed_at,
 FROM turn_packets WHERE id = $id;
 
 -- PREP: test_turn_attempts
-SELECT a.id, ic.sequence, ic.state, a.accepted, mc.response,
+SELECT a.id, ic.sequence, ic.state, a.accepted, r.response,
        mc.failure, a.parse_errors,
        ic.attributions, mc.finish_reason,
        COALESCE(mc.response_model, ic.request_model) AS model,
@@ -116,17 +116,19 @@ SELECT a.id, ic.sequence, ic.state, a.accepted, mc.response,
 FROM turn_attempts a
 JOIN model_calls mc ON mc.id = a.model_call_id
 JOIN inference_calls ic ON ic.id = mc.id
+LEFT JOIN model_call_responses r ON r.id = mc.id
 WHERE ic.turn_id = $turn_id
 ORDER BY ic.sequence;
 
 -- PREP: test_model_calls
-SELECT mc.id, ic.sequence, ic.kind, ic.state, mc.response, mc.failure, mc.capacity,
+SELECT mc.id, ic.sequence, ic.kind, ic.state, r.response, mc.failure, mc.capacity,
        ic.attributions, mc.finish_reason,
        COALESCE(mc.response_model, ic.request_model) AS model,
        ic.timestamp, ic.completed_at,
        le.id AS log_entry_id
 FROM model_calls mc
 JOIN inference_calls ic ON ic.id = mc.id
+LEFT JOIN model_call_responses r ON r.id = mc.id
 LEFT JOIN log_entries le ON le.model_call_id = mc.id
 WHERE ic.turn_id = $turn_id
 ORDER BY ic.sequence;
@@ -160,6 +162,19 @@ WHERE id = $id;
 
 -- PREP: test_insert_model_call_specialization
 INSERT INTO model_calls (id) VALUES ($id);
+
+-- PREP: test_model_call_bodies
+-- {§retention-policy} witnesses: which of a loop's settled calls still hold a body.
+SELECT mc.id, ic.state, r.response IS NOT NULL AS has_body, mc.capacity IS NOT NULL AS has_capacity
+FROM model_calls mc
+JOIN inference_calls ic ON ic.id = mc.id
+JOIN turns t ON t.id = ic.turn_id
+LEFT JOIN model_call_responses r ON r.id = mc.id
+WHERE t.loop_id = $loop_id
+ORDER BY mc.id;
+
+-- PREP: test_update_model_call_response
+UPDATE model_call_responses SET response = $response WHERE id = $id;
 
 -- PREP: test_delete_model_call_specialization
 DELETE FROM model_calls WHERE id = $id;

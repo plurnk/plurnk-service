@@ -21,22 +21,15 @@ RETURNING id, sequence;
 -- PREP: engine_observe_model_call_response
 -- Preserve the logical response before call-specific interpretation. Physical
 -- request accounting has already settled through its cardinal observer path.
-UPDATE model_calls SET
-    native_inputs = $native_inputs,
-    response = $response,
-    failure = $failure,
-    capacity = $capacity,
-    finish_reason = $finish_reason,
-    response_model = $model
-WHERE id = $id
-  AND (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
+-- The observation view records the evidence, the body and the close together;
+-- a settled call refuses it.
+INSERT INTO model_call_observation (id, native_inputs, response, failure, capacity, finish_reason, response_model)
+VALUES ($id, $native_inputs, $response, $failure, $capacity, $finish_reason, $model);
 
 -- PREP: engine_fail_model_call
-UPDATE model_calls SET
-    failure = $failure,
-    capacity = $capacity
-WHERE id = $id
-  AND (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
+-- A failure-only observation closes the call as an error.
+INSERT INTO model_call_observation (id, failure, capacity)
+VALUES ($id, $failure, $capacity);
 
 -- INIT: inference_calls_create_model_specialization
 DROP TRIGGER IF EXISTS inference_calls_create_model_specialization;
@@ -45,26 +38,4 @@ AFTER INSERT ON inference_calls
 WHEN NEW.kind IN ('emission', 'bare')
 BEGIN
     INSERT INTO model_calls (id) VALUES (NEW.id);
-END;
-
--- INIT: model_calls_close_response
-DROP TRIGGER IF EXISTS model_calls_close_response;
-CREATE TRIGGER model_calls_close_response
-AFTER UPDATE OF response ON model_calls
-WHEN NEW.response IS NOT NULL
-BEGIN
-    UPDATE inference_calls
-    SET state = 'response', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = NEW.id AND state = 'pending';
-END;
-
--- INIT: model_calls_close_error
-DROP TRIGGER IF EXISTS model_calls_close_error;
-CREATE TRIGGER model_calls_close_error
-AFTER UPDATE OF failure ON model_calls
-WHEN NEW.failure IS NOT NULL AND NEW.response IS NULL
-BEGIN
-    UPDATE inference_calls
-    SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = NEW.id AND state = 'pending';
 END;

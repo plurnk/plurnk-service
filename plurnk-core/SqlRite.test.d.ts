@@ -263,6 +263,7 @@ export class SqlRiteSync {
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
 	retention_retire_packets: SqlRiteSyncPreparedStatements;
+	retention_retire_responses: SqlRiteSyncPreparedStatements;
 	retention_collect_packet_items: SqlRiteSyncPreparedStatements;
 	retention_collect_derivations: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
@@ -334,6 +335,8 @@ export class SqlRiteSync {
 	test_inference_calls_by_workspace: SqlRiteSyncPreparedStatements;
 	test_terminalize_inference_call_without_evidence: SqlRiteSyncPreparedStatements;
 	test_insert_model_call_specialization: SqlRiteSyncPreparedStatements;
+	test_model_call_bodies: SqlRiteSyncPreparedStatements;
+	test_update_model_call_response: SqlRiteSyncPreparedStatements;
 	test_delete_model_call_specialization: SqlRiteSyncPreparedStatements;
 	test_provider_requests_by_inference_call: SqlRiteSyncPreparedStatements;
 	test_get_log_entry_by_id: SqlRiteSyncPreparedStatements;
@@ -805,6 +808,7 @@ export default class SqlRite {
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
 	retention_retire_packets: SqlRitePreparedStatements;
+	retention_retire_responses: SqlRitePreparedStatements;
 	retention_collect_packet_items: SqlRitePreparedStatements;
 	retention_collect_derivations: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
@@ -876,6 +880,8 @@ export default class SqlRite {
 	test_inference_calls_by_workspace: SqlRitePreparedStatements;
 	test_terminalize_inference_call_without_evidence: SqlRitePreparedStatements;
 	test_insert_model_call_specialization: SqlRitePreparedStatements;
+	test_model_call_bodies: SqlRitePreparedStatements;
+	test_update_model_call_response: SqlRitePreparedStatements;
 	test_delete_model_call_specialization: SqlRitePreparedStatements;
 	test_provider_requests_by_inference_call: SqlRitePreparedStatements;
 	test_get_log_entry_by_id: SqlRitePreparedStatements;

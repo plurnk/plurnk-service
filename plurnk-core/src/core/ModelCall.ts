@@ -67,7 +67,7 @@ export default class ModelCall extends InferenceCall {
         }
         const { accounting: _accounting, capacity, ...evidence } = response;
         try {
-            const result = await this.#db.engine_observe_model_call_response.run({
+            await this.#db.engine_observe_model_call_response.run({
                 id: this.id,
                 native_inputs: JSON.stringify(nativeInputs),
                 response: JSON.stringify(evidence),
@@ -76,7 +76,6 @@ export default class ModelCall extends InferenceCall {
                 finish_reason: response.assistant.finishReason,
                 model: response.assistant.model,
             });
-            if (result.changes !== 1) throw new Error(`model call ${this.id} was not pending`);
         } catch (cause) {
             throw new InferenceCallPersistenceError(
                 `could not preserve response for model call ${this.id}`,
@@ -87,12 +86,11 @@ export default class ModelCall extends InferenceCall {
 
     async fail(failure: SchemeResult, capacity: ProviderRequestCapacity | null = null): Promise<void> {
         try {
-            const result = await this.#db.engine_fail_model_call.run({
+            await this.#db.engine_fail_model_call.run({
                 id: this.id,
                 failure: JSON.stringify(failure),
                 capacity: capacity === null ? null : JSON.stringify(capacity),
             });
-            if (result.changes !== 1) throw new Error(`model call ${this.id} was not pending`);
         } catch (cause) {
             throw new InferenceCallPersistenceError(
                 `could not preserve failure for model call ${this.id}`,

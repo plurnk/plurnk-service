@@ -75,13 +75,12 @@ CREATE TRIGGER IF NOT EXISTS inference_calls_terminal_evidence_required
 BEFORE UPDATE OF state ON inference_calls
 WHEN NEW.state != OLD.state
  AND NOT (
-    (NEW.state = 'response' AND EXISTS (
-        SELECT 1 FROM model_calls WHERE id = NEW.id AND response IS NOT NULL
-    ))
+    (NEW.state = 'response'
+     AND EXISTS (SELECT 1 FROM model_call_responses WHERE id = NEW.id)
+     AND EXISTS (SELECT 1 FROM model_calls WHERE id = NEW.id AND capacity IS NOT NULL AND response_model IS NOT NULL))
     OR
-    (NEW.state = 'error' AND EXISTS (
-        SELECT 1 FROM model_calls WHERE id = NEW.id AND failure IS NOT NULL
-    ))
+    (NEW.state = 'error'
+     AND EXISTS (SELECT 1 FROM model_calls WHERE id = NEW.id AND failure IS NOT NULL AND json_array_length(native_inputs) = 0))
  )
 BEGIN
     SELECT RAISE(ABORT, 'inference call terminal state requires specialization evidence');
@@ -94,8 +93,9 @@ BEGIN
     SELECT RAISE(ABORT, 'inference call completion is immutable');
 END;
 
--- Generation-specific response/failure evidence. The request model and
--- lifecycle remain on inference_calls; response_model is provider evidence.
+-- Generation-specific failure and capacity evidence. The request model and
+-- lifecycle remain on inference_calls; response_model is provider evidence; the
+-- response body itself is model_call_responses, below.
 CREATE TABLE IF NOT EXISTS model_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
     -- {§packet-attachment-parts}: exact model-facing log coordinates whose
@@ -104,15 +104,12 @@ CREATE TABLE IF NOT EXISTS model_calls (
     native_inputs    TEXT    NOT NULL DEFAULT '[]' CHECK (
         json_valid(native_inputs) AND json_type(native_inputs) = 'array'
     ),
-    response         TEXT             CHECK (response IS NULL OR json_valid(response)),
     failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
     capacity         TEXT             CHECK (
         capacity IS NULL OR (json_valid(capacity) AND json_type(capacity) = 'object')
     ),
     finish_reason    TEXT,
     response_model   TEXT             CHECK (response_model IS NULL OR length(response_model) >= 1),
-    CHECK (response IS NULL OR (capacity IS NOT NULL AND response_model IS NOT NULL)),
-    CHECK (json_array_length(native_inputs) = 0 OR response IS NOT NULL),
     FOREIGN KEY (id) REFERENCES inference_calls(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -133,11 +130,55 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS model_calls_observation_pending
-BEFORE UPDATE OF native_inputs, response, failure, capacity, finish_reason, response_model
+BEFORE UPDATE OF native_inputs, failure, capacity, finish_reason, response_model
 ON model_calls
 WHEN COALESCE((SELECT state FROM inference_calls WHERE id = OLD.id), '') != 'pending'
 BEGIN
     SELECT RAISE(ABORT, 'model call observation is immutable');
+END;
+
+-- The response body, apart from the call's evidence columns, so the operator's retention
+-- ({§retention-policy}) can retire a body while the call's identity, capacity, admission and
+-- accounting stay. A body is present or retired; it never changes.
+CREATE TABLE IF NOT EXISTS model_call_responses (
+    id       INTEGER NOT NULL PRIMARY KEY,
+    response TEXT    NOT NULL CHECK (json_valid(response)),
+    FOREIGN KEY (id) REFERENCES model_calls(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS model_call_responses_immutable
+BEFORE UPDATE ON model_call_responses
+BEGIN
+    SELECT RAISE(ABORT, 'model call response is immutable');
+END;
+
+-- The one write path for a call's observation: the evidence, the body when there is one,
+-- and the logical call's close, in that order, so the terminal-evidence trigger judges the
+-- whole observation. A settled call refuses a second one. A failure-only observation
+-- (no response) closes the call as an error.
+CREATE VIEW IF NOT EXISTS model_call_observation AS
+SELECT mc.id, mc.native_inputs, r.response, mc.failure, mc.capacity, mc.finish_reason, mc.response_model
+FROM model_calls mc LEFT JOIN model_call_responses r ON r.id = mc.id
+WHERE 0;
+
+CREATE TRIGGER IF NOT EXISTS model_call_observation_settles
+INSTEAD OF INSERT ON model_call_observation
+BEGIN
+    SELECT CASE WHEN COALESCE((SELECT state FROM inference_calls WHERE id = NEW.id), '') != 'pending'
+        THEN RAISE(ABORT, 'model call observation is immutable') END;
+    UPDATE model_calls
+    SET native_inputs = COALESCE(NEW.native_inputs, native_inputs),
+        failure = NEW.failure,
+        capacity = COALESCE(NEW.capacity, capacity),
+        finish_reason = NEW.finish_reason,
+        response_model = NEW.response_model
+    WHERE id = NEW.id;
+    INSERT INTO model_call_responses (id, response)
+    SELECT NEW.id, NEW.response WHERE NEW.response IS NOT NULL;
+    UPDATE inference_calls
+    SET state = CASE WHEN NEW.response IS NOT NULL THEN 'response' ELSE 'error' END,
+        completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id;
 END;
 
 -- Emission admission specializes one model call without re-owning its response,

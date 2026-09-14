@@ -20,6 +20,29 @@ WHERE ($keep_turns >= 0 OR $keep_ms >= 0)
         )
   );
 
+-- PREP: retention_retire_responses
+-- A settled call's response body beyond the newest $keep_turns body-bearing calls of its loop,
+-- or whose turn completed more than $keep_ms before $now_ms, retires; the call's identity,
+-- failure, capacity, admission and accounting stay, and the digest renders it request-only.
+-- -1 on both disables the statement; a call on an open turn is never retired.
+DELETE FROM model_call_responses
+WHERE ($keep_turns >= 0 OR $keep_ms >= 0)
+  AND id IN (
+      SELECT ic.id FROM inference_calls ic
+      JOIN turns t ON t.id = ic.turn_id
+      WHERE t.completed_at IS NOT NULL
+        AND (
+            ($keep_turns >= 0 AND (
+                SELECT COUNT(*) FROM inference_calls newer
+                JOIN turns nt ON nt.id = newer.turn_id
+                WHERE nt.loop_id = t.loop_id
+                  AND EXISTS (SELECT 1 FROM model_call_responses r WHERE r.id = newer.id)
+                  AND (nt.sequence > t.sequence OR (nt.sequence = t.sequence AND newer.sequence > ic.sequence))
+            ) >= $keep_turns)
+            OR ($keep_ms >= 0 AND unixepoch(t.completed_at) * 1000 < $now_ms - $keep_ms)
+        )
+  );
+
 -- PREP: retention_collect_packet_items
 -- {§packet-items}: an item no turn's composition references is transient data.
 DELETE FROM packet_items

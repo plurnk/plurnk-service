@@ -34,10 +34,8 @@ WHERE t.id = $turn_id
 RETURNING id;
 
 -- PREP: test_context_fail_model_call
-UPDATE model_calls
-SET failure = json('{"status":413,"problem":{"type":"https://problems.plurnk.xyz/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'),
-    capacity = $capacity
-WHERE id = $id;
+INSERT INTO model_call_observation (id, failure, capacity)
+VALUES ($id, json('{"status":413,"problem":{"type":"https://problems.plurnk.xyz/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'), $capacity);
 
 -- PREP: test_context_insert_model_call
 INSERT INTO inference_calls (workspace_id, turn_id, sequence, kind, request_model)
@@ -49,12 +47,8 @@ WHERE t.id = $turn_id
 RETURNING id;
 
 -- PREP: test_context_close_model_call
-UPDATE model_calls
-SET response = '{"assistant":{"content":"fixture"}}',
-    capacity = $capacity,
-    finish_reason = 'stop',
-    response_model = 'fixture'
-WHERE id = $id;
+INSERT INTO model_call_observation (id, response, capacity, finish_reason, response_model)
+VALUES ($id, '{"assistant":{"content":"fixture"}}', $capacity, 'stop', 'fixture');
 
 -- PREP: test_context_insert_attempt
 INSERT INTO turn_attempts (model_call_id, accepted)

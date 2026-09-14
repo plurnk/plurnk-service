@@ -35,8 +35,8 @@ WHERE state = 'pending'
 -- PREP: recovery_fail_open_model_calls
 -- The process-local model-call owner vanished. Physical requests have already
 -- been settled above, preserving unknown evidence without fabricating zero use.
-UPDATE model_calls
-SET failure = json_object(
+INSERT INTO model_call_observation (id, failure)
+SELECT mc.id, json_object(
         'status', 500,
         'problem', json_object(
             'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
@@ -45,7 +45,8 @@ SET failure = json_object(
             'detail', 'The daemon restarted before this provider response was durably observed; whether the provider completed the call is unknown.'
         )
     )
-WHERE (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
+FROM model_calls mc
+WHERE (SELECT state FROM inference_calls WHERE id = mc.id) = 'pending';
 
 -- PREP: recovery_fail_open_turns
 -- Every open turn has lost its process-local producer, including a narrow crash

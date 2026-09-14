@@ -25,13 +25,14 @@ FROM turn_packets tp JOIN turns t ON t.id = tp.id ORDER BY tp.loop_id, tp.sequen
 
 -- PREP: digest_turn_attempts
 SELECT a.id, mc.id AS model_call_id, ic.turn_id, ic.sequence, ic.kind,
-       ic.state, a.accepted, mc.response, mc.failure,
+       ic.state, a.accepted, r.response, mc.failure,
        a.parse_errors, ic.attributions,
        mc.finish_reason, COALESCE(mc.response_model, ic.request_model) AS model,
        ic.request_model, mc.response_model, ic.timestamp, ic.completed_at
 FROM turn_attempts a
 JOIN model_calls mc ON mc.id = a.model_call_id
 JOIN inference_calls ic ON ic.id = mc.id
+LEFT JOIN model_call_responses r ON r.id = mc.id
 ORDER BY ic.turn_id, ic.sequence;
 
 -- PREP: digest_inference_calls
@@ -42,13 +43,14 @@ ORDER BY workspace_id, timestamp, id;
 
 -- PREP: digest_model_calls
 SELECT mc.id, ic.workspace_id, ic.turn_id, ic.sequence, ic.kind, ic.state,
-       mc.response, mc.failure, mc.capacity, ic.attributions,
+       r.response, mc.failure, mc.capacity, ic.attributions,
        mc.finish_reason, COALESCE(mc.response_model, ic.request_model) AS model,
        ic.request_model, mc.response_model, ic.timestamp, ic.completed_at,
        a.id AS turn_attempt_id, a.accepted, a.parse_errors,
        le.id AS log_entry_id
 FROM model_calls mc
 JOIN inference_calls ic ON ic.id = mc.id
+LEFT JOIN model_call_responses r ON r.id = mc.id
 LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
 LEFT JOIN log_entries le ON le.model_call_id = mc.id
 ORDER BY ic.workspace_id, ic.timestamp, ic.id;

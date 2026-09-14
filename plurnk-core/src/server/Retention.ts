@@ -6,6 +6,8 @@ import type { Db } from "../core/Db.ts";
 export interface RetentionPolicy {
     readonly retainPacketTurns: number;   // -1 = every packet
     readonly retainPacketMs: number;      // -1 = no age limit
+    readonly retainResponseTurns: number; // -1 = every response body
+    readonly retainResponseMs: number;    // -1 = no age limit
     readonly collectPacketItems: boolean;
     readonly collectDerivations: boolean;
     readonly intervalMs: number;          // 0 = shutdown only
@@ -29,6 +31,8 @@ const readFlag = (env: NodeJS.ProcessEnv, name: string): boolean => {
 export const retentionPolicy = (env: NodeJS.ProcessEnv = process.env): RetentionPolicy => ({
     retainPacketTurns: readBound(env, "PLURNK_SERVICE_RETAIN_PACKET_TURNS", -1),
     retainPacketMs: readBound(env, "PLURNK_SERVICE_RETAIN_PACKET_MS", -1),
+    retainResponseTurns: readBound(env, "PLURNK_SERVICE_RETAIN_RESPONSE_TURNS", -1),
+    retainResponseMs: readBound(env, "PLURNK_SERVICE_RETAIN_RESPONSE_MS", -1),
     collectPacketItems: readFlag(env, "PLURNK_SERVICE_COLLECT_PACKET_ITEMS"),
     collectDerivations: readFlag(env, "PLURNK_SERVICE_COLLECT_DERIVATIONS"),
     intervalMs: readBound(env, "PLURNK_SERVICE_RETENTION_INTERVAL_MS", 0),
@@ -46,14 +50,15 @@ export default class Retention {
 
     get policy(): RetentionPolicy { return this.#policy; }
 
-    // One pass, in dependency order: compositions retire first, then the items and derivations
-    // nothing references. Each statement is a no-op under the default policy.
-    async run(now: number = Date.now()): Promise<{ retiredPackets: number; collectedItems: number; collectedDerivations: number }> {
-        const { retainPacketTurns, retainPacketMs, collectPacketItems, collectDerivations } = this.#policy;
+    // One pass, in dependency order: compositions and response bodies retire first, then the
+    // items and derivations nothing references. Each statement is a no-op under the default policy.
+    async run(now: number = Date.now()): Promise<{ retiredPackets: number; retiredResponses: number; collectedItems: number; collectedDerivations: number }> {
+        const { retainPacketTurns, retainPacketMs, retainResponseTurns, retainResponseMs, collectPacketItems, collectDerivations } = this.#policy;
         const packets = await this.#db.retention_retire_packets.run({ keep_turns: retainPacketTurns, keep_ms: retainPacketMs, now_ms: now });
+        const responses = await this.#db.retention_retire_responses.run({ keep_turns: retainResponseTurns, keep_ms: retainResponseMs, now_ms: now });
         const items = await this.#db.retention_collect_packet_items.run({ collect: collectPacketItems ? 1 : 0 });
         const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
-        return { retiredPackets: packets.changes, collectedItems: items.changes, collectedDerivations: derivations.changes };
+        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes };
     }
 
     // The cadence: unref'd so an idle daemon still exits; a pass that fails reports through the

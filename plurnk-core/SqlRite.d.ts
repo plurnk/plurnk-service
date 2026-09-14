@@ -255,6 +255,7 @@ export class SqlRiteSync {
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
 	retention_retire_packets: SqlRiteSyncPreparedStatements;
+	retention_retire_responses: SqlRiteSyncPreparedStatements;
 	retention_collect_packet_items: SqlRiteSyncPreparedStatements;
 	retention_collect_derivations: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
@@ -513,6 +514,7 @@ export default class SqlRite {
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
 	retention_retire_packets: SqlRitePreparedStatements;
+	retention_retire_responses: SqlRitePreparedStatements;
 	retention_collect_packet_items: SqlRitePreparedStatements;
 	retention_collect_derivations: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
