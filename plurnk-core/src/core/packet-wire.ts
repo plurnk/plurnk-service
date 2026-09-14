@@ -15,7 +15,7 @@ import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLi
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
-import LogBody from "./LogBody.ts";
+import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import BodyPreview from "../content/body-preview.ts";
@@ -148,6 +148,27 @@ interface VisibleLogBody {
     readonly folded: LogFoldRanges;
     readonly totalLines: number;
     readonly fullyFolded: boolean;
+}
+
+// One log row through the four stages of its rendering: identity, result facts, body, accounting.
+interface RowIdentity {
+    readonly meta: Record<string, unknown>;
+    readonly op: string | null;
+    readonly tx: StatementTx | null;
+    readonly coordinate: string | null;
+    readonly path: string;
+    readonly renderedLeaf: string;
+    readonly target: string | null;
+    readonly terminalStream: boolean;
+}
+interface RowResultFacts {
+    readonly findItems: number | null;
+    readonly structuredMutationReceipt: boolean;
+}
+interface RowBody {
+    readonly body: string;
+    readonly projectedLineCount: number;
+    readonly display: "none" | "folded" | "open";
 }
 
 export default class PacketWire {
@@ -701,352 +722,390 @@ export default class PacketWire {
             options.promptProjectionWeight,
         );
         return entries.map((e, index) => {
-            const meta: Record<string, unknown> = {};
-            const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
-            const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            const renderedLeaf = LogEntryProjection.leaf(e);
-            const path = PacketWire.#entryPath(coordinate, renderedLeaf);
-            // Absence = "model" — the worker's own authorship is the default,
-            // exactly as `source` absence means the owning worker (#338).
-            if (typeof e.origin === "string" && e.origin !== "model") meta.origin = e.origin;
-            // {§env-delta-attribution}: render the causal worker address or
-            // subsystem token when present; absence means the owning worker.
-            if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
-            if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
-                const git = (e.attrs as { git?: unknown }).git;
-                if (typeof git !== "string" || git.length !== 2) {
-                    throw new TypeError("A source=file log row carries malformed Git XY metadata.");
-                }
-                meta.git = git;
-            }
-            // SEND, TASK, destructive KILL, and non-200 statuses stay explicit.
-            // Successful log-KILL rows never reach this projection
-            // ({§log-kill-meta-operation}).
-            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
-            const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
-            if (typeof tx?.aside === "string") meta.aside = tx.aside;
-            const target = PacketWire.#renderActionTarget(e.target);
-            // {§exec-stream}: a terminal stream observation's address is the stream it observed,
-            // rendered under `stream` like the invocation's own link — never a `target`, which
-            // the model would otherwise author into an EXEC slot (#425 F4).
-            const terminalStream = op === "READ"
-                && e.attrs !== null
-                && typeof e.attrs === "object"
-                && (e.attrs as { terminal?: unknown }).terminal === true;
-            if (op === "COPY" || op === "MOVE") {
-                const source = PacketWire.#renderSelection(
-                    tx?.source?.target,
-                    tx?.source?.lineMarker,
-                );
-                const destination = PacketWire.#renderSelection(
-                    tx?.destination?.target,
-                    tx?.destination?.lineMarker,
-                );
-                if (source !== null) meta.source = source;
-                if (destination !== null) meta.destination = destination;
-                if (
-                    typeof e.status === "number"
-                    && e.status < 400
-                    && (source === null || destination === null)
-                ) {
-                    throw new Error(`A successful ${op} log row must retain both operand selections.`);
-                }
-            } else if (target !== null) {
-                meta[terminalStream ? "stream" : "target"] = target;
-            }
-            // {§worker-auto-name} The created identity is an outcome, not an authored target.
-            if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
-                && typeof (e.attrs as { worker?: unknown }).worker === "string") {
-                meta.worker = (e.attrs as { worker: string }).worker;
-            }
-            // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
-            // `stream` link, distinct from the runtime-owned invocation target.
-            // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
-            // when it is not the project root, and then in the model's own project-relative form;
-            // the root is the default and a host-absolute path never reaches the packet.
-            if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
-                const cwd = PacketWire.#projectRelativeCwd((e.attrs as { cwd: string }).cwd, options.projectRoot ?? null);
-                if (cwd !== null) meta.cwd = cwd;
-            }
-            if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
-                meta.stream = (e.attrs as { stream: string }).stream;
-            }
-
+            const identity = PacketWire.#rowIdentity(e, options);
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
+            const facts = PacketWire.#rowResultFacts(identity, e, rx);
+            const projected = PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts, promptProjectionWeights.get(index), weighContent);
+            return PacketWire.#rowAccounting(identity, e, bodies[index]!, visibility[index]!, projected, weighContent, options);
+        });
+    }
 
-            // {§exec-stream}: a terminal stream observation is self-sufficient
-            // even when its selected channel is empty. Preserve exact producer
-            // facts; do not manufacture a prose completion summary.
-            if (terminalStream) {
-                meta.terminal = true;
-                if (rx !== null && typeof rx === "object" && Object.hasOwn(rx, "exitCode")) {
-                    if (typeof rx.exitCode !== "number" || !Number.isSafeInteger(rx.exitCode)) {
-                        throw new TypeError("A terminal stream result carries a malformed exitCode.");
-                    }
-                    meta.exitCode = rx.exitCode;
-                }
+    // The row's identity and authored facts: who wrote it, what it addressed, and the statuses
+    // that stay explicit. `meta` is the metadata line under construction; each later stage adds
+    // to it, and {§log-wire-format}'s canonical JSON sorts the keys, so the order of stages never
+    // reaches the wire.
+    static #rowIdentity(e: LogEntryView, options: RenderLogOptions): RowIdentity {
+        const meta: Record<string, unknown> = {};
+        const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
+        const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
+        const renderedLeaf = LogEntryProjection.leaf(e);
+        const path = PacketWire.#entryPath(coordinate, renderedLeaf);
+        // Absence = "model" — the worker's own authorship is the default,
+        // exactly as `source` absence means the owning worker (#338).
+        if (typeof e.origin === "string" && e.origin !== "model") meta.origin = e.origin;
+        // {§env-delta-attribution}: render the causal worker address or
+        // subsystem token when present; absence means the owning worker.
+        if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
+        if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
+            const git = (e.attrs as { git?: unknown }).git;
+            if (typeof git !== "string" || git.length !== 2) {
+                throw new TypeError("A source=file log row carries malformed Git XY metadata.");
             }
+            meta.git = git;
+        }
+        // SEND, TASK, destructive KILL, and non-200 statuses stay explicit.
+        // Successful log-KILL rows never reach this projection
+        // ({§log-kill-meta-operation}).
+        if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
+        const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
+        if (typeof tx?.aside === "string") meta.aside = tx.aside;
+        const target = PacketWire.#renderActionTarget(e.target);
+        // {§exec-stream}: a terminal stream observation's address is the stream it observed,
+        // rendered under `stream` like the invocation's own link — never a `target`, which
+        // the model would otherwise author into an EXEC slot (#425 F4).
+        const terminalStream = op === "READ"
+            && e.attrs !== null
+            && typeof e.attrs === "object"
+            && (e.attrs as { terminal?: unknown }).terminal === true;
+        if (op === "COPY" || op === "MOVE") {
+            const source = PacketWire.#renderSelection(
+                tx?.source?.target,
+                tx?.source?.lineMarker,
+            );
+            const destination = PacketWire.#renderSelection(
+                tx?.destination?.target,
+                tx?.destination?.lineMarker,
+            );
+            if (source !== null) meta.source = source;
+            if (destination !== null) meta.destination = destination;
+            if (
+                typeof e.status === "number"
+                && e.status < 400
+                && (source === null || destination === null)
+            ) {
+                throw new Error(`A successful ${op} log row must retain both operand selections.`);
+            }
+        } else if (target !== null) {
+            meta[terminalStream ? "stream" : "target"] = target;
+        }
+        // {§worker-auto-name} The created identity is an outcome, not an authored target.
+        if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
+            && typeof (e.attrs as { worker?: unknown }).worker === "string") {
+            meta.worker = (e.attrs as { worker: string }).worker;
+        }
+        // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
+        // `stream` link, distinct from the runtime-owned invocation target.
+        // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
+        // when it is not the project root, and then in the model's own project-relative form;
+        // the root is the default and a host-absolute path never reaches the packet.
+        if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
+            const cwd = PacketWire.#projectRelativeCwd((e.attrs as { cwd: string }).cwd, options.projectRoot ?? null);
+            if (cwd !== null) meta.cwd = cwd;
+        }
+        if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
+            meta.stream = (e.attrs as { stream: string }).stream;
+        }
+        return { meta, op, tx, coordinate, path, renderedLeaf, target, terminalStream };
+    }
 
-            // {§problem-projection} — the exact durable Problem remains the
-            // failure authority; the packet carries only facts not already
-            // owned by its enclosing row. Errors remains only an index.
-            if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
-                const problem = (rx as { problem?: unknown }).problem;
-                Validator.assertProblemDetails(problem as ProblemDetails);
-                meta.problem = Problems.project(problem as ProblemDetails, {
-                    status: e.status,
-                    row: meta,
-                });
+    // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
+    // matcher, the retrieval extents, and the structured mutation receipts. Returns what the body
+    // projection needs to know about the result.
+    static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): RowResultFacts {
+        const { meta, op, tx, terminalStream } = identity;
+        // {§exec-stream}: a terminal stream observation is self-sufficient
+        // even when its selected channel is empty. Preserve exact producer
+        // facts; do not manufacture a prose completion summary.
+        if (terminalStream) {
+            meta.terminal = true;
+            if (rx !== null && typeof rx === "object" && Object.hasOwn(rx, "exitCode")) {
+                if (typeof rx.exitCode !== "number" || !Number.isSafeInteger(rx.exitCode)) {
+                    throw new TypeError("A terminal stream result carries a malformed exitCode.");
+                }
+                meta.exitCode = rx.exitCode;
             }
-            // The success-side sibling (#342): a sub-problem receipt may carry one
-            // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
-            // only when the situation occurs, never in the hot path.
-            if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx === "object"
-                && typeof (rx as { detail?: unknown }).detail === "string"
-                && (rx as { detail: string }).detail.length > 0) {
-                meta.detail = (rx as { detail: string }).detail;
-            }
+        }
 
-            // {§retrieval-packet-metadata}: one extent/coordinate owner plus
-            // only FIND aggregates that add information beyond that extent.
-            let findItems: number | null = null;
-            // {§matcher-option} — a pattern rides the heading; the row shows it as `matcher`.
-            const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
-            if (patterned) {
-                meta.matcher = (tx as { matcher: { raw: string } }).matcher.raw;
-                if (op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
-            }
-            // {§channel-selection-visibility} — a READ names the resource's other channels with their
-            // tokens, so the row itself shows the choice a FIND listing would.
-            if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
-                meta.channels = rx.channels;
-            }
-            // {§send-response-receipt} — a reply's row names the prompts it answered.
-            if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
-                meta.recipients = rx.recipients;
-            }
-            if (op === "READ" || op === "FIND") {
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
-                    const parsed = PacketWire.#safeParse(rx.content);
-                    if (Array.isArray(parsed)) findItems = parsed.length;
-                }
-                const range = rx !== null && typeof rx === "object" && rx.range !== undefined
-                    ? rx.range
-                    : undefined;
-                const problemOwnsRange = typeof e.status === "number"
-                    && e.status >= 400
-                    && meta.problem !== null
-                    && typeof meta.problem === "object"
-                    && Object.hasOwn(meta.problem, "range");
-                if (problemOwnsRange) {
-                    Validator.assertRangeExtent((meta.problem as { range: RangeExtent }).range);
-                }
-                if (range !== undefined && !problemOwnsRange) {
-                    meta.range = Validator.assertRangeExtent(range as RangeExtent);
-                } else if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
-                    meta.region = Validator.assertTextRegion(rx.region as TextRegion);
-                }
-                // These are underlying selected-content weights, distinct from
-                // the emitted body's generic `tokens` measurement.
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsWeightTotal === "number" && rx.itemsWeightTotal > 0) {
-                    meta.itemsTokenTotal = rx.itemsWeightTotal;
-                }
-                if (
-                    op === "FIND"
-                    && rx !== null
-                    && typeof rx === "object"
-                    && typeof rx.returnedItemsWeightTotal === "number"
-                    && rx.returnedItemsWeightTotal > 0
-                    && rx.returnedItemsWeightTotal !== rx.itemsWeightTotal
-                ) {
-                    meta.returnedItemsTokenTotal = rx.returnedItemsWeightTotal;
-                }
-                if (
-                    op === "FIND"
-                    && patterned
-                    && range !== null
-                    && typeof range === "object"
-                    && (range as { unit?: unknown }).unit === "resource"
-                    && rx !== null
-                    && typeof rx === "object"
-                    && typeof rx.matchLocationCount === "number"
-                    && rx.matchLocationCount > 0
-                ) {
-                    meta.matchLocationCount = rx.matchLocationCount;
-                }
-            }
+        // {§problem-projection} — the exact durable Problem remains the
+        // failure authority; the packet carries only facts not already
+        // owned by its enclosing row. Errors remains only an index.
+        if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
+            const problem = (rx as { problem?: unknown }).problem;
+            Validator.assertProblemDetails(problem as ProblemDetails);
+            meta.problem = Problems.project(problem as ProblemDetails, {
+                status: e.status,
+                row: meta,
+            });
+        }
+        // The success-side sibling (#342): a sub-problem receipt may carry one
+        // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
+        // only when the situation occurs, never in the hot path.
+        if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx === "object"
+            && typeof (rx as { detail?: unknown }).detail === "string"
+            && (rx as { detail: string }).detail.length > 0) {
+            meta.detail = (rx as { detail: string }).detail;
+        }
 
-            // {§edit-result-receipt-projection} {§edit-result-copy-move-effects}
-            // EDIT/scoped entry KILL own one receipt; COPY/MOVE own resource effects whose
-            // optional receipts describe scoped textual materializations.
-            let structuredMutationReceipt = false;
-            if ((op === "EDIT" || op === "KILL") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
-                Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
-                structuredMutationReceipt = true;
+        // {§retrieval-packet-metadata}: one extent/coordinate owner plus
+        // only FIND aggregates that add information beyond that extent.
+        let findItems: number | null = null;
+        const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
+        if (patterned) {
+            meta.matcher = (tx as { matcher: { raw: string } }).matcher.raw;
+            if (op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
+        }
+        // {§channel-selection-visibility} — a READ names the resource's other channels with their
+        // tokens, so the row itself shows the choice a FIND listing would.
+        if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
+            meta.channels = rx.channels;
+        }
+        // {§send-response-receipt} — a reply's row names the prompts it answered.
+        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
+            meta.recipients = rx.recipients;
+        }
+        if (op === "READ" || op === "FIND") {
+            if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
+                const parsed = PacketWire.#safeParse(rx.content);
+                if (Array.isArray(parsed)) findItems = parsed.length;
+            }
+            const range = rx !== null && typeof rx === "object" && rx.range !== undefined
+                ? rx.range
+                : undefined;
+            const problemOwnsRange = typeof e.status === "number"
+                && e.status >= 400
+                && meta.problem !== null
+                && typeof meta.problem === "object"
+                && Object.hasOwn(meta.problem, "range");
+            if (problemOwnsRange) {
+                Validator.assertRangeExtent((meta.problem as { range: RangeExtent }).range);
+            }
+            if (range !== undefined && !problemOwnsRange) {
+                meta.range = Validator.assertRangeExtent(range as RangeExtent);
+            } else if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
+                meta.region = Validator.assertTextRegion(rx.region as TextRegion);
+            }
+            // These are underlying selected-content weights, distinct from
+            // the emitted body's generic `tokens` measurement.
+            if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsWeightTotal === "number" && rx.itemsWeightTotal > 0) {
+                meta.itemsTokenTotal = rx.itemsWeightTotal;
             }
             if (
-                (op === "COPY" || op === "MOVE")
+                op === "FIND"
                 && rx !== null
                 && typeof rx === "object"
-                && Object.hasOwn(rx, "effects")
+                && typeof rx.returnedItemsWeightTotal === "number"
+                && rx.returnedItemsWeightTotal > 0
+                && rx.returnedItemsWeightTotal !== rx.itemsWeightTotal
             ) {
-                const effects = assertResourceEffects(rx.effects);
-                meta.effects = effects.map((effect) => ({
-                    target: effect.target,
-                    action: effect.action,
-                    ...(effect.receipt === undefined
-                        ? {}
-                        : PacketWire.#receiptMeta(effect.receipt)),
-                }));
-                structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
+                meta.returnedItemsTokenTotal = rx.returnedItemsWeightTotal;
             }
+            if (
+                op === "FIND"
+                && patterned
+                && range !== null
+                && typeof range === "object"
+                && (range as { unit?: unknown }).unit === "resource"
+                && rx !== null
+                && typeof rx === "object"
+                && typeof rx.matchLocationCount === "number"
+                && rx.matchLocationCount > 0
+            ) {
+                meta.matchLocationCount = rx.matchLocationCount;
+            }
+        }
 
-            // The canonical full body is shared with log READ, log FIND,
-            // and search derivation. READ/FIND own selection bounds, TASK and
-            // admitted programs remain complete, and prompt rows share their packet
-            // allowance. Structured mutation receipts own their join bound;
-            // every remaining body uses the ordinary fixed preview.
-            const fullBody = bodies[index]!;
-            const bodyVisibility = visibility[index]!;
-            const projectedBody = {
-                ...fullBody,
-                content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
-            };
-            const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
-            const previewExempt = op === "READ"
-                || op === "FIND"
-                || op === "TASK"
-                || (op === null && renderedLeaf === "ops")
-                || structuredMutationReceipt;
-            const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
-            const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
-            if (lineAnchors !== null) {
-                LineAnchors.assertProjection(fullBody.content, lineAnchors);
-            }
-            const findRange = op === "FIND" && meta.range !== null && typeof meta.range === "object"
-                ? meta.range as RangeExtent
-                : null;
-            const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
-            const numericLineNumberWidth = findRange === null
-                ? bodyStartLine === null || bodyVisibility.totalLines === 0
-                    ? 0
-                    : String(fullBody.lineOrdinals?.at(-1) ?? bodyStartLine + bodyVisibility.totalLines - 1).length
-                : String(findRange.total).length;
-            const sourceOrdinals = bodyVisibility.fullyFolded
-                ? bodyVisibility.readableOrdinals
-                : bodyVisibility.ordinals;
-            const promptProjectionWeight = promptProjectionWeights.get(index);
-            const projection = promptProjectionWeight !== undefined
-                ? PacketWire.#promptProjection(
-                    projectedBody,
-                    promptProjectionWeight,
-                    weighContent,
-                    (content) => PacketWire.#renderContentBody(
-                        content,
-                        bodyStartLine,
-                        null,
-                        null,
-                        numericLineNumberWidth,
-                        bodyStartLine === null
-                            ? null
-                            : sourceOrdinals.slice(0, TextCoordinates.logicalLines(content).length),
-                    ),
-                )
-                : previewExempt
-                ? { text: projectedBody.content, cut: false, chunk: null }
-                : PacketWire.#preview(projectedBody.content);
-            const projectedLineCount = TextCoordinates.logicalLines(projection.text).length;
-            const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
-            const body = emptyFind || projection.text.length === 0
-                ? ""
-                : PacketWire.#renderContentBody(
-                    projection.text,
+        // {§edit-result-receipt-projection} {§edit-result-copy-move-effects}
+        // EDIT/scoped entry KILL own one receipt; COPY/MOVE own resource effects whose
+        // optional receipts describe scoped textual materializations.
+        let structuredMutationReceipt = false;
+        if ((op === "EDIT" || op === "KILL") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
+            Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
+            structuredMutationReceipt = true;
+        }
+        if (
+            (op === "COPY" || op === "MOVE")
+            && rx !== null
+            && typeof rx === "object"
+            && Object.hasOwn(rx, "effects")
+        ) {
+            const effects = assertResourceEffects(rx.effects);
+            meta.effects = effects.map((effect) => ({
+                target: effect.target,
+                action: effect.action,
+                ...(effect.receipt === undefined
+                    ? {}
+                    : PacketWire.#receiptMeta(effect.receipt)),
+            }));
+            structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
+        }
+        return { findItems, structuredMutationReceipt };
+    }
+
+    // The body the row shows: the canonical full body is shared with log READ, log FIND, and
+    // search derivation. READ/FIND own selection bounds, TASK and admitted programs remain
+    // complete, and prompt rows share their packet allowance. Structured mutation receipts own
+    // their join bound; every remaining body uses the ordinary fixed preview.
+    static #rowBody(
+        identity: RowIdentity,
+        e: LogEntryView,
+        fullBody: ResolvedLogBody,
+        bodyVisibility: VisibleLogBody,
+        facts: RowResultFacts,
+        promptProjectionWeight: number | undefined,
+        weighContent: WeighContent,
+    ): RowBody {
+        const { meta, op, renderedLeaf } = identity;
+        const projectedBody = {
+            ...fullBody,
+            content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
+        };
+        const emptyFind = op === "FIND" && e.status === 200 && facts.findItems === 0;
+        const previewExempt = op === "READ"
+            || op === "FIND"
+            || op === "TASK"
+            || (op === null && renderedLeaf === "ops")
+            || facts.structuredMutationReceipt;
+        const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
+        const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
+        if (lineAnchors !== null) {
+            LineAnchors.assertProjection(fullBody.content, lineAnchors);
+        }
+        const findRange = op === "FIND" && meta.range !== null && typeof meta.range === "object"
+            ? meta.range as RangeExtent
+            : null;
+        const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
+        const numericLineNumberWidth = findRange === null
+            ? bodyStartLine === null || bodyVisibility.totalLines === 0
+                ? 0
+                : String(fullBody.lineOrdinals?.at(-1) ?? bodyStartLine + bodyVisibility.totalLines - 1).length
+            : String(findRange.total).length;
+        const sourceOrdinals = bodyVisibility.fullyFolded
+            ? bodyVisibility.readableOrdinals
+            : bodyVisibility.ordinals;
+        const projection = promptProjectionWeight !== undefined
+            ? PacketWire.#promptProjection(
+                projectedBody,
+                promptProjectionWeight,
+                weighContent,
+                (content) => PacketWire.#renderContentBody(
+                    content,
                     bodyStartLine,
-                    lineAnchors,
-                    lineNumberWidth,
+                    null,
+                    null,
                     numericLineNumberWidth,
-                    bodyStartLine === null ? null : projectedOrdinals,
-                    fullBody.lineOrdinals ?? null,
-                );
+                    bodyStartLine === null
+                        ? null
+                        : sourceOrdinals.slice(0, TextCoordinates.logicalLines(content).length),
+                ),
+            )
+            : previewExempt
+            ? { text: projectedBody.content, cut: false, chunk: null }
+            : PacketWire.#preview(projectedBody.content);
+        const projectedLineCount = TextCoordinates.logicalLines(projection.text).length;
+        const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
+        const body = emptyFind || projection.text.length === 0
+            ? ""
+            : PacketWire.#renderContentBody(
+                projection.text,
+                bodyStartLine,
+                lineAnchors,
+                lineNumberWidth,
+                numericLineNumberWidth,
+                bodyStartLine === null ? null : projectedOrdinals,
+                fullBody.lineOrdinals ?? null,
+            );
 
-            // lines beside tokens on a non-retrieval row with a navigable body — the count of
-            // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
-            // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
-            if (fullBody.content.length > 0 && op !== "READ" && op !== "FIND") {
-                meta.lines = bodyVisibility.totalLines;
-            }
+        // lines beside tokens on a non-retrieval row with a navigable body — the count of
+        // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
+        // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
+        if (fullBody.content.length > 0 && op !== "READ" && op !== "FIND") {
+            meta.lines = bodyVisibility.totalLines;
+        }
 
-            if (bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded) {
-                meta.folded = LogVisibility.format(bodyVisibility.folded);
-            }
+        if (bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded) {
+            meta.folded = LogVisibility.format(bodyVisibility.folded);
+        }
 
-            const display = bodyVisibility.readableContent.length === 0
-                ? "none"
-                : bodyVisibility.fullyFolded || e.output_withheld === true
-                    ? "folded"
-                    : body.length === 0
-                        ? "none"
-                        : "open";
-            const projectedChunk = projection.chunk !== null
-                && bodyVisibility.folded.length > 0
-                && !bodyVisibility.fullyFolded
-                ? PacketWire.#sparseChunk(
-                    fullBody.content,
-                    projectedBody.content,
-                    sourceOrdinals,
-                    projection.text,
-                )
-                : projection.chunk;
-            if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
-            const nativeCandidate = op === "READ" && typeof e.status === "number" && e.status >= 200 && e.status < 300
-                ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target) : null;
-            const native = nativeCandidate !== null && (options.acceptedAttachmentKinds?.has(nativeCandidate.kind) ?? true)
-                ? nativeCandidate : null;
-            const outputWithheld = e.output_withheld === true
-                && ((!bodyVisibility.fullyFolded && body.length > 0) || native !== null);
-            if (outputWithheld) {
-                const omitted = body.length > 0
-                    ? `${projectedLineCount} output lines${native === null ? "" : " and native content"}`
-                    : "native content";
-                meta.overflow = `${omitted} not shown; the log exceeded logTokensMax when this row was withheld`;
-            }
-            const renderRow = (): string => {
-                const metadata = PacketWire.#canonicalJson(meta);
-                return display === "open"
-                    ? `### ${path}\n${metadata}\n${body}`
-                    : `### ${path}\n${metadata}`;
-            };
+        const display = bodyVisibility.readableContent.length === 0
+            ? "none"
+            : bodyVisibility.fullyFolded || e.output_withheld === true
+                ? "folded"
+                : body.length === 0
+                    ? "none"
+                    : "open";
+        const projectedChunk = projection.chunk !== null
+            && bodyVisibility.folded.length > 0
+            && !bodyVisibility.fullyFolded
+            ? PacketWire.#sparseChunk(
+                fullBody.content,
+                projectedBody.content,
+                sourceOrdinals,
+                projection.text,
+            )
+            : projection.chunk;
+        if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
+        return { body, projectedLineCount, display };
+    }
 
-            // The accounting field participates in the row it measures. Iterate
-            // until its decimal width and therefore the rendered row's curation
-            // weight are stable. {§packet-token-accounting}
-            // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
-            const attachment = e.output_withheld !== true
-                && !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
-                ? native
-                : null;
-            if (attachment !== null) meta.tokensAttachment = attachment.weight;
-            meta.logTokens = 0;
-            for (let pass = 0; pass < 8; pass += 1) {
-                const logTokens = weighContent(renderRow()) + (attachment?.weight ?? 0);
-                if (meta.logTokens === logTokens) {
-                    return {
-                        content: renderRow(),
-                        curationTarget: { path, logTokens },
-                        attachment,
-                        unadmittedOutput: (display === "open" || attachment !== null)
-                            && fullBody.provenance === "returned"
-                            && e.output_admission_turn_id == null
-                            && typeof e.id === "number"
-                                ? e.id : null,
-                        newOverflow: outputWithheld && e.newOverflow === true,
-                    };
-                }
-                meta.logTokens = logTokens;
+    // The row's native attachment, its withholding receipt, and the accounting field that
+    // participates in the row it measures: iterate until its decimal width and therefore the
+    // rendered row's curation weight are stable. {§packet-token-accounting}
+    static #rowAccounting(
+        identity: RowIdentity,
+        e: LogEntryView,
+        fullBody: ResolvedLogBody,
+        bodyVisibility: VisibleLogBody,
+        projected: RowBody,
+        weighContent: WeighContent,
+        options: RenderLogOptions,
+    ): RenderedLogRow {
+        const { meta, op, coordinate, path, target } = identity;
+        const { body, projectedLineCount, display } = projected;
+        const nativeCandidate = op === "READ" && typeof e.status === "number" && e.status >= 200 && e.status < 300
+            ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target) : null;
+        const native = nativeCandidate !== null && (options.acceptedAttachmentKinds?.has(nativeCandidate.kind) ?? true)
+            ? nativeCandidate : null;
+        const outputWithheld = e.output_withheld === true
+            && ((!bodyVisibility.fullyFolded && body.length > 0) || native !== null);
+        if (outputWithheld) {
+            const omitted = body.length > 0
+                ? `${projectedLineCount} output lines${native === null ? "" : " and native content"}`
+                : "native content";
+            meta.overflow = `${omitted} not shown; the log exceeded logTokensMax when this row was withheld`;
+        }
+        const renderRow = (): string => {
+            const metadata = PacketWire.#canonicalJson(meta);
+            return display === "open"
+                ? `### ${path}\n${metadata}\n${body}`
+                : `### ${path}\n${metadata}`;
+        };
+
+        // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
+        const attachment = e.output_withheld !== true
+            && !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
+            ? native
+            : null;
+        if (attachment !== null) meta.tokensAttachment = attachment.weight;
+        meta.logTokens = 0;
+        for (let pass = 0; pass < 8; pass += 1) {
+            const logTokens = weighContent(renderRow()) + (attachment?.weight ?? 0);
+            if (meta.logTokens === logTokens) {
+                return {
+                    content: renderRow(),
+                    curationTarget: { path, logTokens },
+                    attachment,
+                    unadmittedOutput: (display === "open" || attachment !== null)
+                        && fullBody.provenance === "returned"
+                        && e.output_admission_turn_id == null
+                        && typeof e.id === "number"
+                            ? e.id : null,
+                    newOverflow: outputWithheld && e.newOverflow === true,
+                };
             }
-            throw new Error("packet log row accounting did not converge");
-        });
+            meta.logTokens = logTokens;
+        }
+        throw new Error("packet log row accounting did not converge");
     }
 
     static #attachmentOf(
