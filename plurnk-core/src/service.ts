@@ -153,6 +153,14 @@ export default class Service {
             const v = Service.#sqliteKnob(env);
             if (v !== undefined) tuning[opt] = v;
         }
+        // sqlrite's own contract for the pool size; -1 is refused here, never read as "match cores".
+        const readers = Service.#sqliteKnob("PLURNK_SERVICE_SQLITE_READERS");
+        if (readers !== undefined) {
+            if (!Number.isSafeInteger(readers) || readers < 0) {
+                Service.#die(78, `PLURNK_SERVICE_SQLITE_READERS must be a non-negative integer (read-only database Workers beside the writer), got ${readers}`);
+            }
+            tuning.readers = readers;
+        }
         mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
         const lock = exclusive ? await DaemonLock.acquire(dbPath) : null;
         try {
