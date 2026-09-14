@@ -1,24 +1,15 @@
 # PLURNK
 
-PLURNK is an experimental runtime for software-development agents. It combines
-a model-facing operation language, addressable project context, persistent
+PLURNK is a runtime for software-development agents. It combines a
+model-facing operation language, addressable project context, persistent
 execution state, and thin clients over a single daemon.
 
-The project is under active stabilization. It is suitable for development and
-dogfooding, but it does not yet promise a stable public API or production
-reliability.
+## Design
 
-## Why PLURNK
-
-PLURNK is exploring three core ideas:
-
-- models should act through a small compositional language rather than a large
-  collection of unrelated tool schemas;
-- project context and execution results should have durable addresses;
-- agent work should be persisted and recoverable instead of living only in a
-  client process.
-
-Everything else is implementation and may change as those ideas are tested.
+- Models act through one small compositional language rather than a collection
+  of unrelated tool schemas.
+- Project context and execution results have durable addresses.
+- Agent work is persisted and recoverable rather than held in a client process.
 
 ## Architecture
 

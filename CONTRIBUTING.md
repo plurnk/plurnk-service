@@ -18,6 +18,7 @@ npm test
 | `npm test` | Deterministic lint, unit, and integration gate, then client conformance — needs the terminal client checkout installed beside this repository (`../plurnk`, `npm ci`); `../plurnk.nvim` is optional. |
 | `npm run test:<tier>` | Run one canonical `lint`, `unit`, or `intg` tier. |
 | `npm run test:live` | Long-running real-model wire assertions. |
+| `npm run changelog` | Print the notes pending since the last release tag. `CHANGELOG.md` is generated from tags (`-- --write`) and gated by `--check`, never edited by hand. |
 | `npm run test:demo` | Long-running real-model outcome assertions. |
 | `npm run test:providersPing` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
 | `npm run config:list` | Validate and list configuration ownership and source classes without values. |

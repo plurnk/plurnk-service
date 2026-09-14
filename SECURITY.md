@@ -1,6 +1,5 @@
 # Security Policy
 
-PLURNK is experimental and does not yet publish a long-term support schedule.
 Security fixes target the current release line.
 
 ## Reporting a vulnerability
