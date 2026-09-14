@@ -3468,6 +3468,34 @@ failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
 definition before removal; failure rejects removal ({§skills-remove}).
 
+§env-functionality **Environment is the fourth family, owned per Worker.** Its two origins
+are the ambient names the operator's ceiling admits ({§exec-env-scoped}, service origin, enabled
+until a Worker disables one for itself) and the Worker's own entries (worker origin). `add` takes
+the name as the alias and `{ "value": "…" }` as the definition, used verbatim with no
+interpolation. `disable` withdraws a name from the Worker's spawns while retaining it, which is
+how `CI=1` goes away for one Worker without an operator change; `remove` forgets a Worker's own
+entry and a same-name service baseline reappears disabled, so removal never silently changes what
+the next spawn sees. Service definitions are disable-only.
+
+`list` projects effective values with their origin. Values are shown: the ceiling is the security
+boundary, not the projection, and any admitted name is already readable by every command the
+Worker runs — withholding it here would be theatre and would make `list` lie about the
+environment its commands receive. A name the invariant reserves (`PLURNK_*`, provider credential
+names) is refused at **admission**, not dropped at the spawn, so the model learns why.
+
+`discover` is this installation's configuration catalog: every knob an installed package declares
+under {§operator-config-env-defaults}, projected as candidates whose summary is the declaration's
+own comment and whose provenance is the declaring package. It is not a permissions list — a Worker
+may set any name the invariant does not reserve — it answers which names have a **consumer**, and
+it is how a Worker learns the name of a value only the operator can supply. The catalog projects
+declarations, never the host environment, so a credential the operator has filled in appears by
+name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never
+read). `configuration` is refused: a client's own environment contributing candidates would be a
+second door past the ceiling.
+
+The family publishes no runtimes. An environment is read at the spawn that uses it, never held
+resident, so it never enters the warmed capability snapshot ({§module-workspace-residency}).
+
 §functionality-scope **A family declares who owns its definitions.** Skills, MCP, members
 and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
 that every Worker there shares. Environment describes how one **Worker** works — context rather
