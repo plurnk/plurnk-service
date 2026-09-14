@@ -29,9 +29,13 @@ pwd
 
 The receipt always names the directory the command ran in.
 
-`[{"env": {"NAME": "value"}}]` on the same line sets variables for this run
-alone, over the entries in your `env` registry; names are the shell's, and
-plurnk's own (`PLURNK_*`, provider credentials) are refused by name.
+`env` on the same line sets variables for this run alone, over the entries in
+your `env` registry; plurnk's own names (`PLURNK_*`, provider credentials) are
+refused by name:
+
+````sh [{"env": {"LC_ALL": "C"}}]
+sort names.txt
+````
 
 A script target runs that script: `sh (greet.sh)` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script

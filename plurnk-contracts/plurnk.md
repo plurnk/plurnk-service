@@ -96,7 +96,7 @@
 
 ## Delegation
 
-    ````WORK (worker://reviewer) <!-- the child's result lands in your log -->
+    ````WORK (worker://reviewer) [{"env": {"NODE_OPTIONS": "--unhandled-rejections=strict"}}] <!-- the child's result lands in your log -->
     Review src/ for unhandled promise rejections.
     ````
 
