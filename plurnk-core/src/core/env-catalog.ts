@@ -45,9 +45,11 @@ export default class EnvCatalog {
         return out;
     }
 
-    // Name only. A value match would surface a value the model did not ask to see — the
-    // catalog carries shipped defaults rather than operator secrets, but the model's own context
-    // hygiene is reason enough not to hand it bytes it was not looking for.
+    // The name, or the comment that documents it — a Worker looks for a variable by what it is
+    // for ("search") before it knows what it is called. Never the value: a value match would
+    // surface a value the model did not ask to see — the catalog carries shipped defaults rather
+    // than operator secrets, but the model's own context hygiene is reason enough not to hand it
+    // bytes it was not looking for.
     // The structured projection {§functionality-model-projection} requires: one candidate per
     // declaration, directly addable. The comment becomes the candidate's summary and the owning
     // package its provenance, so nothing is invented and the documentation is not lost — it moves
@@ -82,7 +84,10 @@ export default class EnvCatalog {
     }
 
     static #matches(declaration: Declaration, query: string): boolean {
-        return declaration.name.toLowerCase().includes(query.toLowerCase());
+        const term = query.toLowerCase();
+        if (declaration.name.toLowerCase().includes(term)) return true;
+        const lines = declaration.text.split("\n");
+        return lines.slice(0, -1).some((line) => line.toLowerCase().includes(term));
     }
 
     // The projection. An empty query is the whole catalog: there is no remote index to search

@@ -3507,11 +3507,14 @@ Worker runs — withholding it here would be theatre and would make `list` lie a
 environment its commands receive. A name the invariant reserves (`PLURNK_*`, provider credential
 names) is refused at **admission**, not dropped at the spawn, so the model learns why.
 
-`discover` is this installation's configuration catalog: every knob an installed package declares
-under {§operator-config-env-defaults}, projected as candidates whose summary is the declaration's
-own comment and whose provenance is the declaring package. It is not a permissions list — a Worker
-may set any name the invariant does not reserve — it answers which names have a **consumer**, and
-it is how a Worker learns the name of a value only the operator can supply. The catalog projects
+`discover` is this installation's configuration catalog: every name an installed package declares
+under {§operator-config-env-defaults} that a Worker may set, projected as candidates whose summary
+is the declaration's own comment and whose provenance is the declaring package. The names the
+invariant reserves — plurnk's own configuration and provider credentials — are the operator's and
+never appear, so the catalog stays short enough to read whole. `query` matches a name or the
+comment that documents it, never a value. It is not a permissions list beyond that — a Worker may
+set any name it lists or none of them — it answers which names have a **consumer**, and it is how
+a Worker learns the name of a value only the operator can supply. The catalog projects
 declarations, never the host environment, so a credential the operator has filled in appears by
 name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never
 read). `configuration` is refused: a client's own environment contributing candidates would be a

@@ -42,10 +42,14 @@ test("EnvCatalog.project filters by owning package", () => {
     assert.doesNotMatch(mcp, /PAGER/u, "a source filter answers 'what does this package let me change'");
 });
 
-test("EnvCatalog.project matches the declaration name, never its value", () => {
+test("EnvCatalog.project matches the declaration name or its comment, never its value", () => {
     const pager = EnvCatalog.project(FILES, { query: "pager" });
     assert.match(pager, /PAGER=cat/u);
     assert.doesNotMatch(pager, /PLURNK_MCP_CONNECT_TIMEOUT/u);
+    // A Worker looks for a variable by what it is for before it knows what it is called.
+    const deadline = EnvCatalog.project(FILES, { query: "deadline" });
+    assert.match(deadline, /PLURNK_MCP_CONNECT_TIMEOUT/u, "the comment that documents a name is a match");
+    assert.doesNotMatch(deadline, /PAGER=cat/u);
     // `cat` is the VALUE of PAGER. Matching values would hand the model bytes it did not ask
     // to see; the model's own context hygiene is reason enough, before any secrecy argument.
     assert.equal(EnvCatalog.project(FILES, { query: "cat" }).includes("PAGER=cat"), false,

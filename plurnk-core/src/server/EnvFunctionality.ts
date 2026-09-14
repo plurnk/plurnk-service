@@ -60,10 +60,11 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     readonly docsDir = Paths.packageRoot;
     readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
     readonly discovery = {
-        details: "`discover` is this installation's configuration catalog: every knob an installed "
-            + "package declares, with the declaring package as provenance and its own comment as the "
-            + "summary. `query` matches a name; `source` selects one owning package. It is not a "
-            + "permissions list — you may set any name — it is how you learn which names have a "
+        details: "`discover` is this installation's configuration catalog: every name an installed "
+            + "package declares that you may set, with the declaring package as provenance and its own "
+            + "comment as the summary; plurnk's own names never appear. `query` matches a name or the "
+            + "comment that documents it; `source` selects one owning package; an empty body is the "
+            + "whole catalog, which is short — start there. It is how you learn which names have a "
             + "consumer, and how you learn the name of a value only the operator can supply.",
     };
 
@@ -94,10 +95,14 @@ export default class EnvFunctionality implements FunctionalityAdapter {
                 "Environment discovery reads this installation's declared configuration; client configuration contributes nothing.",
                 { retryable: false });
         }
+        // The catalog is filtered to what a Worker may set (#586, the converged shape): plurnk's own
+        // configuration and provider credential names are the operator's, refused by `add`, and would
+        // only bury the few names that matter under the operator's knobs.
+        const reserved = ExecEnv.ownSecretTest();
         return EnvCatalog.candidates(await this.#defaults(), {
             ...(query.query === undefined ? {} : { query: query.query }),
             ...(query.source === undefined ? {} : { source: query.source }),
-        }) as readonly FunctionalityCandidate[];
+        }).filter(({ alias }) => !reserved(alias)) as readonly FunctionalityCandidate[];
     }
 
     async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {

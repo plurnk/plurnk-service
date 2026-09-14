@@ -12,7 +12,7 @@ const valueOf = (definition: object): string => {
 const FILES = [{
     owner: "@plurnk/plurnk-execs",
     parsed: {},
-    text: "# A pager that waits for a keypress hangs a spawn that has no terminal.\nPAGER=cat",
+    text: "# A pager that waits for a keypress hangs a spawn that has no terminal.\nPAGER=cat\n# The service's own knob: the operator's to set, never a worker's.\nPLURNK_WITNESS_KNOB=1",
 }];
 
 const adapter = new EnvFunctionality(async () => FILES);
@@ -68,6 +68,15 @@ test("{§env-functionality} discover projects the configuration catalog as addab
     assert.equal(candidate!.alias, "PAGER");
     assert.equal(valueOf(candidate!.definition), "cat");
     assert.equal(candidate!.provenance.source, "@plurnk/plurnk-execs");
+});
+
+// The catalog is what a Worker may set (#586's converged shape): plurnk's own names are the
+// operator's, refused by `add`, and on the dogfood host they outnumber the settable names sixty to
+// one — a model that has to read past them runs out of turns before it finds the one it wanted.
+test("{§env-functionality} discover projects only what a Worker may set, and matches a declaration's comment", async () => {
+    assert.deepEqual((await adapter.discover({}, identity)).map(({ alias }) => alias), ["PAGER"], "plurnk's own names never appear");
+    assert.deepEqual((await adapter.discover({ query: "keypress" }, identity)).map(({ alias }) => alias), ["PAGER"], "a Worker finds a name by what it is for");
+    assert.deepEqual(await adapter.discover({ query: "PLURNK_WITNESS_KNOB" }, identity), [], "not even by exact name");
 });
 
 // Client configuration contributing candidates would be a second door into the cascade, past the
