@@ -61,3 +61,40 @@ test("EnvCatalog.project keeps the comment with its declaration when filtered", 
 test("EnvCatalog.project drops a package with no match rather than rendering an empty section", () => {
     assert.doesNotMatch(EnvCatalog.project(FILES, { query: "PAGER" }), /plurnk-mcp/u);
 });
+
+// {§functionality-model-projection} — discover returns structured candidates, not rendered text:
+// the family contract requires one addable definition per candidate. The declaration's comment
+// becomes the candidate's summary and the owning package its provenance, so the documentation
+// moves into the field that exists for it rather than being lost.
+test("EnvCatalog.candidates carries the comment as summary and the package as provenance", () => {
+    const [first] = EnvCatalog.candidates(FILES, { query: "PAGER" });
+    assert.equal(first!.alias, "PAGER");
+    assert.equal(first!.summary, "A pager that waits for a keypress hangs a spawn that has no terminal.");
+    assert.deepEqual(first!.definition, { value: "cat" });
+    assert.equal(first!.provenance.source, "@plurnk/plurnk-execs");
+});
+
+test("EnvCatalog.candidates drops a section header, which introduces a region and not a key", () => {
+    const [only] = EnvCatalog.candidates([{
+        owner: "@plurnk/x", parsed: {},
+        text: "# ── Defaults (floor-set) ───────────────\n# The real documentation.\nTHING=1",
+    }]);
+    assert.equal(only!.summary, "The real documentation.", "prose never begins with a run of rule characters");
+});
+
+// The security property the ceiling exists for, at the discovery surface: the catalog projects
+// what a package DECLARED, never what the operator filled in. A model learns the name and the
+// purpose so it can ask for the key by name, and never sees the value.
+test("EnvCatalog.candidates projects the declared value, never an operator's", () => {
+    const [credential] = EnvCatalog.candidates([{
+        owner: "@plurnk/plurnk-schemes-http-tavily", parsed: {},
+        text: "# Tavily API key; unset disables the materializer.\nTAVILY_API_KEY=",
+    }]);
+    assert.equal(credential!.definition.value, "", "the declaration is empty even when the host has one set");
+    assert.match(credential!.summary!, /unset disables/u, "the model learns what it is for, so it can ask by name");
+});
+
+test("EnvCatalog.candidates omits summary rather than inventing one", () => {
+    const [bare] = EnvCatalog.candidates([{ owner: "@plurnk/x", parsed: {}, text: "BARE=1" }]);
+    assert.equal(bare!.summary, undefined, "a templated instance is self-documenting; an empty string would be a lie");
+});

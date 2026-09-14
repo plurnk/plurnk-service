@@ -48,6 +48,39 @@ export default class EnvCatalog {
     // Name only. A value match would surface a value the model did not ask to see — the
     // catalog carries shipped defaults rather than operator secrets, but the model's own context
     // hygiene is reason enough not to hand it bytes it was not looking for.
+    // The structured projection {§functionality-model-projection} requires: one candidate per
+    // declaration, directly addable. The comment becomes the candidate's summary and the owning
+    // package its provenance, so nothing is invented and the documentation is not lost — it moves
+    // from a comment line into the field that exists for it.
+    static candidates(files: readonly EnvDefaultsFile[], query: EnvCatalogQuery = {}): readonly {
+        alias: string; summary?: string; definition: { value: string };
+        provenance: { kind: string; source: string; reference: string };
+    }[] {
+        const { query: term, source } = query;
+        const selected = source === undefined ? files : files.filter((file) => file.owner === source);
+        const out = [];
+        for (const file of selected) {
+            for (const declaration of EnvCatalog.declarations(file.text)) {
+                if (term !== undefined && !EnvCatalog.#matches(declaration, term)) continue;
+                const lines = declaration.text.split("\n");
+                const assignment = lines[lines.length - 1]!.trim().replace(/^#+\s*/u, "");
+                const summary = lines.slice(0, -1)
+                    .map((line) => line.trim().replace(/^#+\s*/u, ""))
+                    // A section header ("── Defaults ──────") introduces a region of the file, not
+                    // this key. It begins with a run of rule characters, which prose never does.
+                    .filter((line) => line.length > 0 && !/^[─═—–=_~*-]{2,}/u.test(line))
+                    .join(" ");
+                out.push({
+                    alias: declaration.name,
+                    ...(summary.length > 0 ? { summary } : {}),
+                    definition: { value: assignment.slice(assignment.indexOf("=") + 1) },
+                    provenance: { kind: "declaration", source: file.owner, reference: ".env.defaults" },
+                });
+            }
+        }
+        return out;
+    }
+
     static #matches(declaration: Declaration, query: string): boolean {
         return declaration.name.toLowerCase().includes(query.toLowerCase());
     }
