@@ -52,14 +52,14 @@ SELECT name, sql FROM sqlite_master WHERE type = 'index' AND name LIKE 'entries_
 INSERT INTO entry_channels (entry_id, name, content, mimetype) VALUES ($entry_id, $name, $content, $mimetype);
 
 -- PREP: test_entry_channels_insert_with_state
-INSERT INTO entry_channels (entry_id, name, content, mimetype, state) VALUES ($entry_id, $name, $content, $mimetype, $state);
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, state) VALUES ($entry_id, $name, $content, $mimetype, content_weight($content), $state);
 
 -- PREP: test_entry_channels_insert_with_weight
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight) VALUES ($entry_id, $name, $content, $mimetype, $weight);
 
 -- PREP: test_entry_channels_insert_with_producer_result
-INSERT INTO entry_channels (entry_id, name, content, mimetype, producer_result)
-VALUES ($entry_id, $name, $content, $mimetype, $producer_result);
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, producer_result)
+VALUES ($entry_id, $name, $content, $mimetype, content_weight($content), $producer_result);
 
 -- PREP: test_entry_channels_get_first
 SELECT entry_id, name, content, mimetype, weight, state, producer_result FROM entry_channels WHERE entry_id = $entry_id LIMIT 1;

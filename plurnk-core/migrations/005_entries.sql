@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     content  TEXT    NOT NULL             CHECK (length(content) <= 104857600),
     mimetype TEXT    NOT NULL             CHECK (length(mimetype) > 0),
     weight   INTEGER NOT NULL DEFAULT 0   CHECK (weight >= 0),
+    -- Line count of content, kept by SQLite on every write so a catalog lists extent
+    -- without reading bodies: a trailing newline terminates the last line; empty
+    -- content has none ({§tokenomics-weight-stored-at-write}).
+    lines    INTEGER GENERATED ALWAYS AS (
+        CASE WHEN length(content) = 0 THEN 0
+             WHEN substr(content, -1) = char(10) THEN length(content) - length(replace(content, char(10), ''))
+             ELSE length(content) - length(replace(content, char(10), '')) + 1 END
+    ) STORED,
     -- Content identity: sha256 of content, stamped at static writes; streamed
     -- appends leave it NULL. Curation weight remains model-independent.
     content_hash TEXT,

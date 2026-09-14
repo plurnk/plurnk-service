@@ -20,7 +20,7 @@ type ManifestRow = {
     pathname: string;
     channel: string;
     default_channel: string;
-    content: string;
+    lines: number;
     mimetype: string;
     source_mimetype: string | null;
     weight: number;
@@ -71,9 +71,9 @@ export default class EntryManifest {
         schemeFilter?: string,
         authorityFilter?: string,
     ): Promise<CatalogEntry[]> {
-        const { db, workspaceId, mimetypes, weigh } = ctx;
-        if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
-        if (weigh === undefined) throw new Error("catalogRowsFor: ctx.weigh is required — model-independent curation weight, re-counted at render");
+        const { db, workspaceId } = ctx;
+        // Weight and extent are stored beside the content ({§tokenomics-weight-stored-at-write}):
+        // the listing never hydrates a body.
         const all = await db.engine_list_catalog_entries.all<ManifestRow>({
             workspace_id: workspaceId,
         });
@@ -105,12 +105,6 @@ export default class EntryManifest {
                     };
                 }
             }
-            let totalLines: number;
-            try {
-                totalLines = (await mimetypes.process({ content: row.content, hint: row.mimetype }, { channels: [] })).totalLines;
-            } catch {
-                totalLines = row.content.length === 0 ? 0 : row.content.split("\n").length;
-            }
             const channelPath = row.channel === entry.defaultChannel
                 ? entry.path
                 : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
@@ -124,8 +118,8 @@ export default class EntryManifest {
                 path: channelPath,
                 mimetype: row.mimetype,
                 ...(sourceMimetype === undefined ? {} : { sourceMimetype }),
-                weight: weigh(row.content),
-                lines: totalLines,
+                weight: row.weight,
+                lines: row.lines,
                 ...(aside === undefined ? {} : { aside }),
                 ...(row.parse_issues !== null
                     ? { parseIssues: row.parse_issues }

@@ -241,7 +241,7 @@ RETURNING id;
 
 -- PREP: test_seed_channel
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, state)
-VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
+VALUES ($entry_id, $name, $content, $mimetype, content_weight($content), $state);
 
 -- PREP: test_get_packet
 SELECT packet FROM turn_packets WHERE id = $id;
@@ -646,7 +646,7 @@ FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e
 
 -- PREP: test_seed_channel_hashed
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
-VALUES ($entry_id, $name, $content, $mimetype, COALESCE($weight, 0), $content_hash, $state, $producer_result);
+VALUES ($entry_id, $name, $content, $mimetype, COALESCE($weight, content_weight($content)), $content_hash, $state, $producer_result);
 
 -- PREP: test_set_entry_attributes
 UPDATE entries SET attributes = $attributes WHERE id = $entry_id;

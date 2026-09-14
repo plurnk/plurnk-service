@@ -141,8 +141,8 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
         assert.deepEqual(
             broad.results[0],
             [
-                { path: "exec:///run/complete", mimetype: "text/stream", weight: 1, lines: 1 },
-                { path: "exec:///run/complete#stderr", mimetype: "text/stream", weight: 1, lines: 1 },
+                { path: "exec:///run/complete", mimetype: "text/stream", weight: 2, lines: 1 },
+                { path: "exec:///run/complete#stderr", mimetype: "text/stream", weight: 2, lines: 1 },
             ],
             "the selected channel controls eligibility while the catalog keeps the resource's complete default-first channel group",
         );

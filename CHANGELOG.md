@@ -89,6 +89,8 @@ Daemon and database:
 
 - The model may add members by default: `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ships `namespace`;
   `root` and `none` are the operator's narrowing.
+- `entry_channels.lines` is a stored generated column; the catalog lists each channel's extent
+  and weight from storage without reading its body.
 - A READ of a stream channel carries `terminal: false` while the command runs and `terminal: true`
   once it has concluded.
 - A concluded stream lands one conclusion row per channel with content; an empty sibling channel
