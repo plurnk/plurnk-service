@@ -70,7 +70,6 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/status/activity`, while warnings/errors also retain their diagnostic Notice. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
-| `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 
 §agui-plan-activity **Task inventory is replaceable PLAN activity, not reasoning.** PLAN activity is the
 ACP projection of the model's latest TASK {§plan-value} installment, produced only at
@@ -117,7 +116,7 @@ sequence.
   reasoning streams and conversation replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
-  `plurnk.notice`, `plurnk.stream`, `plurnk.branch_batch`, `plurnk.terminated` — the full loop
+  `plurnk.notice`, `plurnk.stream`, `plurnk.terminated` — the full loop
   outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 
@@ -433,7 +432,6 @@ event families:
 | `reasoning/event` |
 | `stream/event` |
 | `stream/concluded` |
-| `workspace/branch-batch` |
 
 The schemas are the same executable values used for runtime admission and
 projection. `plurnk-agui` owns the built-in action and notification registry;
@@ -494,8 +492,7 @@ this Run.
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
 `workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or
-`entry.loop_id`) refines it wherever the event is loop-scoped. Branch-batch
-events remain workspace status and route only to conversation Runs. Opening a
+`entry.loop_id`) refines it wherever the event is loop-scoped. Opening a
 read-only management Run can therefore never replay reasoning, operation rows,
 or turn disposition from an active conversation.
 

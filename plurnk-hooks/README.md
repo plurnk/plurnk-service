@@ -26,7 +26,6 @@ loop/terminated
 notice/event
 stream/concluded
 stream/event
-workspace/branch-batch
 workspace/created
 ```
 

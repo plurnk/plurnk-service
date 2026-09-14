@@ -169,8 +169,6 @@ export default class Portal {
                 : owns(payload.workerId, payload.loopId);
             case "stream/event":
             case "stream/concluded": return owns(payload.workerId);
-            case "workspace/branch-batch": return thread.notificationScope === "conversation"
-                && (typeof payload.parentWorkerId !== "number" || payload.parentWorkerId === thread.workerId);
             default: return false;
         }
     }

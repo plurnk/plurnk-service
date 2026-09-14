@@ -27,10 +27,10 @@ export interface WorkspaceExclusive {
     release(): void;
 }
 
-// Fair workspace reader/writer gate for serialized Git branch batches.
-// Ordinary turns share the workspace. Once an exclusive request is queued,
-// later turns wait behind it. While exclusive, only one turn at a time from
-// the selected branch worker's lineage may run.
+// Fair workspace reader/writer gate. Ordinary turns share the workspace. Once an
+// exclusive request is queued (a workspace capability mutation), later turns
+// wait behind it. While exclusive, only one turn at a time from the exclusive
+// root worker's lineage may run.
 export default class WorkspaceGate {
     readonly #isDescendant: (workerId: number, rootWorkerId: number) => Promise<boolean>;
     readonly #states = new Map<number, WorkspaceState>();

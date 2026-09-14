@@ -251,8 +251,4 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         wakeAction: { enum: ["skipped-aborted", "skipped-cancelled", "wake-pending", "no-op-active-loop", "no-loop"] },
         ...streamCoordinate,
     }, ["entryId", "workerId", "target", "subscriptionId", "result", "scheme", "summary", "wakeAction"])),
-    "workspace/branch-batch": notification(object({
-        batchId: POSITIVE,
-        state: { enum: ["queued", "running", "completed", "failed", "recovery-required"] },
-    }, ["batchId", "state"], true)),
 } satisfies Readonly<Record<string, AguiNotificationContract>>);

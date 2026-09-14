@@ -462,53 +462,6 @@
             }
         },
         {
-            "name": "branch-batch",
-            "events": [
-                {
-                    "type": "CUSTOM",
-                    "name": "plurnk.branch_batch",
-                    "value": {
-                        "batchId": 4,
-                        "state": "completed",
-                        "completed": 2,
-                        "total": 2
-                    }
-                },
-                {
-                    "type": "CUSTOM",
-                    "name": "plurnk.terminated",
-                    "value": {
-                        "workspaceId": 1,
-                        "workerId": 7,
-                        "loopId": 1,
-                        "result": { "status": 200 },
-                        "hitMaxTurns": false,
-                        "turnIds": [1],
-                        "attributions": [],
-                        "usage": {
-                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
-                            "curationWeight": null,
-                            "curationBudget": null,
-                            "contextTokens": null,
-                            "contextCapacity": null,
-                            "meta": {}
-                        }
-                    }
-                },
-                {
-                    "type": "RUN_FINISHED",
-                    "threadId": "fixture",
-                    "runId": "branch",
-                    "outcome": { "type": "success" }
-                }
-            ],
-            "expect": {
-                "completion": "success",
-                "families": ["workspace/branch-batch", "loop/terminated"],
-                "status": 200
-            }
-        },
-        {
             "name": "cancelled-run",
             "events": [
                 {

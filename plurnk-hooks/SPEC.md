@@ -24,7 +24,6 @@ language.
 | `notice/event` | `{§notifications-notice-event}` |
 | `stream/concluded` | `{§notifications-stream-concluded}` |
 | `stream/event` | `{§notifications-stream-event-on-channel-change}` |
-| `workspace/branch-batch` | `{§notifications-workspace-branch-batch}` |
 | `workspace/created` | `{§notifications-workspace-created}` |
 
 ## §hooks-failure-isolation Failure isolation

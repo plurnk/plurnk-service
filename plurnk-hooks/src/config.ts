@@ -5,7 +5,6 @@ export const HOOK_EVENTS = [
     "notice/event",
     "stream/concluded",
     "stream/event",
-    "workspace/branch-batch",
     "workspace/created",
 ] as const;
 

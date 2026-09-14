@@ -22,6 +22,8 @@ Breaking for external AG-UI and RPC clients:
 - A loop's result is its last delivered message. Earlier `SEND` bodies stay log rows and are
   no longer concatenated into `loop/terminated.result`; a parent receives its child's last
   message as the conclusion.
+- `workspace/branch-batch` (`CUSTOM plurnk.branch_batch`) is gone: branch delegation was deleted
+  before 1.17.0 and nothing produced the event. The hooks event list no longer names it.
 
 Language and teaching:
 

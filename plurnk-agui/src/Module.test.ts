@@ -2204,7 +2204,6 @@ test("discover returns the exact public action and notification membership", asy
             "reasoning/event",
             "stream/concluded",
             "stream/event",
-            "workspace/branch-batch",
         ]);
         for (const action of Object.values(r.value.result.actions)) {
             assert.ok(action.scope === "worldless" || action.scope === "workspace");

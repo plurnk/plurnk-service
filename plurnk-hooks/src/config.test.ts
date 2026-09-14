@@ -40,7 +40,6 @@ test("the event inventory is exactly the tagged core notification vocabulary", (
         "notice/event",
         "stream/concluded",
         "stream/event",
-        "workspace/branch-batch",
         "workspace/created",
     ]);
 });
