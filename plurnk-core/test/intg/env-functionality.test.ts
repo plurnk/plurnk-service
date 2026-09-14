@@ -113,6 +113,17 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(discovered.candidates.find(({ alias }) => alias === "PAGER")?.provenance.source, "@plurnk/plurnk-execs");
         assert.equal(await stateOf(alice, "PAGER"), undefined, "discovery persisted nothing");
 
+        // WORK owns its heading slot ({§env-option}): a key it does not take and a reserved name are
+        // refused by name, before any child exists.
+        const problemOf = (result: { status: number }): string => String((result as { problem?: { type?: string } }).problem?.type);
+        const foreignKey = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("```WORK (worker://nope) [{\"nope\": 1}]\nx\n```") });
+        assert.equal(foreignKey.status, 400);
+        assert.match(problemOf(foreignKey), /metadata-unsupported$/u);
+        const reservedName = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("```WORK (worker://nope) [{\"env\": {\"PLURNK_SERVICE_DB_PATH\": \"x\"}}]\nx\n```") });
+        assert.equal(reservedName.status, 400);
+        assert.match(problemOf(reservedName), /env\/functionality\/name-reserved$/u);
+        assert.equal(await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: "nope" }), undefined, "nothing was created");
+
         // Persistence: alice's shaping survives a restart; bob's is untouched.
         await invoke(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
         await daemon.stop();

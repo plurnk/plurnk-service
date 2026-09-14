@@ -2386,7 +2386,8 @@ violations follow the current admission and strike contracts
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (operator,
   2026-09-12: a gentle warning, never a refusal). The `pattern` option never reaches this
-  path; it is lifted into the matcher at parse time ({§matcher-option}).
+  path; it is lifted into the matcher at parse time ({§matcher-option}). EXEC, WORK and FORK
+  own their slot and receive it whole ({§env-option}); a key they do not take is their own 400.
 - §send-looks-like-operation **A reply never begins with an operation heading.** When a model's
   untargeted SEND has, as its first non-blank line, a line that parses alone as one clean
   heading naming an operation this worker could perform — a Plurnk operation, or a registered
@@ -2793,6 +2794,19 @@ The full composition for one spawn, nearest setter winning for defaults and ceil
 is package floors → operator cascade → ambient policy → worker document → the op's modifier →
 body prefixes.
 
+- §env-option **The op's environment.** `env` is the service's key in the heading's `[metadata]`
+  ({§scheme-metadata-modifier}): `[{"env": {"NAME": "value"}}]`, an object of string values.
+  On an executor fence it is that process's environment over the Worker's own
+  ({§env-functionality}) — the layer nearest the spawn, never entering the registry; a runtime
+  that runs in-process ignores the environment it is handed, so there it changes nothing. On
+  WORK and FORK it is the child's starting environment: after the copy the child inherits
+  ({§functionality-scope}), each name lands as the child's own entry through the family's `add`,
+  so a parent hands down its registry and overrides specific names for one child in one heading.
+  Names follow the family's admission — a name a shell can export, never plurnk's own — and a
+  refusal names the key and the reason at the operation, before anything runs or is created; a
+  key WORK or FORK does not take is refused the same way. The durable row redacts the block
+  wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's
+  provenance as the modifier's.
 - §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits EXEC followed by TASK; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
 - §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address.
 
@@ -3531,7 +3545,8 @@ worker-scoped state, taken at creation. The child owns its copy: neither side's 
 reach the other, and depth is transitive with no further rule. Each copied entry carries
 `inherited`, the Worker that set it, preserved across generations until the child changes that
 entry, so `list` never claims the child set what it inherited; a parent's masking of an
-ambient name travels the same way.
+ambient name travels the same way. WORK and FORK may hand the child more: the heading's `env`
+option lands as the child's own entries through `add`, after the copy ({§env-option}).
 
 §functionality-state **One durable value per workspace and family.**
 `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`

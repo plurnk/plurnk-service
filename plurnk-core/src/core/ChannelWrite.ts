@@ -77,6 +77,9 @@ export type InjectWorkerNotify = (args: {
     schedule?: TaskSchedule;
     // WORK/FORK inherit the source loop's spawn model; SEND retains the recipient's.
     spawn?: true;
+    // {§env-option} — the child's starting environment from the heading: each name becomes the
+    // child's own entry through the family's add, after the copy it inherited at creation.
+    environment?: Readonly<Record<string, string>>;
     // {§worker-delegation-inherits-policy} — the sender's complete effective
     // policy for a fresh delegated loop. An active or parked recipient keeps
     // its existing immutable loop policy; this value is not a reconfiguration

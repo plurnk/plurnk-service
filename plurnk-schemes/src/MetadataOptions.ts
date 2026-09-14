@@ -6,7 +6,9 @@
 import Results, { type SchemeResult } from "./Results.ts";
 
 export type MetadataOptionsParsed =
-    | { readonly options: Readonly<Record<string, unknown>> }
+    // `env` is the service's reserved key ({§scheme-metadata-modifier}): withheld from `options`
+    // so no owner interprets it, surfaced raw for the service, which owns its shape and names.
+    | { readonly options: Readonly<Record<string, unknown>>; readonly env?: unknown }
     | { readonly failure: SchemeResult };
 
 export default class MetadataOptions {
@@ -36,6 +38,9 @@ export default class MetadataOptions {
         // {§matcher-option} — `pattern` is the language's key: the parser lifts it into the
         // statement's matcher and leaves the block for its owner, who never interprets it.
         delete options.pattern;
-        return { options };
+        // `env` is the service's: the environment of the scope an operation opens.
+        const env = options.env;
+        delete options.env;
+        return { options, ...(env === undefined ? {} : { env }) };
     }
 }

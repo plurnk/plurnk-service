@@ -12,8 +12,9 @@ test("{§exec-env-scoped} the digest names a spawn's environment with each value
         TOOLCHAIN: { source: "worker", from: "alice", value: "stable" },
         CI: { source: "masked" },
         NO_COLOR: { source: "masked", from: "alice" },
+        RUN_ID: { source: "modifier", value: "7" },
     });
-    assert.equal(line, "env: host HOME,PATH · CARGO_TARGET_DIR=/tmp/shared (worker) · CI (masked) · NO_COLOR (masked by alice) · TOOLCHAIN=stable (from alice)");
+    assert.equal(line, "env: host HOME,PATH · CARGO_TARGET_DIR=/tmp/shared (worker) · CI (masked) · NO_COLOR (masked by alice) · RUN_ID=7 (modifier) · TOOLCHAIN=stable (from alice)");
     assert.equal(DigestRender.envLine({}), "env: (empty)", "an empty environment is a fact, not an absence");
     assert.equal(DigestRender.envLine(undefined), null, "an output without a recorded environment renders none");
 });

@@ -20,3 +20,7 @@ Each argument is a literal string, without shell expansion. `[{"cwd": "<director
 selects the working directory; otherwise it remains the workspace root. The
 same options apply to local and `worker://` script targets. Native skill files
 retain their sibling imports and source-relative assets.
+
+`[{"env": {"NAME": "value"}}]` on the same fence line sets variables for this run
+alone, over the entries in your `env` registry; names are the shell's, and plurnk's own
+(`PLURNK_*`, provider credentials) are refused by name.

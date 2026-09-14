@@ -135,3 +135,30 @@ test("{§exec-env-scoped} compose applies the Worker's state over the ambient ce
     });
     assert.throws(() => EnvFunctionality.compose({}, { version: 2 }), /not a version 1 record/u, "a foreign state shape is a defect, never a fallback");
 });
+
+// {§env-option} — the heading's `env` is admitted by the family's own rules, by name, before anything
+// runs or is created; the executor never sees the key.
+test("{§env-option} the modifier is read through the shared reader and admitted like an add", () => {
+    assert.deepEqual(EnvFunctionality.modifier(['{"cwd": "src", "env": {"RUN_ID": "7", "CI": ""}}']), { RUN_ID: "7", CI: "" });
+    assert.deepEqual(EnvFunctionality.modifier(null), {}, "no block, no environment");
+    assert.deepEqual(EnvFunctionality.modifier(['{"cwd": "src"}']), {}, "a block without env is not an environment");
+    const type = (run: () => unknown): string => {
+        try { run(); } catch (cause) { return String((cause as { result: { problem: { type: string } } }).result.problem.type); }
+        throw new Error("expected a refusal");
+    };
+    assert.match(type(() => EnvFunctionality.modifier(['{"env": ["x"]}'])), /env\/functionality\/env-invalid$/u);
+    assert.match(type(() => EnvFunctionality.modifier(['{"env": {"9NOPE": "x"}}'])), /env\/functionality\/name-invalid$/u);
+    assert.match(type(() => EnvFunctionality.modifier(['{"env": {"PLURNK_SERVICE_DB_PATH": "x"}}'])), /env\/functionality\/name-reserved$/u);
+    assert.match(type(() => EnvFunctionality.modifier(['{"env": {"COUNT": 3}}'])), /env\/functionality\/value-invalid$/u);
+    assert.deepEqual(EnvFunctionality.modifier(['{"env": ']), {}, "a block that is not the array shape carries no env: it is the executor's to accept or refuse");
+    assert.deepEqual(EnvFunctionality.modifier(['{"a": 1}', '{"env": {"X": "1"}}']), {}, "so is a repeated block");
+});
+
+test("{§env-option} compose applies the op's modifier nearest the spawn and records it as the modifier's", () => {
+    const { env, record } = EnvFunctionality.compose({ PATH: "/usr/bin" }, { version: 1, definitions: {
+        CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
+    } }, { CARGO_TARGET_DIR: "/tmp/override", RUN_ID: "7" });
+    assert.deepEqual(env, { PATH: "/usr/bin", CARGO_TARGET_DIR: "/tmp/override", RUN_ID: "7" });
+    assert.deepEqual(record.CARGO_TARGET_DIR, { source: "modifier", value: "/tmp/override" }, "the nearest setter wins, and the record says which");
+    assert.deepEqual(record.RUN_ID, { source: "modifier", value: "7" });
+});

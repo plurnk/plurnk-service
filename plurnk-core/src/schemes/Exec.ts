@@ -98,10 +98,14 @@ export default class Exec extends CoreSchemeAdapterBase {
     // {§exec-env-scoped} — the environment one spawn receives: the ambient ceiling, then the Worker's
     // own `env` state over it ({§env-functionality}), read here rather than held anywhere. No row is
     // the ordinary case: a Worker that never set anything.
-    static async #composedEnv(db: PlurnkSchemeContext["db"], workerId: number): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
+    static async #composedEnv(
+        db: PlurnkSchemeContext["db"],
+        workerId: number,
+        modifier: Readonly<Record<string, string>>,
+    ): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const ambient = ExecEnv.scoped();
         const row = await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
-        return EnvFunctionality.compose(ambient, row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state));
+        return EnvFunctionality.compose(ambient, row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state), modifier);
     }
 
     // The record goes on the output the spawn produces ({§execution-output-identity}) — the log row
@@ -420,6 +424,14 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
         }
 
+        // {§env-option} — the fence's own environment is the service's key: refused here by name,
+        // so the model learns why, never dropped at the spawn. The executor never sees it.
+        try {
+            EnvFunctionality.modifier(statement.metadata);
+        } catch (cause) {
+            if (!(cause instanceof OperationFailureError)) throw cause;
+            return cause.result as ExecResult;
+        }
         // {§executor-metadata} Options belong to the invoked executor for every source kind.
         const executor = resolved.executor;
         if (executor.prepare !== undefined) {
@@ -1053,7 +1065,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (signal.aborted) {
                 result = cancelled();
             } else try {
-                const composed = await Exec.#composedEnv(db, ctx.workerId);
+                const composed = await Exec.#composedEnv(db, ctx.workerId, EnvFunctionality.modifier(metadata));
                 await Exec.#recordEnv(db, entryId, composed.record);
                 const reported: ExecutorResult = await executor.run({
                     registerInput: (receiver) => input.register(receiver),

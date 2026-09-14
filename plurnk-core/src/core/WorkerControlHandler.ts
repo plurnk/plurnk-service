@@ -8,6 +8,9 @@ import WorkerCap from "./worker-cap.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
+import { MetadataOptions } from "@plurnk/plurnk-schemes";
+import EnvFunctionality from "../server/EnvFunctionality.ts";
+import { OperationFailureError } from "./results.ts";
 
 export default class WorkerControlHandler {
     readonly #db: Db;
@@ -54,6 +57,22 @@ export default class WorkerControlHandler {
         if (prompt.trim() === "") {
             return this.#failure("spawn-prompt-empty", 422, `${statement.op} has no prompt text.`, {}, { operation: statement.op, retryable: false });
         }
+        // {§env-option} — the child's starting environment rides the heading. WORK and FORK own their
+        // slot: a key they do not take is their own refusal, a bad name the family's, both by name and
+        // before anything is created.
+        const read = MetadataOptions.parse(statement.metadata, "scheme:worker", { operation: statement.op });
+        if ("failure" in read) return read.failure;
+        const foreign = Object.keys(read.options);
+        if (foreign.length > 0) {
+            return this.#failure("metadata-unsupported", 400, `${statement.op} takes only the env option; '${foreign[0]}' is not one.`, {}, { operation: statement.op, field: foreign[0], retryable: false });
+        }
+        let environment: Readonly<Record<string, string>>;
+        try {
+            environment = EnvFunctionality.environment(read.env);
+        } catch (cause) {
+            if (!(cause instanceof OperationFailureError)) throw cause;
+            return cause.result;
+        }
 
         const delegationPolicy: LoopPolicy = await LoopPolicyReader.read(this.#db, ctx.loopId);
 
@@ -79,6 +98,7 @@ export default class WorkerControlHandler {
             prompt,
             freshLoopPolicy: delegationPolicy,
             spawn: true,
+            ...(Object.keys(environment).length === 0 ? {} : { environment }),
         });
         return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name) } };
     }

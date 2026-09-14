@@ -436,8 +436,10 @@ balanced brackets inside the block are retained, and double-quoted strings
 protect their brackets. Brackets inside `(path)` remain ordinary path and
 glob characters. A block that is not valid JSON, or a second block on one
 operand, is the owner's `400`, never a parser diagnostic. An unfinished block
-or multiline metadata loses its boundary. One key is the language's own:
-`pattern` ({§matcher-option}).
+or multiline metadata loses its boundary. Two keys never reach an owner:
+`pattern`, the language's own ({§matcher-option}), and `env`, reserved for the
+service's environment option on the operations that open a process or a
+Worker; the shared reader withholds both from the owner's options.
 
 §matcher-option **`pattern` is the matcher, and it lives in the heading.** On
 FIND, READ, KILL, EDIT, and each COPY/MOVE operand, the option

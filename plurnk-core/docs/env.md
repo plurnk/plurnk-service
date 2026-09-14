@@ -23,6 +23,23 @@ Your entries are yours: another worker's commands do not see them. A worker
 you spawn starts with a copy of them — `list` shows those as inherited from
 you — and its changes never reach yours.
 
+## For one command, or for one child
+
+The heading's `[metadata]` takes `env`. On a command fence it is that run's
+environment, over your entries, and it is gone when the run ends:
+
+````sh [{"env": {"RUST_LOG": "debug"}}]
+cargo test
+````
+
+On `WORK` and `FORK` it is the child's starting environment: the child gets a
+copy of your entries first, then each name here becomes its own, so you hand
+down your registry and override what one child needs in the same line:
+
+````WORK (worker://builder) [{"env": {"CARGO_TARGET_DIR": "/tmp/builder"}}]
+Build the crate and report the warnings.
+````
+
 ## Names you cannot set
 
 `PLURNK_*` and provider credential names are plurnk's own and never reach a

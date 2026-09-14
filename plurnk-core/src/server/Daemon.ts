@@ -207,7 +207,7 @@ export default class Daemon implements ApplicationPort {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, schedule }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, schedule, environment }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -244,6 +244,12 @@ export default class Daemon implements ApplicationPort {
                         spawn_model_route_id: null,
                         reasoning_policy: reasoningPolicy,
                         reasoning_source: "default" });
+                                    // {§env-option} — the heading's environment lands as the child's own entries through the
+                    // family's add, after the copy it inherited at creation ({§functionality-scope}); names
+                    // were admitted at the operation, so a refusal here is a defect and throws.
+                    for (const [alias, value] of Object.entries(environment ?? {})) {
+                        await this.#functionality.invoke("env", "add", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
+                    }
                 }
                 const { action, loopId, scheduledAt, intervalMinutes, recurrenceId } = await this.inject({
                     workspaceId,

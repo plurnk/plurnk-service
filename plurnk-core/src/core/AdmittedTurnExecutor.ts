@@ -23,6 +23,9 @@ import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult } from "./TurnRunner.ts";
 
+// Operations that own their [metadata] slot; every other op takes only what its scheme declares.
+const OWNS_METADATA: ReadonlySet<string> = new Set(["EXEC", "WORK", "FORK"]);
+
 export default class AdmittedTurnExecutor {
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
@@ -190,9 +193,10 @@ export default class AdmittedTurnExecutor {
 
         for (const [index, scheduledStatement] of scheduled.entries()) {
             // {§metadata-ignored} — a scheme that takes no [metadata] gets the operation without it,
-            // and the model gets one notice, never a refusal (operator, 2026-09-12).
+            // and the model gets one notice, never a refusal (operator, 2026-09-12). EXEC, WORK and
+            // FORK own their slot ({§env-option}) and receive it whole.
             let statement = scheduledStatement;
-            if ("metadata" in statement && statement.metadata !== null && statement.op !== "EXEC") {
+            if ("metadata" in statement && statement.metadata !== null && !OWNS_METADATA.has(statement.op)) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
                 const schemeName = target === null || target === undefined ? null : target.kind === "url" ? target.scheme ?? null : "file";
                 const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);

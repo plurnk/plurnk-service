@@ -15,6 +15,7 @@ import type {
     WorkspaceCapabilityIdentity,
 } from "./DaemonModule.ts";
 import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema } from "@plurnk/plurnk-contracts";
+import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
@@ -151,7 +152,11 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     // Beside the environment comes its record: every name with its provenance, which the spawn
     // writes on its own log row and the digest renders — the host-versus-container confound closed
     // where it starts.
-    static compose(ambient: NodeJS.ProcessEnv, state: unknown): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
+    static compose(
+        ambient: NodeJS.ProcessEnv,
+        state: unknown,
+        modifier: Readonly<Record<string, string>> = {},
+    ): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
         if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
         const env: NodeJS.ProcessEnv = { ...ambient };
         const record: Record<string, EnvRecord> = {};
@@ -175,18 +180,56 @@ export default class EnvFunctionality implements FunctionalityAdapter {
             env[name] = entry.definition.value;
             record[name] = { source: "worker", ...from, value: entry.definition.value };
         }
+        // {§env-option} — the op's own environment, nearest the spawn; admitted by name already.
+        for (const [name, value] of Object.entries(modifier)) {
+            reserved ??= ExecEnv.ownSecretTest();
+            if (reserved(name)) throw new Error(`env modifier names plurnk's own '${name}' past admission`);
+            env[name] = value;
+            record[name] = { source: "modifier", value };
+        }
         for (const [name, value] of Object.entries(env)) {
             if (record[name] === undefined && value !== undefined) record[name] = { source: "host", value };
         }
         return { env, record };
     }
+
+    // {§env-option} — the heading's `env` option, read through the one metadata reader and admitted
+    // by the family's own rules: an object of string values under names a shell can export, never
+    // plurnk's own. A refusal names the key and the reason, so the model learns why, exactly as `add`
+    // refuses. A block that is not the array shape carries no `env` for the service to read: it is
+    // the invoked executor's to accept or refuse ({§scheme-metadata-modifier}), as `pattern` is
+    // lifted only from a block that parses.
+    static modifier(metadata: readonly string[] | null | undefined, source = "env:functionality"): Readonly<Record<string, string>> {
+        const read = MetadataOptions.parse(metadata, source);
+        if ("failure" in read) return Object.freeze({});
+        return EnvFunctionality.environment(read.env);
+    }
+
+    static environment(raw: unknown): Readonly<Record<string, string>> {
+        if (raw === undefined) return Object.freeze({});
+        if (!isRecord(raw)) throw actionError("env-invalid", 400, "`env` must be an object of string values.", { retryable: false });
+        const reserved = ExecEnv.ownSecretTest();
+        const out: Record<string, string> = {};
+        for (const [name, value] of Object.entries(raw)) {
+            if (!NAME.test(name)) throw actionError("name-invalid", 400, `'${name}' is not a name a shell can export.`, { alias: name, retryable: false });
+            if (reserved(name)) {
+                throw actionError("name-reserved", 400,
+                    `'${name}' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess.`,
+                    { alias: name, retryable: false });
+            }
+            if (typeof value !== "string") throw actionError("value-invalid", 400, `'${name}' needs a string value.`, { alias: name, retryable: false });
+            out[name] = value;
+        }
+        return Object.freeze(out);
+    }
 }
 
 // One name's provenance in a spawn's environment ({§exec-env-scoped}): the host through the
-// ceiling, this Worker's own value (`from` names an ancestor when it was inherited), or a name
-// withheld — by this Worker, by the ancestor named, or by the invariant.
+// ceiling, this Worker's own value (`from` names an ancestor when it was inherited), the op's own
+// modifier ({§env-option}), or a name withheld — by this Worker, by the ancestor named, or by the
+// invariant.
 export interface EnvRecord {
-    readonly source: "host" | "worker" | "masked";
+    readonly source: "host" | "worker" | "modifier" | "masked";
     readonly from?: string;
     readonly value?: string;
 }

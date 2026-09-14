@@ -24,3 +24,7 @@ Output goes to `#stdout`, diagnostics to `#stderr`; `exit 1` in the program
 closes with status 500. `[{"cwd": "<directory>"}]` selects the working directory
 for relative file arguments. AWK is the right tool for column arithmetic and
 line reshaping over text; for JSON use `jq`, for anything else `node` or `sh`.
+
+`[{"env": {"NAME": "value"}}]` on the same fence line sets variables for this run
+alone, over the entries in your `env` registry; names are the shell's, and plurnk's own
+(`PLURNK_*`, provider credentials) are refused by name.

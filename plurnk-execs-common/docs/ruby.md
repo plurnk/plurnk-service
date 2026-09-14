@@ -20,3 +20,7 @@ puts JSON.generate(words.tally)
 exception or `exit 1` closes with status 500 with the backtrace on stderr.
 Gems resolve from the project's ordinary Ruby environment; `[{"cwd": "<directory>"}]`
 selects the working directory when the project's `Gemfile` lives elsewhere.
+
+`[{"env": {"NAME": "value"}}]` on the same fence line sets variables for this run
+alone, over the entries in your `env` registry; names are the shell's, and plurnk's own
+(`PLURNK_*`, provider credentials) are refused by name.

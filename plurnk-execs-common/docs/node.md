@@ -58,3 +58,7 @@ stdin. `[{"args": ["--format","json"]}]` passes literal script arguments, also f
 `worker://` and `skill://` targets. Relative imports resolve from the script;
 ordinary relative filesystem paths resolve from cwd. The receipt names cwd
 when it differs from the project root.
+
+`[{"env": {"NAME": "value"}}]` on the same fence line sets variables for this run
+alone, over the entries in your `env` registry; names are the shell's, and plurnk's own
+(`PLURNK_*`, provider credentials) are refused by name.

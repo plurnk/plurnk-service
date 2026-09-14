@@ -176,3 +176,65 @@ test(
         }
     },
 );
+
+// {§env-option} — the fence's own environment, nearest the spawn: it wins over the Worker's registry
+// for this run alone, the executor never sees the key, and a reserved name is refused at admission
+// before anything runs.
+test(
+    "{§env-option} a fence's env option reaches its process over the Worker's registry; a reserved name is refused first",
+    async () => {
+        const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+        process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME";
+        const db = await openMigrated();
+        try {
+            const schemes = new SchemeRegistry();
+            const exec = schemes.get("exec") as Exec;
+            const engine = new Engine({ db, schemes });
+            engine.setExecutors(await testExecutors());
+            const workspaceId = await insertWorkspace(db, `exec-env-option-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            await db.worker_module_state_put.run({
+                worker_id: workerId, namespace_owner: "@plurnk/plurnk-service",
+                state: JSON.stringify({ version: 1, definitions: {
+                    CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
+                } }),
+            });
+            const loopId = await insertLoop(db, workerId, 1, "exec env option");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+
+            const refused = await engine.dispatch({
+                statement: execStmt(null, "echo never", null, [JSON.stringify({ env: { PLURNK_SERVICE_DB_PATH: "/tmp/steal.db" } })]),
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            });
+            assert.equal(refused.status, 400);
+            assert.match(String(refused.problem?.type), /env\/functionality\/name-reserved$/u, "refused by name at admission, not dropped at the spawn");
+
+            const idDeferred = deferred<number>();
+            const dispatchPromise = engine.dispatch({
+                statement: execStmt(null, 'echo "target=[$CARGO_TARGET_DIR] run=[$RUN_ONLY]"', null,
+                    [JSON.stringify({ cwd: ".", env: { RUN_ONLY: "1", CARGO_TARGET_DIR: "/tmp/override" } })]),
+                workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            const logEntryId = await idDeferred.promise;
+            engine.resolveProposal(logEntryId, { decision: "accept" });
+            await dispatchPromise;
+            await exec.idle();
+            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+            const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const stdout = (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
+            assert.match(stdout, /target=\[\/tmp\/override\] run=\[1\]/u, "the fence's values win over the registry for this run, beside the executor's own cwd option");
+            const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "sh", authority: "", pathname });
+            const recorded = (JSON.parse(output!.attributes) as { env: Record<string, unknown> }).env;
+            assert.deepEqual(recorded.RUN_ONLY, { source: "modifier", value: "1" }, "recorded as the modifier's");
+            assert.deepEqual(recorded.CARGO_TARGET_DIR, { source: "modifier", value: "/tmp/override" });
+            const state = await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: "@plurnk/plurnk-service" });
+            assert.doesNotMatch(state!.state, /RUN_ONLY/u, "a fence's environment never enters the registry");
+        } finally {
+            await db.close();
+            if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+            else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
+        }
+    },
+);
