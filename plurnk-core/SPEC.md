@@ -29,7 +29,7 @@ flowchart LR
 | **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
 | **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, plugin, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
 | **model call**    | Core/provider         | One logical `provider.generate` invocation. Emission attempts and BARE inferences share this durable accounting owner; provider retries remain cardinal physical requests beneath it. Identity: `(turn_id, sequence)`. |
-| **op**            | Producer/core         | One DSL operation a producer submits, parsed into a `PlurnkStatement`. One admitted source-backed turn produces an ordered disposition-ended program. |
+| **op**            | Producer/core         | One DSL operation a producer submits, parsed into a `PlurnkStatement`. Admission follows {§turn-ops-admission-path}. |
 | **statement**     | Model/core            | A parsed op: the `PlurnkStatement` AST from `@plurnk/plurnk-contracts`. |
 | **action**        | Core                  | One executed op. Execution normally produces a `log_entries` row at `log:///<L>/<T>/<S>/<op>`; an engine rail may instead record an `op='error'` row ({§operation-results}). A source artifact carries no fabricated operation. |
 | **dispatch**      | Core                  | Routing a statement to its scheme's op handler. |
@@ -214,7 +214,7 @@ cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine
 
 | Term                         | Meaning |
 |------------------------------|---|
-| **verdict**                  | The end-of-turn ruling computed inline in `Engine.runLoop` from the strike rail and independent loop terminals. No filter chain. |
+| **verdict**                  | The end-of-turn ruling from the strike rail and independent loop terminals ({§loop-terminals}). |
 | **strike**                   | One admitted turn matching at least one source above. |
 | **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when at least one source operation has a trustworthy effective envelope and no boundary-destroying tail. A hard error inside that envelope becomes a failed operation in the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
 | **BARE inference**           | One isolated child-provider model call whose response becomes an ordinary BARE log result. It has no worker, packet, tools, output grammar, or persistent child state ({§bare-inference}). |
@@ -2135,7 +2135,7 @@ secret detection.
 
 ### §copy COPY (engine-orchestrated)
 
-AST operands: `{ op: "COPY", source: ResourceSelection, destination: ResourceSelection }`.
+Operand syntax: {§transfer-resource-selections}. Result projection: {§copy-move-observation}.
 
 1. §copy-missing-source-404 Resolve source path, channel, and optional text scope; missing resource or
    channel is 404. Entry sources follow {§membership-source-projection}; active
@@ -2178,8 +2178,6 @@ COPY use this one orchestrator.
 
 ### §move MOVE (engine-orchestrated)
 
-AST operands: `{ op: "MOVE", source: ResourceSelection, destination: ResourceSelection }`.
-
 - §move-relocation-deletes-source MOVE first performs the destination mutation under {§copy}, then removes only
   the selected source region or channel. A whole-channel MOVE deletes the
   source entry only when that was its final channel.
@@ -2187,10 +2185,9 @@ AST operands: `{ op: "MOVE", source: ResourceSelection, destination: ResourceSel
   reads its source exactly as COPY does, writes the destination, and then
   retires the source through the source scheme's own KILL: an entry scheme
   deletes the entry or edits the region out, and the **log** curates — a scoped
-  MOVE from a log region (`### MOVE_ (log:///1/5/3/READ) <123,456>
-  (worker://analyst/notes/Q4-insights.md)`) copies the readable lines and trims them
-  from the projection like the same scoped KILL; an unscoped MOVE retires the
-  row like an unscoped KILL. The recorded evidence is never written or erased
+  MOVE copies the readable lines and trims them from the projection like the
+  same scoped KILL; an unscoped MOVE retires the row like an unscoped KILL.
+  The recorded evidence is never written or erased
   ({§log-readable-projection}), so relocating reasoning or results into a
   scratch note is a first-class curation move, not a refused write. A stream's
   KILL is process control, not content curation, and is not a MOVE source
@@ -2210,16 +2207,12 @@ AST operands: `{ op: "MOVE", source: ResourceSelection, destination: ResourceSel
 - §move-cross-scheme-move Same- and cross-scheme resources use the same
   contract; there is no global cross-scheme transaction.
 - §move-missing-source-404 A missing source is 404.
-- §move-null-body-400 **MOVE is not a delete operation.** A null body returns
-  400 because a destination is required.
 - §move-dev-null-not-special `/dev/null` carries no special meaning; KILL is
   the canonical standalone delete.
 
 Log history preserved — `log_entries` stores path tuple as text, not FK to `entries.id`.
 
 ### §find FIND
-
-AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
 - §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it (run67, 2026-08-29: a whole-repository search silently confined to the root). Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
 
@@ -2232,12 +2225,14 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   identity-bearing: `https://example.com/page` queries
   `(https, example.com, /page)`, never an empty-authority row at `/page`.
 - §find-channel-selection The target selects a channel under {§channel-selection}. That channel controls candidate eligibility, every matcher dialect's content or derivation, match-evidence coordinates, and exact producer-result composition. A selected channel absent from an exact entry is 404; a broad scope simply excludes entries lacking it. Successful resource-mode results remain complete default-first channel groups, so sibling channels are navigable catalog metadata rather than additional matches.
-- §find-glob-filter-on-content `body` matcher operates on the addressed entry channel (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
+- §find-glob-filter-on-content The heading's `pattern` option ({§matcher-option})
+  matches the selected channel's content or derivation; path globs select
+  resources through `(target)` ({§path-glob}).
 - §find-fulltext-selection Every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search defaults to `<1,16>`, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
 
-  | Target | Matcher body | `range.unit` | Result rows |
+  | Target | Matcher | `range.unit` | Result rows |
   |---|---|---|---|
   | exact | absent | `resource` | the one catalog channel group |
   | glob or folder | absent | `resource` | catalog channel groups |
@@ -2248,7 +2243,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   target remains location mode when it has many locations. A valid exact match
   with no addressable location is status 200 with `matchingPathCount: 1`,
   `matchLocationCount: 0`, and no fabricated row; a matcher selecting no
-  resource is 204. A body-less broad empty catalog survey is status 200; an
+  resource is 204. A matcher-less broad empty catalog survey is status 200; an
   absent exact resource is 404. Every entry-channel location names its `channel`
   ({§channel-selection-visibility}); log rows carry none.
 
@@ -2256,7 +2251,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   complete selection before pagination; the packet curates those facts under
   {§retrieval-packet-metadata}. `path` is reserved for resource or channel identity;
   broad results never nest locations, and exact location rows never repeat the
-  resource path. A **body-less** FIND is the **catalog**. Its outer result array
+  resource path. A **matcher-less** FIND is the **catalog**. Its outer result array
   contains one nonempty, flat channel array per resource. Element `[0]` is always
   the default channel and carries the bare resource path; later elements carry
   their complete `path#channel` addresses. Each channel is
@@ -5098,10 +5093,9 @@ contract.
 
 ## §matcher Matcher selection and text regions
 
-Body matchers and text scopes are independent. Matcher prefixes choose a
-dialect (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, otherwise
-glob); they select resources and report evidence. A text scope always addresses
-the exact readable text, regardless of mimetype.
+Matchers select resources and report evidence; text scopes independently
+address the exact readable text, regardless of mimetype. Syntax belongs to
+{§matcher-option}, {§matcher-prefix-claims}, and {§scope-slot}.
 
 ### §matcher-dispatch Matcher dispatch
 
@@ -5127,7 +5121,7 @@ authored target still constrains every resource returned. Outgoing
 references belong to a definition through the handler-reported fully qualified
 container identity.
 
-| Matcher body | Selected resources                                                               | Match evidence                                                            |
+| Matcher      | Selected resources                                                               | Match evidence                                                            |
 | ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `&<symbol`   | In-scope resources that reference `symbol`                                       | Each matching reference's source span                                     |
 | `&>symbol`   | In-scope resources defining names referenced by each definition of `symbol`      | Each referenced symbol's definition span                                  |

@@ -659,7 +659,10 @@ Mutation semantics:
 - `<0>` prepends and `<-1>` appends.
 - §empty-mutation-scope Empty mutation content has one writable position: `<0>`, `<1>`, `<-1>`, and `<1,-1>` all insert the body as its complete value. Other scopes resolve against that same empty value through the ordinary coordinate algebra.
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
-- §transfer-resource-selections COPY and MOVE require two singular `ResourceSelection` operands on the heading, source first and destination second, and admit no body. Each operand consists of `(path)`, optional `<scope>`, and optional `{metadata}` blocks; modifiers bind only to that operand. The two operands independently select their resource, channel, scheme metadata, and text region.
+- §transfer-resource-selections COPY and MOVE require two singular
+  `ResourceSelection` operands, source first and destination second, and admit
+  no body. Each selection binds its own target, scope, matcher, and metadata
+  under {§slot-order}, {§matcher-option}, and {§scheme-metadata-modifier}.
 
 ### §operation-observation Per-operation observations
 
@@ -680,7 +683,7 @@ Mutation semantics:
 
 §find-result-unit For FIND, authored target shape fixes the paginated result
 unit. An exact target with a matcher pages flat match locations; a glob or
-folder target, and every body-less FIND, pages resources. Resolving a glob to
+folder target, and every matcher-less FIND, pages resources. Resolving a glob to
 one resource does not make it exact. The same `<N>`, inclusive `<N,M>`,
 markerless `<1,16>`, and explicit-all `<1,-1>` forms apply to either unit.
 
