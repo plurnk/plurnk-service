@@ -22,7 +22,11 @@ import ExecEnv from "../schemes/exec-env.ts";
 import Paths from "../Paths.ts";
 
 export const ENV_FAMILY = "env";
-const ENV_OWNER = "@plurnk/plurnk-service";
+// The family's namespace owner — also the key a spawn reads its Worker's state under.
+export const ENV_OWNER = "@plurnk/plurnk-service";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
 
 // A refusal is the verb's own operation result, the shape both projections convert; anything else
 // thrown here would surface as a fault of the action or the manager rather than as the outcome.
@@ -136,5 +140,30 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     static defaultsReader(projectRoot: string, pluginsNodeModules: string): () => Promise<readonly EnvDefaultsFile[]> {
         let cached: readonly EnvDefaultsFile[] | undefined;
         return async () => cached ??= await EnvDefaults.collect(projectRoot, pluginsNodeModules);
+    }
+
+    // {§exec-env-scoped} layer four, applied at the spawn: the Worker's own state over the ambient
+    // ceiling. An enabled worker entry sets its value; a disabled entry of either origin withholds the
+    // name. One rule with `list`, which projects the same state, so what a Worker sees listed is what
+    // its command receives. The state is the coordinator's persisted shape ({§functionality-state});
+    // anything else is a defect, not a fallback. The invariant runs last, as at every layer.
+    static compose(ambient: NodeJS.ProcessEnv, state: unknown): NodeJS.ProcessEnv {
+        if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
+        const out: NodeJS.ProcessEnv = { ...ambient };
+        let reserved: ((name: string) => boolean) | undefined;
+        for (const [name, record] of Object.entries(state.definitions)) {
+            if (!isRecord(record) || typeof record.enabled !== "boolean") throw new Error(`env state for '${name}' is malformed`);
+            if (!record.enabled) {
+                delete out[name];
+                continue;
+            }
+            if (record.origin === "service") continue;
+            if (record.origin !== "worker") throw new Error(`env state for '${name}' has origin '${String(record.origin)}'`);
+            if (!isRecord(record.definition) || typeof record.definition.value !== "string") throw new Error(`env state for '${name}' holds no string value`);
+            reserved ??= ExecEnv.ownSecretTest();
+            if (reserved(name)) continue;
+            out[name] = record.definition.value;
+        }
+        return out;
     }
 }

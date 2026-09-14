@@ -2770,7 +2770,10 @@ of thing. First the **ambient policy**, a ceiling: `PLURNK_SERVICE_EXEC_ENV_INHE
 what the host's environment may contribute at all and `_EXCLUDE` narrows that, both taking
 exact names or one trailing-`*` prefix glob, both ordinary operator knobs under
 {§operator-config-env-defaults}. A worker document or a heading modifier narrows the ceiling
-further; nothing downstream widens it. Then the **invariant**, which is not a knob:
+further; nothing downstream widens it. The worker document is the Worker's `env` state
+({§env-functionality}), read at the spawn: an enabled worker entry sets its own value, a disabled
+entry of either origin withholds the name, and what `list` projects is what the command
+receives. Then the **invariant**, which is not a knob:
 `PLURNK_*` config and every provider credential name are stripped last and unconditionally,
 so no policy, document or modifier can readmit plurnk's own secrets. The service composes;
 the executor spawns with the environment it is handed.

@@ -117,3 +117,62 @@ test(
         }
     },
 );
+
+// {§exec-env-scoped} layer four — the Worker's own state over the ambient ceiling, read at the spawn.
+// The row is what the env verbs persist ({§functionality-scope}); here it is written directly so the
+// spawn is witnessed alone: an enabled worker entry sets its value, a disabled entry masks an ambient
+// name for this Worker only, a sibling with no row sees the ceiling untouched, and the invariant strips
+// a reserved name even when the state names it.
+test(
+    "{§exec-env-scoped} a Worker's own environment reaches its next spawn; its sibling's ceiling is untouched",
+    async () => {
+        const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+        const previousCi = process.env.CI;
+        process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,CI";
+        process.env.CI = "1";
+        const db = await openMigrated();
+        try {
+            const schemes = new SchemeRegistry();
+            const exec = schemes.get("exec") as Exec;
+            const engine = new Engine({ db, schemes });
+            engine.setExecutors(await testExecutors());
+            const workspaceId = await insertWorkspace(db, `exec-env-worker-${crypto.randomUUID()}`);
+            const shaped = await insertWorker(db, workspaceId);
+            const plain = await insertWorker(db, workspaceId);
+            await db.worker_module_state_put.run({
+                worker_id: shaped, namespace_owner: "@plurnk/plurnk-service",
+                state: JSON.stringify({ version: 1, definitions: {
+                    CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
+                    CI: { origin: "service", enabled: false },
+                    PLURNK_SERVICE_LEAK: { origin: "worker", enabled: true, definition: { value: "never" } },
+                } }),
+            });
+            const stdoutOf = async (workerId: number): Promise<string> => {
+                const loopId = await insertLoop(db, workerId, 1, "exec env worker state");
+                const turnId = await insertTurn(db, loopId, 1, 102);
+                const idDeferred = deferred<number>();
+                const dispatchPromise = engine.dispatch({
+                    statement: execStmt(null, 'echo "target=[$CARGO_TARGET_DIR] ci=[$CI] leak=[$PLURNK_SERVICE_LEAK]"'),
+                    workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                    onDispatch: (id) => idDeferred.resolve(id),
+                });
+                const logEntryId = await idDeferred.promise;
+                engine.resolveProposal(logEntryId, { decision: "accept" });
+                await dispatchPromise;
+                await exec.idle();
+                const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+                const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+                return (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
+            };
+            assert.match(await stdoutOf(shaped), /target=\[\/tmp\/shared\] ci=\[\] leak=\[\]/,
+                "the Worker's value is set, its masked ambient name is withheld, and a reserved name never reaches the command");
+            assert.match(await stdoutOf(plain), /target=\[\] ci=\[1\] leak=\[\]/, "a sibling with no state sees the ceiling untouched");
+        } finally {
+            await db.close();
+            if (previousCi === undefined) delete process.env.CI; else process.env.CI = previousCi;
+            if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+            else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
+        }
+    },
+);

@@ -10,7 +10,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome, fixtureExecutors, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
-import { waitFor } from "./_rpc.ts";
+import { waitFor, waitForDb } from "./_rpc.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove"];
 
@@ -134,24 +134,50 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
-        // A host verb proposes; acceptance persists for the invoking worker and no other.
+        // A host verb proposes; acceptance persists for the invoking worker and no other. Then the
+        // spawn ({§exec-env-scoped}): what alice set reaches alice's next command, bob's command sees
+        // his own entry and the untouched ceiling — a registry, not a prefix.
         const proposals: number[] = [];
         const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
+        const accepted = async (workerId: number, program: string): Promise<{ status: number; logEntryId: number }> => {
+            const seen = proposals.length;
+            const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(program) });
+            await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
+            const logEntryId = proposals[seen]!;
+            daemon.resolveProposal(logEntryId, { decision: "accept" });
+            return { status: (await pending).status, logEntryId };
+        };
+        const stdoutOf = async (logEntryId: number): Promise<string> => {
+            const content = await waitForDb<string | null>(async () => {
+                const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+                const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname?: string };
+                if (pathname === undefined) return null;
+                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+                if (entry === undefined) return null;
+                const channel = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "stdout" });
+                return channel?.state === "closed" ? channel.content : null;
+            }, (value) => value !== null, { timeoutMs: 10_000 });
+            return content!;
+        };
         try {
-            const pending = exec(bob, `\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\``);
-            await waitFor(() => proposals, (list) => list.length > 0, { timeoutMs: 10_000 });
-            daemon.resolveProposal(proposals[0]!, { decision: "accept" });
-            const accepted = await pending;
-            assert.equal(accepted.status, 200, "the accepted add settled inside the operation");
-            const outcome = await accepted.result() as unknown as FunctionalityMutationResult;
+            const before = await outputs();
+            const added = await accepted(bob, `\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\``);
+            assert.equal(added.status, 200, "the accepted add settled inside the operation");
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "worker");
+            assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");
+            assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
+
+            const command = "```sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n```";
+            assert.match(await stdoutOf((await accepted(alice, command)).logEntryId), /target=\[\/tmp\/shared\] witness=\[\] bob=\[\]/,
+                "alice's command receives what she set and not the ambient name she disabled");
+            assert.match(await stdoutOf((await accepted(bob, command)).logEntryId), /target=\[\] witness=\[ambient\] bob=\[1\]/,
+                "bob's command receives his own entry and the untouched ceiling");
         } finally {
             unsubscribe();
         }
-        assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");
-        assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
     } finally {
         await daemon.stop();
         await db.close();

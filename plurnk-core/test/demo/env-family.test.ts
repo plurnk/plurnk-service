@@ -15,6 +15,13 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 // live evidence that the catalog projects declarations rather than the environment — the exact
 // property that makes "values it needs from the operator are referred to by name" true.
 test("demo: the model finds a credential's name in the catalog and asks for it by name", async (t) => {
+    // The no-leak assertion below is only evidence when the host holds a real value; without one it
+    // would pass vacuously, so the story skips — before any model spend — rather than pretending.
+    const operatorValue = process.env.TAVILY_API_KEY ?? "";
+    if (operatorValue.length === 0) {
+        t.skip("needs TAVILY_API_KEY on the host to be evidence");
+        return;
+    }
     const s = await liveWorkspace({ name: `env-discover-${crypto.randomUUID()}` });
     try {
         const loop = await liveLoop(
@@ -30,10 +37,7 @@ test("demo: the model finds a credential's name in the catalog and asks for it b
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
         assert.match(loop.lastContent, /TAVILY_API_KEY/u, "the model found the name in the catalog rather than guessing");
 
-        // The operator's real value must never appear. This is only meaningful because the host
-        // has one set; if it did not, the assertion would pass vacuously.
-        const operatorValue = process.env.TAVILY_API_KEY ?? "";
-        assert.ok(operatorValue.length > 0, "this story is only evidence when the host actually holds a value");
+        // The operator's real value must never appear.
         assert.doesNotMatch(loop.lastContent, new RegExp(operatorValue.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"),
             "the catalog projects the DECLARATION; an operator's value must never reach the model");
     } finally { await s.cleanup(); }
