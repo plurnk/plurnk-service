@@ -484,7 +484,12 @@ Every tree-sitter grammar handler shares one web-tree-sitter wasm runtime. Runti
 initialization happens exactly once per process, and grammar loads (Emscripten side
 modules linked into that runtime) run one at a time; the shared gate owns both, and no
 handler calls `Parser.init()` or `Language.load()` directly. Parsing is synchronous and
-needs no gate. Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await
+needs no gate. The runtime's linear memory lives as long as the process: it grows to the
+largest single parse (about forty bytes of tree per source byte), every later parse in any
+grammar reuses it because no handler yields between a parse and its `tree.delete()`, and it
+is never returned to the operating system; `dispose()` releases parser and query objects
+inside it, not the memory. The JS-side cost of a derivation returns to V8's floor within
+about thirty seconds of idle. `npm run memory:probe` measures both (#650). Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await
 create()`, so concurrent first callers instantiate two runtimes whose pointers cross,
 surfacing as `function signature mismatch`, `Incompatible language version 0`, or
 `memory access out of bounds` at teardown. Observed as the boa derivation crash under
