@@ -1,10 +1,5 @@
 import { dispositionStmt } from "./_dsl.ts";
-// SPEC {§decisions} architectural-decision contract tests.
-//
-//   The built core passes: git-substrate membership ({§membership-git-membership}), the
-//   membership-bound edit ({§membership-edit-membership-gate}), the pick/hide/view overlay
-//   ({§membership-overlay-include} / -exclude), and the divergence signal
-//   ({§membership-emi-divergence-signal}).
+// {§membership}: workspace identity, file membership, and disk co-location.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";

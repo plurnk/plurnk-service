@@ -2,6 +2,34 @@
 
 Canonical contracts plurnk-service exposes, architecture it implements, promises it makes to the constellation (`plurnk-contracts`, `plurnk-providers`, `plurnk-schemes`, `plurnk-mimetypes`, `plurnk-execs`, the user-facing `plurnk` CLI). `AGENTS.md` covers process; this file covers contract.
 
+## Contents
+
+- [Glossary](#glossary-glossary)
+- [Architecture](#arch-architecture)
+- [Workers and workspace boundaries](#actor-boundary-workers-and-workspace-boundaries)
+- [File membership and project roots](#membership-file-membership-and-project-roots)
+- [Loop scheduling and lifecycle](#worker-loop-lifecycle-loop-scheduling-and-lifecycle)
+- [Provider Contract](#provider-provider-contract)
+- [Scheme Contract](#scheme-scheme-contract)
+- [Mimetype Contract](#mimetype-mimetype-contract)
+- [Search indexing](#persistent-search-index-search-indexing)
+- [Channel Topology](#channels-channel-topology)
+- [Op Surface](#op-op-surface)
+- [Proposals and client interactions](#proposal-proposals-and-client-interactions)
+- [Stream Model](#stream-stream-model)
+- [Storage Model](#storage-storage-model)
+- [Plugin composition](#core-plugin-composition-plugin-composition)
+- [Bundled Set](#bundled-set-bundled-set)
+- [Grammar Dependency](#grammar-grammar-dependency)
+- [Operator Configuration](#operator-config-operator-configuration)
+- [Module seam](#rpc-module-seam)
+- [Workspace Functionality](#functionality-workspace-functionality)
+- [Application interface](#methods-application-interface)
+- [Packet assembly](#packet-assembly-packet-assembly)
+- [Packet shape](#packet-packet-shape)
+- [Matcher selection and text regions](#matcher-matcher-selection-and-text-regions)
+- [Testing and evidence](#test-taxonomy-testing-and-evidence)
+
 ---
 
 ## §glossary Glossary
@@ -38,48 +66,6 @@ flowchart LR
 | **`--run`**       | Client compatibility  | A compatibility-sensitive client spelling, not an internal entity. |
 | **session**       | Retired/unqualified   | Not a PLURNK lifecycle noun. Use the actual core noun; a third-party standard may use only its explicitly qualified protocol term. <!-- lexicon-allow: this row defines the retired noun --> |
 
-### §turn-record Producer-neutral turn record
-
-A turn is the durable container for one producer's ordered operations. Packet
-and provider fields are optional evidence belonging only to model inference;
-their absence never makes a client, plugin, or `_plurnk` turn exceptional.
-
-| Field | Contract |
-|---|---|
-| `producer` | Required actor class: `model`, `client`, `plugin`, or `_plurnk`. |
-| `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
-| `status`, `completed_at` | A new turn is open at status 102 with `completed_at=NULL`. Completion records the exact turn disposition/operation disposition and timestamp; a completed 102 is therefore distinct from an open 102. |
-| Operations | Ordered by `(turn_id, sequence)` on one exact worker/loop/turn chain. Each row's `origin` is the turn producer or `_plurnk` making a system observation; the observation does not impersonate the producer. |
-| Program source | Every admitted source-backed turn preserves its exact program before dispatch in `turn_sources`, independently of log receipts, under {§turn-ops-entry}. |
-| Inference evidence | Model calls, `packet`, model, finish reason, and provider metadata belong only to model/inference turns. Turn fields are nullable until recorded and remain NULL for every other kind. |
-
-One lifecycle owner opens, optionally records inference evidence, and completes
-every turn. Initialization, maintenance, client dispatch, and model
-inference use that same path. `plugin` is the producer identity for
-plugin-authored operation turns; exposing that path must not introduce a
-parallel record or lifecycle. Producer and kind never change. Process-restart
-recovery completes any turn whose producer vanished.
-
-§turn-ops-admission-path **Source acquisition varies; admitted-turn execution does not.**
-A provider response, deterministic `_plurnk` program, or future client/plugin
-program crosses one admission boundary into the same executor. That executor
-parses once, dispatches the admitted statements in order, records their ordinary
-outcomes, and completes the turn from its TASK ruling. Exact source is retained before dispatch.
-Provider attempts, grammar recovery, reasoning, and accounting end before this
-shared seam. A programmatic operation batch that supplied no Plurnk source does
-not fabricate verbatim source.
-
-§turn-ops-selection-snapshot **An admitted program cannot select log rows it emits while executing.**
-Immediately before statement dispatch, the shared executor captures that worker's
-append-only log high-water mark. Every log-targeted KILL in the program resolves
-row membership at or below that same boundary, while prior curation effects still
-compose normally. Prompt and other pre-program rows already present in the turn
-remain selectable; preceding and later operation rows cannot be captured by
-their own program. A directly dispatched
-single operation captures the equivalent boundary before dispatch. This limits
-only log-row selection: operation phasing and same-turn resource effects retain
-their ordinary contracts.
-
 ### §storage-terms Storage terms
 
 | Term | Meaning |
@@ -98,7 +84,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 |---|---|---|
 | **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue ({§send-dispatch}). |
 | **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
-| **entry state** | `proposed \| resolved \| failed \| cancelled` | Proposal lifecycle (`log_entries.state`). `proposed` = pending client accept; `resolved` = accepted, side effect happened; `failed` = rejected (no effect); `cancelled` = the proposal was cancelled (loop abandoning). Distinct from channel state. |
+| **proposal state** | `proposed \| resolved \| failed \| cancelled` | Proposal lifecycle (`log_entries.state`) under {§proposal}; distinct from entry identity and channel state. |
 | **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
 
 ### §authority-terms Writer / authority
@@ -109,116 +95,15 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
 | **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, _plurnk, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry ({§subscriptions} action-entry-as-outcome). |
 
-### §engine-rails Engine rails
-
-After each admitted turn, one inline verdict decides whether the loop continues.
-An admitted turn contributes at most one strike, even when several sources fire.
-These are the complete strike sources:
-
-| Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
-|---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
-| Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
-| Inventory steering  | Retired (2026-09-14): a completion claimed over live work joins it ({§completion-joins-live-work}) and one over settled results defers ({§completion-defers-to-results}); every TASK answer, an empty TASK's soft 409 included, is a receipt and never a strike. | The TASK receipt. |
-| Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
-
-`EXEC` results remain exact model-visible evidence but are always soft: an
-executor error is not a PLURNK contract violation. Cycle detection remains an
-independent strike source.
-
-A `425` not-ready result describes unfinished work, not a contract violation.
-It retains its exact receipt, without scheduling side effects ({§join-blocking-collect});
-other violations in the same turn still strike normally.
-
-§engine-cycle-evidence Cycle identity contains the ordered executed operations
-and their dispatch results, including complete operands, scopes, bodies, and
-scheme metadata, including the complete TASK inventory and SEND bodies. Source
-positions and asides are excluded. Engine-assigned
-Problem `instance` addresses are excluded from results. Object member order is
-irrelevant; operation and array order are preserved. Only the configured
-`MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
-alone are not a cycle: changing inputs or observations distinguish activity.
-This is an exact-repetition backstop, not a semantic judgment of task progress;
-new asynchronous invocation identities do not prove repetition of their eventual
-effects. Ordinary contract strikes and operator budgets remain independent.
-
-§provider-recovery **A recoverable provider failure never ends a loop.** When a model
-call fails with a network failure, rate limit, deadline, or interrupted resource after
-the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
-notices the client (`engine:provider` / `provider_unavailable`), waits with
-exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling, capped at
-twelve times itself), and re-issues the same call against the exact frozen model
-messages whose response is still outstanding. Each reissue remains a distinct logical
-model call with complete physical-request accounting, but the active turn's newly
-recorded provider Problems do not recursively enter that request; they surface normally
-only in a later genuinely new packet. No emission attempt is consumed and no strike is
-scored. Every recovery checkpoint broadcasts live, while the model-facing Notice buffer
-retains only the current provider state; the next completed exchange notices
-`provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
-is spent the turn completes as `202` and the loop parks exactly like a
-TASK wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
-next prompt or wake with its log intact. Only a client cancel, the execution allowance
-({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
-authorization, quota, an invalid response) settles a loop on a provider failure.
-
-**Contract Strikes** (operator mandate, 2026-09-01): *Every turn with one or
-more contract violations earns a strike. A turn without any contract violations
-clears the strikes. Three (not four) strikes and you're out, by default.*
-The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
-threshold, crossed ON the third strike; the crossing turn terminates at **508
-Loop Detected** when cycle-detected, otherwise **500**.
-
-The contracts, and the violation of each that strikes:
-
-| Contract | Violation that strikes |
-|---|---|
-| operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
-| review contract | none since 2026-09-14: a completion claimed over live work joins it ({§completion-joins-live-work}), one over settled results defers ({§completion-defers-to-results}), and an empty inventory or an already-terminal loop is a soft receipt |
-| progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
-| frame contract | emission attempts exhausted with no admissible turn |
-| provider response contract | the provider returned an invalid response |
-
-Errors and issues are NOT contract violations. Each keeps its own disposition
-and never strikes: exploration misses (404, 416) and unsupported capability
-(501) are how discovery works; raw 409 outcomes are soft (the review ruling is
-steer's alone); EXEC outcomes and `executor/*` problem rows are world evidence;
-provider weather (rate limit, network failure, deadline, interruption) recovers
-({§provider-recovery}); provider capacity has its own packet recovery and
-terminal ({§provider-capacity-failure}); request rejection
-({§provider-request-rejection}), authorization and quota failures
-terminate immediately (configuration, not behavior); rejected private emission
-attempts are forensic evidence beneath their turn ({§emission-admission}) —
-only their exhaustion surfaces, as one frame-contract violation. The
-independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
-and cycle verdict are absent from model packets; only the concrete occurrences
-in the table are shown. The current streak may ride first-party provider
-metadata ({§strikes-first-party-metadata}), which does not make it
-model-facing.
-
-§loop-rail-continuity Rail state belongs to the durable loop, not its execution
-segment. The strike streak and bounded cycle history survive driver cleanup and
-restart; curation of log evidence cannot alter them.
-
-| Boundary | Strike streak | Cycle history |
-|---|---|---|
-| Assessed turn with a violation | Increment once. | Include its exact activity. |
-| Clean assessed turn | Reset to zero. | Include its exact activity. |
-| Actual park, including an immediate wake/reclaim in the same drain | Preserve the assessed streak. | Close the window; the next turn starts a new one. |
-| Recoverable provider outage | No assessment; preserve the streak. | Preserve until an actual park. |
-| New loop | Start at zero. | Start empty. |
-
-The turn belongs to the wait revision under which it began. A rejected waiting TASK or
-one resolved without parking does not close a window. Periodic observations
-separated by actual waits are not an uninterrupted cycle; cumulative turn and
-execution allowances remain independent bounds. A committed terminal result
-cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine}).
+### §execution-terms Execution terms
 
 | Term                         | Meaning |
 |------------------------------|---|
 | **verdict**                  | The end-of-turn ruling from the strike rail and independent loop terminals ({§loop-terminals}). |
-| **strike**                   | One admitted turn matching at least one source above. |
-| **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when at least one source operation has a trustworthy effective envelope and no boundary-destroying tail. A hard error inside that envelope becomes a failed operation in the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
+| **strike**                   | One admitted turn matching at least one source under {§engine-rails}. |
+| **emission attempt**         | One completed provider exchange beneath an engine turn, admitted or rejected under {§emission-admission}. |
 | **BARE inference**           | One isolated child-provider model call whose response becomes an ordinary BARE log result. It has no worker, packet, tools, output grammar, or persistent child state ({§bare-inference}). |
-| **cycle**                    | A repeated turn fingerprint across consecutive turns. Detection strikes silently under the rule above. |
+| **cycle**                    | Repeated operational inputs and observed results under {§engine-cycle-evidence}. |
 | **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service and workspace layers compose without granting authority. |
 | **loop policy**              | One immutable `review`, `accept`, or `reject` proposal disposition. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
@@ -230,83 +115,19 @@ cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine
 | ---------- | ------- |
 | **packet** | A Turn's optional model-exchange record: measured request `sections`, extended with `assistant` and `assistantRaw` only when an emission is admitted. `NULL` means no model request was assembled. |
 | **log**    | The `log` section. Chronological list of `log_entries` in scope this turn. |
-| **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
-
-### §test-taxonomy Test taxonomy
-
-| Tier | Location | LLM | Substrate |
-|---|---|---|---|
-| **unit** | `src/**/*.test.ts` | No | Isolated logic, mocked boundaries |
-| **intg** | `test/intg/` | No (mock provider) | Real file-backed SqlRite (per-test DB under `test/intg/.tmp/`), real engine |
-| **live** | `test/live/` | Real | Wire-level assertions |
-| **demo** | `test/demo/` | Real | Holistic outcome assertions |
-
-§service-worker-composition The service launcher and the live/demo workspace
-helper share one registration of default worker-facing modules: MCP and outbound
-A2A. Their management families and readable reference documents are present even
-with no enabled attachments. Workspace capability policy controls every actor's
-surface; registering a family does not enable a remote attachment. Client and
-inbound-A2A listeners and host hooks remain launcher-owned.
-
-§live-harness-deadline The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT`
-as one whole-specimen deadline, including multi-prompt stories. The test's abort
-signal reaches the loop wait and invokes ordinary scope cancellation before
-teardown. The runner joins the test body's cleanup before starting the next
-specimen. The shared workspace and story helpers cover setup, inference and
-oracle failures, preserve the primary failure when their cleanup also fails,
-and attempt every registered disposal.
-Provider attempt/recovery limits remain independent; a harness cancellation is
-not evidence that the provider's own deadline expired.
-
-§provider-conformance-matrix **Every configured model alias is exercised through a
-real PLURNK loop: the production packet, a model-selected operation, its
-materialized result, and completion.** Transport-only completions are not
-conformance evidence. Provider-exposed reasoning must survive in the durable
-assistant packet and digest; a provider with no private reasoning is valid when
-the observable operation cycle succeeds. One package-owned runner executes the
-full tier or exactly one registered specimen (`npm run test:live:specimen --
-<exact test name>` in plurnk-core), rejecting absent and duplicate names before
-execution. The ledger and classification taxonomy live in
-`plurnk-providers/README.md` and report authorization/credential failures
-distinct from model failures and repeated stochastic failures separately from
-stable ones, never with weakened assertions.
-
-§test-artifact-retention **File-backed test databases use lane-local current-run
-retention.** Each workspace's normal intg runner clears its own
-`test/intg/.tmp/` once before the suite, reports that forensic directory, and
-retains every artifact the current run creates; a direct `node --test <file>` run bypasses that
-runner, so each test process prunes artifacts older than a day once, and never the current run's. A cross-package test may reuse
-Core's migration fixture only by passing a path inside the caller's artifact
-directory; independently scheduled lanes never share a reset target. A failed
-suite therefore leaves its own evidence intact, and the next normal run of that
-lane removes it before creating anything. Direct `node --test` invocations
-bypass the runner boundary and must invoke the same cleanup procedure
-explicitly when isolation matters. Live/demo run directories are benchmark
-artifacts outside `.tmp` and retain their separate lifecycle.
+| **render** | Computing the packet from current state under {§packet-assembly} and {§packet-markdown}. |
 
 ---
 
 ## §arch Architecture
 
-The ecosystem and the in-process shape ({§ecosystem}–{§in-process}), then the two invariants the rest of the spec rests on: isolation by worker ({§actor-boundary}) and the workspace/worker/fork ownership model ({§machine-processes}).
+Daemon composition and startup. Worker attention and workspace state follow
+{§actor-boundary} and {§machine-processes}.
 
 ### §ecosystem Ecosystem
 
 The root [`ARCHITECTURE.md`](../ARCHITECTURE.md) owns the platform process and
-package map. The daemon, contracts, AG-UI module, and bundled capability
-families are independently published npm workspaces in this monorepo; the CLI,
-TUI, and editor clients are separate repositories.
-
-```mermaid
-flowchart LR
-    contracts["plurnk-contracts<br/>language + shared wire"] --> frameworks["providers / schemes<br/>mimetypes / executors"]
-    meta["plurnk-meta<br/>discovery + teaching corpus"] --> frameworks
-    contracts --> core["plurnk-core<br/>@plurnk/plurnk-service"]
-    frameworks --> core
-    meta --> core
-    core --> agui["plurnk-agui<br/>external protocol"]
-    agui --> clients["CLI / TUI / editor clients"]
-```
+package map. The default installed composition is specified in {§bundled-set}.
 
 §ecosystem-composed-host Core is the composed runtime: it owns persistence,
 scheduling, packet assembly, dispatch, and cross-capability orchestration while
@@ -317,18 +138,6 @@ clients render and submit actions but contain no engine logic.
 ### §observability-boundary Observability boundary
 
 OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon constructs only the explicitly configured trace and metric providers. An unconfigured or standards-valid disabled process loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
-
-### §standards-discernment Standards discernment
-
-Seven principles govern which exterior standards Plurnk conforms to (#299):
-
-1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap.
-2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
-3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
-4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) outrank months-stable AI-pipeline fashions.
-5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
-6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface (the ACP Plan object deleted the Markdown plan microformat); parallel representations, second discovery paths, and compatibility grammars are refused.
-7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
 
 Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name fails daemon boot; a typo never silently disables observation. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and plugin payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
 
@@ -344,6 +153,18 @@ ride alongside and never replace the convention attributes. The redaction
 boundary is unchanged — no prompts, reasoning, bodies, or URLs. This is the
 sanctioned exception to the blanket draft-convention exclusion; no other
 draft convention is projected.
+
+### §standards-discernment Standards discernment
+
+Seven principles govern which exterior standards Plurnk conforms to (#299):
+
+1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap.
+2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
+3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
+4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) outrank months-stable AI-pipeline fashions.
+5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
+6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface (the ACP Plan object deleted the Markdown plan microformat); parallel representations, second discovery paths, and compatibility grammars are refused.
+7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
 
 ### §in-process In-process architecture
 
@@ -370,6 +191,13 @@ Capability-specific behavior remains with the owning plug point.
 The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
 
 Server posture: this package is the one long-running runtime process. `plurnk-agui` exposes its external protocol; user-facing clients run separately and do not call core's in-process seam directly.
+
+§service-worker-composition The service launcher and the live/demo workspace
+helper share one registration of default worker-facing modules: MCP and outbound
+A2A. Their management families and readable reference documents are present even
+with no enabled attachments. Workspace capability policy controls every actor's
+surface; registering a family does not enable a remote attachment. Client and
+inbound-A2A listeners and host hooks remain launcher-owned.
 
 ### §service-package-exports Package export surface
 
@@ -409,7 +237,7 @@ before provider or capability initialization can perform external work. Every
 later startup failure closes resources in reverse ownership order while
 preserving the originating failure: daemon, observability, database, listener.
 
-### §actor-boundary The actor boundary: per-worker attention, two doors, self-hosting
+## §actor-boundary Workers and workspace boundaries
 
 ```mermaid
 flowchart LR
@@ -536,7 +364,7 @@ log already renders in present mode.
 
 §worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches the orienting READ/FIND surveys, the reasoning and program READs in {§reasoning-initial-read}, and the final TASK (in {§op-execution-order}). The prompt is not READ here: its `prompt` row in the first model turn is the one publication of every prompt ({§prompt-entry}), so the body never appears twice. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The program archives nothing: the prompt entry ({§prompt-entry}) is the durable, addressable copy of every prompt, so no scratch archive of it is written. The three namespace surveys carry asides that name what each space is — `project root member files`, `shared worker Extended Context`, `private worker Extended Context` — and, because the program echo shows them verbatim, those asides are the model's map of its spaces. TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
-### §machine-processes The machine and its processes: workspace, worker, fork
+### §machine-processes Workspace and worker state
 
 A workspace owns every entry; a worker owns its history and active work.
 
@@ -626,7 +454,7 @@ shared entries, and membership remain live and uncopied.
 histories over one workspace are worker forks. A divergent project filesystem
 or membership overlay requires a new workspace.
 
-### §worker-scheme The worker:// scheme — the knowledgebase (commons, own space, named spaces) and worker control (spawn, irc, fork, terminate, cap, collect)
+### §worker-scheme Worker resources and control
 
 §worker-authority-carving **Authority is a literal namespace, not a principal.** `worker:///notes.md` is shared scratch; `worker://alice/draft.md` is named scratch. Both belong directly to the workspace ({§entry-owner}). Entry addresses require no namesake Worker row and survive its deletion; only pathless worker controls resolve an actor. The caller never alters an address, and `~` has no alias semantics.
 
@@ -759,7 +587,202 @@ EXEC git — never engine machinery.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
-### §worker-loop-lifecycle Worker and loop lifecycle: drain, reap, and passive wake
+## §membership File membership and project roots
+
+The project-file path has two explicit reconciliation gates. Internal entries do
+not participate in this disk loop.
+
+```mermaid
+flowchart LR
+    git["Git tracked"] --> resolve["Resolve workspace membership"]
+    include["include"] --> resolve
+    exclude["exclude"] -->|subtract| resolve
+    resolve --> materialize["Pre-turn materialize<br/>disk → file snapshot"]
+    materialize --> read["READ snapshot"]
+    materialize --> edit["EDIT against snapshot"]
+    edit --> proposal["Proposal"]
+    proposal -->|"client accepts or loop auto"| cas["synced_sig compare-and-swap"]
+    cas -->|"file snapshot → disk"| project["Project file"]
+    project --> materialize
+```
+
+| Concern            | Owner and representation                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace identity | `workspaces.project_root`; null is headless. There is no separate project entity.                                                           |
+| File visibility    | Workspace-tier resolved membership: `(tracked files ∪ include) − exclude` ({§membership-baseline}). Every worker sees the same result. |
+| File reads         | READ returns the materialized file snapshot stored in the entry body channel; it does not read disk directly.                               |
+| File writes        | EDIT proposes against that snapshot. Only accepted resolution with the captured `synced_sig` writes the project file.                       |
+| Internal entries   | Workspace or worker entries are canonical store state. Writing one never implies a project-file write.                                      |
+| Authority          | Service flags set the membership ceiling; the `members` family's definitions include and exclude within it; client or loop auto resolves proposals. `origin` is attribution. |
+
+§web-search-retrieval **Web discovery is an ordinary MCP concern; retrieval is a first-class composition.** PLURNK owns no search runtime: a search-capable MCP server (e.g. Brave Search) participates through the ordinary MCP contract — admission, read-effect classification, tool documentation, and packet projection are identical to every other MCP tool ({§mcp-tool-presentation}). An executor that wants to materialize discovered pages uses the generic `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. Every candidate whose `entry()` call rejects, regardless of failure reason, is mechanically omitted from the model-facing result directory; survivors retain upstream order. Without an entry sink the executor cannot test materialization and omits the verdict.
+
+Search prefetch and direct HTTP READ materialize the same resource contract:
+protocol + canonical authority (including a non-default port) + path + serialized
+query is the absolute identity ({§scheme-address-network}); the sanitized
+readable projection is the fragmentless default, while faithful DOM, origin
+media type, and projection identity remain explicit auxiliary evidence. A
+normal
+```` ```READ (https://host/path?query) ```` therefore publishes only the sanitized body
+under that exact URL—never raw HTML, response headers, or a channel-selection
+lesson. FIND consumes the addressed stored channel representation
+and never re-fetch a match.
+
+§web-retrieval-live Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin materialize→FIND and persistence/publication separation. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page; live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions.
+
+**Git is the substrate and the repository is the boundary:**
+
+- §membership-baseline **The baseline contract — chiseled (#400).** To a workspace a
+  project file is exactly one of three things: **invisible**, **added**, or **tracked
+  by git**. There is no fourth category. Membership — what the model can READ and
+  FIND, what is materialized into the store, what a packet can ship to a provider — is
+  the allowlist `(tracked ∪ include) − exclude` and nothing else. No file is a member because
+  it exists on disk, because git does not ignore it, or because a model would find it
+  convenient: ambient admission of untracked files is prohibited, so a workspace rooted
+  in a home directory or a monorepo exposes exactly what was committed or added (the
+  non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite). Every
+  exception is a named clause in the register ({§membership-model-universe}), admits
+  files by an exact creation record with recorded provenance, and never by `git add`.
+  Changing this clause, the register, or the composition is an operator ruling recorded
+  on the issue that lands it — never an implementation convenience, never a side effect
+  of making a file visible to solve the problem at hand. The 2026-07-12 – 2026-08-27
+  "untracked-but-not-ignored" ambient admission is retired.
+- §membership-model-universe **The exception register — files in the model's universe.**
+  Admitted by exact creation records (`source: "create"`, origin `constraint`), never
+  staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
+  ({§membership-create-parents}). Admitted by a published standard as projected
+  instruction documents — never as members: (3) the project's `AGENTS.md` and nested
+  `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
+  and materialized as `worker:///_plurnk/agents.md` and
+  `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
+  only when tracked or added, and the standard never overrides the operator's
+  exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
+  is not projected. (4) A definition the model proposes through the `members`
+  family ({§members-functionality}), admitted only under the operator's ceiling
+  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (shipped `namespace`), projected with source
+  `model`, and never admitted past the repository's ignore rules or an exclusion.
+  Nothing else.
+- §membership-git-membership The workspace owns the Git repository containing
+  `project_root`. Its tracked files (`git ls-files` semantics) are members with
+  no explicit overlay; when the root is a package inside a monorepo, the
+  repository's other packages are members at root-relative paths. An unrelated
+  or nested independent repository is not discovered or managed by this
+  workspace. When Git is absent there is no filesystem walk; member definitions are
+  then the sole source.
+- §git-native-default **Core Git reads use native Git.** Membership and status
+  execute the installed Git binary. An absent or failed binary yields no
+  automatic Git membership or status; core has no alternate implementation or
+  fallback.
+- §membership-git-hermetic Native Git runs with ambient `GIT_*` and
+  global/system config scrubbed, and with the repository's own program-running
+  keys pinned off at the highest precedence (`core.fsmonitor=false`,
+  `core.hooksPath=/dev/null`), so repository identity follows `project_root`,
+  never the daemon's launch environment, and inspecting a supplied repository
+  never runs a program its `.git/config` names. Other repository-local
+  configuration is still read (#568). The one program no key can pin off is a
+  `filter.<name>.clean` / `filter.<name>.process` driver, which `git status`
+  index refresh may run: automatic inspection asks the repository's own config
+  first (`git config --get-regexp`, no program runs) and, when any such key is
+  declared, refuses the repository as a warning-and-skip — Git status and
+  automatic Git membership answer exactly as for a non-repository, and one
+  `engine:membership` / `git_inspection_refused` notice names the key, once per
+  workspace until it changes or clears. User- and model-requested Git commands
+  stay on their explicit execution path.
+- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Shell execution reaches beyond file membership; the file scheme does not.
+- §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
+
+**The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
+
+- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
+- §membership-overlay-include **`include`** — admit a file Git misses through a targeted pattern scan (files only), with `constraint` origin. `source: "members"` is a projected human definition, `source: "model"` a projected model definition, `source: "create"` the exact durable record of an accepted creation. Only `members` inclusions override active Git ignore. In a Git-absent root, inclusions are the sole file-membership source.
+- §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
+- §membership-reconcile-sets **Reconciliation is two set statements.** Once the desired set is composed — `(git ls-files ∪ include) − exclude`, glob evaluation and Git shell-outs being the process's own — it lands as one `INSERT … SELECT FROM json_each` with the same idempotent provenance update as a single registration, and every overlay-owned member outside it leaves in one `DELETE … WHERE pathname NOT IN (json_each) RETURNING`, its prior body riding out of the statement. A path that also left disk truth (no longer a candidate at all) becomes a divergence from that prior content; an exclusion is silent. No per-path statement, no set difference outside the database.
+- §membership-glob-in-sql **A constraint is evaluated where it lives.** `glob_match(pathname, glob)` is `node:path.matchesGlob` registered into SQLite (`src/core/glob_match.ts`, deterministic), the one matcher every overlay decision uses, so a lookup that asks the constraints table a question — which exclusion covers this key, whether a members definition includes it, which inclusion owns each untracked path — is one statement over `workspace_constraints`, never a listing filtered in the process. Transient inputs the process already holds (a `git ls-files` listing against the exclude globs) stay filtered in the process; the function exists so the database's own rows can be asked, not so process data makes a round trip.
+
+**File ops act on the entry, not the disk; the two reconcile only at gates.** A `file:///` member is a row whose body channel holds its *materialized model-readable snapshot*. READ returns that channel; EDIT diffs against editable text snapshots — neither reaches the filesystem directly. Entry and disk reconcile at exactly two gates: the **pre-turn materialize** (disk → entry, below) and the **accept-time write-back** (entry → disk, {§proposal}). Between the gates the entry is the truth the model curates against, and `synced_sig` — the member's last-synced disk stat (`mtime:size`) — is the version token both gates compare on.
+
+§membership-source-projection Binary acquisition is transient and bounded by
+{§mimetype-binary-input}; durable entry channels remain Unicode text. Core-private
+`sourceProjection` attributes preserve the source mimetype, opaque projection
+identity, and terminal disposition without exposing raw bytes or a base64 lane.
+
+| Disk source                        | Durable body                                         | Operation effect                                                                 |
+| ---------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Text                               | Verbatim Unicode under the detected textual mimetype | READ and EDIT use the snapshot.                                                  |
+| Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
+| Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
+
+§membership-materialization-limit **A pathological member degrades, never the
+workspace.** `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` is a required positive
+byte ceiling over one disk source before Core reads it into the canonical file
+snapshot. Its valid range is `1..104857600`, bounded by the channel storage
+contract, and it ships at that 100 MiB maximum. An oversized path remains a real member
+with an empty body channel carrying a durable 413 producer result; no diagnostic
+sentinel impersonates file content. READ therefore names the path, observed bytes,
+ceiling, and recovery through the ordinary result contract, while EDIT returns the
+same 413 instead of diffing against a fictitious empty baseline. Core records the
+materialization disposition and ceiling privately, so an unchanged disk member is
+reconsidered when the operator changes the policy and otherwise remains a stat-only
+no-op. The file write gate independently stats the source against the same ceiling,
+so safety does not depend on a background warm winning a client-operation race.
+
+§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row and one symbol graph without copying. The identity hashes the representation's own SHA-256 ({§tokenomics-content-hash-identity}), never its body, so a maintenance pass judges an entry channel from its stored `content_hash` without the body crossing into the process; a body is acquired only for a derivation that runs, under that same identity (a representation that moved on since it was judged returns nothing and is judged again next pass), or for a channel with no stored identity, an open or streamed channel, which must be read to be judged. Log rows and turn sources still arrive whole. The pass reports the bytes it acquired beside the derivations it ran, and an unchanged workspace acquires none of its channel bodies at any concurrency. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every launched worker settles before the maintenance pass reports success or failure, so one failed artifact cannot orphan sibling derivations. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. A changed pass emits one immediate `preparing` state, intermediate `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`, and one immediate `complete` or `failed` state. A no-op pass emits no lifecycle, an indexing heartbeat never claims 100%, and the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
+
+The artifact also retains a positive `{§mimetype-parse-issues}` count and the
+full normalized `{§mimetype-summary}` when the exact parsed channel reported
+either. Both remain advisory alongside a normally completed search
+disposition; zero, empty, and unavailable evidence persist as absence. Catalog
+projection attaches either only to that channel, never to a sibling whose
+content the artifact does not describe.
+
+Every completed artifact records one terminal disposition: `indexed`, `excluded`
+(the configured search-exclusion table), `unsearchable` (empty or binary), or
+`failed` (a typed {§mimetype-error-policy} invalid-source failure, or the
+handler's own defect on that one member — {§derivation-member-failure}).
+
+§derivation-member-failure **One member's derivation failure never ends the
+pass or the model's turn.** A handler defect on one member — a
+`MimetypeDerivationError` under {§mimetype-derivation-evidence}, the exception
+being a cancellation — is that member's terminal `failed` disposition, whose
+`reason` is the handler's invocation context followed by the exact original
+cause (`Mimetype derivation failed for "/x.js" ("text/javascript").
+RuntimeError: …`). The pass continues, attaches every other member, and
+completes; its terminal `search_progress` notice is `complete` at `level: warn`,
+naming the first failed member and carrying the count. A failed member is
+terminal for that exact content, handler revision, and configuration identity
+({§derivation-dedup-parallel}); a change to any of those derives it again.
+Everything that is not a handler's derivation of one member stays fatal to the
+pass exactly as before: a grammar that is not installed, an index-persistence
+or contract failure, and cancellation, each leaving the artifact `building` for
+retry.
+Cancellation and implementation, loading, database and index-persistence failures
+remain `building`, unattached, and retryable; Core never guesses that an arbitrary
+projection exception is bad content. The digest reports exceptional dispositions
+with their reasons. Successful optional projection degradations continue indexing
+and surface their framework Notice once per identical observation in a maintenance
+pass.
+
+§membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's model-readable snapshot into its entry. Text with an unchanged disk signature and materialization policy is a stat-only no-op. The version token is either the observed `mtime:size` or the explicit `absent` state; an observed deletion removes the stale readable channels, and a later reappearance is therefore a new divergence rather than a first-sight materialization. Binary sources additionally compare the cached per-mimetype projection identity; unchanged bytes are never reacquired, while changed reader behavior rematerializes without fabricating a filesystem-divergence event. Coverage is exhaustive across the project repository while work is proportional to source or projection change. After a pass every member carries the current representation defined by {§membership-source-projection} and {§membership-materialization-limit}.
+
+§membership-emi-divergence-signal **EMI divergence evidence.** The detector that gates the work *is* the one that records this — one mechanism, not a second full read. When change detection finds a member moved out-of-band, the runtime actor records an `EDIT`-shaped row naming the file with `source="file"`; it does not broadcast that workspace change into unrelated workers' logs ({§env-delta-filesystem-narration}). The model's own edits are write-through (the entry equals disk after a File write), so the scan never mis-attributes them as external divergence. The current file remains ordinarily addressable. A stale anchored edit rejects under {§line-anchors}; a disk race after proposal rejects under {§membership-edit-write-cas}.
+
+§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with the same neutral `edit-collision` as {§edit-collision}, and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The collision surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees that EDIT **did not occur** (400; the `edit_collision` outcome is forensics-only). Reconciliation aligns the current file projection and records the `source=file` evidence in the runtime log ({§membership-emi-divergence-signal}); the model re-reads and re-proposes against the fresh snapshot.
+
+The version travels *with the proposal*, never re-read from the entry at accept: a sibling worker in the same workspace may reconcile while this proposal sits paused, advancing the entry's `synced_sig` to the drifted disk — comparing against the *current* entry sig would wave that clobber through, so the comparison is always against the sig the proposal was computed at. A proposal that assumed an **absent** path (a create) conflicts only if a file has since appeared; a member with **no recorded snapshot** (an un-materialized entry, null `synced_sig`) has no baseline to guard and writes through — the two are told apart by the proposal's `existed` flag, not by a null sig alone. On a clean landing the entry refreshes to the written content and `synced_sig` is **restamped** to it, so the next reconcile recognizes the model's own write (not an external divergence) and a second same-turn edit bases on the landed bytes, not a stale sig. This is the write-side twin of the read-side change-gate ({§membership-change-gated-sync}): one `synced_sig`, gating both the re-read and the write.
+
+The CAS is the **hard backstop**, at the moment of writing, on every accept path. It composes with the model-facing {§line-anchors}: an anchor rejects a target whose relevant neighborhood changed before dispatch, while the CAS refuses to write against a snapshot disk left after proposal. An unanchored edit deliberately claims no pre-dispatch stale-view guarantee.
+
+§membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` (default) includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving member definitions as the only membership source. `ALLOWED` gates `AUTO`.
+
+**Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/KILL. Supporting several independent repositories as one world would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
+
+**Schema.** The version-1 baseline stores the normalized {§inference-ledger},
+its model-response evidence, emission admission, and cardinal
+physical requests. Its constraints distinguish pending calls, response
+evidence, and response-less errors while monetary classification remains
+explicit.
+
+## §worker-loop-lifecycle Loop scheduling and lifecycle
 
 - §join-blocking-collect **Collection and scheduling are independent.** A path-absent ```` ```READ (worker://<running-child>) ```` returns **425** (Too Early), without a strike or scheduler side effect. TASK with waiting intent joins live obligations; an `in_progress` inventory keeps working. A child reaching any terminal status wakes a waiting parent with its result, including completion racing the park boundary. Children retain their own limits; TASK timing may additionally bound the parent's wait. Collection never arms an implicit disposition override.
 
@@ -1055,6 +1078,151 @@ boundary.
 - §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation preserves its requested deadline and observation interval. An unseen completion requeues it; an untimed join whose obligations vanished also requeues. Otherwise a future timed wait remains parked and an expired due time wakes it through the same guarded scheduler. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
 
 ---
+
+### §turn-record Producer-neutral turn record
+
+A turn is the durable container for one producer's ordered operations. Packet
+and provider fields are optional evidence belonging only to model inference;
+their absence never makes a client, plugin, or `_plurnk` turn exceptional.
+
+| Field | Contract |
+|---|---|
+| `producer` | Required actor class: `model`, `client`, `plugin`, or `_plurnk`. |
+| `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
+| `status`, `completed_at` | A new turn is open at status 102 with `completed_at=NULL`. Completion records the exact turn disposition/operation disposition and timestamp; a completed 102 is therefore distinct from an open 102. |
+| Operations | Ordered by `(turn_id, sequence)` on one exact worker/loop/turn chain. Each row's `origin` is the turn producer or `_plurnk` making a system observation; the observation does not impersonate the producer. |
+| Program source | Every admitted source-backed turn preserves its exact program before dispatch in `turn_sources`, independently of log receipts, under {§turn-ops-entry}. |
+| Inference evidence | Model calls, `packet`, model, finish reason, and provider metadata belong only to model/inference turns. Turn fields are nullable until recorded and remain NULL for every other kind. |
+
+One lifecycle owner opens, optionally records inference evidence, and completes
+every turn. Initialization, maintenance, client dispatch, and model
+inference use that same path. `plugin` is the producer identity for
+plugin-authored operation turns; exposing that path must not introduce a
+parallel record or lifecycle. Producer and kind never change. Process-restart
+recovery completes any turn whose producer vanished.
+
+§turn-ops-admission-path **Source acquisition varies; admitted-turn execution does not.**
+A provider response, deterministic `_plurnk` program, or future client/plugin
+program crosses one admission boundary into the same executor. That executor
+parses once, dispatches the admitted statements in order, records their ordinary
+outcomes, and completes the turn from its TASK ruling. Exact source is retained before dispatch.
+Provider attempts, grammar recovery, reasoning, and accounting end before this
+shared seam. A programmatic operation batch that supplied no Plurnk source does
+not fabricate verbatim source.
+
+§turn-ops-selection-snapshot **An admitted program cannot select log rows it emits while executing.**
+Immediately before statement dispatch, the shared executor captures that worker's
+append-only log high-water mark. Every log-targeted KILL in the program resolves
+row membership at or below that same boundary, while prior curation effects still
+compose normally. Prompt and other pre-program rows already present in the turn
+remain selectable; preceding and later operation rows cannot be captured by
+their own program. A directly dispatched
+single operation captures the equivalent boundary before dispatch. This limits
+only log-row selection: operation phasing and same-turn resource effects retain
+their ordinary contracts.
+
+### §engine-rails Engine rails
+
+After each admitted turn, one inline verdict decides whether the loop continues.
+An admitted turn contributes at most one strike, even when several sources fire.
+These are the complete strike sources:
+
+| Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
+|---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
+| Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
+| Inventory steering  | Retired (2026-09-14): a completion claimed over live work joins it ({§completion-joins-live-work}) and one over settled results defers ({§completion-defers-to-results}); every TASK answer, an empty TASK's soft 409 included, is a receipt and never a strike. | The TASK receipt. |
+| Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
+
+`EXEC` results remain exact model-visible evidence but are always soft: an
+executor error is not a PLURNK contract violation. Cycle detection remains an
+independent strike source.
+
+A `425` not-ready result describes unfinished work, not a contract violation.
+It retains its exact receipt, without scheduling side effects ({§join-blocking-collect});
+other violations in the same turn still strike normally.
+
+§engine-cycle-evidence Cycle identity contains the ordered executed operations
+and their dispatch results, including complete operands, scopes, bodies, and
+scheme metadata, including the complete TASK inventory and SEND bodies. Source
+positions and asides are excluded. Engine-assigned
+Problem `instance` addresses are excluded from results. Object member order is
+irrelevant; operation and array order are preserved. Only the configured
+`MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
+alone are not a cycle: changing inputs or observations distinguish activity.
+This is an exact-repetition backstop, not a semantic judgment of task progress;
+new asynchronous invocation identities do not prove repetition of their eventual
+effects. Ordinary contract strikes and operator budgets remain independent.
+
+§provider-recovery **A recoverable provider failure never ends a loop.** When a model
+call fails with a network failure, rate limit, deadline, or interrupted resource after
+the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
+notices the client (`engine:provider` / `provider_unavailable`), waits with
+exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling, capped at
+twelve times itself), and re-issues the same call against the exact frozen model
+messages whose response is still outstanding. Each reissue remains a distinct logical
+model call with complete physical-request accounting, but the active turn's newly
+recorded provider Problems do not recursively enter that request; they surface normally
+only in a later genuinely new packet. No emission attempt is consumed and no strike is
+scored. Every recovery checkpoint broadcasts live, while the model-facing Notice buffer
+retains only the current provider state; the next completed exchange notices
+`provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
+is spent the turn completes as `202` and the loop parks exactly like a
+TASK wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
+next prompt or wake with its log intact. Only a client cancel, the execution allowance
+({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
+authorization, quota, an invalid response) settles a loop on a provider failure.
+
+**Contract Strikes** (operator mandate, 2026-09-01): *Every turn with one or
+more contract violations earns a strike. A turn without any contract violations
+clears the strikes. Three (not four) strikes and you're out, by default.*
+The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
+threshold, crossed ON the third strike; the crossing turn terminates at **508
+Loop Detected** when cycle-detected, otherwise **500**.
+
+The contracts, and the violation of each that strikes:
+
+| Contract | Violation that strikes |
+|---|---|
+| operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
+| review contract | none since 2026-09-14: a completion claimed over live work joins it ({§completion-joins-live-work}), one over settled results defers ({§completion-defers-to-results}), and an empty inventory or an already-terminal loop is a soft receipt |
+| progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
+| frame contract | emission attempts exhausted with no admissible turn |
+| provider response contract | the provider returned an invalid response |
+
+Errors and issues are NOT contract violations. Each keeps its own disposition
+and never strikes: exploration misses (404, 416) and unsupported capability
+(501) are how discovery works; raw 409 outcomes are soft (the review ruling is
+steer's alone); EXEC outcomes and `executor/*` problem rows are world evidence;
+provider weather (rate limit, network failure, deadline, interruption) recovers
+({§provider-recovery}); provider capacity has its own packet recovery and
+terminal ({§provider-capacity-failure}); request rejection
+({§provider-request-rejection}), authorization and quota failures
+terminate immediately (configuration, not behavior); rejected private emission
+attempts are forensic evidence beneath their turn ({§emission-admission}) —
+only their exhaustion surfaces, as one frame-contract violation. The
+independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
+and cycle verdict are absent from model packets; only the concrete occurrences
+in the table are shown. The current streak may ride first-party provider
+metadata ({§strikes-first-party-metadata}), which does not make it
+model-facing.
+
+§loop-rail-continuity Rail state belongs to the durable loop, not its execution
+segment. The strike streak and bounded cycle history survive driver cleanup and
+restart; curation of log evidence cannot alter them.
+
+| Boundary | Strike streak | Cycle history |
+|---|---|---|
+| Assessed turn with a violation | Increment once. | Include its exact activity. |
+| Clean assessed turn | Reset to zero. | Include its exact activity. |
+| Actual park, including an immediate wake/reclaim in the same drain | Preserve the assessed streak. | Close the window; the next turn starts a new one. |
+| Recoverable provider outage | No assessment; preserve the streak. | Preserve until an actual park. |
+| New loop | Start at zero. | Start empty. |
+
+The turn belongs to the wait revision under which it began. A rejected waiting TASK or
+one resolved without parking does not close a window. Periodic observations
+separated by actual waits are not an uninterrupted cycle; cumulative turn and
+execution allowances remain independent bounds. A committed terminal result
+cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine}).
 
 ## §provider Provider Contract
 
@@ -1366,7 +1534,7 @@ Registration precedes loop affinity:
 | Provider | Exactly the loop's WORK/FORK child provider; durable inherit policy falls back to the parent. |
 | Execution | A contiguous group's prompt acquisition precedes model-call creation; interrupted acquisition leaves no unstarted inference records. Admitted calls acquire identities in authored order and launch concurrently under the loop cancellation signal. Core awaits the group and records results and notifications in authored order, regardless of completion order. An intervening operation is an execution boundary. |
 | Failure | A source/admission/provider failure affects its own operation, not successful siblings. Accounting or persistence failure is internal and fails hard. |
-| Observation | Responses are unseen retrieval work: submit an unfinished TASK inventory; same-turn completion is refused until the next packet presents them. |
+| Observation | Responses are unseen retrieval work; completion follows {§send-premature-terminate}. |
 
 - §op-synchronous **Decisive operations settle before the next operation.** The dispatcher awaits each operation and its proposal resolution. Work remains in flight only when the operation's contract deliberately creates concurrency: FORK, WORK, stream-producing EXEC, and streaming READ after acquisition. Such a READ first establishes its durable subscription and returns `102`; a later operation may address that live owner. Dispatching EXEC before KILL does not wait for the process to finish using a resource. KILL of a worker synchronously ends its live loops before disposition checks the pending set; physical scope cleanup remains asynchronous.
 - §edit-execution **One authored EDIT is one mutation.** Each EDIT resolves against current resource state when dispatch reaches it, owns its proposal when gated, and records its own resulting revision. No later EDIT is prepared or applied in advance. Numeric scopes address current coordinates; an earlier EDIT may change what those numbers select. Rejection applies only to that operation, not its successful siblings.
@@ -1377,29 +1545,11 @@ Registration precedes loop affinity:
 
 ### §orchestration Cross-scheme orchestration
 
-COPY and MOVE independently resolve a source and destination resource
-selection. Each selection contains one scheme resource, one channel (URI
-fragment or scheme default), and an optional text scope.
-
-```mermaid
-flowchart LR
-    A[resolve source selection] --> B[read selected source channel]
-    B --> C[apply optional source text scope]
-    C --> D[resolve destination selection]
-    D --> E{destination scoped?}
-    E -->|yes| F[destination editBatch]
-    E -->|no| G[write selected destination channel]
-    F --> H{MOVE?}
-    G --> H
-    H -->|no| I[complete COPY]
-    H -->|yes| J[remove selected source region or channel]
-```
-
-The same orchestrator covers same- and cross-scheme resources. A same-channel
-regional MOVE lowers both replacements into one `editBatch` against one source
-snapshot. Cross-resource MOVE is ordered destination-then-source and cannot be
-globally atomic; if source removal fails after destination success, its Problem
-Details state `destinationWritten: true` and identify the destination.
+Core owns same- and cross-scheme transfers under {§copy} and {§move}; handlers
+provide the underlying resource operations. Each operand independently selects
+a resource, channel, and optional text scope ({§transfer-resource-selections}).
+Source acquisition follows {§universal-read-composition}; landed mutation
+effects follow {§edit-result-copy-move-effects}.
 
 ### §send-dispatch SEND dispatch (a message to a recipient)
 
@@ -1408,60 +1558,17 @@ A recipient SEND (non-null path — {§turn-disposition}) routes to the scheme's
 message, a worker's next prompt. TASK never reaches a scheme: it controls the
 turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream}, {§move}).
 
-- §log-uniform-query **Log speaks the universal query contract** — ```` ```FIND (log://…) ```` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
-- §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
-- §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
-- §readable-channel **A readable projection is a channel, never a hidden matching surface.**
-  When an entry's source channel lands — an EDIT that creates or changes it, a COPY or MOVE
-  landing, a member materialized from disk — and its mimetype handler owns a readable
-  projection that differs from the source ({§mimetype-content}), that projection lands beside
-  it as the `readable` channel, `text/markdown`, in its own line coordinates; a source without
-  a projection keeps no sibling, and a source channel's deletion takes the sibling with it. A
-  scheme that supplies `readable` in its own write owns it — a fetched page's curated Markdown
-  arrives with its producer outcome ({§html-materialization} in the http scheme) — and core
-  derives the sibling only for a write that supplies none.
-  Worker and file entries declare `readable`. Every operation addresses the channel it names
-  and matches in that channel's own text ({§mimetype-content-query}): a regex or glob on
-  `page.html` sees the markup and reports the markup's lines, on `page.html#readable` it sees
-  the Markdown and reports the Markdown's lines; FIND lists both channels per path
-  ({§channel-selection-visibility}) and full-text search indexes each. The projection is
-  derived, so no operation writes it: EDIT of `#readable`, a COPY or MOVE landing on it, and a
-  MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read. Binary sources
-  keep {§membership-source-projection}, where the source is not text and the projection is the
-  body; a fetched web page keeps its scheme's own two channels ({§html-materialization}).
-- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-output-admission} — this is information, not a second guard.
-
-- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
-
 §send-dispatch-entry-schemes-501 An entry-bearing scheme carries no messages: a recipient SEND aimed at one returns 501.
 
 Null-path SEND is broadcast ({§send}), engine-handled.
 
 ### §scheme-surface Consumption surface
 
-Per-call context (`src/core/scheme-types.ts`):
-
-```ts
-interface PlurnkSchemeContext {
-    readonly db: Db;
-    readonly workspaceId: number;
-    readonly workerId: number;
-    readonly loopId: number;
-    readonly turnId: number;
-    readonly writer: "model" | "client" | "_plurnk" | "plugin"; // WriterTier
-    readonly signal: AbortSignal | undefined;
-    readonly streamEventNotify?: StreamEventNotify;
-    readonly wakeWorkerNotify?: WakeWorkerNotify;
-    readonly injectWorker?: InjectWorkerNotify;            // worker:// spawn/fork/irc loop-start (§worker-scheme)
-    readonly mimetypes?: Mimetypes;
-    readonly executors?: ExecutorRegistry;           // boot-discovered EXEC runtimes (§exec)
-    readonly tokenize?: (text: string) => number;    // write-time tokenizer (§tokenomics)
-    readonly defaultChannelFor?: (scheme: string) => string;
-    readonly pushNotice?: (notice: Notice) => void; // → next packet Notices + notice/event (§operation-results)
-}
-```
-
-The optional engine-/daemon-populated capabilities (the notifiers, `injectWorker`, `executors`, `tokenize`, `defaultChannelFor`, `pushNotice`) are absent in bare test fixtures; a handler that needs one **fail-hards** rather than silently degrading (no default runtime, no silent zero-token write).
+Every public handler receives `SchemeCtx` under {§capability-ctx} and
+{§scheme-ctx-lifetime}. Core's private `PlurnkSchemeContext`
+([`scheme-types.ts`](src/core/scheme-types.ts)) is not an extension API; core
+projects it into those public capabilities before invocation. Bundled adapters
+receive any additional daemon collaborators separately, under the same contract.
 
 Engine → scheme guarantees:
 
@@ -1504,14 +1611,6 @@ Author-facing contract: [`@plurnk/plurnk-mimetypes`](../plurnk-mimetypes/SPEC.md
 
 §mimetype-schemes-do-not-invoke-handlers **Firing semantics.** Scheme writes are verbatim: the source channel lands exactly as authored, and the one handler call a write makes is the readable projection that lands beside it as `readable` ({§readable-channel}); no write invokes a handler's query or structural projections. `SearchIndex.maintain` processes the current readable projections before model execution and attaches complete search artifacts. Catalog rendering independently asks handlers for extents. Fetch-time materialization is earlier still: the web-fetch sink converts guarded HTTP HTML or supported binary input into derived Unicode that READ serves and search indexes, retaining faithful DOM and origin/projection evidence only in explicit auxiliary channels. An authored workspace HTML file remains verbatim; its markup is data, and its Markdown rides beside it as `#readable`.
 
-### §mimetype-manifest Manifest
-
-Per the author contract, a package declares `kind: "mimetype"` and one or more
-handler entries with a name plus optional glyph and extensions. Discovery
-injects that metadata into one handler instance per declared mimetype.
-Discovery order and collisions follow {§mimetype-discovery}; resolution
-failures follow {§mimetype-error-policy}.
-
 ### §mimetype-methods Methods
 
 The author contract is owned by plurnk-mimetypes. Core and its sibling adapters
@@ -1530,26 +1629,11 @@ dialects pass to `Mimetypes.query` without reclassification. Mimetype handlers
 own content-to-structure interpretation. Core owns candidate-set composition
 and the persistent full-text/graph relation indexes.
 
-Cross-cutting promises service relies on:
-
-- Storage writes do not implicitly project; query, indexing, and presentation
-  invoke the exact public surface they need.
-- Handler projections are deterministic for a given `(content, mimetype, projection identity)` tuple.
-- Validation errors propagate (fail-hard).
-- Degraded projection (a `grammarMissing` marker) rather than throw when a grammar is absent.
-
-### §handler-bounds What handlers do NOT do
-
-- **Tokenization** — outside the mimetype projection pipeline; core owns packet and stored-weight accounting ({§tokenomics-agnostic-ruler}).
-- **Storage** — handlers receive content values and own no entry persistence.
-- **Streaming** — handlers see whatever content is current; subscription registry lives between schemes and {§stream}.
-
-### §handler-bundling Bundled vs sibling handlers
-
-No format handler ships inside `@plurnk/plurnk-service`; the framework and
-format handlers are sibling workspaces and independently published packages.
-The service manifest, not the framework manifest, owns the dependency edges
-that compose the default install ({§bundled-set}).
+Handler authority, discovery, projection identity, and failures follow
+{§mimetype-handler-authority}, {§mimetype-discovery},
+{§mimetype-projection-identity}, and {§mimetype-error-policy}. Core owns
+persistence, packet accounting ({§tokenomics-agnostic-ruler}), and subscriptions
+({§subscriptions}); handlers do not.
 
 ### §mimetype-surface Consumption surface
 
@@ -1574,12 +1658,6 @@ internal contract failure, never a reason to substitute the pure heuristic.
 | READ/EDIT and COPY/MOVE scope | Admit text regions or return 415.                                         |
 | Search derivation             | Build graph/FTS artifacts or mark unsearchable.                     |
 
-The default service installation includes its structured, document and image
-handlers and all registered tree-sitter grammar leaves through the service
-manifest. Exact tokenizer vocabularies and third-party handlers remain independently
-installable and resolve from the same consumer-visible package graph under
-trust-gated discovery ({§mimetype-discovery}).
-
 **Token accounting.** The daemon injects no tokenizer into `Mimetypes`; content
 projection is independent of packet budgeting. Core uses the stable
 model-independent ruler for stored/catalog weights and the model-facing curation budget
@@ -1587,7 +1665,11 @@ model-independent ruler for stored/catalog weights and the model-facing curation
 confined to provider-owned physical capacity assessment
 ({§tokenomics-context-envelope-admission}).
 
-§persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Every addressable entry channel supplies the exact readable representation its READ exposes; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing addressable channels; search never introduces a second hidden text projection. The channel content, mimetype, resolved text/binary classification, mimetype projection identity, and applicable search exclusion form a content hash. Complete artifacts own FTS, symbol definitions, and references; each `entry_channels` row or log row holds only its own attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
+**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
+
+## §persistent-search-index Search indexing
+
+`SearchIndex.maintain` is the pre-model engine pass. Every addressable entry channel supplies the exact readable representation its READ exposes; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing addressable channels; search never introduces a second hidden text projection. The channel content, mimetype, resolved text/binary classification, mimetype projection identity, and applicable search exclusion form a content hash. Complete artifacts own FTS, symbol definitions, and references; each `entry_channels` row or log row holds only its own attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
 
 §search-exclusion **File-search eligibility is Core policy.**
 `PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
@@ -1628,8 +1710,6 @@ Workspace warms coalesce; a request arriving during a pass forces one final
 rescan. Progress exposes `preparing`, `indexing`, `complete`, or `failed` through
 `search_progress` Notices. Producer concurrency and heartbeat interval are
 operator knobs in `.env.defaults`. Search indexing performs no inference.
-
-**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
 ---
 
@@ -1687,6 +1767,26 @@ Op implications:
 Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2/sh#stderr" }`).
 
 **Wire rendering: default channel is path-only.** A rendered target omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
+
+- §readable-channel **A readable projection is a channel, never a hidden matching surface.**
+  When an entry's source channel lands — an EDIT that creates or changes it, a COPY or MOVE
+  landing, a member materialized from disk — and its mimetype handler owns a readable
+  projection that differs from the source ({§mimetype-content}), that projection lands beside
+  it as the `readable` channel, `text/markdown`, in its own line coordinates; a source without
+  a projection keeps no sibling, and a source channel's deletion takes the sibling with it. A
+  scheme that supplies `readable` in its own write owns it — a fetched page's curated Markdown
+  arrives with its producer outcome ({§html-materialization} in the http scheme) — and core
+  derives the sibling only for a write that supplies none.
+  Worker and file entries declare `readable`. Every operation addresses the channel it names
+  and matches in that channel's own text ({§mimetype-content-query}): a regex or glob on
+  `page.html` sees the markup and reports the markup's lines, on `page.html#readable` it sees
+  the Markdown and reports the Markdown's lines; FIND lists both channels per path
+  ({§channel-selection-visibility}) and full-text search indexes each. The projection is
+  derived, so no operation writes it: EDIT of `#readable`, a COPY or MOVE landing on it, and a
+  MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read. Binary sources
+  keep {§membership-source-projection}, where the source is not text and the projection is the
+  body; a fetched web page keeps its scheme's own two channels ({§html-materialization}).
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-output-admission} — this is information, not a second guard.
 
 ### §channel-state Channel state — metadata, not gating
 
@@ -2133,6 +2233,109 @@ secret detection.
 | Client, fork, packet, and digest    | Consume the stored projection; none owns a second redaction policy.                                                                                                                                                                             |
 | Model-call evidence and source artifacts | `model_call_responses.response` under {§emission-admission}, `turnOps` under {§turn-ops-log-curation}, and `emissionAttempt` under {§rejected-emission-entry} remain exact forensic evidence and are the explicit exception.                                                               |
 
+### §edit-result-render Mutation log rows render truthful effects
+
+A mutation row keeps request and outcome separate: `tx` is the admitted
+statement; `rx` is its resolved result. Only state that actually landed may
+appear there as an effect.
+
+```mermaid
+flowchart LR
+    authored["Authored EDIT / scoped entry KILL / COPY / MOVE"] --> snapshot["Resolve addressed channel(s)<br/>against pre-mutation snapshots"]
+    snapshot --> apply["Apply synchronously<br/>or settle proposal"]
+    apply --> landed{"Did state land?"}
+    landed -->|no| rx["Persist structured rx"]
+    landed -->|yes| kind{"Operation?"}
+    kind -->|EDIT / scoped entry KILL| receipt["Project one EDIT receipt<br/>for this authored row"]
+    kind -->|COPY / MOVE| effects["Compose ordered effects<br/>after application"]
+    receipt --> rx
+    effects --> rx
+    rx --> meta["Packet projection<br/>status · operands · optional effect metadata"]
+    rx --> body["Canonical log body<br/>bounded receipt context or empty"]
+    body --> recall["READ log:///…<br/>selects untrimmed content"]
+```
+
+§edit-receipt-removed-text **A pure deletion's receipt quotes what it removed.** An applied effect that inserted nothing and removed at least one line carries `removedText` — the removed text, first 40 lines — projected on the wire as `removed`; an effect that inserted anything carries no such field, its resulting context shows the change.
+
+§edit-receipt-anchored-context **An applied EDIT's resulting context carries anchors.** The bounded resulting context each effect renders (`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` around and inside the landed region) is rendered exactly as a READ renders — `@xxxxx L:text`, hashed with the resource's READ identity ({§line-anchors}) — so a later operation can cite the landed lines by anchor without a READ. A scheme that supplies no identity keeps the line-numbered form.
+
+§edit-result-receipt-projection **EDIT and scoped entry KILL project the
+scheme-owned batch receipt.** The scheme framework owns the exact aggregate
+shape ({§scheme-edit-batch-receipt}). Each operation supplies one splice; Core
+validates and projects its one applied effect or superseded disposition.
+That row carries any reviewer replacement effect. Core stores only the
+per-operation projection on `rx`; the aggregate remains inside dispatch.
+
+| Durable receipt fact                   | Packet projection                                                 | Meaning                                                                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Full `revision`                        | not projected                                                     | SHA-256 identity of the complete landed channel body, retained for forensics. No operation takes a revision; it is neither a lookup nor a compare-and-swap token. |
+| `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
+| `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
+| `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
+| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit. |
+| `effect.removedText`                   | `removed`                                                         | {§edit-receipt-removed-text}: a pure deletion's removed text, first 40 lines; absent when the edit inserted anything.                                                                          |
+| `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.   |
+| `disposition`, `requested`             | `disposition`, `requested`                                       | A reviewer-replaced batch preserves the authored marker while stating that its attributed effect was superseded.          |
+| `replacement`                          | `replacement`, `change`, canonical proposal-owner body           | The one whole-resource effect actually applied by the reviewer replacement; never duplicated across authored rows.        |
+
+§edit-result-receipt-truth **Receipts describe committed state.** Each EDIT
+carries its own landed revision, extent, and optional `parseIssues` transition
+for its complete source and landed revisions. When the proposal lands
+unchanged, the row also carries its requested
+marker, source/result mapping, counts, and context. For configured count `C`,
+the context contains up to `C` surrounding lines and the first and last `C`
+landed lines at the result boundaries. Overlapping windows coalesce; coordinate
+jumps expose an omitted middle. A deletion instead shows up to `C` lines on
+each side of its join.
+
+§edit-result-reviewer-replacement **A resolver replacement is one effect, not a
+guess at authorship.** An arbitrary accepted body replaces that operation's
+proposed body. It cannot be attributed to the authored span: the row retains
+its requested marker with disposition `superseded` and carries the one
+whole-resource replacement effect with bounded landed context. Subsequent
+EDITs address that landed state independently under {§edit-execution}.
+
+| Acceptance                     | Per-authored-row receipt               | Applied effect                                    |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------- |
+| Proposed body unchanged        | Requested marker and its exact mapping | One per authored EDIT                             |
+| Resolver body replaced proposal | Requested marker plus `superseded`     | One whole-resource replacement, carried once     |
+
+Durable `tx` always remains the model's admitted statement. There is no JSON
+row/item receipt mode. A deliberate READ observes its authored execution point
+({§op-execution-order}) and remains the universal request for arbitrary current
+content.
+
+System-narrated environment EDITs are state-diff events rather than authored
+mutation receipts. They carry the resulting span defined by
+{§env-delta-filesystem-narration}.
+
+§edit-result-copy-move-effects **Core composes COPY/MOVE effects only after
+application.** Operands remain owned by the durable statement and render
+independently under {§copy-move-observation}; effects describe only state that
+landed.
+
+| Durable effect field | Contract                                                                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `target`             | Canonical model-facing address. The default channel is path-only; an explicitly selected non-default channel retains its fragment. |
+| `action`             | Exactly `create`, `update`, or `delete`.                                                                                           |
+| `receipt`            | Optional validated EDIT projection. Only textual `create` and `update` effects may carry one; a creation receipt has `before=0`.   |
+
+| Outcome                                                                       | Ordered `effects`                                                                                         |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Landed COPY                                                                   | Its destination effect.                                                                                   |
+| Landed MOVE between different resource-channel selections                     | Any destination effect, then any source effect.                                                           |
+| Landed regional MOVE within one resource channel, unchanged by its resolver   | Insertion, then removal; both name the same target because they are distinct effects in one atomic batch. |
+| Resolver body replaces a proposed COPY/MOVE mutation                          | One actual replacement effect. Cross-resource MOVE still appends an independently landed source effect.   |
+| Textual create/update caused by a scope on either operand                     | The effect carries the ordinary bounded EDIT receipt.                                                     |
+| Textual create/update with no scoped operand; binary mutation; channel delete | Structural effect only; no invented text receipt. Scoped source removal is an `update` with a receipt.    |
+| `304`, rejection, or cancellation with no landed mutation                     | `effects` omitted.                                                                                        |
+| Cross-selection MOVE source failure after destination success                 | The failure retains every destination effect that landed.                                                 |
+
+Core validates the complete ordered array before exposing it. Parser-recovery
+inspection is advisory and occurs against complete resulting text after
+successful application. A handler or parser failure emits a Notice, omits
+`parseIssues`, and never changes the mutation outcome.
+
 ### §copy COPY (engine-orchestrated)
 
 Operand syntax: {§transfer-resource-selections}. Result projection: {§copy-move-observation}.
@@ -2202,8 +2405,8 @@ COPY use this one orchestrator.
   preconditions compose against that snapshot, and overlapping regions are 409.
 - A cross-resource destination failure leaves the source untouched. A source
   failure after destination success is an explicit partial failure with
-  `destinationWritten: true`. Proposal acceptance/rejection follows the same
-  ordered rule.
+  `destinationWritten: true` and the destination's identity. Proposal
+  acceptance/rejection follows the same ordered rule.
 - §move-cross-scheme-move Same- and cross-scheme resources use the same
   contract; there is no global cross-scheme transaction.
 - §move-missing-source-404 A missing source is 404.
@@ -2213,6 +2416,10 @@ COPY use this one orchestrator.
 Log history preserved — `log_entries` stores path tuple as text, not FK to `entries.id`.
 
 ### §find FIND
+
+- §log-uniform-query **Log speaks the universal query contract** — ```` ```FIND (log://…) ```` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
+- §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
+- §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 
 - §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it (run67, 2026-08-29: a whole-repository search silently confined to the root). Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
 
@@ -2834,7 +3041,7 @@ body prefixes.
 
   A failed acquisition, projection, or write rejects the sink with its cause; it does not erase the upstream operation or imply no external effect. Parallel acquisition begins before the per-invocation serialized write chain. A rejected publication leaves that chain usable. Execution completion and shutdown await the whole chain; one lazily created runtime narration turn owns the invocation's publication evidence.
 
-### §proposal The proposal lifecycle
+## §proposal Proposals and client interactions
 
 §proposal-202-pauses A side-effecting op does not execute on dispatch — it **proposes**. The scheme returns **202** (an EXEC `host` runtime {§exec}, an EDIT to a member file {§membership}); the engine writes the log row `state='proposed'`, registers a waiter keyed by `logEntryId`, and **pauses `dispatch`** awaiting a resolution. The provider exchange and emitted operation are already durable, while the turn remains open until dispatch settles; {§engine-rails} therefore sees the *resolved* status, never the provisional 202. On accept the status becomes 200 and the scheme's effect runs.
 
@@ -2894,7 +3101,29 @@ execution signal, including KILL and deadline, not just its enclosing loop.
 Reconnect discovery intersects durable rows with live waiters; restart
 removes ownerless rows without fabricating cancellation, payload, or replay.
 
+### §proposal-ownership Loop disposition and client YOLO
+
+Side-effecting operations propose ({§exec}) and pause dispatch at 202 for an
+authority decision ({§engine-rails}, {§methods}). Automatic acceptance has two
+distinct owners:
+
+| Mechanism                                            | Authority path                                                                                                                                    | Intended use                                                       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| §proposal-ownership-loop-auto **Loop disposition**   | `runLoop({ policy: { proposals: "accept" } })` persists a loop-owned disposition; core resolves proposals in process without a client.           | Headless automation, benchmarks, CI, fixtures, and unattended use. |
+| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | A `proposals: "review"` loop emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path.  | Interactive automatic review.                                      |
+
+Core cannot distinguish client-side YOLO from a fast human acceptance and does
+not need to. Loop auto keeps authority inside the loop; client-side YOLO acts
+only after authority crosses the client boundary.
+
+§proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements policy from operation or attrs.
+
 ### §proposal-disposition Settlement authority and precedence
+
+§loop-policy-effective-read `loops.policy` persists one complete immutable
+`LoopPolicy`; every runtime policy read validates that snapshot before use.
+Missing rows or invalid values fail with the owning loop coordinate and cause.
+Raw archival copies and forensic rendering do not interpret policy.
 
 `ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The persisted loop policy determines it exactly:
 
@@ -3113,23 +3342,11 @@ service manifest edit.
 
 ## §grammar Grammar Dependency
 
-`@plurnk/plurnk-contracts` is authoritative; surface gaps through its owning issue and adopt what lands. Do not redesign the contract from core.
-
-### §grammar-provides What grammar provides
-
-- Parser (`PlurnkParser`, ANTLR4) — DSL text → `PlurnkStatement[]`.
-- AST types — exported TypeScript interfaces.
-- JSON schemas (`schema/*.json`, draft 2020-12) for every wire shape.
-- `plurnk.md` — canonical model-facing DSL description.
-
-### §service-tracks What plurnk-service tracks (NOT in grammar)
-
-- Channel state (`static`/`active`/`closed`/`errored`) — persisted channel metadata owned by core and exposed through the schemes capability contract ({§channel-state}).
-- Backpressure caps — none ({§stream-constraints}).
-- Stream cancel — `KILL` of the stream address ({§stream-control}).
-- Delete — `KILL` (entry-KILL, the canonical delete, {§move}); a scoped entry KILL deletes one span through the EDIT path ({§kill-scope-entry}).
-- §loop-policy-effective-read Per-loop policy — `loops.policy` persists one complete immutable `LoopPolicy`; every runtime policy read validates that snapshot before use. Missing rows or invalid values fail with the owning loop coordinate and cause. Raw archival copies and forensic rendering do not interpret policy.
-- Default-channel wire rendering — {§channel-selection}.
+Core consumes the language, schemas, and generated types under
+{§contract-authority} and {§contract-representations}. Provider emissions cross
+{§emission-admission}; admitted programs execute through
+{§turn-ops-admission-path}. Core owns execution and persisted state, not a second
+language definition.
 
 ---
 
@@ -3479,7 +3696,7 @@ The version-1 baseline table `workspace_module_state` stores one JSON value
 per `(workspace_id, namespace_owner)`. It is configuration, not an executable
 registry. Deleting the workspace cascades its state; worker lifecycle does not.
 
-### §functionality Workspace Functionality
+## §functionality Workspace Functionality
 
 §functionality-coordinator **One coordinator owns the common lifecycle.**
 Agent Skills, MCP, outbound A2A agents, and membership are adapters beneath
@@ -3640,7 +3857,7 @@ a failed preparation, and fails 409 while the workspace is held
 ({§module-workspace-quiescence}). Rejecting a proposal prepares, persists, and
 publishes nothing.
 
-### §methods ApplicationPort function set
+## §methods Application interface
 
 `ApplicationPort` is the contracts-owned interface implemented by `Daemon` and
 consumed by every exterior adapter ({§application-port}). Its function names are
@@ -3967,12 +4184,7 @@ module that publishes that protocol.
 
 ---
 
-## §decisions Architectural decisions
-
-Tagged decisions state the durable contract and the reason for it. Investigation,
-implementation status, and superseded alternatives belong in forge issues.
-
-### §packet-assembly Packet assembly: engine builds the default list, plugins transform it
+## §packet-assembly Packet assembly
 
 `PacketBuilder.buildRequestPacket` owns the engine's default ordered section
 list. Trusted scheme plugins may transform that first-class list before it is
@@ -3986,7 +4198,7 @@ flowchart LR
     measure --> rail[Engine budget admission and dispatch]
 ```
 
-#### §packet-cache-monotone Default order and cache locality
+### §packet-cache-monotone Default order and cache locality
 
 Conditional absence never reorders the surviving default sections.
 
@@ -4013,7 +4225,7 @@ operator notes and policies can change. Trust is a separate
 admission rule. The system slot contains trusted control-plane material;
 attacker-reachable content stays in the user slot.
 
-#### §packet-plugin-transform Trusted whole-list extension seam
+### §packet-plugin-transform Trusted whole-list extension seam
 
 `SchemeRegistry.transformSections` pipes the complete default list through
 every registered scheme implementing `transformSections(sections) -> sections`,
@@ -4067,201 +4279,6 @@ time of measurement.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as stable content identity. `weight` is stored beside that content and is never keyed or recomputed by model.
 - §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Derived `costUsd` sums every USD-expressible request and is `null` only when no request is expressible; a response-less failure or an uncataloged model is skipped, never allowed to erase the expressible evidence. Each derived aggregate usage field independently sums its reported quantity, so heterogeneous detail coverage remains partial rather than becoming fictitiously complete. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
 - §tokenomics-negative-pressure **Negative curation pressure is honest but never submitted.** The provisional readout may report `logTokensTotal` above `logTokensMax`. Crossing the maximum withholds new returned output under {§context-output-admission}; no over-ceiling packet reaches `provider.generate`. Output admission creates neither a strike nor another turn.
-
-### §membership Workspace identity, membership, disk co-location
-
-The project-file path has two explicit reconciliation gates. Internal entries do
-not participate in this disk loop.
-
-```mermaid
-flowchart LR
-    git["Git tracked"] --> resolve["Resolve workspace membership"]
-    include["include"] --> resolve
-    exclude["exclude"] -->|subtract| resolve
-    resolve --> materialize["Pre-turn materialize<br/>disk → file snapshot"]
-    materialize --> read["READ snapshot"]
-    materialize --> edit["EDIT against snapshot"]
-    edit --> proposal["Proposal"]
-    proposal -->|"client accepts or loop auto"| cas["synced_sig compare-and-swap"]
-    cas -->|"file snapshot → disk"| project["Project file"]
-    project --> materialize
-```
-
-| Concern            | Owner and representation                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workspace identity | `workspaces.project_root`; null is headless. There is no separate project entity.                                                           |
-| File visibility    | Workspace-tier resolved membership: `(tracked files ∪ include) − exclude` ({§membership-baseline}). Every worker sees the same result. |
-| File reads         | READ returns the materialized file snapshot stored in the entry body channel; it does not read disk directly.                               |
-| File writes        | EDIT proposes against that snapshot. Only accepted resolution with the captured `synced_sig` writes the project file.                       |
-| Internal entries   | Workspace or worker entries are canonical store state. Writing one never implies a project-file write.                                      |
-| Authority          | Service flags set the membership ceiling; the `members` family's definitions include and exclude within it; client or loop auto resolves proposals. `origin` is attribution. |
-
-§web-search-retrieval **Web discovery is an ordinary MCP concern; retrieval is a first-class composition.** PLURNK owns no search runtime: a search-capable MCP server (e.g. Brave Search) participates through the ordinary MCP contract — admission, read-effect classification, tool documentation, and packet projection are identical to every other MCP tool ({§mcp-tool-presentation}). An executor that wants to materialize discovered pages uses the generic `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. Every candidate whose `entry()` call rejects, regardless of failure reason, is mechanically omitted from the model-facing result directory; survivors retain upstream order. Without an entry sink the executor cannot test materialization and omits the verdict.
-
-Search prefetch and direct HTTP READ materialize the same resource contract:
-protocol + canonical authority (including a non-default port) + path + serialized
-query is the absolute identity ({§scheme-address-network}); the sanitized
-readable projection is the fragmentless default, while faithful DOM, origin
-media type, and projection identity remain explicit auxiliary evidence. A
-normal
-```` ```READ (https://host/path?query) ```` therefore publishes only the sanitized body
-under that exact URL—never raw HTML, response headers, or a channel-selection
-lesson. FIND consumes the addressed stored channel representation
-and never re-fetch a match.
-
-§web-retrieval-live Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin materialize→FIND and persistence/publication separation. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page; live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions.
-
-**Git is the substrate and the repository is the boundary:**
-
-- §membership-baseline **The baseline contract — chiseled (#400).** To a workspace a
-  project file is exactly one of three things: **invisible**, **added**, or **tracked
-  by git**. There is no fourth category. Membership — what the model can READ and
-  FIND, what is materialized into the store, what a packet can ship to a provider — is
-  the allowlist `(tracked ∪ include) − exclude` and nothing else. No file is a member because
-  it exists on disk, because git does not ignore it, or because a model would find it
-  convenient: ambient admission of untracked files is prohibited, so a workspace rooted
-  in a home directory or a monorepo exposes exactly what was committed or added (the
-  non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite). Every
-  exception is a named clause in the register ({§membership-model-universe}), admits
-  files by an exact creation record with recorded provenance, and never by `git add`.
-  Changing this clause, the register, or the composition is an operator ruling recorded
-  on the issue that lands it — never an implementation convenience, never a side effect
-  of making a file visible to solve the problem at hand. The 2026-07-12 – 2026-08-27
-  "untracked-but-not-ignored" ambient admission is retired.
-- §membership-model-universe **The exception register — files in the model's universe.**
-  Admitted by exact creation records (`source: "create"`, origin `constraint`), never
-  staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
-  ({§membership-create-parents}). Admitted by a published standard as projected
-  instruction documents — never as members: (3) the project's `AGENTS.md` and nested
-  `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
-  and materialized as `worker:///_plurnk/agents.md` and
-  `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
-  only when tracked or added, and the standard never overrides the operator's
-  exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
-  is not projected. (4) A definition the model proposes through the `members`
-  family ({§members-functionality}), admitted only under the operator's ceiling
-  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (shipped `namespace`), projected with source
-  `model`, and never admitted past the repository's ignore rules or an exclusion.
-  Nothing else.
-- §membership-git-membership The workspace owns the Git repository containing
-  `project_root`. Its tracked files (`git ls-files` semantics) are members with
-  no explicit overlay; when the root is a package inside a monorepo, the
-  repository's other packages are members at root-relative paths. An unrelated
-  or nested independent repository is not discovered or managed by this
-  workspace. When Git is absent there is no filesystem walk; member definitions are
-  then the sole source.
-- §git-native-default **Core Git reads use native Git.** Membership and status
-  execute the installed Git binary. An absent or failed binary yields no
-  automatic Git membership or status; core has no alternate implementation or
-  fallback.
-- §membership-git-hermetic Native Git runs with ambient `GIT_*` and
-  global/system config scrubbed, and with the repository's own program-running
-  keys pinned off at the highest precedence (`core.fsmonitor=false`,
-  `core.hooksPath=/dev/null`), so repository identity follows `project_root`,
-  never the daemon's launch environment, and inspecting a supplied repository
-  never runs a program its `.git/config` names. Other repository-local
-  configuration is still read (#568). The one program no key can pin off is a
-  `filter.<name>.clean` / `filter.<name>.process` driver, which `git status`
-  index refresh may run: automatic inspection asks the repository's own config
-  first (`git config --get-regexp`, no program runs) and, when any such key is
-  declared, refuses the repository as a warning-and-skip — Git status and
-  automatic Git membership answer exactly as for a non-repository, and one
-  `engine:membership` / `git_inspection_refused` notice names the key, once per
-  workspace until it changes or clears. User- and model-requested Git commands
-  stay on their explicit execution path.
-- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Shell execution reaches beyond file membership; the file scheme does not.
-- §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
-
-**The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
-
-- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
-- §membership-overlay-include **`include`** — admit a file Git misses through a targeted pattern scan (files only), with `constraint` origin. `source: "members"` is a projected human definition, `source: "model"` a projected model definition, `source: "create"` the exact durable record of an accepted creation. Only `members` inclusions override active Git ignore. In a Git-absent root, inclusions are the sole file-membership source.
-- §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
-- §membership-reconcile-sets **Reconciliation is two set statements.** Once the desired set is composed — `(git ls-files ∪ include) − exclude`, glob evaluation and Git shell-outs being the process's own — it lands as one `INSERT … SELECT FROM json_each` with the same idempotent provenance update as a single registration, and every overlay-owned member outside it leaves in one `DELETE … WHERE pathname NOT IN (json_each) RETURNING`, its prior body riding out of the statement. A path that also left disk truth (no longer a candidate at all) becomes a divergence from that prior content; an exclusion is silent. No per-path statement, no set difference outside the database.
-- §membership-glob-in-sql **A constraint is evaluated where it lives.** `glob_match(pathname, glob)` is `node:path.matchesGlob` registered into SQLite (`src/core/glob_match.ts`, deterministic), the one matcher every overlay decision uses, so a lookup that asks the constraints table a question — which exclusion covers this key, whether a members definition includes it, which inclusion owns each untracked path — is one statement over `workspace_constraints`, never a listing filtered in the process. Transient inputs the process already holds (a `git ls-files` listing against the exclude globs) stay filtered in the process; the function exists so the database's own rows can be asked, not so process data makes a round trip.
-
-**File ops act on the entry, not the disk; the two reconcile only at gates.** A `file:///` member is a row whose body channel holds its *materialized model-readable snapshot*. READ returns that channel; EDIT diffs against editable text snapshots — neither reaches the filesystem directly. Entry and disk reconcile at exactly two gates: the **pre-turn materialize** (disk → entry, below) and the **accept-time write-back** (entry → disk, {§proposal}). Between the gates the entry is the truth the model curates against, and `synced_sig` — the member's last-synced disk stat (`mtime:size`) — is the version token both gates compare on.
-
-§membership-source-projection Binary acquisition is transient and bounded by
-{§mimetype-binary-input}; durable entry channels remain Unicode text. Core-private
-`sourceProjection` attributes preserve the source mimetype, opaque projection
-identity, and terminal disposition without exposing raw bytes or a base64 lane.
-
-| Disk source                        | Durable body                                         | Operation effect                                                                 |
-| ---------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Text                               | Verbatim Unicode under the detected textual mimetype | READ and EDIT use the snapshot.                                                  |
-| Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
-| Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
-
-§membership-materialization-limit **A pathological member degrades, never the
-workspace.** `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` is a required positive
-byte ceiling over one disk source before Core reads it into the canonical file
-snapshot. Its valid range is `1..104857600`, bounded by the channel storage
-contract, and it ships at that 100 MiB maximum. An oversized path remains a real member
-with an empty body channel carrying a durable 413 producer result; no diagnostic
-sentinel impersonates file content. READ therefore names the path, observed bytes,
-ceiling, and recovery through the ordinary result contract, while EDIT returns the
-same 413 instead of diffing against a fictitious empty baseline. Core records the
-materialization disposition and ceiling privately, so an unchanged disk member is
-reconsidered when the operator changes the policy and otherwise remains a stat-only
-no-op. The file write gate independently stats the source against the same ceiling,
-so safety does not depend on a background warm winning a client-operation race.
-
-§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row and one symbol graph without copying. The identity hashes the representation's own SHA-256 ({§tokenomics-content-hash-identity}), never its body, so a maintenance pass judges an entry channel from its stored `content_hash` without the body crossing into the process; a body is acquired only for a derivation that runs, under that same identity (a representation that moved on since it was judged returns nothing and is judged again next pass), or for a channel with no stored identity, an open or streamed channel, which must be read to be judged. Log rows and turn sources still arrive whole. The pass reports the bytes it acquired beside the derivations it ran, and an unchanged workspace acquires none of its channel bodies at any concurrency. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every launched worker settles before the maintenance pass reports success or failure, so one failed artifact cannot orphan sibling derivations. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. A changed pass emits one immediate `preparing` state, intermediate `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`, and one immediate `complete` or `failed` state. A no-op pass emits no lifecycle, an indexing heartbeat never claims 100%, and the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
-
-The artifact also retains a positive `{§mimetype-parse-issues}` count and the
-full normalized `{§mimetype-summary}` when the exact parsed channel reported
-either. Both remain advisory alongside a normally completed search
-disposition; zero, empty, and unavailable evidence persist as absence. Catalog
-projection attaches either only to that channel, never to a sibling whose
-content the artifact does not describe.
-
-Every completed artifact records one terminal disposition: `indexed`, `excluded`
-(the configured search-exclusion table), `unsearchable` (empty or binary), or
-`failed` (a typed {§mimetype-error-policy} invalid-source failure, or the
-handler's own defect on that one member — {§derivation-member-failure}).
-
-§derivation-member-failure **One member's derivation failure never ends the
-pass or the model's turn.** A handler defect on one member — a
-`MimetypeDerivationError` under {§mimetype-derivation-evidence}, the exception
-being a cancellation — is that member's terminal `failed` disposition, whose
-`reason` is the handler's invocation context followed by the exact original
-cause (`Mimetype derivation failed for "/x.js" ("text/javascript").
-RuntimeError: …`). The pass continues, attaches every other member, and
-completes; its terminal `search_progress` notice is `complete` at `level: warn`,
-naming the first failed member and carrying the count. A failed member is
-terminal for that exact content, handler revision, and configuration identity
-({§derivation-dedup-parallel}); a change to any of those derives it again.
-Everything that is not a handler's derivation of one member stays fatal to the
-pass exactly as before: a grammar that is not installed, an index-persistence
-or contract failure, and cancellation, each leaving the artifact `building` for
-retry.
-Cancellation and implementation, loading, database and index-persistence failures
-remain `building`, unattached, and retryable; Core never guesses that an arbitrary
-projection exception is bad content. The digest reports exceptional dispositions
-with their reasons. Successful optional projection degradations continue indexing
-and surface their framework Notice once per identical observation in a maintenance
-pass.
-
-§membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's model-readable snapshot into its entry. Text with an unchanged disk signature and materialization policy is a stat-only no-op. The version token is either the observed `mtime:size` or the explicit `absent` state; an observed deletion removes the stale readable channels, and a later reappearance is therefore a new divergence rather than a first-sight materialization. Binary sources additionally compare the cached per-mimetype projection identity; unchanged bytes are never reacquired, while changed reader behavior rematerializes without fabricating a filesystem-divergence event. Coverage is exhaustive across the project repository while work is proportional to source or projection change. After a pass every member carries the current representation defined by {§membership-source-projection} and {§membership-materialization-limit}.
-
-§membership-emi-divergence-signal **EMI divergence evidence.** The detector that gates the work *is* the one that records this — one mechanism, not a second full read. When change detection finds a member moved out-of-band, the runtime actor records an `EDIT`-shaped row naming the file with `source="file"`; it does not broadcast that workspace change into unrelated workers' logs ({§env-delta-filesystem-narration}). The model's own edits are write-through (the entry equals disk after a File write), so the scan never mis-attributes them as external divergence. The current file remains ordinarily addressable. A stale anchored edit rejects under {§line-anchors}; a disk race after proposal rejects under {§membership-edit-write-cas}.
-
-§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with the same neutral `edit-collision` as {§edit-collision}, and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The collision surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees that EDIT **did not occur** (400; the `edit_collision` outcome is forensics-only). Reconciliation aligns the current file projection and records the `source=file` evidence in the runtime log ({§membership-emi-divergence-signal}); the model re-reads and re-proposes against the fresh snapshot.
-
-The version travels *with the proposal*, never re-read from the entry at accept: a sibling worker in the same workspace may reconcile while this proposal sits paused, advancing the entry's `synced_sig` to the drifted disk — comparing against the *current* entry sig would wave that clobber through, so the comparison is always against the sig the proposal was computed at. A proposal that assumed an **absent** path (a create) conflicts only if a file has since appeared; a member with **no recorded snapshot** (an un-materialized entry, null `synced_sig`) has no baseline to guard and writes through — the two are told apart by the proposal's `existed` flag, not by a null sig alone. On a clean landing the entry refreshes to the written content and `synced_sig` is **restamped** to it, so the next reconcile recognizes the model's own write (not an external divergence) and a second same-turn edit bases on the landed bytes, not a stale sig. This is the write-side twin of the read-side change-gate ({§membership-change-gated-sync}): one `synced_sig`, gating both the re-read and the write.
-
-The CAS is the **hard backstop**, at the moment of writing, on every accept path. It composes with the model-facing {§line-anchors}: an anchor rejects a target whose relevant neighborhood changed before dispatch, while the CAS refuses to write against a snapshot disk left after proposal. An unanchored edit deliberately claims no pre-dispatch stale-view guarantee.
-
-§membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` (default) includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving member definitions as the only membership source. `ALLOWED` gates `AUTO`.
-
-**Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/KILL. Supporting several independent repositories as one world would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
-
-**Schema.** The version-1 baseline stores the normalized {§inference-ledger},
-its model-response evidence, emission admission, and cardinal
-physical requests. Its constraints distinguish pending calls, response
-evidence, and response-less errors while monetary classification remains
-explicit.
 
 ### §context-output-admission Budget enforcement: returned-output admission
 
@@ -4376,126 +4393,6 @@ broadcasts therefore cannot wake an idle worker. Urgent directed communication
 uses the voice door ({§actor-boundary-two-doors}); direct-child terminal
 disposition alone carries the structured-concurrency wake owned by
 {§worker-scheme-collect}. Stream progress remains owned by {§exec-stream}.
-
-### §edit-result-render Mutation log rows render truthful effects
-
-A mutation row keeps request and outcome separate: `tx` is the admitted
-statement; `rx` is its resolved result. Only state that actually landed may
-appear there as an effect.
-
-```mermaid
-flowchart LR
-    authored["Authored EDIT / scoped entry KILL / COPY / MOVE"] --> snapshot["Resolve addressed channel(s)<br/>against pre-mutation snapshots"]
-    snapshot --> apply["Apply synchronously<br/>or settle proposal"]
-    apply --> landed{"Did state land?"}
-    landed -->|no| rx["Persist structured rx"]
-    landed -->|yes| kind{"Operation?"}
-    kind -->|EDIT / scoped entry KILL| receipt["Project one EDIT receipt<br/>for this authored row"]
-    kind -->|COPY / MOVE| effects["Compose ordered effects<br/>after application"]
-    receipt --> rx
-    effects --> rx
-    rx --> meta["Packet projection<br/>status · operands · optional effect metadata"]
-    rx --> body["Canonical log body<br/>bounded receipt context or empty"]
-    body --> recall["READ log:///…<br/>selects untrimmed content"]
-```
-
-§edit-receipt-removed-text **A pure deletion's receipt quotes what it removed.** An applied effect that inserted nothing and removed at least one line carries `removedText` — the removed text, first 40 lines — projected on the wire as `removed`; an effect that inserted anything carries no such field, its resulting context shows the change.
-
-§edit-receipt-anchored-context **An applied EDIT's resulting context carries anchors.** The bounded resulting context each effect renders (`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` around and inside the landed region) is rendered exactly as a READ renders — `@xxxxx L:text`, hashed with the resource's READ identity ({§line-anchors}) — so a later operation can cite the landed lines by anchor without a READ. A scheme that supplies no identity keeps the line-numbered form.
-
-§edit-result-receipt-projection **EDIT and scoped entry KILL project the
-scheme-owned batch receipt.** The scheme framework owns the exact aggregate
-shape ({§scheme-edit-batch-receipt}). Each operation supplies one splice; Core
-validates and projects its one applied effect or superseded disposition.
-That row carries any reviewer replacement effect. Core stores only the
-per-operation projection on `rx`; the aggregate remains inside dispatch.
-
-| Durable receipt fact                   | Packet projection                                                 | Meaning                                                                                                                   |
-| -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Full `revision`                        | not projected                                                     | SHA-256 identity of the complete landed channel body, kept in the durable receipt for forensics; no operation takes a revision, so the packet carries none (operator, 2026-09-13). Formerly `rev`, abbreviated; the display knob is gone. Never a lookup or compare-and-swap token. |
-| `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
-| `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
-| `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
-| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit. |
-| `effect.removedText`                   | `removed`                                                         | {§edit-receipt-removed-text}: a pure deletion's removed text, first 40 lines; absent when the edit inserted anything.                                                                          |
-| `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.   |
-| `disposition`, `requested`             | `disposition`, `requested`                                       | A reviewer-replaced batch preserves the authored marker while stating that its attributed effect was superseded.          |
-| `replacement`                          | `replacement`, `change`, canonical proposal-owner body           | The one whole-resource effect actually applied by the reviewer replacement; never duplicated across authored rows.        |
-
-§edit-result-receipt-truth **Receipts describe committed state.** Each EDIT
-carries its own landed revision, extent, and optional `parseIssues` transition
-for its complete source and landed revisions. When the proposal lands
-unchanged, the row also carries its requested
-marker, source/result mapping, counts, and context. For configured count `C`,
-the context contains up to `C` surrounding lines and the first and last `C`
-landed lines at the result boundaries. Overlapping windows coalesce; coordinate
-jumps expose an omitted middle. A deletion instead shows up to `C` lines on
-each side of its join.
-
-§edit-result-reviewer-replacement **A resolver replacement is one effect, not a
-guess at authorship.** An arbitrary accepted body replaces that operation's
-proposed body. It cannot be attributed to the authored span: the row retains
-its requested marker with disposition `superseded` and carries the one
-whole-resource replacement effect with bounded landed context. Subsequent
-EDITs address that landed state independently under {§edit-execution}.
-
-| Acceptance                     | Per-authored-row receipt               | Applied effect                                    |
-| ------------------------------ | -------------------------------------- | ------------------------------------------------- |
-| Proposed body unchanged        | Requested marker and its exact mapping | One per authored EDIT                             |
-| Resolver body replaced proposal | Requested marker plus `superseded`     | One whole-resource replacement, carried once     |
-
-Durable `tx` always remains the model's admitted statement. There is no JSON
-row/item receipt mode. A deliberate READ observes its authored execution point
-({§op-execution-order}) and remains the universal request for arbitrary current
-content.
-
-System-narrated environment EDITs are state-diff events rather than authored
-mutation receipts. They carry the resulting span defined by
-{§env-delta-filesystem-narration}.
-
-§edit-result-copy-move-effects **Core composes COPY/MOVE effects only after
-application.** Operands remain owned by the durable statement and render
-independently under {§copy-move-observation}; effects describe only state that
-landed.
-
-| Durable effect field | Contract                                                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `target`             | Canonical model-facing address. The default channel is path-only; an explicitly selected non-default channel retains its fragment. |
-| `action`             | Exactly `create`, `update`, or `delete`.                                                                                           |
-| `receipt`            | Optional validated EDIT projection. Only textual `create` and `update` effects may carry one; a creation receipt has `before=0`.   |
-
-| Outcome                                                                       | Ordered `effects`                                                                                         |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Landed COPY                                                                   | Its destination effect.                                                                                   |
-| Landed MOVE between different resource-channel selections                     | Any destination effect, then any source effect.                                                           |
-| Landed regional MOVE within one resource channel, unchanged by its resolver   | Insertion, then removal; both name the same target because they are distinct effects in one atomic batch. |
-| Resolver body replaces a proposed COPY/MOVE mutation                          | One actual replacement effect. Cross-resource MOVE still appends an independently landed source effect.   |
-| Textual create/update caused by a scope on either operand                     | The effect carries the ordinary bounded EDIT receipt.                                                     |
-| Textual create/update with no scoped operand; binary mutation; channel delete | Structural effect only; no invented text receipt. Scoped source removal is an `update` with a receipt.    |
-| `304`, rejection, or cancellation with no landed mutation                     | `effects` omitted.                                                                                        |
-| Cross-selection MOVE source failure after destination success                 | The failure retains every destination effect that landed.                                                 |
-
-Core validates the complete ordered array before exposing it. Parser-recovery
-inspection is advisory and occurs against complete resulting text after
-successful application. A handler or parser failure emits a Notice, omits
-`parseIssues`, and never changes the mutation outcome.
-
-### §proposal-ownership Loop disposition and client YOLO
-
-Side-effecting operations propose ({§exec}) and pause dispatch at 202 for an
-authority decision ({§engine-rails}, {§methods}). Automatic acceptance has two
-distinct owners:
-
-| Mechanism                                            | Authority path                                                                                                                                    | Intended use                                                       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| §proposal-ownership-loop-auto **Loop disposition**   | `runLoop({ policy: { proposals: "accept" } })` persists a loop-owned disposition; core resolves proposals in process without a client.           | Headless automation, benchmarks, CI, fixtures, and unattended use. |
-| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | A `proposals: "review"` loop emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path.  | Interactive automatic review.                                      |
-
-Core cannot distinguish client-side YOLO from a fast human acceptance and does
-not need to. Loop auto keeps authority inside the loop; client-side YOLO acts
-only after authority crosses the client boundary.
-
-§proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements policy from operation or attrs.
 
 ---
 
@@ -5155,6 +5052,8 @@ Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with,
 
 ### §matcher-result Matcher selection and evidence
 
+- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
+
 §matcher-result-resource-selection **A matcher selects resources; it never extracts a value or chooses a retrieval
 window.** Every dialect answers whether a resource matches and may return
 `MatchEvidence { locator?, region? }` ({§matcher-selection-signal}). `locator` is a
@@ -5307,3 +5206,50 @@ Carried from the contract walk; durable.
 A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. Its packet metadata and canonical log body use {§edit-result-receipt-projection}. ```` ```EDIT (path) <scope> ```` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
 §kill-pattern **A pattern on an entry KILL deletes each matching line.** ```` ```KILL (path) [{"pattern": "beta"}] ```` takes the same EDIT path as a scoped KILL, expanded under {§edit-pattern} in whole lines: the resource is read once, the matcher runs line by line, and every line a match touches becomes one empty-body line splice in one atomic batch guarded by those lines' anchors. A numeric scope bounds the lines the pattern may touch. Zero matches change nothing (204, `matched: 0`); a whole-entry KILL never widens from a pattern that selected nothing. The receipt is the EDIT path's, compacted the same way: `matched` lines, the first deletion's `receipt` with its `removedText` ({§edit-receipt-removed-text}), and `last` for the final one. Node-selecting patterns (`//`, `$`) select whole lines here, as they name nodes with line extents; resource-selecting ones (`~`, `&`) are refused (400 `pattern-dialect-unsupported`). The log stays the exception: a pattern on `log:///` selects rows ({§log-curation-set-selection}), and a stream scheme's KILL is process control, so a pattern there is 400 `kill-pattern-unsupported`.
+
+---
+
+## §test-taxonomy Testing and evidence
+
+| Tier | Location | LLM | Substrate |
+|---|---|---|---|
+| **unit** | `src/**/*.test.ts` | No | Isolated logic, mocked boundaries |
+| **intg** | `test/intg/` | No (mock provider) | Real file-backed SqlRite (per-test DB under `test/intg/.tmp/`), real engine |
+| **live** | `test/live/` | Real | Wire-level assertions |
+| **demo** | `test/demo/` | Real | Holistic outcome assertions |
+
+§live-harness-deadline The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT`
+as one whole-specimen deadline, including multi-prompt stories. The test's abort
+signal reaches the loop wait and invokes ordinary scope cancellation before
+teardown. The runner joins the test body's cleanup before starting the next
+specimen. The shared workspace and story helpers cover setup, inference and
+oracle failures, preserve the primary failure when their cleanup also fails,
+and attempt every registered disposal.
+Provider attempt/recovery limits remain independent; a harness cancellation is
+not evidence that the provider's own deadline expired.
+
+§provider-conformance-matrix **Every configured model alias is exercised through a
+real PLURNK loop: the production packet, a model-selected operation, its
+materialized result, and completion.** Transport-only completions are not
+conformance evidence. Provider-exposed reasoning must survive in the durable
+assistant packet and digest; a provider with no private reasoning is valid when
+the observable operation cycle succeeds. One package-owned runner executes the
+full tier or exactly one registered specimen (`npm run test:live:specimen --
+<exact test name>` in plurnk-core), rejecting absent and duplicate names before
+execution. The ledger and classification taxonomy live in
+`plurnk-providers/README.md` and report authorization/credential failures
+distinct from model failures and repeated stochastic failures separately from
+stable ones, never with weakened assertions.
+
+§test-artifact-retention **File-backed test databases use lane-local current-run
+retention.** Each workspace's normal intg runner clears its own
+`test/intg/.tmp/` once before the suite, reports that forensic directory, and
+retains every artifact the current run creates; a direct `node --test <file>` run bypasses that
+runner, so each test process prunes artifacts older than a day once, and never the current run's. A cross-package test may reuse
+Core's migration fixture only by passing a path inside the caller's artifact
+directory; independently scheduled lanes never share a reset target. A failed
+suite therefore leaves its own evidence intact, and the next normal run of that
+lane removes it before creating anything. Direct `node --test` invocations
+bypass the runner boundary and must invoke the same cleanup procedure
+explicitly when isolation matters. Live/demo run directories are benchmark
+artifacts outside `.tmp` and retain their separate lifecycle.

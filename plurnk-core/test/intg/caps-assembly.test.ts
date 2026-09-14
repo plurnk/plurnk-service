@@ -1,6 +1,4 @@
-// Conformance: plurnk-schemes {§capability-ctx}. SchemeCtxImpl assembles the
-// plugin-visible identity and five consumer-backed capabilities; `visibility`
-// is intentionally absent.
+// {§capability-ctx}: the public context, not the private orchestration context.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +6,7 @@ import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 
-test("SchemeCtxImpl: identity and the five capabilities are wired", async () => {
+test("{§capability-ctx}: public identity and working capabilities exclude private service state", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-asm-${crypto.randomUUID()}`);
@@ -23,8 +21,7 @@ test("SchemeCtxImpl: identity and the five capabilities are wired", async () => 
         assert.equal(sctx.turnId, 9);
         assert.equal(sctx.writer, "model");
 
-        // all five caps present
-        for (const cap of ["entries", "channels", "notify", "projection", "subscriptions"] as const) {
+        for (const cap of ["entries", "channels", "notify", "projection", "interactions", "subscriptions"] as const) {
             assert.notEqual((sctx as unknown as Record<string, unknown>)[cap], undefined, `${cap} cap is wired`);
         }
 
@@ -38,7 +35,8 @@ test("SchemeCtxImpl: identity and the five capabilities are wired", async () => 
         assert.equal(entry?.channels.body.content, "x");
         assert.deepEqual(entry?.attributes, { kind: "specimen" });
 
-        // visibility was dropped — it is not on the assembled ctx
-        assert.equal((sctx as unknown as Record<string, unknown>).visibility, undefined);
+        for (const privateField of ["db", "mimetypes", "executors", "weigh", "tokenize", "injectWorker", "wakeWorkerNotify", "streamEventNotify", "pushNotice", "visibility"]) {
+            assert.equal(privateField in sctx, false, `${privateField} is not part of the public handler context`);
+        }
     } finally { await db.close(); }
 });
