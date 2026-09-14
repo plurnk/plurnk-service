@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";

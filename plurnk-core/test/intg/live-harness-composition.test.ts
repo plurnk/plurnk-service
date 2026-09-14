@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import test from "node:test";
-import { parsePath, Validator } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { liveWorkspace } from "../_live-harness.ts";

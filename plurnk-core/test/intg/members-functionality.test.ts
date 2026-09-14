@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import MembersFunctionality from "../../src/server/MembersFunctionality.ts";

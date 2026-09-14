@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { A2a, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import { TaskState } from "@a2a-js/sdk";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";

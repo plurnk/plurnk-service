@@ -3,7 +3,7 @@ import { fixtureExecutors } from "./_helpers.ts";
 // statement parser so Core receives production AST shapes. {§tier-entrypoints}
 // {§methods-op-mirror}
 
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 interface OpWithMatcher {

@@ -1,6 +1,7 @@
 import { fixtureExecutors } from "./_helpers.ts";
 import assert from "node:assert/strict";
-import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 
 export const statement = (source: string): PlurnkStatement => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import Validator from "../../src/Validator.ts";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { parsePath, PlurnkParser } from "../../src/index.ts";
 
 const validateRoundTrip = (input: string) => {

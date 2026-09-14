@@ -952,6 +952,9 @@ defines no synthetic scheme or READ-back convention for them.
 
 ## §parser-architecture 10. Parser architecture
 
+The implementation this section describes lives in `@plurnk/plurnk-parser`
+({§parser-boundary}); this section remains the contract it implements.
+
 ANTLR owns framing, slots and statement composition; AstBuilder produces the
 schema-owned AST. Registration, effects and authority remain runtime concerns.
 

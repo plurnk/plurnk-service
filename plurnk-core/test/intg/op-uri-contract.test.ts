@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { FindStatement, ReadStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { Db } from "../../src/core/Db.ts";

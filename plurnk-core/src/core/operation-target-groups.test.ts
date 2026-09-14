@@ -1,10 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-    PlurnkParser,
-    type KillStatement,
-    type PlurnkStatement,
-} from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type KillStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 
 // Fixture executors: every fence tag this file's DSL text writes opens as an executor.

@@ -1,12 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as Contracts from "./index.ts";
-import {
-    PlurnkParser,
-    Problems,
-    UNKNOWN_POSITION,
-    Validator,
-} from "./index.ts";
+import { UNKNOWN_POSITION, Validator } from "./index.ts";
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 
 test("ProposalProjection's operation enum is the closed runtime alphabet", () => {
@@ -56,7 +51,6 @@ test("the package root exposes exactly the supported runtime values", () => {
         "PathSyntax",
         "PlanValue",
         "PlurnkParseError",
-        "PlurnkParser",
         "Problems",
         "REASONING_POLICIES",
         "RESERVED_AUTHORITIES",
@@ -67,22 +61,8 @@ test("the package root exposes exactly the supported runtime values", () => {
         "aguiConformanceReport",
         "formatJsonDocument",
         "lifecycleOfLoopStatus",
-        "parsePath",
         "renderJsonResult",
     ]);
-});
-
-test("the package root is the singular language and wire-contract API", () => {
-    const parsed = PlurnkParser.parseStatements("```EDIT (worker:///draft)\nbody\n```");
-    const item = parsed.items[0];
-    assert.equal(item.kind, "statement");
-    if (item.kind !== "statement") return;
-
-    assert.equal(item.statement.op, "EDIT");
-    assert.equal(Validator.validatePosition(item.statement.position).valid, true);
-
-    const problem = Problems.create("contracts", "missing", 404, "Missing.");
-    assert.equal(Validator.validateOperationResult({ status: 404, problem }).valid, true);
 });
 
 test("unknown statement position is one frozen contracts-owned value", () => {

@@ -1,12 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-    parsePath,
-    type CopyStatement,
-    type EditStatement,
-    type ReadStatement,
-    type UrlPath,
-} from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { type CopyStatement, type EditStatement, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import DurableStatement from "./DurableStatement.ts";
 
 const url = (raw: string): UrlPath => {

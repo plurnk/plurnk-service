@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parsePath, type UrlPath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { type UrlPath } from "@plurnk/plurnk-contracts";
 import NetworkAddress from "./NetworkAddress.ts";
 
 const network = (raw: string): NetworkAddress => {

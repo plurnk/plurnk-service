@@ -2,7 +2,7 @@ import WorkerName from "../../src/core/WorkerName.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
 import type { ExecStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type {

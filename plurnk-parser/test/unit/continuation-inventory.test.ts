@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PLURNK_OPS, PlurnkParser, Validator } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { PLURNK_OPS, Validator } from "@plurnk/plurnk-contracts";
 
 const parse = (header: string, body: string | null, warnings = 0) => {
     const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body));

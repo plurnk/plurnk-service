@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AcpPlanValue, PlanValue, PlurnkParser, Validator } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { AcpPlanValue, PlanValue, Validator } from "@plurnk/plurnk-contracts";
 
 const parsePlan = (body: string) => {
     const parsed = PlurnkParser.parse(`\`\`\`TASK

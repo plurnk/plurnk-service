@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { authorityParts, entryCoordinateOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {

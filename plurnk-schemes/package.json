@@ -54,5 +54,8 @@
     "dependencies": {
         "@plurnk/plurnk-contracts": "1.17.0",
         "@plurnk/plurnk-meta": "1.17.0"
+    },
+    "devDependencies": {
+        "@plurnk/plurnk-parser": "1.17.0"
     }
 }

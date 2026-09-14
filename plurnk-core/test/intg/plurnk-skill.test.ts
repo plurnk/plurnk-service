@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";

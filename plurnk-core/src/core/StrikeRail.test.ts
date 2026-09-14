@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import StrikeRail from "./StrikeRail.ts";
-import { parsePath, type BareStatement, type ExecStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { type BareStatement, type ExecStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 test("network query and channel coordinates remain distinct cycle fingerprints", () => {
     const statement = (raw: string): ReadStatement => ({

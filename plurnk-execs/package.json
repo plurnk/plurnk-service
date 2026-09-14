@@ -52,6 +52,7 @@
     },
     "dependencies": {
         "@plurnk/plurnk-contracts": "1.17.0",
+        "@plurnk/plurnk-parser": "1.17.0",
         "@plurnk/plurnk-meta": "1.17.0",
         "@plurnk/plurnk-schemes": "1.17.0"
     }

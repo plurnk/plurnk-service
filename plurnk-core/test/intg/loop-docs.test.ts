@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import Results from "../../src/core/results.ts";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import { dispositionStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors, fixtureExecutors } from "./_helpers.ts";

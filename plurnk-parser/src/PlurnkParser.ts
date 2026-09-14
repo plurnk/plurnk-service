@@ -2,20 +2,20 @@ import { CharStream, CommonTokenStream, Token, type ParserRuleContext } from "an
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
-import PlanValue from "./PlanValue.ts";
-import TurnDisposition from "./TurnDisposition.ts";
-import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import {
     PLURNK_OPS,
+    PlanValue,
+    PlurnkParseError,
+    TurnDisposition,
     type ClientStatement,
     type ParseItem,
     type ParseResult,
     type PlurnkStatement,
     type Position,
     type ResourceSelection,
-} from "./types.ts";
+} from "@plurnk/plurnk-contracts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; the turn disposition attaches as a direct

@@ -1,4 +1,5 @@
-import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";

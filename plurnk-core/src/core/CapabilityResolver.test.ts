@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-    PLURNK_OPS,
-    PlurnkParser,
-    type CapabilityDescriptor,
-    type PlurnkStatement,
-} from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PLURNK_OPS, type CapabilityDescriptor, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";

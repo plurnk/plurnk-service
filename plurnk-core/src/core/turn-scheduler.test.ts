@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 
 // Fixture executors: every fence tag this file's DSL text writes opens as an executor.

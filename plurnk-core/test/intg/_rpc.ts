@@ -1,6 +1,6 @@
 // Shared Daemon test helpers over the in-process ApplicationPort. {§rpc}
 
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { OperationResult, ProblemDetails } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";

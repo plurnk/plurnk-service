@@ -1,0 +1,73 @@
+{
+    "name": "@plurnk/plurnk-parser",
+    "version": "1.17.0",
+    "description": "The PLURNK language parser: ANTLR grammars, generated parser, AST builder, and path decomposition implementing @plurnk/plurnk-contracts",
+    "keywords": [
+        "plurnk",
+        "antlr",
+        "parser",
+        "protocol"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-parser#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-parser"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "bin": {
+        "plurnk-parser": "./bin/plurnk-parser.js"
+    },
+    "files": [
+        "bin/plurnk-parser.js",
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "scripts": {
+        "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node --conditions=plurnk-dev scriptify/fix-generated-imports.ts",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:grammar && npm run build:dist",
+        "antlr:tokens": "testrig src/generated/plurnk document --tokens",
+        "antlr:trace": "testrig src/generated/plurnk document --trace",
+        "antlr:parse": "testrig src/generated/plurnk document --tree",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/*.test.ts test/unit/*.test.ts",
+        "test:intg": "node --conditions=plurnk-dev --test test/integration/*.test.ts test/demo/*.test.ts",
+        "test:installation": "node --conditions=plurnk-dev scriptify/smoke-test.ts",
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
+        "release:check": "npm run test:installation",
+        "prepublishOnly": "npm audit && npm run build && npm test && npm run test:installation",
+        "prepack": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-contracts": "1.17.0",
+        "antlr4ng": "^3.0.0",
+        "json-p3": "2.2.2",
+        "xpath": "^0.0.34"
+    },
+    "devDependencies": {
+        "antlr-ng": "^1.0.10",
+        "esbuild": "^0.28.1"
+    }
+}

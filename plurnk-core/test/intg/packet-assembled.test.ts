@@ -17,7 +17,8 @@ import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { InvalidLoopPolicyError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { InvalidLoopPolicyError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES, fixtureExecutors } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, dispositionStmt, urlPath } from "./_dsl.ts";
 

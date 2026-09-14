@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogBody from "../../src/core/LogBody.ts";

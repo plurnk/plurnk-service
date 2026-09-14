@@ -3,13 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-    PlurnkParser,
-    type PlurnkOp,
-    type PlurnkStatement,
-    type ReadStatement,
-    type UrlPath,
-} from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type PlurnkOp, type PlurnkStatement, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type {
     RepresentationPreparationRequest,

@@ -10,7 +10,7 @@
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 test("live exec: model emits a sh fence and the spawn captures stdout", async (t) => {

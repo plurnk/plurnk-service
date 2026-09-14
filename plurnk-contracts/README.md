@@ -1,6 +1,6 @@
 # @plurnk/plurnk-contracts
 
-The single authority for PLURNK's model-facing language, parser and AST,
+The single authority for PLURNK's model-facing language contract, its AST,
 generated model rail, shared schemas and types, runtime-neutral Problems,
 operation results, Notices, and text coordinates. See SPEC
 {§contract-authority}.
@@ -19,7 +19,7 @@ Requires Node.js 26 or newer.
 |---------------------------------|------------------------------------------------------|
 | Concise model language teaching | [`plurnk.md`](plurnk.md)                             |
 | Stable behavioral contract      | [`SPEC.md`](SPEC.md)                                 |
-| Accepted language syntax        | `plurnkLexer.g4` and `plurnkParser.g4`               |
+| Accepted language syntax        | `SPEC.md` ({§contract-layers}); implemented by `@plurnk/plurnk-parser` |
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
@@ -32,33 +32,10 @@ it; this package ships no grammar profile.
 
 ## Parser
 
-```ts
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
-
-const result = PlurnkParser.parse(input);
-
-for (const item of result.items) {
-    if (item.kind === "statement") {
-        console.log(item.statement.op);
-    }
-}
-```
-
-Parse items are ordered and discriminate as `statement` or `error`.
-Outside-block text is ignored in every tier; literal bodies remain exact.
-The parser entry points deliberately accept different document tiers:
-
-| Entry point                    | Accepted input                                        |
-|--------------------------------|-------------------------------------------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; omitted TASK continues silently |
-| `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
-| `PlurnkParser.parseLog`        | Consecutive disposition-ended turns                    |
-| `PlurnkParser.parseClient`     | Protocol statements plus the client-only LOOK         |
-| `parsePath`                    | One path or URI using parser-equivalent decomposition |
-
-See SPEC {§turn-shape} and {§tier-entrypoints} for the tier boundaries. All
-AST, parse-result, schema-derived, and runtime-neutral wire types are exported
-from the package root.
+The parser that implements this language is [`@plurnk/plurnk-parser`](../plurnk-parser):
+`PlurnkParser` and `parsePath` are its exports, and it depends on this package for
+the AST and wire types. A consumer that validates or presents the wire needs only
+this package.
 
 ## Wire validation
 
@@ -79,16 +56,6 @@ Generated wire types, constructors, and validators share the package root entry
 point described by SPEC {§wire-entrypoint}. Owning JSON Schemas use the published
 `@plurnk/plurnk-contracts/schema/*.json` subpaths.
 
-## CLI
-
-```text
-plurnk-contracts [file]    parse a file, or standard input when omitted
-plurnk-contracts --help    show usage
-```
-
-The CLI prints the parse result as JSON and exits `0` for a clean parse or `1`
-when the result contains an error or unparsed tail.
-
 ## Development
 
 ```sh
@@ -97,9 +64,9 @@ npm test
 npm run test:installation
 ```
 
-Generated parser, schema-type, and distribution artifacts are rebuilt by
-`npm run build`. Change their grammar or schema owner rather than editing
-generated output directly.
+Generated schema-type and distribution artifacts are rebuilt by `npm run build`.
+Change the owning schema rather than editing generated output directly; the
+grammar and its generated parser live in `@plurnk/plurnk-parser`.
 
 ## License
 

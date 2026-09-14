@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, Validator } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { Validator } from "@plurnk/plurnk-contracts";
 
 const clientStatementsOf = (input: string) =>
     PlurnkParser.parseClient(input).items.filter((i) => i.kind === "statement");

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Digest from "../../src/digest/Digest.ts";
 import type { FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";

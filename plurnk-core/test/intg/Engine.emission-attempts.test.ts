@@ -7,7 +7,7 @@ import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, ProviderUsage } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Digest from "../../src/digest/Digest.ts";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";

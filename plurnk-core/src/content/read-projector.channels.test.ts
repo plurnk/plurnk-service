@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePath, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, StoredEntryData } from "@plurnk/plurnk-schemes";
 import ReadProjector from "./read-projector.ts";
 

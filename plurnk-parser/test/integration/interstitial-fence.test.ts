@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import type { ClientStatement, ParseResult } from "../../src/types.ts";
+import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("TASK", '[{"content":"Explain the example.","status":"completed"}]');
 const unlabeled = (body: string, ticks = 4, newline = "\n") => `${"`".repeat(ticks)}${newline}${body}${newline}${"`".repeat(ticks)}`;

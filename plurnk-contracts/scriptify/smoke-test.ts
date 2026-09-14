@@ -5,8 +5,6 @@ import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
 import * as SourceContracts from "../src/index.ts";
 
 const run = promisify(execFile);
@@ -76,58 +74,14 @@ const {
     InvalidOperationResultError,
     PathSyntax,
     PlurnkParseError,
-    PlurnkParser,
     PLURNK_OPS,
     Problems,
     RESERVED_AUTHORITIES,
     UNKNOWN_POSITION,
     Validator,
     WORKER_NAME,
-    parsePath,
 } = Contracts;
 
-const assertClean = (label, result) => {
-    const errors = result.items.filter(({ kind }) => kind === "error");
-    if (errors.length > 0 || result.unparsedTail !== undefined) {
-        throw new Error(label + " failed: " + JSON.stringify(result));
-    }
-};
-
-const program = PlurnkParser.frame("TASK", '[{"content":"smoke","status":"in_progress"}]');
-assertClean("model turn", PlurnkParser.parse(program));
-const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
-assertClean("statement sequence", result);
-assertClean("turn log", PlurnkParser.parseLog(program));
-assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (known://foo)", null)));
-
-const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
-    + "\\n3\\n" + program + "\\nPostscript.";
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseLog, PlurnkParser.parseClient]) {
-    const parsed = parse(interstitial);
-    assertClean("interstitial text", parsed);
-    if (parsed.items.length !== 2 || parsed.items[0]?.statement?.body?.raw !== "Only this is a message."
-        || parsed.items[1]?.statement?.op !== "TASK") throw new Error("outside text changed the parsed program");
-}
-
-// A quoted example rides a numeric delimiter ({§numeric-delimiter}): the SEND's body holds the
-// literal heading without executing it, and the disposition still follows.
-const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
-const outer = String.fromCharCode(96).repeat(5);
-const quoted = outer + "42SEND <!-- literal example -->\\n" + literalExample + "\\n" + outer + "42\\n" + program;
-const quotedSend = PlurnkParser.parse(quoted);
-assertClean("delimited SEND", quotedSend);
-if (quotedSend.items.length !== 2 || quotedSend.items[0]?.statement?.op !== "SEND"
-    || quotedSend.items[0]?.statement?.aside !== "literal example"
-    || quotedSend.items[0]?.statement?.body?.raw !== literalExample
-    || quotedSend.items[1]?.statement?.op !== "TASK") throw new Error("delimited SEND did not quote its literal example");
-
-// Parse a simple statement and validate its schema-derived position.
-const item = result.items[0];
-if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
-if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);
-const pos = item.statement.position;
-const posResult = Validator.validatePosition(pos);
-if (!posResult.valid) throw new Error("position validation failed: " + JSON.stringify(posResult.errors));
 
 const problem = Problems.create("smoke", "missing", 404, "Missing.");
 Validator.assertOperationResult({ status: 404, problem });
@@ -140,8 +94,6 @@ try {
 
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
 
-const dest = parsePath("worker:///archive/draft");
-if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
 if (PathSyntax.encodeParens("/draft(1)") !== "/draft%281%29") throw new Error("PathSyntax encode failed");
 if (PathSyntax.decodeParens("/draft%281%29") !== "/draft(1)") throw new Error("PathSyntax decode failed");
 const escapedTarget = PathSyntax.escapeTarget("https://example.test/x?literal=)&encoded=%29");
@@ -156,37 +108,13 @@ if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFr
     throw new Error("unknown position sentinel is not intact");
 }
 
-console.log("OK: wire contracts and grammar are consumable through one installed entrypoint.");
+console.log("OK: wire contracts are consumable through one installed entrypoint.");
 `);
 
     process.stdout.write(`[smoke] running consume.js...\n`);
     const { stdout: consumeOut, stderr: consumeErr } = await run("node", ["consume.js"], { cwd: tempDir });
     if (consumeErr) process.stderr.write(consumeErr);
     process.stdout.write(consumeOut);
-
-    await writeFile(join(tempDir, "consume-browser.js"), `
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
-export const parse = (input) => PlurnkParser.parse(input);
-`);
-    const browserBundle = join(tempDir, "consume-browser.bundle.mjs");
-    process.stdout.write("[smoke] bundling the installed package for a browser Worker...\n");
-    await build({
-        absWorkingDir: tempDir,
-        entryPoints: ["consume-browser.js"],
-        outfile: browserBundle,
-        bundle: true,
-        format: "esm",
-        platform: "browser",
-        logLevel: "silent",
-    });
-    const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
-        parse(input: string): { items: Array<{ kind: string }> };
-    };
-    const browserResult = browserConsumer.parse("```TASK\n[{\"content\":\"browser bundle initialized\",\"status\":\"in_progress\"}]\n```");
-    if (browserResult.items.some(({ kind }) => kind === "error")) {
-        throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
-    }
-    process.stdout.write("[smoke] browser bundle initialized and parsed a turn\n");
 
     await cleanup();
     process.stdout.write(`[smoke] PASS\n`);

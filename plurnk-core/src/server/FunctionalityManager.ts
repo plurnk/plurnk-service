@@ -7,7 +7,7 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
 import type { JsonSchema } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";

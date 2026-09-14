@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Lexer } from "marked";
 import ToolResources from "./ToolResources.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";

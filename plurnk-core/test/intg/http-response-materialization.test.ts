@@ -5,7 +5,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Http from "@plurnk/plurnk-schemes-http";
 import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { resolve } from "node:path";

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser, Validator } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { Validator } from "@plurnk/plurnk-contracts";
 
 const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "toString", "__proto__"];
 const statements = (source: string) => {

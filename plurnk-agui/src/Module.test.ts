@@ -13,7 +13,8 @@ import type {
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
-import { DEFAULT_LOOP_POLICY, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { DEFAULT_LOOP_POLICY, Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";

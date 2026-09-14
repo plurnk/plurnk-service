@@ -7,7 +7,7 @@ import {
 } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
-import PlurnkParseError from "./PlurnkParseError.ts";
+import { PlurnkParseError } from "@plurnk/plurnk-contracts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 
 export default class RecordingListener extends BaseErrorListener {

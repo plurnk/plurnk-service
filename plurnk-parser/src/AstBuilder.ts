@@ -27,7 +27,7 @@ import type {
     DispositionStatement,
     TextLineMarker,
     UrlPath,
-} from "./types.ts";
+} from "@plurnk/plurnk-contracts";
 import type {
     BareStatementContext,
     ClientStatementContext,
@@ -57,10 +57,7 @@ import {
     TargetWithMetadataContext,
 } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
-import PlurnkParseError from "./PlurnkParseError.ts";
-import PathSyntax from "./PathSyntax.ts";
-import PlanValue from "./PlanValue.ts";
-import TurnDisposition from "./TurnDisposition.ts";
+import { PathSyntax, PlanValue, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {

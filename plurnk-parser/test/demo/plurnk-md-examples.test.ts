@@ -2,9 +2,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { PlurnkParser, PLURNK_OPS } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
 
-const teaching = readFileSync(new URL("../../plurnk.md", import.meta.url), "utf8");
+const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurnk/plurnk-contracts/package.json")), "utf8");
 
 test("concrete KILL examples in plurnk.md parse as one clean operation", () => {
     const unindented = teaching.replace(/^ {4}/gm, "");

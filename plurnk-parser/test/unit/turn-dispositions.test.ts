@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser, Validator } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { Validator } from "@plurnk/plurnk-contracts";
 
 for (const status of ["todo", "in_progress", "waiting", "completed", "failed"]) {
     test(`TASK ${status} is durable inventory, not an executor or SEND alias`, () => {

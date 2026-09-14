@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser, type ClientStatement, type ParseResult } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
 
 const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const diagnostics = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);

@@ -1,0 +1,22 @@
+{
+    "extends": "../tsconfig.base.json",
+    "compilerOptions": {
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "verbatimModuleSyntax": false,
+        "lib": [
+            "ES2024"
+        ]
+    },
+    "include": [
+        "scriptify/**/*.ts",
+        "src/**/*.ts",
+        "test/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "src/generated"
+    ]
+}

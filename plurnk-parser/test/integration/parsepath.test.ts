@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import AstBuilder from "../../src/AstBuilder.ts";
-import { PathSyntax, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { PathSyntax, PlurnkParseError, WORKER_NAME, RESERVED_AUTHORITIES } from "@plurnk/plurnk-contracts";
 
 // {§path-syntax} Detailed target admission behind the public parsePath helper.
 

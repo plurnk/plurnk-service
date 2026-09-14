@@ -2,7 +2,7 @@
 // packet's response becomes, so the model's own `reasoning:///L/T` and `ops:///L/T` need no guessing.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

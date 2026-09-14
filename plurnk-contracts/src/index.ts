@@ -1,5 +1,3 @@
-import AstBuilder from "./AstBuilder.ts";
-
 export {
     default as Validator,
     InvalidCapabilityDescriptorError,
@@ -39,8 +37,6 @@ export { default as Problems } from "./Problems.ts";
 export { lifecycleOfLoopStatus, type LoopLifecycle } from "./LoopLifecycle.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
-export { default as PlurnkParser } from "./PlurnkParser.ts";
-export type { ParseOptions } from "./PlurnkParser.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
 export { default as AcpPlanValue } from "./AcpPlanValue.ts";
@@ -53,8 +49,6 @@ export type { JsonReplacer } from "./JsonResult.ts";
 export { aguiConformanceReport } from "./AguiConformance.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
 export type * from "./ApplicationPort.ts";
-
-export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 
 export { DEFAULT_CAPABILITY_POLICY, DEFAULT_LOOP_POLICY, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, REASONING_POLICIES, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser, type FindStatement, type ParsedPath, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type FindStatement, type ParsedPath, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type {
     ChannelProducerResult,
     RepresentationPreparationRequest,

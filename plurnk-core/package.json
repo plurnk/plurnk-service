@@ -85,6 +85,7 @@
         "@plurnk/plurnk-a2a": "1.17.0",
         "@plurnk/plurnk-agui": "1.17.0",
         "@plurnk/plurnk-contracts": "1.17.0",
+        "@plurnk/plurnk-parser": "1.17.0",
         "@plurnk/plurnk-execs": "1.17.0",
         "@plurnk/plurnk-execs-common": "1.17.0",
         "@plurnk/plurnk-execs-jq": "1.17.0",

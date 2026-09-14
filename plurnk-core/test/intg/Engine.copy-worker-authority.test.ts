@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, fixtureExecutors } from "./_helpers.ts";

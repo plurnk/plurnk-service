@@ -1,7 +1,8 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
-import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";

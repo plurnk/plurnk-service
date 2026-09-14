@@ -1,8 +1,5 @@
-import {
-    parsePath,
-    PlurnkParseError,
-    type PlurnkStatement,
-} from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { PlurnkParseError, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 const EXPLICIT_URI = /^[a-z][a-z0-9+.-]*:\/\//i;
 

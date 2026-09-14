@@ -1,7 +1,8 @@
 // The client read surface: one entry with its channels, and the log projection. Split out of Daemon, which keeps the delegating entry points.
 import type { Db } from "../core/Db.ts";
 import Engine from "../core/Engine.ts";
-import { parsePath, Validator, type ClientEntryChannel, type EntryReadResult } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { Validator, type ClientEntryChannel, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import ClientInput from "./client-input.ts";

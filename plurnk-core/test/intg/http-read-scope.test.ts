@@ -1,7 +1,7 @@
 // {§universal-read-composition}
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";

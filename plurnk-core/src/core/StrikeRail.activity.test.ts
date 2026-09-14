@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, type OperationResult } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type OperationResult } from "@plurnk/plurnk-contracts";
 import StrikeRail from "./StrikeRail.ts";
 
 // Fixture executors: every fence tag this file's DSL text writes opens as an executor.

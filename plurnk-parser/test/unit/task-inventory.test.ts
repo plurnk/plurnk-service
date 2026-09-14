@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AcpPlanValue, PlanValue, PlurnkParser, TurnDisposition, Validator } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
+import { AcpPlanValue, PlanValue, TurnDisposition, Validator } from "@plurnk/plurnk-contracts";
 
 const inventory = (statuses: readonly string[]) => statuses.map((status, index) => ({ content: `Task ${index + 1}`, status }));
 

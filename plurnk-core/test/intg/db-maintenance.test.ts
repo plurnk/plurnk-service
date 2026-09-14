@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- {§db-maintenance-optimize}: the witness reads sqlite_master after the daemon has closed; no persistence happens outside SqlRite.
 import { DatabaseSync } from "node:sqlite";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 import { provider, statement } from "./reasoning-fixture.ts";

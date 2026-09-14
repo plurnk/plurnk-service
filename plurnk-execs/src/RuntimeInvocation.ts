@@ -1,4 +1,5 @@
-import { PathSyntax, PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import RuntimeSummary from "./RuntimeSummary.ts";
 import type {
     RuntimeBodyDecl,

@@ -6,7 +6,7 @@ import WorkerName from "../../src/core/WorkerName.ts";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";

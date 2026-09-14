@@ -1,4 +1,5 @@
-import { PlurnkParser, TurnDisposition, parsePath } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";

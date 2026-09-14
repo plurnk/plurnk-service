@@ -32,6 +32,9 @@ Breaking for external AG-UI and RPC clients:
   review-contract strike is retired, so no TASK answer strikes.
 - `workspace/branch-batch` (`CUSTOM plurnk.branch_batch`) is gone: branch delegation was deleted
   before 1.17.0 and nothing produced the event. The hooks event list no longer names it.
+- `@plurnk/plurnk-contracts` no longer exports `PlurnkParser` or `parsePath` and no longer
+  depends on `antlr4ng`, `xpath`, or `json-p3`: the parser is `@plurnk/plurnk-parser`, which the
+  service's execution path imports. A client that installs contracts installs no ANTLR runtime.
 
 Language and teaching:
 

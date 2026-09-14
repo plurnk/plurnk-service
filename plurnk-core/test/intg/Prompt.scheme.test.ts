@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Prompt from "../../src/schemes/Prompt.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { readStmt } from "./_dsl.ts";
 

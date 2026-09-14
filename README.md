@@ -124,7 +124,8 @@ cross-package gates. The package-ownership map lives in
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
 model-facing canon. Its owning
 [`SPEC.md`](./plurnk-contracts/SPEC.md) distinguishes that narrow teaching from
-the tolerant parser and runtime-neutral wire contracts.
+the runtime-neutral wire contracts; the parser that implements the language
+lives in [`plurnk-parser`](./plurnk-parser).
 
 ## Contributing
 

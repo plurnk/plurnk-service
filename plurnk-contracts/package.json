@@ -1,10 +1,9 @@
 {
     "name": "@plurnk/plurnk-contracts",
     "version": "1.17.0",
-    "description": "Canonical PLURNK language, schemas, generated types, parser, and runtime-neutral wire contracts",
+    "description": "Canonical PLURNK language contract, schemas, generated types, and runtime-neutral wire contracts",
     "keywords": [
         "plurnk",
-        "antlr",
         "rfc-9457",
         "protocol"
     ],
@@ -42,29 +41,21 @@
             "default": "./dist/conformance/*.json"
         }
     },
-    "bin": {
-        "plurnk-contracts": "./bin/plurnk-contracts.js"
-    },
     "files": [
-        "bin/plurnk-contracts.js",
         "dist/**/*",
         "plurnk.md",
         "README.md",
         "SPEC.md"
     ],
     "scripts": {
-        "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node --conditions=plurnk-dev scriptify/fix-generated-imports.ts",
         "build:types": "node --conditions=plurnk-dev scriptify/generate-types.ts",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
         "build:schemas": "node --conditions=plurnk-dev scriptify/copy-schemas.ts",
-        "build": "npm run build:clean && npm run build:grammar && npm run build:types && npm run build:dist && npm run build:schemas",
-        "antlr:tokens": "testrig src/generated/plurnk document --tokens",
-        "antlr:trace": "testrig src/generated/plurnk document --trace",
-        "antlr:parse": "testrig src/generated/plurnk document --tree",
+        "build": "npm run build:clean && npm run build:types && npm run build:dist && npm run build:schemas",
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --test src/*.test.ts test/unit/*.test.ts",
-        "test:intg": "node --conditions=plurnk-dev --test test/integration/*.test.ts test/demo/*.test.ts",
+        "test:intg": "node --conditions=plurnk-dev --test test/integration/*.test.ts",
         "test:installation": "node --conditions=plurnk-dev scriptify/smoke-test.ts",
         "conformance:report": "node --conditions=plurnk-dev scriptify/agui-conformance-report.ts",
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
@@ -74,14 +65,9 @@
     },
     "dependencies": {
         "@cfworker/json-schema": "^4.1.1",
-        "antlr4ng": "^3.0.0",
-        "json-p3": "2.2.2",
-        "jsonc-parser": "^3.3.1",
-        "xpath": "^0.0.34"
+        "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {
-        "antlr-ng": "^1.0.10",
-        "esbuild": "^0.28.1",
         "json-schema-to-typescript": "^16.0.0"
     }
 }

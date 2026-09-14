@@ -1,6 +1,7 @@
 // The AG-UI built-in actions: the management-plane calls a client makes by name. Split out of the module.
 import { type ActionOutcome } from "./AguiPlus.ts";
-import { Problems, PlurnkParser, UNKNOWN_POSITION, Validator, type AguiDiscovery, type ApplicationPort, type CapabilityPolicy, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { Problems, UNKNOWN_POSITION, Validator, type AguiDiscovery, type ApplicationPort, type CapabilityPolicy, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { actionFailure, problemFromError } from "./action-results.ts";
 
 const operationOutcome = (result: OperationResult): ActionOutcome => {

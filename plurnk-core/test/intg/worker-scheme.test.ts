@@ -7,7 +7,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { InvalidLoopPolicyError, PlurnkParser, parsePath } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
 import type {
     ParsedPath,
     PlurnkStatement,

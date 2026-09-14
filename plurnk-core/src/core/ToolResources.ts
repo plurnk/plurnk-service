@@ -1,4 +1,5 @@
-import { PathSyntax, PlurnkParser, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PathSyntax, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import ToolInputSchema from "./ToolInputSchema.ts";
 import type {

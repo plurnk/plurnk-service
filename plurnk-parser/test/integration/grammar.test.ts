@@ -1,13 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-    PlurnkParser,
-    PlurnkParseError,
-    Validator,
-    parsePath,
-    type PlurnkOp,
-    type Plan,
-} from "../../src/index.ts";
+import { PlurnkParser, parsePath } from "../../src/index.ts";
+import { PlurnkParseError, Validator, type PlurnkOp, type Plan } from "@plurnk/plurnk-contracts";
 
 type Op = PlurnkOp;
 
