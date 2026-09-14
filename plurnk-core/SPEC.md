@@ -3462,6 +3462,16 @@ workspace boundary. Durable configuration, history, and saved entries remain.
 New demand reconstructs the one shared snapshot. Shutdown cancels warm timers
 and closes module resources through their owning provider.
 
+§module-workspace-residency-facet **Residency is the workspace's; processes are
+one family's facet.** The workspace is the lease unit, and every family's
+publication rides the same replacement: its manager executor, its generated
+documents and its state. Only a family that holds processes prepares
+`runtimes` (MCP servers today); the field is absent for every other family, so
+warming and cooling bound workspaces, never families, and the two-stage rollback
+guards the manager registration of every family alongside the one family's
+processes. There is no per-family residency policy (operator, 2026-09-14:
+residency is MCP-specific and is not a family policy system).
+
 The version-1 baseline table `workspace_module_state` stores one JSON value
 per `(workspace_id, namespace_owner)`. It is configuration, not an executable
 registry. Deleting the workspace cascades its state; worker lifecycle does not.
@@ -3572,7 +3582,8 @@ defaults; one workspace snapshot is effective authority.
 
 §functionality-publication **One replacement publishes a family.** The
 coordinator prepares, then replaces state and runtimes through
-{§module-workspace-capabilities}, with the manager followed by adapter runtimes.
+{§module-workspace-capabilities}, with the manager followed by any runtimes the
+adapter prepared ({§module-workspace-residency-facet}).
 Admission, tools, documents, Turn 0, and client status consume that publication.
 The coordinator's synchronous `publish` participates in the registry commit;
 its returned undo restores the previous view before rollback reconciles documents.

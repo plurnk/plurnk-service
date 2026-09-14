@@ -46,7 +46,6 @@ interface Preparation extends WorkspaceIdentity {
 }
 
 interface Prepared {
-    readonly runtimes: readonly never[];
     readonly documents: readonly { readonly pathname: string; readonly content: string }[];
     readonly outcomes: ReadonlyMap<string, Outcome>;
     readonly snapshot: unknown;
@@ -338,7 +337,6 @@ export default class A2aFunctionality {
         const snapshot: Snapshot = { attachments, unavailable };
         const { workspaceId } = preparation;
         return {
-            runtimes: [],
             documents,
             outcomes,
             snapshot,

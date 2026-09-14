@@ -93,7 +93,7 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
         const researcher = { name: "researcher", url: agent.baseUrl, authorization: { type: "bearer", token: "${TOKEN}" } };
         const ghost = { name: "ghost", url: "http://127.0.0.1:9" };
         const first = await family.prepare(preparation(7, { researcher, ghost }));
-        assert.equal(first.runtimes.length, 0);
+        assert.equal("runtimes" in first, false, "outbound agents hold no processes; runtimes is the resident family's facet");
         const active = first.outcomes.get("researcher");
         assert.equal(active?.state, "active");
         assert.deepEqual((active as { detail: object }).detail, {

@@ -345,7 +345,6 @@ export default class MembersFunctionality implements FunctionalityAdapter {
             documents.push(membersDocument(alias, definition as MembersDefinition, resolution));
         }
         return {
-            runtimes: [],
             documents,
             outcomes,
             snapshot: { workspaceId, rows },

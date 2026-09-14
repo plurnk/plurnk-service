@@ -594,7 +594,7 @@ export default class Functionality {
         });
         try {
             Functionality.#checkOutcomes(adapter, enabled, prepared);
-            if (prepared.runtimes.length > 0 || prepared.documents.length > 0 || prepared.snapshot !== null) {
+            if ((prepared.runtimes?.length ?? 0) > 0 || prepared.documents.length > 0 || prepared.snapshot !== null) {
                 throw new Error(`${adapter.family} is worker-scoped and holds no residency, yet its preparation published runtimes, documents or a snapshot.`);
             }
         } catch (cause) {
@@ -649,7 +649,7 @@ export default class Functionality {
         let runtimes: RuntimeRegistration[];
         try {
             Functionality.#checkOutcomes(adapter, enabled, prepared);
-            for (const runtime of prepared.runtimes) {
+            for (const runtime of prepared.runtimes ?? []) {
                 if (runtime.namespaceOwner !== adapter.namespaceOwner) {
                     throw new Error(`${adapter.family} prepared a runtime owned by '${runtime.namespaceOwner}' instead of '${adapter.namespaceOwner}'.`);
                 }
@@ -663,7 +663,7 @@ export default class Functionality {
                 }),
                 availability: { available: true, detail: "workspace Functionality manager" },
             };
-            runtimes = [manager, ...prepared.runtimes];
+            runtimes = [manager, ...(prepared.runtimes ?? [])];
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
         }

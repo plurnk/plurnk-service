@@ -108,8 +108,8 @@ test("{§env-functionality} available projects what the ceiling admits, enabled,
     }
 });
 
-// Nothing is launched, so nothing can fail to launch. This is why the family publishes no
-// runtimes and never enters the warmed capability snapshot ({§module-workspace-residency}).
+// Nothing is launched, so nothing can fail to launch. This is why the family prepares no
+// runtimes: the field is the resident family's facet ({§module-workspace-residency-facet}).
 test("{§env-functionality} prepare publishes no runtime and marks every enabled definition active", async () => {
     const prepared = await adapter.prepare({
         workspaceId: 1,
@@ -117,7 +117,7 @@ test("{§env-functionality} prepare publishes no runtime and marks every enabled
         previous: null,
         failure: "publish-unavailable",
     } as never);
-    assert.deepEqual(prepared.runtimes, []);
+    assert.equal("runtimes" in prepared, false, "no processes, so no resident facet");
     assert.deepEqual([...prepared.outcomes.keys()], ["PAGER", "CI"]);
     assert.deepEqual([...prepared.outcomes.values()], [{ state: "active" }, { state: "active" }]);
 });

@@ -137,7 +137,10 @@ export interface FunctionalityPreparation {
 // attempt and the previous snapshot stays authoritative). The coordinator never
 // tears down a previous snapshot itself; only deactivation calls `teardown`.
 export interface FunctionalityPrepared {
-    readonly runtimes: readonly RuntimeRegistration[];
+    // {§module-workspace-residency} — the resident facet. Only a family that holds processes
+    // (MCP servers) prepares runtimes; every other family publishes its manager, documents and
+    // state alone, and leaves this absent.
+    readonly runtimes?: readonly RuntimeRegistration[];
     readonly documents: readonly FunctionalityDocument[];
     readonly outcomes: ReadonlyMap<FunctionalityAlias, FunctionalityOutcome>;
     readonly snapshot: unknown;

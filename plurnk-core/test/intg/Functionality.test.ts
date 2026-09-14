@@ -171,7 +171,7 @@ for (const defect of ["outcome", "namespace"] as const) {
                 if (!input.enabled.has("candidate")) return prepared;
                 return defect === "outcome"
                     ? { ...prepared, outcomes: new Map([...prepared.outcomes].filter(([alias]) => alias !== "candidate")) }
-                    : { ...prepared, runtimes: prepared.runtimes.map((runtime) => ({ ...runtime, namespaceOwner: "wrong owner" })) };
+                    : { ...prepared, runtimes: (prepared.runtimes ?? []).map((runtime) => ({ ...runtime, namespaceOwner: "wrong owner" })) };
             },
         }); } });
         t.after(async () => { await daemon.stop(); await db.close(); });

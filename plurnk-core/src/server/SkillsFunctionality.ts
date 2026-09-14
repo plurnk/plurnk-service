@@ -498,7 +498,6 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         };
         const { workspaceId } = preparation;
         return {
-            runtimes: [],
             documents: [],
             outcomes,
             snapshot,

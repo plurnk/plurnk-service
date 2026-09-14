@@ -133,7 +133,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
         const outcomes = new Map([...preparation.enabled.keys()].map((alias) => [alias, { state: "active" as const }]));
         return {
-            runtimes: [], documents: [], outcomes, snapshot: null,
+            documents: [], outcomes, snapshot: null,
             commit: async () => undefined,
             abort: async () => undefined,
         };
