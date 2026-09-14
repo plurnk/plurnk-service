@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 
-// {§engine-rails}: discovery misses and not-ready results are soft, and no TASK answer strikes
+// {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a TASK claim strikes
 // (a completion joins live work, {§completion-joins-live-work}; a claim over settled results
 // defers, {§completion-defers-to-results}). Executor evidence is soft wherever it surfaces,
 // including a completion READ ({§exec-stream}).

@@ -1130,7 +1130,7 @@ These are the complete strike sources:
 | Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
 | Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
-| Inventory steering  | Retired (2026-09-14): a completion claimed over live work joins it ({§completion-joins-live-work}) and one over settled results defers ({§completion-defers-to-results}); every TASK answer, an empty TASK's soft 409 included, is a receipt and never a strike. | The TASK receipt. |
+| Inventory steering  | Retired (2026-09-14): a completion claimed over live work joins it ({§completion-joins-live-work}) and one over settled results defers ({§completion-defers-to-results}); every answer to a TASK claim, an empty inventory's soft 409 included, is a receipt and never a strike; a malformed TASK (`400 wait-timing-invalid`) is a hard result like any other operation's. | The TASK receipt. |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
 
 `EXEC` results remain exact model-visible evidence but are always soft: an
