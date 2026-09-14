@@ -38,9 +38,19 @@ test("the committed real-model profile contains only universal gate invariants",
 test("the pre-push gate scrubs git's hook environment before the drill (#402)", () => {
     const hook = readFileSync(resolve(root, ".githooks", "pre-push"), "utf8");
     const scrub = hook.indexOf("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR");
-    const drill = hook.indexOf("exec npm test");
+    const drill = hook.indexOf("\nnpm test\n");
     assert.ok(scrub !== -1, "the hook unsets git's exported environment");
     assert.ok(drill !== -1 && scrub < drill, "the scrub precedes the drill, so no gate test inherits GIT_DIR");
+});
+
+test("the pre-push gate drills the pushed commit in a throwaway worktree, never the working tree (#642)", () => {
+    const hook = readFileSync(resolve(root, ".githooks", "pre-push"), "utf8");
+    const add = hook.indexOf('git worktree add --detach --quiet "$gate" "$main_sha"');
+    const enter = hook.indexOf('cd "$gate" || exit 1');
+    const drill = hook.indexOf("\nnpm test\n");
+    assert.ok(add !== -1 && enter !== -1 && add < enter && enter < drill, "the worktree at the pushed sha is entered before the drill runs");
+    assert.match(hook, /trap cleanup EXIT INT TERM HUP/u, "the worktree is removed however the drill ends");
+    assert.doesNotMatch(hook, /git status --porcelain/u, "a dirty working tree no longer blocks a push: it is not what the drill tests");
 });
 
 test("the repository root exposes the service's basic operator lifecycle", () => {
