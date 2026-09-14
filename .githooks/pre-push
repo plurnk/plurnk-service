@@ -65,6 +65,12 @@ for installed in "$repo"/*/node_modules; do
 done
 cd "$gate" || exit 1
 
+# Built output is not tracked, so the worktree has none: build it here, from the pushed
+# sources, before the phases that boot the candidate from dist (root unit, conformance).
+# A stale dist from the checkout would test yesterday's build against today's schema.
+echo "gate: building $gate"
+npm run build --silent || exit 1
+
 # Hand the drill the remote base sha so intg scopes to the changed workspaces, and the
 # pushed sha so it scopes against the ref being pushed. Single-ref, non-new pushes only —
 # a multi-ref or new-branch push has no single base and runs the full intg (safe default).
