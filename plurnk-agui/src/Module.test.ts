@@ -658,9 +658,9 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
-            { line: 1, column: 12, source: "lexer", severity: "error" },
+            { line: 1, column: 10, source: "lexer", severity: "error" },
         );
-        assert.equal(text.indexOf("<"), 13, "the UTF-16 index differs from the parser's code-point column");
+        assert.equal(text.indexOf("<"), 11, "the UTF-16 index differs from the parser's code-point column");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
     } finally { await mod.close(); }
 });

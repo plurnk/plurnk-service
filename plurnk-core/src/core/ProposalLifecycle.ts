@@ -1,6 +1,7 @@
 import {
     InvalidOperationResultError,
     PLURNK_OPS,
+    isExecutionOp,
     Validator,
     TurnDisposition,
     type OperationResult,
@@ -316,7 +317,8 @@ export default class ProposalLifecycle {
     }
 
     static #op(row: ProposalRow): ProposalProjection["op"] {
-        if (!PROPOSAL_OPS.has(row.op) || TurnDisposition.isOp(row.op)) {
+        // An execution proposal's op is its runtime tag (plurnk-service #659).
+        if ((!PROPOSAL_OPS.has(row.op) && !isExecutionOp(row.op)) || TurnDisposition.isOp(row.op)) {
             throw new Error(`Pending proposal ${row.logEntryId} has invalid operation ${JSON.stringify(row.op)}.`);
         }
         return row.op as ProposalProjection["op"];

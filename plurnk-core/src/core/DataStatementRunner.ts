@@ -129,7 +129,8 @@ export default class DataStatementRunner {
                 { scheme: schemeName, retryable: false },
             );
         }
-        const methodName = writtenOp(statement).toLowerCase() as keyof SchemeHandler;
+        // An execution is named by its runtime, not an op; its handler method is `exec`.
+        const methodName = (isExecution(statement) ? "exec" : statement.op.toLowerCase()) as keyof SchemeHandler;
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
@@ -370,7 +371,7 @@ export default class DataStatementRunner {
         return this.#failure(
             "operation-not-implemented",
             501,
-            `Scheme '${schemeName}' does not implement ${statement.op}.`,
+            `Scheme '${schemeName}' does not implement ${isExecution(statement) ? "exec" : statement.op}.`,
             {},
             {
                 scheme: schemeName,
