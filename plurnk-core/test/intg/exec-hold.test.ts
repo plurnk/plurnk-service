@@ -19,7 +19,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    runtime: "sh", aside: null, executor: runtime, target: null,
+    runtime, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

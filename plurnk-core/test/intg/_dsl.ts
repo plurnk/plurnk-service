@@ -94,7 +94,7 @@ export const moveStmt = (
 // {§exec-executor-slot} — the executor is the bracket slot; null spells the default shell.
 export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
     metadata,
-    runtime: "sh", aside: null, executor: runtime, target, lineMarker: null, body,
+    runtime, aside: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
