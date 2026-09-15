@@ -17,6 +17,8 @@ import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
+import { contentWeight } from "../src/core/content-weight.ts";
+import EntryCrud from "../src/schemes/_entry-crud.ts";
 import Daemon from "../src/server/Daemon.ts";
 import type { Db } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_helpers.ts";
@@ -167,19 +169,15 @@ export const seedEntry = async (
     db: Db, workspaceId: number,
     opts: { scheme?: string; pathname: string; content: string; mimetype?: string },
 ): Promise<number> => {
-    // worker:///lines.md resolves to pathname "/lines.md" — the prod write path canonicalizes to that
-    // leading-slash form, so storing the bare arg ("lines.md") 404'd the model's READ by one char.
-    // Honor the convention. (readWorkspaceEntry is a direct scheme+pathname+channel lookup — no
-    // membership filter — so a plain workspace entry resolves; no git materialization needed.)
     const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
-    const e = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0,
-        workspace_id: workspaceId, scheme: opts.scheme ?? "worker", authority: "", pathname,
-    });
-    if (e === undefined) throw new Error("seedEntry: insert returned no row");
-    await db.test_seed_channel_hashed.run({
-        entry_id: e.id, name: "body", content: opts.content, mimetype: opts.mimetype ?? "text/markdown", weight: 0, state: "static",
-    });
-    return e.id;
+    const published = await EntryCrud.writeEntry({ authority: "", pathname }, {
+        channels: { body: { content: opts.content, mimetype: opts.mimetype ?? "text/markdown" } },
+    }, {
+        db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
+        writer: "_plurnk", signal: undefined, mimetypes, weigh: contentWeight,
+    }, opts.scheme ?? "worker");
+    if (published.entryId === null) throw new Error("seedEntry: publication returned no entry");
+    return published.entryId;
 };
 
 // Forensic read-back: an entry's body content by pathname (undefined once the

@@ -185,7 +185,7 @@ test("{§web-search-retrieval} story: answer a current question with search MCP 
     const story = await runStory({
         signal: t.signal,
         label: "web-search-mcp",
-        prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
+        prompt: "Search the web for the newest non-prerelease Node.js release (Current, not LTS). Tell me its full major.minor.patch version in one sentence.",
         maxTurns: 8,
         setup: enableMcp("brave"),
     });

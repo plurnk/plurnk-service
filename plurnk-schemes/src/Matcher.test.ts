@@ -235,7 +235,7 @@ test("matcher: unexpected error propagates (not caught)", async () => {
 // xml engine. This pins that schemes serves xpath through the framework with
 // zero runtime deps. Uses
 // a real Mimetypes instance, not a stub, so a regression in the dep surfaces.
-test("matcher: xpath dialect served by the framework, no local xml engine", async () => {
+test("{§mimetype-content-query} matcher receives XPath source coordinates through the framework", async () => {
     const { Mimetypes } = await import("@plurnk/plurnk-mimetypes");
     const mts = new Mimetypes({ defaultMimetype: "text/markdown" });
     const xpathBody: MatcherBody = { dialect: "xpath", raw: "//item" };
@@ -243,8 +243,8 @@ test("matcher: xpath dialect served by the framework, no local xml engine", asyn
     const r = await Matcher.matchAgainstContent(xpathBody, xml, "text/html", mts);
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { locator: "(//item)[1]" },
-        { locator: "(//item)[2]" },
+        { locator: "(//item)[1]", region: { startLine: 2, startColumn: 3, endLine: 2, endColumn: 17 } },
+        { locator: "(//item)[2]", region: { startLine: 3, startColumn: 3, endLine: 3, endColumn: 17 } },
     ]);
 });
 

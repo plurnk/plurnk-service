@@ -22,7 +22,7 @@
         "handlers": [
             {
                 "name": "application/x-ipynb+json",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📓",
                 "extensions": [
                     ".ipynb"

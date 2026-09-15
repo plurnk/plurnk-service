@@ -5,30 +5,33 @@ import TextHtml from "./TextHtml.ts";
 
 const h = new TextHtml({ mimetype: "text/html", glyph: "H", extensions: [".html"] as const });
 const html = "<html>\n<body>\n<div>\n<p>x</p>\n</div>\n</body>\n</html>";
+const regions = [{ startLine: 3, startColumn: 1, endLine: 5, endColumn: 7 }];
 
 describe("HTML structural match evidence", () => {
-    it("classifies both transformed structural dialects as locator-only", async () => {
+    it("{§mimetype-content-query} both structural dialects address the source markup", async () => {
         await assertQueryEvidenceConformance(h, [
             {
                 source: html,
                 dialect: "jsonpath",
                 pattern: "$..children[?(@.type==\"div\")]",
-                verdict: "locator-only",
+                verdict: "enclosing",
+                expectRegions: [regions],
             },
             {
                 source: html,
                 dialect: "xpath",
                 pattern: "//div",
-                verdict: "locator-only",
+                verdict: "enclosing",
+                expectRegions: [regions],
             },
         ]);
     });
 
-    it("both dialects retain locators without raw-HTML coordinates in Markdown", async () => {
+    it("both dialects retain locators alongside source coordinates", async () => {
         const j = await h.query(html, "jsonpath", "$..children[?(@.type==\"div\")]");
         const x = await h.query(html, "xpath", "//div");
-        assert.equal(j[0].regions, undefined);
-        assert.equal(x[0].regions, undefined);
+        assert.deepEqual(j[0].regions, regions);
+        assert.deepEqual(x[0].regions, regions);
         assert.ok(typeof j[0].matching === "string");
         assert.equal(x[0].matching, "//div");
     });

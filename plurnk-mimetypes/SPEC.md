@@ -1082,7 +1082,10 @@ notebook JSON), on a stored `readable` channel it matches the projection. A
 handler must not route regex/glob through its readable projection; `toText()`
 is the binary-to-text seam for handlers whose bytes have a textual form, and
 the default string passthrough otherwise. Query evidence therefore always
-addresses the channel that was queried.
+addresses the channel that was queried. Structural queries over a text source
+also retain its parser-backed coordinates; the existence of a separate readable
+projection does not suppress them. Byte-derived or synthetic results without
+a source mapping and computed scalars remain locator-only ({§mimetype-query}).
 
 ## §mimetype-tokenizer 19. Tokenizer seam
 

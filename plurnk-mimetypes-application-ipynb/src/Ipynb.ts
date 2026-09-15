@@ -1,6 +1,6 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
-import { findNodeAtLocation, getNodeValue, parseTree } from "jsonc-parser";
+import { findNodeAtLocation, getNodeValue, parseTree, type Node } from "jsonc-parser";
 
 // application/x-ipynb+json (Jupyter notebook) handler — Tier 4, no parser dep.
 //
@@ -50,10 +50,7 @@ export default class Ipynb extends BaseHandler {
         if (dialect === "jsonpath" && typeof content === "string") {
             const tree = parseTree(content);
             if (tree !== undefined) {
-                // The model reads projected notebook markdown, not raw JSON.
-                // Retain the JSONPath locator without fabricating coordinates
-                // in a different representation.
-                return queryJsonpathObject(getNodeValue(tree) as unknown, pattern);
+                return queryJsonpathObject(getNodeValue(tree) as unknown, pattern, sourceRegions(tree, content));
             }
         }
         return super.query(content, dialect, pattern, flags);
@@ -66,12 +63,13 @@ export default class Ipynb extends BaseHandler {
         if (typeof content !== "string") return super.deepXml(content);
         const tree = parseTree(content);
         if (tree === undefined) return super.deepXml(content);
-        const span = (pointer: string): { line: number; endLine: number } | undefined => {
-            const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
-            if (valueNode === undefined) return undefined;
-            const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
-            const line = offsetToLine(content, node.offset);
-            return { line, endLine: offsetToLine(content, node.offset + Math.max(node.length - 1, 0)) };
+        const regions = sourceRegions(tree, content);
+        const span = (pointer: string) => {
+            const region = regions(pointer)?.[0];
+            return region === undefined ? undefined : {
+                line: region.startLine, endLine: region.endLine,
+                column: region.startColumn, endColumn: region.endColumn,
+            };
         };
         return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
@@ -122,11 +120,15 @@ function pointerToSegments(pointer: string): Array<string | number> {
     });
 }
 
-function offsetToLine(text: string, offset: number): number {
-    let line = 1;
-    const limit = Math.min(offset, text.length);
-    for (let i = 0; i < limit; i += 1) if (text.charCodeAt(i) === 0x0a) line += 1;
-    return line;
+function sourceRegions(tree: Node, content: string): (pointer: string) => QueryMatch["regions"] {
+    const coordinates = new TextCoordinates(content);
+    return (pointer) => {
+        const value = findNodeAtLocation(tree, pointerToSegments(pointer));
+        if (value === undefined) return undefined;
+        const node = value.parent?.type === "property" ? value.parent : value;
+        const region = coordinates.regionFromOffsets(node.offset, node.offset + node.length);
+        return region === null ? undefined : [region];
+    };
 }
 
 function safeParse(content: HandlerContent): Notebook | null {

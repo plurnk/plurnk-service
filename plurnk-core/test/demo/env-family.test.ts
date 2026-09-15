@@ -27,7 +27,7 @@ test("demo: the model finds a credential's name in the catalog and asks for it b
         const loop = await liveLoop(
             s, 1,
             {
-                prompt: "You need to perform a web search, but no search credential is configured. "
+                prompt: "You need to use Tavily for a web search, but its search credential is not configured. "
                     + "Find out which environment variable supplies it and what it is for, then tell me "
                     + "its exact name and purpose. Do not guess the name — find it.",
                 maxTurns: 12,

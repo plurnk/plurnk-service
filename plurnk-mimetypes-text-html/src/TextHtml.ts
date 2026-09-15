@@ -2,6 +2,7 @@ import {
     BaseHandler,
     InvalidExpressionError,
     QueryParseFailureError,
+    TextCoordinates,
 } from "@plurnk/plurnk-mimetypes";
 import type {
     HandlerContent,
@@ -87,8 +88,6 @@ export default class TextHtml extends BaseHandler {
         const doc = parse(html, { sourceCodeLocationInfo: true });
         const root: Record<string, unknown> = {
             type: "document",
-            line: 1,
-            endLine: 1,
             children: collectChildren(doc),
         };
         return root;
@@ -108,9 +107,8 @@ export default class TextHtml extends BaseHandler {
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
     // re-parse via @xmldom/xmldom (which produces a real DOM that the `xpath`
-    // package can walk). Raw HTML positions do not address the model-facing
-    // Markdown projection, so XPath results retain structural locators without
-    // fabricating TextRegions.
+    // package can walk). parse5's source offsets address the queried markup,
+    // never its separate readable projection ({§mimetype-content-query}).
     override async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -145,25 +143,52 @@ export default class TextHtml extends BaseHandler {
                 throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
             }
 
-            return shapeXpathResult(pattern, result);
+            return shapeXpathResult(pattern, result, sourceRegions(html));
         }
         return super.query(content, dialect, pattern, flags);
     }
 }
 
 // Translate an xpath.select return value to QueryMatch[] per {§mimetype-query}.
-function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
+function shapeXpathResult(pattern: string, result: xpath.SelectReturnType, regionsByStart: ReadonlyMap<string, NonNullable<QueryMatch["regions"]>>): QueryMatch[] {
     if (Array.isArray(result)) {
-        return result.map((node, i): QueryMatch => ({
-            matched: serializeNode(node),
-            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
-        }));
+        return result.map((node, i): QueryMatch => {
+            const regions = nodeRegions(node, regionsByStart);
+            return {
+                matched: serializeNode(node),
+                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
+                ...(regions === undefined ? {} : { regions }),
+            };
+        });
     }
     if (result === null || result === undefined) return [];
     return [{
         matched: typeof result === "string" ? result : String(result),
         matching: pattern,
     }];
+}
+
+function sourceRegions(html: string): ReadonlyMap<string, NonNullable<QueryMatch["regions"]>> {
+    const regions = new Map<string, NonNullable<QueryMatch["regions"]>>();
+    const coordinates = new TextCoordinates(html);
+    const visit = (node: ChildNode | ParentNode): void => {
+        const loc = node.sourceCodeLocation;
+        if (loc !== undefined && loc !== null) {
+            const region = coordinates.regionFromOffsets(loc.startOffset, loc.endOffset);
+            if (region !== null) regions.set(`${loc.startLine}:${loc.startCol}`, [region]);
+        }
+        if (hasChildNodes(node)) for (const child of node.childNodes) visit(child);
+    };
+    visit(parse(html, { sourceCodeLocationInfo: true }));
+    return regions;
+}
+
+function nodeRegions(node: Node, regionsByStart: ReadonlyMap<string, NonNullable<QueryMatch["regions"]>>): QueryMatch["regions"] {
+    const source = node as Node & { lineNumber?: number; columnNumber?: number };
+    const regions = regionsByStart.get(`${source.lineNumber}:${source.columnNumber}`);
+    if (regions !== undefined) return regions;
+    const parent = (node as Attr).ownerElement ?? node.parentNode;
+    return parent === null ? undefined : nodeRegions(parent, regionsByStart);
 }
 
 // Convert an xpath result node to a string suitable for QueryMatch.matched.
@@ -320,8 +345,7 @@ function elementToDeep(el: Element): Record<string, unknown> {
     const loc = el.sourceCodeLocation;
     const node: Record<string, unknown> = {
         type: el.tagName,
-        line: loc?.startLine ?? 1,
-        endLine: loc?.endLine ?? loc?.startLine ?? 1,
+        ...(loc === undefined || loc === null ? {} : { line: loc.startLine, endLine: loc.endLine }),
     };
     if (el.attrs && el.attrs.length > 0) {
         const attrs: Record<string, string> = {};

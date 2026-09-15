@@ -11,6 +11,23 @@ const metadata = {
 };
 
 describe("BaseHandler", () => {
+    it("{§mimetype-content-query} structural evidence addresses its text source even when a readable sibling exists", async () => {
+        class Projected extends BaseHandler {
+            override content(): string { return "a different readable projection"; }
+            override deepJson(): unknown { return { type: "node", line: 2, endLine: 2, name: "source" }; }
+        }
+        const h = new Projected(metadata);
+        const expected = [{ startLine: 2, startColumn: 1, endLine: 2, endColumn: 7 }];
+        for (const [dialect, pattern] of [["xpath", "//node"], ["jsonpath", "$"]] as const) {
+            const matches = await h.query("before\nsource\nafter", dialect, pattern);
+            assert.equal(matches.length, 1);
+            assert.deepEqual(matches[0].regions, expected);
+            const binary = await h.query(new TextEncoder().encode("before\nsource\nafter"), dialect, pattern);
+            assert.equal(binary[0].regions, undefined, "bytes do not imply a text source map");
+        }
+        const computed = await h.query("before\nsource\nafter", "xpath", "count(//node)");
+        assert.equal(computed[0].regions, undefined, "a computed scalar has no source node");
+    });
     it("exposes metadata on the instance", () => {
         const h = new BaseHandler(metadata);
         assert.equal(h.mimetype, "text/plain");

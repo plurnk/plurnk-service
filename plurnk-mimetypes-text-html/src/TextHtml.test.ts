@@ -167,6 +167,13 @@ describe("TextHtml — content shape", () => {
 });
 
 describe("TextHtml — xpath query", () => {
+    it("{§mimetype-content-query} synthetic HTML containers have no invented source coordinates", async () => {
+        const out = await h.query("<p>Content</p>", "jsonpath", "$..children[?(@.type == 'head')]");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].regions, undefined);
+        assert.deepEqual(out[0].matched, { type: "head" });
+    });
+
     it("matches elements and returns serialized XML as `matched`", async () => {
         const html = "<html><body><p>One</p><p>Two</p></body></html>";
         const out = await h.query(html, "xpath", "//p");
@@ -176,12 +183,12 @@ describe("TextHtml — xpath query", () => {
         assert.ok(first.includes("<p"));
     });
 
-    it("retains locators without mapping raw HTML positions into readable Markdown", async () => {
+    it("{§mimetype-content-query} retains XPath locators and source markup coordinates", async () => {
         const html = "<root>\n  <p>a</p>\n  <p>b</p>\n</root>";
         const out = await h.query(html, "xpath", "//p");
         assert.equal(out.length, 2);
-        assert.equal(out[0].regions, undefined);
-        assert.equal(out[1].regions, undefined);
+        assert.deepEqual(out[0].regions, [{ startLine: 2, startColumn: 3, endLine: 2, endColumn: 11 }]);
+        assert.deepEqual(out[1].regions, [{ startLine: 3, startColumn: 3, endLine: 3, endColumn: 11 }]);
         assert.equal(out[0].matching, "(//p)[1]");
         assert.equal(out[1].matching, "(//p)[2]");
     });
@@ -237,6 +244,15 @@ describe("TextHtml — xpath query", () => {
         const html = "<html><body><h1>Top</h1></body></html>";
         const out = await h.query(html, "xpath", "//nonexistent");
         assert.deepEqual(out, []);
+    });
+
+    it("{§mimetype-query-conformance} source spans survive multiline markup, entities, and Unicode", async () => {
+        const html = '<html>\n<body>😀<p title="a&amp;b">\nhello &amp; goodbye\n</p></body>\n</html>';
+        const elements = await h.query(html, "xpath", "//p");
+        assert.deepEqual(elements[0].regions, [{ startLine: 2, startColumn: 8, endLine: 4, endColumn: 5 }]);
+        const attributes = await h.query(html, "xpath", "//p/@title");
+        assert.deepEqual(attributes[0].regions, elements[0].regions, "an attribute has its honest enclosing element");
+        assert.equal(attributes[0].matched, "a&b");
     });
 });
 

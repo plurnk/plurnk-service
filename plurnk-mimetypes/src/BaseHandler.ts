@@ -118,7 +118,7 @@ export default class BaseHandler {
             case "jsonpath": {
                 // A symbol outline is the default structural fallback.
                 const tree = await this.deepJson(content);
-                const readableText = await this.#structuralText(content);
+                const readableText = typeof content === "string" ? content : undefined;
                 if (tree !== null && tree !== undefined) {
                     return queryJsonpathObject(tree, pattern, undefined, readableText);
                 }
@@ -139,15 +139,10 @@ export default class BaseHandler {
                     xml,
                     pattern,
                     this.mimetype,
-                    await this.#structuralText(content),
+                    typeof content === "string" ? content : undefined,
                 );
             }
         }
-    }
-
-    async #structuralText(content: HandlerContent): Promise<string | undefined> {
-        if (typeof content !== "string") return undefined;
-        return await this.content(content) === undefined ? content : undefined;
     }
 
     // String passthrough for regex/glob; binary handlers must project explicitly.

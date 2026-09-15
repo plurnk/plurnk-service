@@ -1,5 +1,4 @@
-// A notebook's readable body is projected Markdown. Structural matches retain
-// canonical JSONPath locators without leaking raw-JSON coordinates into it.
+// {§mimetype-content-query}: queries address notebook JSON, not its readable sibling.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Ipynb from "./Ipynb.ts";
@@ -12,17 +11,20 @@ const nb = JSON.stringify(
 );
 
 describe("ipynb structural match evidence", () => {
-    it("every cell match retains a locator and no fabricated Markdown region", async () => {
+    it("every cell match retains its locator and actual JSON source region", async () => {
         const out = await h.query(nb, "jsonpath", "$.cells[*]");
         assert.equal(out.length, 2);
-        assert.ok(out.every((match) =>
-            typeof match.matching === "string" && match.regions === undefined));
+        assert.deepEqual(out.map(({ matching }) => matching), ["$['cells'][0]", "$['cells'][1]"]);
+        assert.deepEqual(out.map(({ regions }) => regions), [
+            [{ startLine: 3, startColumn: 3, endLine: 8, endColumn: 4 }],
+            [{ startLine: 9, startColumn: 3, endLine: 14, endColumn: 4 }],
+        ]);
     });
     it("a leaf retains its canonical locator", async () => {
         const out = await h.query(nb, "jsonpath", "$.nbformat");
         assert.equal(out[0].matched, 4);
         assert.equal(out[0].matching, "$['nbformat']");
-        assert.equal(out[0].regions, undefined);
+        assert.deepEqual(out[0].regions, [{ startLine: 17, startColumn: 2, endLine: 17, endColumn: 15 }]);
     });
 });
 
