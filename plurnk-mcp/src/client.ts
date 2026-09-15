@@ -2,6 +2,8 @@ import {
     OAuthClientFlowError,
     OAuthError,
     UnauthorizedError,
+    ProtocolError,
+    METHOD_NOT_FOUND,
     Client,
     ClientCredentialsProvider,
     StreamableHTTPClientTransport,
@@ -76,6 +78,7 @@ export interface ServerCatalog {
     readonly resources: Awaited<ReturnType<Client["listResources"]>>["resources"];
     readonly resourceTemplates: Awaited<ReturnType<Client["listResourceTemplates"]>>["resourceTemplates"];
     readonly prompts: Awaited<ReturnType<Client["listPrompts"]>>["prompts"];
+    readonly unsupportedLists: readonly string[];
 }
 
 interface ResolvedStdioDefinition {
@@ -344,7 +347,12 @@ const openTransport = (
 // aggregate as if it were whole. This client watches the pages the SDK requests and refuses the page
 // that repeats a cursor, so a non-converging server fails the listing loudly and nothing partial is
 // published or cached. Pagination, caching, and the page cap stay the SDK's.
-const LIST_METHODS = new Set(["tools/list", "resources/list", "resources/templates/list", "prompts/list"]);
+const LIST_COLLECTIONS = new Map([
+    ["tools/list", "tools"],
+    ["resources/list", "resources"],
+    ["resources/templates/list", "resourceTemplates"],
+    ["prompts/list", "prompts"],
+]);
 
 export class CatalogNonConvergenceError extends Error {
     readonly method: string;
@@ -357,17 +365,36 @@ export class CatalogNonConvergenceError extends Error {
     }
 }
 
-class ConvergingClient extends Client {
+class CatalogClient extends Client {
     // Cursors the server has returned in the current walk of each list method; a walk begins at
     // the SDK's cursorless first page.
     readonly #returned = new Map<string, Set<string>>();
+    readonly #unsupported = new Set<string>();
+
+    get unsupportedLists(): readonly string[] {
+        return [...this.#unsupported].sort();
+    }
 
     override request<M extends RequestMethod>(request: { method: M; params?: Record<string, unknown> }, options?: RequestOptions): Promise<ResultTypeMap[M]>;
     override request<T extends StandardSchemaV1>(request: Request, resultSchema: T, options?: RequestOptions): Promise<StandardSchemaV1.InferOutput<T>>;
     override async request(...args: unknown[]): Promise<unknown> {
-        const result = await (super.request as unknown as (...inner: unknown[]) => Promise<unknown>)(...args);
         const sent = args[0] as { method?: unknown; params?: { cursor?: unknown } };
-        if (typeof sent.method !== "string" || !LIST_METHODS.has(sent.method)) return result;
+        const collection = typeof sent.method === "string" ? LIST_COLLECTIONS.get(sent.method) : undefined;
+        let result: unknown;
+        try {
+            result = await (super.request as unknown as (...inner: unknown[]) => Promise<unknown>)(...args);
+        } catch (error) {
+            // {§mcp-catalog-list-absence} — never turn a later-page error into a partial success.
+            if (
+                collection === undefined || typeof sent.method !== "string"
+                || sent.params?.cursor !== undefined
+                || !ProtocolError.isInstance(error) || error.code !== METHOD_NOT_FOUND
+            ) throw error;
+            this.#unsupported.add(sent.method);
+            return { resultType: "complete", [collection]: [], ttlMs: 0, cacheScope: "private" };
+        }
+        if (collection === undefined || typeof sent.method !== "string") return result;
+        this.#unsupported.delete(sent.method);
         const cursor = sent.params?.cursor;
         if (cursor === undefined) this.#returned.set(sent.method, new Set());
         const returned = this.#returned.get(sent.method) ?? new Set<string>();
@@ -391,7 +418,7 @@ export class AuthorizationRequiredError extends Error {
 }
 
 interface OpenClient {
-    readonly client: Client;
+    readonly client: CatalogClient;
     readonly transport: StdioClientTransport | StreamableHTTPClientTransport;
     readonly extensions: ExtensionChannel | null;
     readonly protocolVersion: string;
@@ -423,7 +450,7 @@ const openClient = async (
                 : {}),
         },
     } satisfies ClientCapabilities;
-    const client = new ConvergingClient(
+    const client = new CatalogClient(
         clientInfo,
         {
             capabilities: clientCapabilities,
@@ -617,7 +644,7 @@ export default class ServerConnection {
 
     async #request<T>(
         run: (
-            client: Client,
+            client: CatalogClient,
             subscriptions: Subscriptions,
             extensions: ExtensionChannel | null,
         ) => Promise<T>,
@@ -694,6 +721,7 @@ export default class ServerConnection {
                 resources,
                 resourceTemplates,
                 prompts,
+                unsupportedLists: client.unsupportedLists,
             };
         });
     }

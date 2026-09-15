@@ -103,7 +103,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-convergence}", "plurnk-mcp HttpTransport 'a catalog whose pagination never converges is an error, never a partial listing'"],
-        note: "The SDK walks the pages and caps them; the host refuses a repeated cursor, which the SDK would otherwise return as a complete catalog.",
+        note: "The SDK walks the pages and caps them; the host rejects repeated cursors and tolerates first-page method-not-found only ({§mcp-catalog-list-absence}, plurnk-mcp/src/catalog.test.ts).",
     },
     {
         id: "caching",

@@ -144,11 +144,7 @@ const runCore = async (): Promise<void> => {
             if (tool !== undefined) {
                 await connection.callTool(tool.name, {}, undefined, undefined, undefined, tool);
             }
-            try {
-                await connection.resources();
-            } catch (error) {
-                if (!String(error).includes("resources/templates/list")) throw error;
-            }
+            await connection.resources();
             await connection.readResource("file:///path/to/file%20name.txt");
             if (prompt !== undefined) await connection.getPrompt(prompt.name, undefined);
             return;

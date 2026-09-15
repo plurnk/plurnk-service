@@ -278,6 +278,9 @@ export default class McpExecutor extends BaseExecutor {
                 `${catalog.tools.length} tools`,
                 `${catalog.resources.length} resources`,
                 `${catalog.prompts.length} prompts`,
+                ...(catalog.unsupportedLists.length === 0
+                    ? []
+                    : [`not implemented: ${catalog.unsupportedLists.join(", ")}`]),
             ].join("; "),
         };
     }

@@ -221,6 +221,7 @@ test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends au
                 resources: [],
                 resourceTemplates: [],
                 prompts: [],
+                unsupportedLists: [],
             };
         },
         async callTool() {
@@ -441,6 +442,7 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
         resources: [],
         resourceTemplates: [],
         prompts: [],
+        unsupportedLists: [],
         ...(instructions === undefined ? {} : { instructions }),
     }) as unknown as ServerCatalog;
 

@@ -226,6 +226,7 @@ test("MCP resource failures bound third-party diagnostics", async () => {
             resources: [{ uri: "fixture://document", name: "document" }],
             resourceTemplates: [],
             prompts: [],
+            unsupportedLists: [],
         } as unknown as ServerCatalog;
         const resources = new McpResources("fixture", connection, catalog);
         const result = await resources.prepareRepresentation(

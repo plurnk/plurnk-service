@@ -64,6 +64,15 @@ Pagination, caching, and the cap remain the SDK's; a converging server's pages a
 before. This is a host guard over an upstream behavior, not a second paginator; the upstream
 report is #601's to file.
 
+§mcp-catalog-list-absence **An unsupported list method does not disable the server.**
+At the first page of `tools/list`, `resources/list`, `resources/templates/list`, or
+`prompts/list`, JSON-RPC `-32601` yields an empty collection for that method and an
+availability detail naming the unsupported method. This is host tolerance, not
+a claim that the server satisfies its advertised capabilities. The empty result
+is immediately stale; a later successful listing clears the diagnostic. An error
+after the first page, any other protocol error, transport/authentication failure,
+or non-convergence remains a failure. SDK pagination and caching retain ownership.
+
 ## §mcp-tasks Tasks extension
 
 Tasks is the optional `io.modelcontextprotocol/tasks` extension, never core
