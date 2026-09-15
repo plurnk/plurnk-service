@@ -464,7 +464,7 @@ local target = require("plurnk.bridge").target()
 local world = ${JSON.stringify(world)}
 local function rpc(method, params)
   local segment
-  agui.rpc(target, world, method, params or {}, function(value) segment = value end)
+  agui.rpc(target, { workspace = world, threadId = world }, method, params or {}, function(value) segment = value end)
   if not vim.wait(10000, function() return segment ~= nil end, 25) then error(method .. " timed out") end
   if segment.state ~= "complete" then error(method .. " failed: " .. vim.inspect(segment.problem)) end
   return segment.result
