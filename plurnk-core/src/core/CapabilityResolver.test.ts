@@ -6,7 +6,7 @@ import CapabilityResolver from "./CapabilityResolver.ts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import SchemeRegistry from "./SchemeRegistry.ts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 const statement = (source: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: ["tools", "resource-tool", "optional-resource"] });
@@ -86,10 +86,10 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
     const covered = new Set<string>();
     for (const specimen of cases) {
         const parsed = statement(specimen.source);
-        covered.add(writtenOp(parsed));
+        covered.add(isExecution(parsed) ? "execution" : parsed.op);
         assert.deepEqual(resolver.descriptors(parsed, 1), specimen.expected, specimen.source);
     }
-    assert.deepEqual([...covered].toSorted(), [...PLURNK_OPS].toSorted());
+    assert.deepEqual([...covered].toSorted(), [...PLURNK_OPS, "execution"].toSorted());
 });
 
 test("{§capability-admission} classifies target-dependent control and curation routes", () => {

@@ -8,6 +8,8 @@ const RESERVED = new Map([
     ["only", "PLURNK_EXECS_ONLY"],
     ["exec", "the execution scheme"],
     ["prompt", "the prompt row"],
+    ["extension", "extension rows"],
+    ["error", "error rows"],
 ]);
 
 // One admission rule for installed and module-owned executor identities

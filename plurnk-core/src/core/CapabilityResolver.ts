@@ -14,7 +14,7 @@ import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
-import { isExecution, RuntimeTag } from "@plurnk/plurnk-contracts";
+import { isExecution, isExecutionOp, type RuntimeTag } from "@plurnk/plurnk-contracts";
 
 type CapabilityScope = "service" | "workspace";
 
@@ -195,7 +195,11 @@ export default class CapabilityResolver {
             CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));
         const entryBearing = manifest.category === "data";
         const readable = entryBearing || coreRepresentationProvider(handler) !== null;
-        const observers: readonly CapabilityDescriptor["operation"][] = ["READ", "COPY", "BARE", ...(this.#executors()?.availableRuntimes(workspaceId) ?? []) as readonly RuntimeTag[]];
+        // An execution observing this scheme is keyed by its runtime: the registered runtimes when a
+        // registry is present, else the runtimes the policies themselves name.
+        const runtimes = this.#executors()?.availableRuntimes(workspaceId)
+            ?? policies.flatMap((policy) => [...(policy.only ?? []), ...(policy.deny ?? [])]).map((selector) => selector.operation).filter(isExecutionOp);
+        const observers: readonly CapabilityDescriptor["operation"][] = ["READ", "COPY", "BARE", ...runtimes as readonly RuntimeTag[]];
         if (readable && observers.some((operation) => allows(operation, "observe"))) return true;
         if ((entryBearing || typeof handler.find === "function") && allows("FIND", "observe")) return true;
         if (!manifest.writableBy.includes("model")) return false;

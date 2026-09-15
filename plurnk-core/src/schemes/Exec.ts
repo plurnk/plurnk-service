@@ -47,7 +47,7 @@ import ExecScheduler from "./ExecScheduler.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
-import { RuntimeTag } from "@plurnk/plurnk-contracts";
+import { type RuntimeTag } from "@plurnk/plurnk-contracts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 

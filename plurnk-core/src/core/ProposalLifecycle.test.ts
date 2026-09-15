@@ -229,7 +229,7 @@ test("{§proposal-accept-applies}: an accepted scheme's successful application s
                 loop_seq: 2,
                 turn_seq: 3,
                 sequence: 4,
-                runtime: "sh", attrs: "{}",
+                op: "sh", attrs: "{}",
                 tx: JSON.stringify({ runtime: "sh", body: "long task" }),
                 mimetype_tx: "application/json",
                 mimetype_rx: "application/json",

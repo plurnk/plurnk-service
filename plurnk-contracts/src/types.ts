@@ -31,10 +31,11 @@ export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
 // An execution is written as its runtime's fence, so its operation IS the runtime tag: lowercase
 // by {§executor-runtime-declaration}, which is why it can never collide with an operation keyword.
-// The prompt row's `prompt` is the one lowercase op that is not an execution.
+// The engine's own lowercase row ops (`prompt`, `extension`, `error`) are reserved runtime names.
 export type RuntimeTag = Lowercase<string>;
 export const RUNTIME_TAG = /^[a-z][a-z0-9+.-]*$/;
-export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag => typeof op === "string" && op !== "prompt" && RUNTIME_TAG.test(op);
+export const INTERNAL_ROW_OPS: ReadonlySet<string> = new Set(["prompt", "extension", "error"]);
+export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag => typeof op === "string" && !INTERNAL_ROW_OPS.has(op) && RUNTIME_TAG.test(op);
 export const isExecution = <T extends { readonly op?: string | undefined }>(statement: T): statement is Extract<T, { runtime: RuntimeTag }> =>
     "runtime" in statement;
 // The heading token as written: an operation keyword, or an execution's runtime. This is the
