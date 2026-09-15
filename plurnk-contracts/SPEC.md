@@ -344,8 +344,15 @@ registered executor's name case-insensitively opens that executor (`SH` opens
 `sh`), and the statement's `executor` is the registered spelling, so a lookup
 by that name never misses. Operation names stay uppercase by teaching and were
 never written otherwise in 12,000 fences; one `SH` in 1,300 `sh` fences was
-(2026-09-13 census). An unregistered name in any case is still prose
-({§interstitial-fence}).
+(2026-09-13 census). An unregistered name without an accepted spelling
+({§executor-js-spelling}) is still prose ({§interstitial-fence}).
+
+§executor-js-spelling When `node` is registered and `js` is not, `js` names
+`node` under {§executor-case}. Parsing normalizes the runtime before admission
+and dispatch; execution, policy, receipts, and output addresses remain Node's.
+The authored source remains unchanged. This spelling adds no executor, discovery
+entry, or model-facing teaching. An explicitly registered `js` retains its own
+identity; absent `node`, the shorthand grants no executable capability.
 
 §one-line-turn **A whole turn on one line.** The most frequent private rejection
 across the 2026-09-12/13 dumbox runs (five of eleven) was a turn emitted as a

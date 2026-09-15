@@ -13,6 +13,45 @@ const frame = PlurnkParser.frame;
 const task = (content: string, status: Plan[number]["status"] = "in_progress") =>
     frame("TASK", JSON.stringify([{ content, status }]));
 
+for (const entrypoint of ["parse", "parseStatements", "parseClient", "parseLog"] as const) {
+    test(`{§executor-js-spelling}: ${entrypoint} canonicalizes js without shadowing a registered executor`, () => {
+        for (const { executors, tag, runtime } of [
+            { executors: ["node"], tag: "js", runtime: "node" },
+            { executors: ["Node"], tag: "JS", runtime: "Node" },
+            { executors: ["node", "js"], tag: "js", runtime: "js" },
+            { executors: ["js", "node"], tag: "js", runtime: "js" },
+            { executors: ["js"], tag: "JS", runtime: "js" },
+            { executors: [], tag: "js", runtime: null },
+        ]) {
+            const body = "console.log(42);";
+            const source = frame(tag, body) + "\n" + task("Inspect the result.");
+            const parsed = PlurnkParser[entrypoint](source, { executors });
+            const diagnostics = parsed.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+            assert.deepEqual(diagnostics.map((error) => ({ severity: error.severity, message: error.message })), runtime === null ? [{
+                severity: "warning",
+                message: "`js` is not an operation or a known executor here; the block was read as prose and nothing ran.",
+            }] : []);
+            assert.equal(parsed.unparsedTail, undefined);
+            const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+            assert.deepEqual(statements.map(writtenOp), runtime === null ? ["TASK"] : [runtime, "TASK"]);
+            if (runtime === null) continue;
+            const execution = statements[0];
+            assert.ok(isExecution(execution));
+            assert.equal(execution.body, body);
+            assert.equal(PlurnkParser.stringify([execution]), frame(runtime, body), "serialization uses the canonical executor");
+        }
+    });
+}
+
+test("{§executor-js-spelling}: a nested js example remains a literal message body", () => {
+    const body = frame("js", "console.log(42);");
+    const parsed = PlurnkParser.parse(frame("SEND", body) + "\n" + task("Explained.", "completed"), { executors: ["node"] });
+    assert.deepEqual(errors(parsed), []);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "TASK"]);
+    const send = ops(parsed)[0];
+    assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
+});
+
 // {§canonical-statement}
 test("independent fenced operations retain exact bodies and typed fields", () => {
     const input = [

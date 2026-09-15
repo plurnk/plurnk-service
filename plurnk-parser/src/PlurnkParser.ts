@@ -191,7 +191,14 @@ export default class PlurnkParser {
     ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
-        AstBuilder.executorSpellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
+        const spellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
+        const node = spellings.get("node");
+        if (node !== undefined && !spellings.has("js")) {
+            // {§executor-js-spelling}: canonicalize before runtime admission, without another registration.
+            lexer.knownExecutors.add("js");
+            spellings.set("js", node);
+        }
+        AstBuilder.executorSpellings = spellings;
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
