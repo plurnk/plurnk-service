@@ -5,6 +5,7 @@
 // generated executor family whose host verbs propose. An explicit
 // client mutation and an accepted model proposal converge on `invoke`.
 import { Validator } from "@plurnk/plurnk-contracts";
+import discoverySchema from "@plurnk/plurnk-contracts/schema/FunctionalityDiscoverQuery.json" with { type: "json" };
 import { isDeepStrictEqual } from "node:util";
 import { DocFile } from "@plurnk/plurnk-execs";
 import type {
@@ -18,6 +19,7 @@ import type {
     FunctionalityCaller,
     FunctionalityFamilyHandle,
     FunctionalityIdentity,
+    FunctionalityOptions,
     FunctionalityOutcome,
     FunctionalityPrepared,
     ModuleActionRegistration,
@@ -106,6 +108,7 @@ const ALIAS = /^[a-z][a-z0-9-]*$/u;
 // A family may declare its own alias grammar ({§functionality-adapter}); the coordinator enforces it
 // wherever an alias enters: admission, the service projection, and persisted state.
 const aliasPattern = (adapter: FunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
+const scopesOf = (adapter: FunctionalityAdapter): readonly ("workspace" | "worker")[] => adapter.scopes ?? ["workspace"];
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
 const SCHEMA = (name: string): JsonSchema => ({ $ref: `https://schemas.plurnk.xyz/v0/${name}.json` });
 const ALIAS_INPUT: JsonSchema = Object.freeze({
@@ -150,21 +153,35 @@ export default class Functionality {
         if (namespaceOwner.trim().length === 0) throw new Error(`Functionality family '${family}' requires a namespace owner.`);
         if (this.#owners.has(namespaceOwner)) throw new Error(`Functionality namespace owner '${namespaceOwner}' is already registered.`);
         if (!isRecord(adapter.definitionSchema)) throw new Error(`Functionality family '${family}' requires a definition schema.`);
+        const scopes = scopesOf(adapter);
+        if (scopes.length === 0 || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== "workspace" && scope !== "worker")) {
+            throw new Error(`Functionality family '${family}' declares invalid scopes.`);
+        }
+        const scopeProperties = scopes.length > 1
+            ? { scope: { enum: [...scopes], description: `Definition scope; model calls default to ${scopes[0]}.` } }
+            : {};
+        const scopedInput = (schema: JsonSchema): JsonSchema => {
+            if (scopes.length === 1) return schema;
+            const { $id: _id, ...source } = schema;
+            if (!isRecord(source.properties)) throw new Error(`Functionality ${family} input has no property map.`);
+            return { ...source, properties: { ...source.properties, ...scopeProperties } };
+        };
         const schemas: Readonly<Record<FunctionalityVerb, JsonSchema>> = Object.freeze({
-            list: EMPTY_INPUT,
-            discover: SCHEMA("FunctionalityDiscoverQuery"),
+            list: scopedInput(EMPTY_INPUT),
+            discover: scopes.length === 1 ? SCHEMA("FunctionalityDiscoverQuery") : scopedInput(discoverySchema),
             add: Object.freeze({
                 type: "object",
                 additionalProperties: false,
                 required: ["definition"],
                 properties: {
+                    ...scopeProperties,
                     alias: { type: "string", minLength: 1 },
                     definition: adapter.definitionSchema,
                 },
             }),
-            enable: ALIAS_INPUT,
-            disable: ALIAS_INPUT,
-            remove: ALIAS_INPUT,
+            enable: scopedInput(ALIAS_INPUT),
+            disable: scopedInput(ALIAS_INPUT),
+            remove: scopedInput(ALIAS_INPUT),
         });
         // {§functionality-model-projection} — the taught `add` example must satisfy the schema it teaches.
         if (adapter.example !== undefined) {
@@ -180,28 +197,27 @@ export default class Functionality {
             activate: (context) => this.#activate(adapter, context),
             deactivate: (identity) => this.#deactivate(adapter, identity),
         });
-        // {§functionality-scope} — a worker-scoped family projects `worker.<family>.<verb>`, whose
-        // context names the Worker the verb acts for; every other family projects
-        // `workspace.<family>.<verb>`. One implementation sits beneath both.
-        const scope = adapter.scope ?? "workspace";
-        for (const verb of FUNCTIONALITY_VERBS) {
-            this.#host.registerModuleAction({
-                name: `${scope}.${family}.${verb}`,
-                scope,
-                inputSchema: schemas[verb],
-                outputSchema: SCHEMA(verb === "list"
-                    ? "FunctionalityListResult"
-                    : verb === "discover"
-                        ? "FunctionalityDiscoverResult"
-                        : "FunctionalityMutationResult"),
-                handler: async (params, context) => {
-                    if (context.scope === "worldless" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
-                    const identity: FunctionalityIdentity = context.scope === "worker"
-                        ? { workspaceId: context.workspaceId, workerId: context.workerId }
-                        : { workspaceId: context.workspaceId };
-                    return (await this.invoke(family, verb, params, identity, "action")).body;
-                },
-            });
+        // {§functionality-scope} The action context binds one of the family's supported scopes.
+        for (const scope of scopes) {
+            for (const verb of FUNCTIONALITY_VERBS) {
+                this.#host.registerModuleAction({
+                    name: `${scope}.${family}.${verb}`,
+                    scope,
+                    inputSchema: schemas[verb],
+                    outputSchema: SCHEMA(verb === "list"
+                        ? "FunctionalityListResult"
+                        : verb === "discover"
+                            ? "FunctionalityDiscoverResult"
+                            : "FunctionalityMutationResult"),
+                    handler: async (params, context) => {
+                        if (context.scope === "worldless" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
+                        const identity: FunctionalityIdentity = context.scope === "worker"
+                            ? { workspaceId: context.workspaceId, workerId: context.workerId, scope }
+                            : { workspaceId: context.workspaceId, scope };
+                        return (await this.invoke(family, verb, params, identity, "action")).body;
+                    },
+                });
+            }
         }
         return {
             invoke: (verb, params, identity) => this.invoke(family, verb, params, identity, "action"),
@@ -275,6 +291,7 @@ export default class Functionality {
         params: unknown,
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
+        options: FunctionalityOptions = {},
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
         const schema = this.#schemas.get(family)![verb];
@@ -287,19 +304,27 @@ export default class Functionality {
             });
         }
         const input = params as Record<string, unknown>;
-        if (verb === "discover") return { status: 200, body: await this.#discover(adapter, input, identity) };
+        const scope = (input.scope ?? identity.scope ?? scopesOf(adapter)[0]) as "workspace" | "worker";
+        if (!scopesOf(adapter).includes(scope) || (identity.scope !== undefined && identity.scope !== scope)) {
+            throw failure(family, "scope-mismatch", 400, `The ${family} operation's scope does not match its bound context.`, { retryable: false });
+        }
+        identity = { ...identity, scope };
+        if (verb === "discover") {
+            const { scope: _scope, ...query } = input;
+            return { status: 200, body: await this.#discover(adapter, query, identity, options) };
+        }
         // {§functionality-scope} — a worker-scoped family's list and mutations act for the invoking
         // Worker. The state is that Worker's and nothing resident changes, so they serialize on the
         // Worker's own lane and take no workspace exclusivity: a Worker shapes its environment while
         // its siblings run.
-        if (adapter.scope === "worker") {
+        if (scope === "worker") {
             const workerId = Functionality.#workerOf(adapter, identity);
-            return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller));
+            return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options));
         }
         if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
         return this.#host.mutateWorkspace(
             identity.workspaceId, adapter.namespaceOwner, caller,
-            () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller)),
+            () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options)),
         );
     }
 
@@ -312,8 +337,8 @@ export default class Functionality {
 
     // The origin a definition carries when this family owns it locally. Service definitions
     // always come from the adapter's own `available()`; everything else is the family's own.
-    static #localOrigin(adapter: FunctionalityAdapter): Origin {
-        return adapter.scope === "worker" ? "worker" : "workspace";
+    static #localOrigin(identity: FunctionalityIdentity): "worker" | "workspace" {
+        return identity.scope ?? "workspace";
     }
 
     #adapter(family: string): FunctionalityAdapter {
@@ -353,14 +378,14 @@ export default class Functionality {
     }
 
     async #loadState(adapter: FunctionalityAdapter, workspaceId: number): Promise<FamilyState> {
-        return Functionality.#parseState(adapter, await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner), `workspace ${workspaceId}`);
+        return Functionality.#parseState(adapter, await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner), `workspace ${workspaceId}`, "workspace");
     }
 
     async #loadWorkerState(adapter: FunctionalityAdapter, workerId: number): Promise<FamilyState> {
-        return Functionality.#parseState(adapter, await this.#host.readWorkerModuleState(workerId, adapter.namespaceOwner), `worker ${workerId}`);
+        return Functionality.#parseState(adapter, await this.#host.readWorkerModuleState(workerId, adapter.namespaceOwner), `worker ${workerId}`, "worker");
     }
 
-    static #parseState(adapter: FunctionalityAdapter, raw: unknown | null, where: string): FamilyState {
+    static #parseState(adapter: FunctionalityAdapter, raw: unknown | null, where: string, scope: "workspace" | "worker"): FamilyState {
         if (raw === null) return EMPTY_STATE;
         if (!isRecord(raw) || raw.version !== STATE_VERSION || !isRecord(raw.definitions)) {
             throw new Error(`Functionality state for ${adapter.family} in ${where} is not a version ${STATE_VERSION} record.`);
@@ -372,16 +397,19 @@ export default class Functionality {
             if ((origin !== "service" && origin !== "workspace" && origin !== "worker") || typeof enabled !== "boolean") {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' is malformed.`);
             }
-            if (inherited !== undefined && (typeof inherited !== "string" || inherited.length === 0 || adapter.scope !== "worker")) {
+            if (origin !== "service" && origin !== scope && !(scope === "worker" && origin === "workspace" && scopesOf(adapter).includes("workspace"))) {
+                throw new Error(`Functionality state for ${adapter.family} alias '${alias}' has an invalid origin for ${scope} scope.`);
+            }
+            if (inherited !== undefined && (typeof inherited !== "string" || inherited.length === 0 || scope !== "worker")) {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' carries an invalid inheritance.`);
             }
             const provenance = inherited === undefined ? {} : { inherited };
-            if (origin === Functionality.#localOrigin(adapter)) {
+            if (origin === scope) {
                 const result = Validator.validateJsonSchemaInstance(adapter.definitionSchema, definition);
                 if (!result.valid) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' holds an invalid definition.`);
                 definitions[alias] = { origin, enabled, definition: definition as object, ...provenance };
             } else {
-                if (definition !== undefined) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' persists a service definition.`);
+                if (definition !== undefined) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' persists a lower-layer definition.`);
                 definitions[alias] = { origin, enabled, ...provenance };
             }
         }
@@ -392,17 +420,22 @@ export default class Functionality {
         return Object.keys(state.definitions).length === 0 ? null : state;
     }
 
-    async #effective(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
+    async #effective(adapter: FunctionalityAdapter, identity: FunctionalityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
         const effective = new Map<string, EffectiveDefinition>();
-        for (const service of await adapter.available(identity)) {
+        const local = Functionality.#localOrigin(identity);
+        const inheritsWorkspace = identity.scope === "worker" && scopesOf(adapter).includes("workspace");
+        const lower = inheritsWorkspace
+            ? [...(await this.#effective(adapter, { workspaceId: identity.workspaceId, scope: "workspace" }, await this.#loadState(adapter, identity.workspaceId))).values()]
+            : (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "service" as const }));
+        for (const service of lower) {
             if (!aliasPattern(adapter).test(service.alias)) throw new Error(`${adapter.family} service alias '${service.alias}' must match ${aliasPattern(adapter)}.`);
             const record = state.definitions[service.alias];
-            const enabled = record?.origin === "service" ? record.enabled : service.enabled;
-            const inherited = record?.origin === "service" && record.inherited !== undefined ? { inherited: record.inherited } : {};
-            effective.set(service.alias, { alias: service.alias, origin: "service", definition: service.definition, enabled, ...inherited });
+            const overlay = record !== undefined && record.origin !== local ? record : undefined;
+            const enabled = overlay === undefined ? service.enabled : overlay.enabled && (!inheritsWorkspace || service.enabled);
+            const inherited = overlay?.inherited === undefined ? {} : { inherited: overlay.inherited };
+            effective.set(service.alias, { alias: service.alias, origin: service.origin, definition: service.definition, enabled, ...inherited });
         }
         for (const [alias, record] of Object.entries(state.definitions)) {
-            const local = Functionality.#localOrigin(adapter);
             if (record.origin !== local) continue;
             const inherited = record.inherited === undefined ? {} : { inherited: record.inherited };
             effective.set(alias, { alias, origin: local, definition: record.definition!, enabled: record.enabled, ...inherited });
@@ -435,8 +468,8 @@ export default class Functionality {
         });
     }
 
-    async #discover(adapter: FunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverResult> {
-        const candidates = await adapter.discover(query, identity);
+    async #discover(adapter: FunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions): Promise<FunctionalityDiscoverResult> {
+        const candidates = await adapter.discover(query, identity, options);
         return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
     }
 
@@ -450,16 +483,17 @@ export default class Functionality {
         caller: FunctionalityCaller,
         state: FamilyState,
         effective: ReadonlyMap<string, EffectiveDefinition>,
+        options: FunctionalityOptions,
     ): Promise<{ definitions: Record<string, DefinitionRecord>; alias: string; status: 200 | 201; removed: boolean }> {
-        const local = Functionality.#localOrigin(adapter);
-        const here = adapter.scope === "worker" ? "this worker" : "this workspace";
+        const local = Functionality.#localOrigin(identity);
+        const here = local === "worker" ? "this worker" : "this workspace";
         const definitions: Record<string, DefinitionRecord> = { ...state.definitions };
         let alias: string;
         let status: 200 | 201 = 200;
         let removed = false;
         switch (verb) {
             case "add": {
-                const admitted = await adapter.admit(input, identity, caller);
+                const admitted = await adapter.admit(input, identity, caller, options);
                 alias = admitted.alias;
                 if (!aliasPattern(adapter).test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${aliasPattern(adapter)}.`, { alias, retryable: false });
                 // A local definition may shadow a service definition of the same
@@ -479,7 +513,7 @@ export default class Functionality {
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
                 definitions[alias] = current.origin === local
                     ? { origin: local, definition: current.definition, enabled: verb === "enable" }
-                    : { origin: "service", enabled: verb === "enable" };
+                    : { origin: current.origin, enabled: verb === "enable" };
                 break;
             }
             case "remove": {
@@ -487,10 +521,11 @@ export default class Functionality {
                 const current = effective.get(alias);
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
                 if (current.origin === "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is a service definition and cannot be removed here.`, { alias, recovery: `Disable it, or change the service configuration that contributes it.`, retryable: false });
+                if (current.origin !== local) throw failure(adapter.family, "alias-workspace-owned", 409, `'${alias}' is a workspace definition; remove it in workspace scope or disable it here.`, { alias, retryable: false });
                 await adapter.forget?.({ alias, definition: current.definition }, identity);
                 delete definitions[alias];
-                const revealed = (await adapter.available(identity)).some((service) => service.alias === alias);
-                if (revealed) definitions[alias] = { origin: "service", enabled: false };
+                const revealed = (await this.#effective(adapter, identity, EMPTY_STATE)).get(alias);
+                if (revealed) definitions[alias] = { origin: revealed.origin, enabled: false };
                 removed = true;
                 break;
             }
@@ -523,12 +558,13 @@ export default class Functionality {
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
+        options: FunctionalityOptions,
     ): Promise<FunctionalityInvocation> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const family = this.#families.get(key);
         if (family === undefined) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
         const effective = await this.#effective(adapter, identity, family.state);
-        const transition = await this.#transition(adapter, verb, input, identity, caller, family.state, effective);
+        const transition = await this.#transition(adapter, verb, input, identity, caller, family.state, effective, options);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         // Re-enabling an alias that is not active retries its preparation; an
         // already-active alias keeps its live attachment.
@@ -553,6 +589,7 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         workerId: number,
         caller: FunctionalityCaller,
+        options: FunctionalityOptions,
     ): Promise<FunctionalityInvocation> {
         if (!this.#families.has(this.#key(identity.workspaceId, adapter.family))) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
         const state = await this.#loadWorkerState(adapter, workerId);
@@ -565,7 +602,7 @@ export default class Functionality {
                 definitions: [...effective.values()].map((definition) => this.#projection(definition, prepared.outcomes.get(definition.alias))),
             }) };
         }
-        const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective);
+        const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective, options);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" ? "reject" : "publish-unavailable");
@@ -636,7 +673,7 @@ export default class Functionality {
         const previous = this.#families.get(key)?.prepared ?? null;
         // A worker-scoped family's workspace publication carries only its manager: what is enabled
         // is decided per Worker, at each verb and each spawn ({§functionality-scope}).
-        const effective = adapter.scope === "worker" ? new Map<string, EffectiveDefinition>() : await this.#effective(adapter, identity, nextState);
+        const effective = !scopesOf(adapter).includes("workspace") ? new Map<string, EffectiveDefinition>() : await this.#effective(adapter, { ...identity, scope: "workspace" }, nextState);
         const enabled = Functionality.#enabled(effective);
         const prepared = await adapter.prepare({
             workspaceId: identity.workspaceId,

@@ -1382,6 +1382,11 @@ export default class Daemon implements ApplicationPort {
         return this.#functionality.register(adapter);
     }
 
+    async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
+        const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId);
+        return (ambient) => snapshot(ambient).env;
+    }
+
     async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
         return this.#residency.readModuleState(workspaceId, namespaceOwner);
     }

@@ -84,6 +84,10 @@ interface WorkspaceIdentity {
     readonly workspaceId: number;
 }
 
+interface FunctionalityOptions {
+    readonly env?: Readonly<Record<string, string>>;
+}
+
 type Outcome =
     | { readonly state: "active"; readonly detail?: object }
     | { readonly state: "unavailable"; readonly problem: ProblemDetails }
@@ -115,8 +119,8 @@ interface FunctionalityAdapter {
     readonly discovery?: { readonly details: string };
     readonly docsDir?: string;
     available(identity: WorkspaceIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceIdentity): Promise<{ alias: string; definition: object }>;
+    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: WorkspaceIdentity, caller?: "action" | "operation", options?: FunctionalityOptions): Promise<{ alias: string; definition: object }>;
     prepare(preparation: Preparation): Promise<Prepared>;
     teardown(snapshot: unknown, identity: WorkspaceIdentity): Promise<void>;
 }
@@ -131,6 +135,7 @@ interface FunctionalityFamilyHandle {
 }
 
 interface ModuleSetupSeam {
+    readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     registerModuleAction(registration: {
         readonly name: string;
         readonly scope: "worldless" | "workspace" | "worker";
@@ -340,6 +345,7 @@ const catalogDetail = (executor: McpExecutor): object => {
 
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
+    #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
     readonly #summaries: { servers: Map<string, string>; tools: Map<string, string> };
     readonly #expanded: Set<string>;
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
@@ -371,6 +377,7 @@ export default class Module {
     }
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
+        this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
@@ -386,8 +393,8 @@ export default class Module {
                 definition: structuredClone(definition),
                 enabled: this.#defaultEnabled.has(name),
             })),
-            discover: (query) => this.#discover(query),
-            admit: async (input) => this.#admit(input),
+            discover: (query, identity, options) => this.#discover(query, identity, options),
+            admit: async (input, _identity, _caller, options) => this.#admit(input, options),
             prepare: (preparation) => this.#prepare(preparation),
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
         });
@@ -453,7 +460,7 @@ export default class Module {
     // {§mcp-discovery} — inert: a direct target is probed and disconnected;
     // caller configuration is parsed into candidates; registry search waits for
     // a configured downstream registry.
-    async #discover(query: FunctionalityDiscoverQuery): Promise<FunctionalityCandidate[]> {
+    async #discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity, options: FunctionalityOptions = {}): Promise<FunctionalityCandidate[]> {
         this.#assertOpen();
         const candidates: FunctionalityCandidate[] = [];
         if (query.configuration !== undefined) {
@@ -469,7 +476,7 @@ export default class Module {
             for (const [name, definition] of definitions) {
                 candidates.push({
                     alias: name,
-                    definition,
+                    definition: Module.#launchOptions(definition, options),
                     provenance: { kind: "client-configuration", source: `PLURNK_MCP_${name.toUpperCase().replaceAll("-", "_")}` },
                     summary: `${definition.transport} ${definition.transport === "http" ? definition.url : definition.command}`,
                 });
@@ -480,11 +487,13 @@ export default class Module {
             // split on whitespace (exact paths with spaces are added, not probed).
             const source = query.source;
             const [command = "", ...args] = source.trim().split(/\s+/u);
-            const definition: McpServerDefinition = /^https?:\/\//u.test(source)
+            const definition = Module.#launchOptions(/^https?:\/\//u.test(source)
                 ? { name: "discovered", transport: "http", url: source }
-                : { name: "discovered", transport: "stdio", command, args };
+                : { name: "discovered", transport: "stdio", command, args }, options);
             Validator.assertMcpServerDefinition(definition);
-            const connection = new ServerConnection(definition, this.#env, {
+            const environment = await this.#workspaceEnvironment(identity.workspaceId);
+            const connection = new ServerConnection(definition, environment(this.#env), {
+                environment: environment(),
                 onCatalogChanged: () => undefined,
                 onInfrastructureError: () => undefined,
             });
@@ -526,7 +535,13 @@ export default class Module {
         return candidates;
     }
 
-    #admit(input: unknown): { alias: string; definition: McpServerDefinition } {
+    static #launchOptions(definition: McpServerDefinition, options: FunctionalityOptions): McpServerDefinition {
+        if (options.env === undefined || Object.keys(options.env).length === 0) return definition;
+        if (definition.transport !== "stdio") throw actionError("env-transport", 400, "An HTTP MCP server has no local process environment.", { retryable: false });
+        return { ...definition, env: { ...definition.env, ...options.env } };
+    }
+
+    #admit(input: unknown, options: FunctionalityOptions = {}): { alias: string; definition: McpServerDefinition } {
         const params = objectOf(input) ?? {};
         let definition: McpServerDefinition;
         try {
@@ -543,7 +558,7 @@ export default class Module {
                 { alias, name: definition.name, retryable: false },
             );
         }
-        return { alias, definition };
+        return { alias, definition: Module.#launchOptions(definition, options) };
     }
 
     async #prepareAttachment(
@@ -552,7 +567,9 @@ export default class Module {
         connection?: ServerConnection,
     ): Promise<Attachment> {
         this.#assertOpen();
-        const candidate = connection ?? new ServerConnection(definition, this.#env, {
+        const environment = await this.#workspaceEnvironment(workspaceId);
+        const candidate = connection ?? new ServerConnection(definition, environment(this.#env), {
+            environment: environment(),
             onCatalogChanged: (error) => {
                 if (error !== null) {
                     console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);

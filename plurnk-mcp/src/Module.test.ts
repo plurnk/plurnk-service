@@ -20,6 +20,7 @@ import type { FunctionalityCandidate, FunctionalityDiscoverQuery, McpServerDefin
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
+import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -92,6 +93,7 @@ const harness = (env: Record<string, string> = {}) => {
         return prepared;
     };
     const seam = {
+        readWorkspaceEnvironment: async () => (ambient = getDefaultEnvironment()) => ({ ...ambient }),
         registerModuleAction: (registration: ActionRegistration): void => { actions.set(registration.name, registration); },
         registerFunctionalityAdapter: (candidate: Adapter) => {
             adapter = candidate;

@@ -10,6 +10,7 @@ import type { JsonSchema } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
+import EnvFunctionality from "./EnvFunctionality.ts";
 import type Functionality from "./Functionality.ts";
 
 const CHANNEL = "results";
@@ -159,7 +160,7 @@ export default class FunctionalityManager extends BaseExecutor {
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {
-            result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation");
+            result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation", { env: EnvFunctionality.modifier(args.metadata) });
         } catch (cause) {
             // {§functionality-model-projection} — a coordinator refusal (alias taken, scope, admission) is the
             // verb's own outcome with its own status, never an executor fault: it streams as the result,

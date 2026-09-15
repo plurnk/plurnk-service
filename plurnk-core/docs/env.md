@@ -1,9 +1,21 @@
 # env
 
-Every command you run receives a composed environment, never the host's. The
-ambient names are what the operator's ceiling admits; your own entries sit above
-them, and both are yours to shape. `list` shows exactly what your next command
-will see, each value with its origin.
+Commands receive admitted ambient values, then workspace defaults, then your
+worker's overrides. `list` shows the effective values and their origins.
+
+## Workspace defaults
+
+Use `"scope": "workspace"` with any verb to manage the shared layer. These values
+reach every worker's commands and newly started MCP servers, without depending
+on which worker starts them:
+
+````env (add)
+{"scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
+````
+
+Omitting `scope` selects your worker. Its overrides do not configure shared MCPs.
+Workspace changes affect subsequent launches; running processes keep their
+existing environment.
 
 ## Your entries
 
@@ -16,12 +28,12 @@ it for all of them.
 `disable` withdraws a name from your commands while keeping the entry listed;
 `enable` restores it. For an ambient name that is how `CI=1` goes away for you
 alone, without the operator changing anything. `remove` forgets your own entry;
-an ambient name of the same alias reappears, disabled, so removal never quietly
+a workspace or ambient name of the same alias reappears, disabled, so removal never quietly
 changes what your next command sees.
 
-Your entries are yours: another worker's commands do not see them. A worker
+Your worker overrides are yours: another worker's commands do not see them. A worker
 you spawn starts with a copy of them — `list` shows those as inherited from
-you — and its changes never reach yours.
+you — and its changes never reach yours. Workspace defaults remain shared, not copied.
 
 ## For one command, or for one child
 

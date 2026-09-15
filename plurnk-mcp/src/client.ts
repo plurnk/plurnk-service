@@ -101,6 +101,8 @@ interface ResolvedHttpDefinition {
 type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 
 export interface ServerConnectionOptions {
+    // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
+    readonly environment?: NodeJS.ProcessEnv;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
 }
@@ -273,6 +275,7 @@ const resolveDefinition = (
 
 const openTransport = (
     definition: ResolvedDefinition,
+    environment: NodeJS.ProcessEnv = getDefaultEnvironment(),
 ): StdioClientTransport | StreamableHTTPClientTransport => {
     if (definition.transport === "http") {
         return new StreamableHTTPClientTransport(
@@ -326,9 +329,12 @@ const openTransport = (
         ],
         cwd: definition.cwd,
         env: {
-            ...getDefaultEnvironment(),
+            // The SDK merges its defaults even with an explicit env. Node spawn
+            // accepts undefined to omit a key; the SDK's narrower type does not.
+            ...Object.fromEntries(Object.keys(getDefaultEnvironment()).map((name) => [name, undefined])),
+            ...environment,
             ...definition.env,
-        },
+        } as Record<string, string>,
     });
 };
 
@@ -555,7 +561,7 @@ export default class ServerConnection {
             throw new AuthorizationRequiredError(this.#pendingAuthorization.authorizationUrl);
         }
         if (this.#client !== undefined) return this.#client;
-        const transport = openTransport(this.#resolved);
+        const transport = openTransport(this.#resolved, this.#options.environment);
         this.#openingTransport = transport;
         const pending = openClient(
             this.#resolved,

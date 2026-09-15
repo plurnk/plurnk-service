@@ -64,6 +64,11 @@ export interface WorkspaceCapabilityIdentity {
 // that Worker, which a worker-scoped family acts for. Adapters keep seeing the workspace identity.
 export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
     readonly workerId?: number;
+    readonly scope?: "workspace" | "worker";
+}
+
+export interface FunctionalityOptions {
+    readonly env?: Readonly<Record<string, string>>;
 }
 
 interface WorkspaceCapabilityContext extends WorkspaceCapabilityIdentity {
@@ -152,11 +157,9 @@ export interface FunctionalityAdapter {
     // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
     // worker-scoped family) and the runtime family tag.
     readonly family: string;
-    // {§functionality-scope} — who owns this family's definitions. Skills, MCP, members and
-    // outbound A2A describe what exists in a WORKSPACE; env describes how one WORKER works, which
-    // is context rather than capability. Absent means workspace, so every existing family is
-    // unchanged. The coordinator keys durable state and the locally-owned origin by this.
-    readonly scope?: "workspace" | "worker";
+    // {§functionality-scope} Supported owners; the first is the model default.
+    // Absent means workspace. A worker layer inherits workspace defaults by reference.
+    readonly scopes?: readonly ("workspace" | "worker")[];
     // The alias grammar the coordinator enforces for this family. Absent means the shared default
     // (`[a-z][a-z0-9-]*`, the shape skill names and MCP server ids already take); env declares the
     // shell's, because the alias IS the variable name and case is semantic there.
@@ -174,8 +177,8 @@ export interface FunctionalityAdapter {
     // authored teaching beneath the family document's generated header, by the runtime doc-file rule.
     readonly docsDir?: string;
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityDefinitionSource>;
+    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared>;
     teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // Release what the workspace definition installed or provisioned, before
@@ -209,6 +212,9 @@ export interface WorkspaceCapabilityPublication {
 }
 
 export interface ModuleSetupSeam {
+    // {§workspace-env} Apply the workspace layer to admitted ambient values, or to
+    // a provider's own reference-resolution environment. Never includes worker overrides.
+    readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerScheme(name: string, handler: object): Promise<void>;
     registerModuleAction(registration: ModuleActionRegistration): void;

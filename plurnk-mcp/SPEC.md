@@ -276,6 +276,21 @@ the service at connection preparation.
 
 ### §mcp-module The MCP family beneath the coordinator
 
+§mcp-launch-environment Discovery and stdio connection preparation use the workspace
+environment supplied by Core ({§workspace-env}), never the invoking worker's overrides.
+The admitted workspace environment reaches the actual subprocess; explicit definition
+launch options override it. Symbolic references resolve against the operator environment
+with the same workspace entries and masks applied. Resolved ambient values are never
+copied into durable definitions.
+
+An `env` header option on `mcp (add)` becomes that definition's retained stdio launch
+override, with the definition's existing symbolic-reference semantics. On `discover`
+it applies to the probe and its returned candidate. HTTP servers
+have no local process environment and refuse these stdio launch overrides; ordinary
+HTTP authorization/header references may use workspace values. A running server keeps
+its launch environment. Use ordinary `disable` and `enable` to restart it after an env
+change; there is no automatic restart or stale-configuration state.
+
 §mcp-management-actions MCP is one family of workspace Functionality
 ({§functionality-coordinator}): the coordinator publishes `workspace.mcp.list |
 discover | add | enable | disable | remove` and the model's `mcp` executable fence

@@ -27,31 +27,43 @@ carrying the exact definition to add. Discovery persists and enables nothing.
 {"source": "npx -y @modelcontextprotocol/server-filesystem ."}
 ````
 
-`add` persists the definition for this worker, connects, and enables it
+`add` persists the definition for this workspace, connects, and enables it
 atomically. It is a host effect: it proposes and runs only on acceptance.
 
 ````mcp (add)
 {"alias": "files", "definition": {"name": "files", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]}}
 ````
 
-A `stdio` definition carries `command` and optional `args`, `cwd`, `env`; an
+A `stdio` definition carries `command` and optional `args`, `cwd`; an
 `http` definition carries `url` and optional `headers`. `tools` narrows the
 enabled tool set and `read` names the tools that are read-only (every other
 tool keeps the conservative `host` effect and proposes before it runs). A
 credential is a symbolic reference such as `"${TOKEN}"` to the operator's
 environment, never a pasted secret.
 
+## Environment
+
+Set workspace variables through [env](env.md) before discovering or adding a
+local server. Worker-local overrides do not configure shared MCP processes.
+
+````env (add)
+{"scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
+````
+
+A running server keeps its launch environment; `disable` then `enable` restarts
+that server with the current workspace values. No daemon restart is needed.
+
 ## Authorization
 
-An `http` server that needs OAuth comes up `unavailable` with an
-authorization URL in its Problem. Only the user can complete that step, from
+An `http` server that needs OAuth comes up `authorization-required` with an
+authorization URL. Only the user can complete that step, from
 their client; afterwards `enable` retries and the tools appear. Do not try to
 fetch the authorization URL or supply credentials in a body.
 
 ## Lifecycle
 
 `disable` withdraws a server's tools while keeping its definition; `remove`
-deletes a definition this worker added. Operator-configured servers
+deletes a workspace definition. Operator-configured servers
 (`PLURNK_MCP_<server>` in the service environment) can only be disabled. When
 a server's published tools change, its document is regenerated; `FIND` the
 reference again after enabling before relying on a tool's signature.

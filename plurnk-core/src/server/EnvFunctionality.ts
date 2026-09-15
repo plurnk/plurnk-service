@@ -1,14 +1,5 @@
-// SPEC {§env-functionality} {§functionality-scope} {§exec-env-scoped} — environment as the
-// fourth Functionality family, and the first whose definitions are owned by a Worker.
-//
-// The other families describe what EXISTS in a workspace: a skill, an MCP server, a member, an
-// outbound agent. They are capabilities, and a capability belongs to the workspace that holds it.
-// An environment describes how one Worker WORKS. That is context, not capability, and context
-// belongs to the actor doing the work — which is the whole of what `scope: "worker"` declares.
-//
-// Nothing else about the family is special. The six verbs, the two origins, enabledness and the
-// service-baseline rules are the coordinator's, unchanged, which is what keeps the families'
-// idioms from drifting apart.
+// {§workspace-env} {§env-functionality} — workspace defaults and worker overrides
+// compose through one family; lifecycle verbs and persistence belong to the coordinator.
 import type {
     FunctionalityAdapter, FunctionalityDefinitionSource,
     FunctionalityPreparation, FunctionalityPrepared, FunctionalityServiceDefinition,
@@ -21,6 +12,7 @@ import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import Paths from "../Paths.ts";
+import type { Db } from "../core/Db.ts";
 
 export const ENV_FAMILY = "env";
 // The family's namespace owner — also the key a spawn reads its Worker's state under.
@@ -55,7 +47,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     readonly namespaceOwner = ENV_OWNER;
     readonly summary = "Read and shape the environment your commands run in";
     readonly definitionSchema = DEFINITION;
-    readonly scope = "worker" as const;
+    readonly scopes = ["worker", "workspace"] as const;
     readonly aliasPattern = NAME;
     readonly docsDir = Paths.packageRoot;
     readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
@@ -148,19 +140,12 @@ export default class EnvFunctionality implements FunctionalityAdapter {
         return async () => cached ??= await EnvDefaults.collect(projectRoot, pluginsNodeModules);
     }
 
-    // {§exec-env-scoped} layer four, applied at the spawn: the Worker's own state over the ambient
-    // ceiling. An enabled worker entry sets its value; a disabled entry of either origin withholds the
-    // name. One rule with `list`, which projects the same state, so what a Worker sees listed is what
-    // its command receives. The state is the coordinator's persisted shape ({§functionality-state});
-    // anything else is a defect, not a fallback. The invariant runs last, as at every layer.
-    //
-    // Beside the environment comes its record: every name with its provenance, which the spawn
-    // writes on its own log row and the digest renders — the host-versus-container confound closed
-    // where it starts.
+    // {§workspace-env} Apply one persisted layer and record the provenance beside its values.
     static compose(
         ambient: NodeJS.ProcessEnv,
         state: unknown,
         modifier: Readonly<Record<string, string>> = {},
+        scope: "worker" | "workspace" = "worker",
     ): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
         if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
         const env: NodeJS.ProcessEnv = { ...ambient };
@@ -174,8 +159,8 @@ export default class EnvFunctionality implements FunctionalityAdapter {
                 record[name] = { source: "masked", ...from };
                 continue;
             }
-            if (entry.origin === "service") continue;
-            if (entry.origin !== "worker") throw new Error(`env state for '${name}' has origin '${String(entry.origin)}'`);
+            if (entry.origin === "service" || (scope === "worker" && entry.origin === "workspace")) continue;
+            if (entry.origin !== scope) throw new Error(`env state for '${name}' has origin '${String(entry.origin)}'`);
             if (!isRecord(entry.definition) || typeof entry.definition.value !== "string") throw new Error(`env state for '${name}' holds no string value`);
             reserved ??= ExecEnv.ownSecretTest();
             if (reserved(name)) {
@@ -183,7 +168,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
                 continue;
             }
             env[name] = entry.definition.value;
-            record[name] = { source: "worker", ...from, value: entry.definition.value };
+            record[name] = { source: scope, ...from, value: entry.definition.value };
         }
         // {§env-option} — the op's own environment, nearest the spawn; admitted by name already.
         for (const [name, value] of Object.entries(modifier)) {
@@ -196,6 +181,27 @@ export default class EnvFunctionality implements FunctionalityAdapter {
             if (record[name] === undefined && value !== undefined) record[name] = { source: "host", value };
         }
         return { env, record };
+    }
+
+    // {§workspace-env} Both execution and capability startup read these same persisted layers.
+    static async workspace(db: Db, workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
+        const row = await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER });
+        const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
+        return (ambient = ExecEnv.scoped()) => this.compose(ambient, state, {}, "workspace");
+    }
+
+    static async resolve(
+        db: Db,
+        workspaceId: number,
+        workerId?: number,
+        modifier: Readonly<Record<string, string>> = {},
+        ambient: NodeJS.ProcessEnv = ExecEnv.scoped(),
+    ): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
+        const empty = { version: 1, definitions: {} };
+        const shared = (await this.workspace(db, workspaceId))(ambient);
+        const worker = workerId === undefined ? undefined : await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
+        const result = this.compose(shared.env, worker === undefined ? empty : JSON.parse(worker.state), modifier);
+        return { env: result.env, record: { ...shared.record, ...Object.fromEntries(Object.entries(result.record).filter(([, item]) => item.source !== "host")) } };
     }
 
     // {§env-option} — the heading's `env` option, read through the one metadata reader and admitted
@@ -234,7 +240,7 @@ export default class EnvFunctionality implements FunctionalityAdapter {
 // modifier ({§env-option}), or a name withheld — by this Worker, by the ancestor named, or by the
 // invariant.
 export interface EnvRecord {
-    readonly source: "host" | "worker" | "modifier" | "masked";
+    readonly source: "host" | "workspace" | "worker" | "modifier" | "masked";
     readonly from?: string;
     readonly value?: string;
 }

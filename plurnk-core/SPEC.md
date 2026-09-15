@@ -2980,13 +2980,33 @@ the subscription registry's stored controller. A terminal stream is immutable:
 The runtime scheme participates in the durable lookup; a completed `sh:///`
 stream cannot fall through an internal `exec`-only query. {§stream-control}
 
+§workspace-env **Workspace environment.** The `env` family has workspace defaults and
+worker overrides. Its six verbs accept `scope: "workspace" | "worker"`; model calls
+default to `worker`. Client actions bind the scope in `workspace.env.*` or
+`worker.env.*`. An explicit scope must agree with that action's context.
+
+| Consumer | Composition, later layers win |
+|---|---|
+| Worker command | Admitted ambient environment → workspace entries → worker entries → invocation `env` |
+| Shared capability process | Admitted ambient environment → workspace entries → explicit capability launch options |
+
+Each layer uses the same value and masking rules. A worker's list includes workspace
+defaults by reference with `origin: "workspace"`; worker overrides and masks remain
+worker-owned. Enabling an inherited entry clears this layer's mask, not a mask in a
+lower layer; an explicit local value can override that lower layer. A mask follows
+the name even when its lower-layer origin changes. Removing an override reveals the lower entry disabled, as for a service
+baseline. Forking copies only worker state, not the workspace defaults. Workspace edits
+affect subsequent launches, not existing processes or other workspaces. A shared
+capability never acquires an invoking worker's overrides or ownership.
+
 §exec-env-scoped **Scoped environment.** An execution subprocess receives a composed
 environment, never the host's. Two mechanisms apply in order, and they are different kinds
 of thing. First the **ambient policy**, a ceiling: `PLURNK_SERVICE_EXEC_ENV_INHERIT` names
 what the host's environment may contribute at all and `_EXCLUDE` narrows that, both taking
 exact names or one trailing-`*` prefix glob, both ordinary operator knobs under
 {§operator-config-env-defaults}. A worker document or a heading modifier narrows the ceiling
-further; nothing downstream widens it. The worker document is the Worker's `env` state
+further; nothing downstream widens ambient admission. Explicit entries may supply their
+own non-reserved values. Workspace defaults precede the Worker's `env` state
 ({§env-functionality}), read at the spawn: an enabled worker entry sets its own value, a disabled
 entry of either origin withholds the name, and what `list` projects is what the command
 receives. Then the **invariant**, which is not a knob:
@@ -3006,14 +3026,16 @@ nothing ambient — the allowlist is declared in `.env.defaults`, so an empty on
 policy rather than an unconfigured install.
 
 The full composition for one spawn, nearest setter winning for defaults and ceilings immune,
-is package floors → operator cascade → ambient policy → worker document → the op's modifier →
+is package floors → operator cascade → ambient policy → workspace entries → worker entries → the op's modifier →
 body prefixes.
 
 - §env-option **The op's environment.** `env` is the service's key in the heading's `[metadata]`
   ({§scheme-metadata-modifier}): `[{"env": {"NAME": "value"}}]`, an object of string values.
   On an executor fence it is that process's environment over the Worker's own
   ({§env-functionality}) — the layer nearest the spawn, never entering the registry; a runtime
-  that runs in-process ignores the environment it is handed, so there it changes nothing. On
+  that runs in-process has no process environment to change. A capability manager may
+  retain explicit launch overrides when adding a process-backed definition; it never
+  persists the composed ambient environment. On
   WORK and FORK it is the child's starting environment: after the copy the child inherits
   ({§functionality-scope}), each name lands as the child's own entry through the family's `add`,
   so a parent hands down its registry and overrides specific names for one child in one heading.
@@ -3631,6 +3653,7 @@ flowchart LR
 | §module-action-registration `registerModuleAction({ name, scope, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |
+| `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§workspace-env}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without worker overrides. |
 | §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the shared coordinator ({§functionality-coordinator}). |
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
 
@@ -3727,14 +3750,14 @@ failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
 definition before removal; failure rejects removal ({§skills-remove}).
 
-§env-functionality **Environment is the fourth family, owned per Worker.** Its two origins
-are the ambient names the operator's ceiling admits ({§exec-env-scoped}, service origin, enabled
-until a Worker disables one for itself) and the Worker's own entries (worker origin). `add` takes
+§env-functionality **Environment is a scoped family.** Ambient names admitted by the
+operator's ceiling ({§exec-env-scoped}, service origin) precede workspace defaults and
+worker overrides ({§workspace-env}). `add` takes
 the name as the alias and `{ "value": "…" }` as the definition, used verbatim with no
-interpolation. `disable` withdraws a name from the Worker's spawns while retaining it, which is
-how `CI=1` goes away for one Worker without an operator change; `remove` forgets a Worker's own
-entry and a same-name service baseline reappears disabled, so removal never silently changes what
-the next spawn sees. Service definitions are disable-only.
+interpolation. `disable` withholds a name in the selected scope while retaining it;
+`remove` forgets a locally-owned entry and a same-name lower baseline reappears
+disabled, so removal never silently changes what the next spawn sees. Definitions
+from a lower layer are disable-only in the current scope.
 
 `list` projects effective values with their origin. Values are shown: the ceiling is the security
 boundary, not the projection, and any admitted name is already readable by every command the
@@ -3755,23 +3778,24 @@ name with its documentation and an empty value ({§exec-env-scoped}: referred to
 read). `configuration` is refused: a client's own environment contributing candidates would be a
 second door past the ceiling.
 
-The family publishes no runtimes. An environment is read at the spawn that uses it, never held
-resident, so it never enters the warmed capability snapshot ({§module-workspace-residency}).
+The family publishes no process runtimes. Its values are read at the spawn that uses them,
+not from a live process or a cached worker environment.
 
-§functionality-scope **A family declares who owns its definitions.** Skills, MCP, members
+§functionality-scope **A family declares its supported scopes.** Skills, MCP, members
 and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
 that every Worker there shares. Environment describes how one **Worker** works — context rather
-than capability — so its definitions are owned per Worker. The adapter declares `scope`
-(absent means workspace) and the coordinator keys durable state and the locally-owned `origin`
+than capability — with worker overrides above workspace defaults. The adapter declares
+`scopes` (absent means `["workspace"]`; the first is the model default), and the
+coordinator keys durable state and the locally-owned `origin`
 by it: a workspace-scoped family's own entries carry origin `workspace`, a worker-scoped
 family's carry `worker`. Origin names ownership, never scope, so a projection never claims the
 workspace set a value one Worker set for itself. Nothing else in the contract varies: the six
 verbs, the two projections, enabledness, and the service-baseline rules are one implementation
 across every family, which is what keeps their idioms from drifting apart.
 
-A worker-scoped family projects `worker.<family>.<verb>` in place of
-`workspace.<family>.<verb>`; the action's context names the Worker, as every execution
-does. Its durable value is the same shape per (worker, family) in `worker_module_state`, read
+A family projects `<scope>.<family>.<verb>` for each supported scope. The action's
+context binds that scope; a worker-scoped action also names the Worker. Its durable
+value is the same shape per (worker, family) in `worker_module_state`, read
 at each verb and at each spawn rather than held in the workspace snapshot. Its `list` and
 mutations serialize on the Worker's own lane and take no workspace exclusivity: nothing
 resident changes, and the next spawn reads the state, so a Worker shapes its own environment
@@ -3791,8 +3815,8 @@ option lands as the child's own entries through `add`, after the copy ({§env-op
 is stored under the provider namespace in `workspace_module_state`; a
 worker-scoped family ({§functionality-scope}) stores the same value per worker
 and family in `worker_module_state`.
-A `service` entry persists enabledness; a `workspace` or `worker` entry persists
-its exact definition. Active, unavailable, and authorization-required are preparation
+A locally-owned entry persists its exact definition; a lower-layer entry persists
+only enabledness, never a copied value. Active, unavailable, and authorization-required are preparation
 outcomes, not durable desired state. The configuration cascade contributes
 defaults; one workspace snapshot is effective authority.
 

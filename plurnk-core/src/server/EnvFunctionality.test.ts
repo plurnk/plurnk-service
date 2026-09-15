@@ -18,8 +18,8 @@ const FILES = [{
 const adapter = new EnvFunctionality(async () => FILES);
 const identity = { workspaceId: 1 };
 
-test("{§functionality-scope} env declares worker scope; its definitions belong to one worker", () => {
-    assert.equal(adapter.scope, "worker");
+test("{§functionality-scope} env defaults to worker scope and supports shared workspace defaults", () => {
+    assert.deepEqual(adapter.scopes, ["worker", "workspace"]);
     assert.equal(adapter.family, "env");
 });
 

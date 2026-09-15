@@ -69,10 +69,10 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             return definition === undefined ? undefined : `${definition.origin}:${definition.state}`;
         };
 
-        // Registration projects six worker-scoped actions and no workspace-scoped ones.
+        // Both scopes use the same verbs; the action context binds their owner.
         assert.deepEqual(
             daemon.listModuleActions().filter(({ name }) => name.includes(".env.")).map(({ name, scope }) => `${name}:${scope}`),
-            VERBS.map((verb) => `worker.env.${verb}:worker`),
+            ["worker", "workspace"].flatMap((scope) => VERBS.map((verb) => `${scope}.env.${verb}:${scope}`)),
         );
 
         // The service baseline is what the ceiling admits, with its value, under the shell's alias grammar.
@@ -229,6 +229,19 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
                 "carol's command receives the value she inherited and the name she re-enabled");
             assert.deepEqual((await recorded(carolRun.logEntryId)).CARGO_TARGET_DIR, { source: "worker", from: "alice", value: "/tmp/shared" },
                 "the record names the Worker that set an inherited value");
+            await daemon.invokeModuleAction("workspace.env.add", { alias: "ENV_WITNESS", definition: { value: "workspace" } }, { scope: "workspace", workspaceId });
+            const sharedRun = await accepted(bob, command);
+            assert.match(await stdoutOf(sharedRun.logEntryId), /witness=\[workspace\]/u);
+            assert.deepEqual((await recorded(sharedRun.logEntryId)).ENV_WITNESS, { source: "workspace", value: "workspace" });
+            assert.equal(await stateOf(alice, "ENV_WITNESS"), "workspace:disabled", "the worker's mask follows the name when its lower origin changes");
+            const maskedRun = await accepted(alice, command);
+            assert.match(await stdoutOf(maskedRun.logEntryId), /witness=\[\]/u);
+            await invoke(bob, "add", { alias: "ENV_WITNESS", definition: { value: "worker" } });
+            const localRun = await accepted(bob, command);
+            assert.match(await stdoutOf(localRun.logEntryId), /witness=\[worker\]/u);
+            const modifierRun = await accepted(bob, "```sh [{\"env\":{\"ENV_WITNESS\":\"modifier\"}}]\necho witness=[$ENV_WITNESS]\n```");
+            assert.match(await stdoutOf(modifierRun.logEntryId), /witness=\[modifier\]/u);
+            assert.deepEqual((await recorded(modifierRun.logEntryId)).ENV_WITNESS, { source: "modifier", value: "modifier" });
         } finally {
             unsubscribe();
         }
@@ -243,6 +256,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.match(waterfall, /env: host [A-Z_,]+ · CARGO_TARGET_DIR=\/tmp\/shared \(worker\) · ENV_WITNESS \(masked\)/u,
             "the waterfall names alice's spawn environment with each value's provenance");
         assert.match(waterfall, /CARGO_TARGET_DIR=\/tmp\/shared \(from alice\)/u, "and carol's inherited value by the Worker that set it");
+        assert.match(waterfall, /ENV_WITNESS=workspace \(workspace\)/u);
     } finally {
         if (!quiescent) {
             await daemon.stop();
