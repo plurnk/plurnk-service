@@ -37,7 +37,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.ok(item?.kind === "statement" && isExecution(item.statement));
-        assert.equal(item.statement.executor, "node");
+        assert.equal(item.statement.runtime, "node");
         assert.equal(item.statement.target, null, "the program is not a script path or metadata modifier");
         assert.ok(typeof item.statement.body === "string" && item.statement.body.length > 0);
         assert.ok(item.statement.aside?.includes("JavaScript"), "the description stays on the invocation line");

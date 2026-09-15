@@ -21,6 +21,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 import { localPath } from "./_dsl.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
 // oxlint-disable-next-line eslint/no-control-regex
@@ -29,7 +30,7 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 // {§exec-executor-slot} — the battery's third column is the program path (a db file for sqlite), never a cwd.
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: target === null ? null : localPath(target),
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

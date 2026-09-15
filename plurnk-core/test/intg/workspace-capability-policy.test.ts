@@ -13,10 +13,11 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { copyStmt, editStmt, killStmt, moveStmt, readStmt, dispositionStmt, urlPath } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: null,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null,
     body: "echo hi",
     position: { line: 1, column: 1 },

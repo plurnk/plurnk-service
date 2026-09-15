@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a TASK claim strikes
 // (a completion joins live work, {§completion-joins-live-work}; a claim over settled results
@@ -11,7 +12,8 @@ const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
 
 export type StrikeOutcome = {
-    readonly op: PlurnkStatement["op"] | null;
+    // The row op: an operation keyword, or an execution's runtime tag.
+    readonly op: PlurnkStatement["op"] | RuntimeTag | null;
     readonly status: number;
     readonly problemType?: string | null;
 };

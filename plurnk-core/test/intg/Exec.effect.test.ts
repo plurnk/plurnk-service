@@ -18,11 +18,12 @@ import { join } from "node:path";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import { BaseExecutor, type Effect, type ExecArgs } from "@plurnk/plurnk-execs";
 import { localPath } from "./_dsl.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
     // The default shell is explicit: a fixture with no runtime is an `sh` execution (plurnk-service #659).
-    runtime: runtime ?? "sh", aside: null, target: target === null ? null : localPath(target),
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

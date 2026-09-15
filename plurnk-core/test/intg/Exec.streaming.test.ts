@@ -23,10 +23,11 @@ import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLo
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {

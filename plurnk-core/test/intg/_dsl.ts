@@ -8,6 +8,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PlanValue } from "@plurnk/plurnk-contracts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}${fragment !== null ? `#${fragment}` : ""}`,
@@ -95,7 +96,7 @@ export const moveStmt = (
 export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
     metadata,
     // The default shell is explicit: a caller passing no runtime means `sh` (plurnk-service #659).
-    runtime: runtime ?? "sh", aside: null, target, lineMarker: null, body,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

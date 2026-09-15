@@ -15,10 +15,11 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
 import { parseLogRecords } from "../LogRecords.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: null,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

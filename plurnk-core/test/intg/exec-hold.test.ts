@@ -11,6 +11,7 @@ import type Exec from "../../src/schemes/Exec.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { dispositionStmt } from "./_dsl.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // This file isolates the hold decision after ordinary optimistic settlement:
 // disabling the latter keeps the selected-vs-unselected runtime distinction as
@@ -19,7 +20,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: null,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

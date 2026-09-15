@@ -10,10 +10,11 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {

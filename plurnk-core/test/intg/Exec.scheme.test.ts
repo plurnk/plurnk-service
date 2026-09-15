@@ -19,11 +19,12 @@ import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `[{"cwd": "…"}]`.
 const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
     metadata: cwd === null ? null : [JSON.stringify({ cwd })],
-    runtime: runtime ?? "sh", aside: null,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null,
     target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });

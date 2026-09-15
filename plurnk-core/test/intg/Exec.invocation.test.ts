@@ -13,6 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, schemeManifest, seedEntryWithChannel } from "./_helpers.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 interface Run {
     readonly body: string;
@@ -57,7 +58,7 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
 
 const statement = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: target === null ? null : parsePath(target),
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : parsePath(target),
     lineMarker: null,
     body,
     position: { line: 1, column: 1 },

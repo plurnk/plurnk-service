@@ -167,7 +167,7 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
             return parsed.items.flatMap((item) => item.kind === "statement" && isExecution(item.statement) ? [item.statement] : []);
         });
         assert.ok(execs.length > 0);
-        assert.ok(execs.every(({ executor }) => executor === runtime), `${runtime} is the executor, never the input target`);
+        assert.ok(execs.every((statement) => statement.runtime === runtime), `${runtime} is the runtime, never the input target`);
         assert.ok(execs.some(({ target }) => target === null), `${runtime} demonstrates the no-target form`);
         assert.ok(execs.some(({ target }) => target?.kind === "local"), `${runtime} demonstrates a data file target`);
         const runtimeSources = execs.flatMap(({ target }) => target?.kind === "url" && executors.availableRuntimes().includes(target.scheme) ? [target] : []);

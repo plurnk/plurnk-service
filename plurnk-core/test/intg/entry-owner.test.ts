@@ -10,10 +10,11 @@ import Envelope from "../../src/server/envelope.ts";
 import ExecutionOutputs from "../../src/core/ExecutionOutputs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    runtime: runtime ?? "sh", aside: null, target: null,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
