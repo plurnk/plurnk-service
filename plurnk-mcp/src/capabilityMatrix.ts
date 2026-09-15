@@ -234,7 +234,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: false,
-        evidence: ["{§oauth-client-credentials}", "plurnk-mcp HttpTransport '{§oauth-client-credentials} the extension capability is advertised only on client-credentials connections'"],
+        evidence: ["{§oauth-client-credentials}", "{§mcp-conformance}", "plurnk-mcp HttpTransport '{§oauth-client-credentials} the extension capability is advertised only on client-credentials connections'", "plurnk-mcp/test/intg/conformance.test.ts"],
         note: "Application principals; advertised only on connections holding a client-credentials definition; issuer binding; JWT arms declined.",
     },
     {

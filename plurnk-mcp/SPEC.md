@@ -608,6 +608,10 @@ target is an internal contract violation rather than a conservative guess.
 Protocol conformance runs through official
 `@modelcontextprotocol/conformance@0.2.0-alpha.11`, whose immutable
 `2026-07-28` requirement manifest freezes the release-time alpha.10 scenario
-set. The core client leg must pass; supported extension scenarios run and
-report separately because Tasks cannot alter the core pass rate. Atlas and
-third-party stdio/Streamable HTTP servers are composition evidence only.
+set. Its required client leg must pass; `not_scored` probes remain visible
+without changing that verdict. The adopted `auth/client-credentials-basic`
+extension runs as a separate named gate requiring successful grant and bearer
+checks; an empty or skipped report never passes. Extension scenarios have no
+dated-spec filter and do not alter the core pass rate. The JWT arm remains
+excluded under {§oauth-client-credentials}. Atlas and third-party
+stdio/Streamable HTTP servers are composition evidence only.
