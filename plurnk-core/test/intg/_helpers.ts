@@ -27,7 +27,7 @@ import {
     type ChatMessage,
     type ProviderRequestCapacity,
 } from "@plurnk/plurnk-providers";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 export const testProviderCapacity = (
     messages: readonly ChatMessage[],
@@ -234,7 +234,7 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
 // Follow the actual invocation receipt; output URIs do not encode log coordinates.
 export const executionAddress = async (db: Db, turnId: number, sequence = 1): Promise<string> => {
     const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; attrs: string }>({ turn_id: turnId });
-    const row = rows.find((item) => item.sequence === sequence && isExecution(item));
+    const row = rows.find((item) => item.sequence === sequence && isExecutionOp(item.op));
     const stream: unknown = row === undefined ? undefined : JSON.parse(row.attrs).stream;
     if (typeof stream !== "string" || !/^[a-z][a-z0-9+.-]*:\/\/\/[a-f0-9]{8}$/u.test(stream)) {
         throw new Error(`Execution ${turnId}/${sequence} did not publish a workspace output address.`);
