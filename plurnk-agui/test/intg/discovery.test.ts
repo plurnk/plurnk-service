@@ -62,7 +62,7 @@ test("discover composes installed scheme and MIME display metadata through the r
             display.find((capability) => capability.kind === "mimetype" && capability.mimetype === "text/html"),
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "🌐" } },
         );
-        assert.equal(Object.keys(discovery.actions).length, 51, "25 built-ins, six core Skills lifecycle verbs, six core members lifecycle verbs, six worker env lifecycle verbs, and eight installed MCP actions (six lifecycle verbs and two continuations)");
+        assert.equal(Object.keys(discovery.actions).length, 57, "25 built-ins, six Skills verbs, six members verbs, twelve env verbs across worker and workspace scopes, and eight MCP actions");
         assert.equal(Object.hasOwn(discovery.actions, "workspace.derivation"), false, "indexing activity uses the status stream, not a polling action");
         assert.deepEqual(
             Object.keys(discovery.actions).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
@@ -77,11 +77,11 @@ test("discover composes installed scheme and MIME display metadata through the r
                 "workspace.mcp.remove",
             ],
         );
-        assert.deepEqual(
-            Object.keys(discovery.actions).filter((name) => name.startsWith("worker.env.")).toSorted(),
-            ["worker.env.add", "worker.env.disable", "worker.env.discover", "worker.env.enable", "worker.env.list", "worker.env.remove"],
-            "the environment family is worker-scoped: its verbs live under worker.env",
-        );
+        for (const scope of ["worker", "workspace"]) {
+            const names = ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `${scope}.env.${verb}`);
+            assert.deepEqual(Object.keys(discovery.actions).filter((name) => name.startsWith(`${scope}.env.`)).toSorted(), names);
+            for (const name of names) assert.equal(discovery.actions[name]?.scope, scope, `${name} binds its advertised scope`);
+        }
         for (const [name, action] of Object.entries(discovery.actions)) {
             assert.doesNotThrow(
                 () => Validator.validateJsonSchemaInstance(action.inputSchema, {}),

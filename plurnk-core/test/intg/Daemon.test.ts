@@ -256,8 +256,8 @@ test("Daemon: module actions register once during setup and invoke through Appli
     });
     try {
         await daemon.start();
-        // Core's own Skills family registers its six worker actions beside the module's.
-        assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !name.startsWith("workspace.skills.") && !name.startsWith("workspace.members.") && !name.startsWith("worker.env.")), [{
+        // {§functionality-scope} Core families register beside the module's own action.
+        assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !name.startsWith("workspace.skills.") && !name.startsWith("workspace.members.") && !name.startsWith("worker.env.") && !name.startsWith("workspace.env.")), [{
             name: "example.inspect",
             scope: "worldless",
             inputSchema: MODULE_INPUT_SCHEMA,
@@ -267,6 +267,12 @@ test("Daemon: module actions register once during setup and invoke through Appli
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.skills.")),
             ["workspace.skills.add", "workspace.skills.disable", "workspace.skills.discover", "workspace.skills.enable", "workspace.skills.list", "workspace.skills.remove"],
         );
+        for (const scope of ["worker", "workspace"]) {
+            assert.deepEqual(
+                daemon.listModuleActions().filter(({ name }) => name.startsWith(`${scope}.env.`)).map(({ name, scope }) => ({ name, scope })),
+                ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => ({ name: `${scope}.env.${verb}`, scope })),
+            );
+        }
         assert.deepEqual(
             await daemon.invokeModuleAction(
                 "example.inspect",
