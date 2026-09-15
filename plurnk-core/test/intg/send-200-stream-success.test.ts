@@ -6,7 +6,6 @@ import { hostname } from "node:os";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
-import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;

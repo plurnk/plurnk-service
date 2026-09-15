@@ -13,7 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { isExecution, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async () => {
     const runtime = "search-api2";
