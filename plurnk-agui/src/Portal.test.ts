@@ -301,7 +301,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
 });
 
 test("a worker with a durable proposal re-presents its interrupt instead of starting new work", async () => {
-    const pending: ProposalProjection[] = [proposal({ op: "EXEC", target: { scheme: null, authority: null, pathname: null }, body: "ls" })];
+    const pending: ProposalProjection[] = [proposal({ op: "sh", target: { scheme: null, authority: null, pathname: null }, body: "ls" })];
     const m = mockSeam(pending);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
@@ -806,8 +806,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
             worker_id: 10,
             loop_id: 7,
             origin: "client",
-            op: "EXEC",
-            coordinate: "1/1/1/sh",
+            op: "sh", coordinate: "1/1/1/sh",
             tx: { body: "printf done" },
             rx: { status: 200 },
             turn_id: 1,
@@ -831,8 +830,8 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
 
 const startedExec = (over: Record<string, unknown> = {}) => ({
     entry: {
-        id: 55, worker_id: 10, loop_id: 6, turn_id: 6, origin: "client", op: "EXEC", status_rx: 200, coordinate: "1.1.1",
-        rx: { status: 200, outcome: "started" }, tx: { op: "EXEC", executor: null, body: "sleep 1; printf late" },
+        id: 55, worker_id: 10, loop_id: 6, turn_id: 6, origin: "client", op: "sh", status_rx: 200, coordinate: "1.1.1",
+        rx: { status: 200, outcome: "started" }, tx: { runtime: "sh", body: "sleep 1; printf late" },
         attrs: { runtime: "sh", stream: "sh:///b1e0977e", coordinate: { loop_seq: 1, turn_seq: 1, sequence: 1 }, ...over },
     },
 });

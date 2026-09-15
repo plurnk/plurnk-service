@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const response = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
@@ -110,9 +111,9 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
     });
 });
 
-test("an EXEC operation error remains visible but does not bump the strike streak", async () => {
+test("an execution operation error remains visible but does not bump the strike streak", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("\n```EXEC```\n```TASK\n[{\"content\":\"correcting\",\"status\":\"in_progress\"}]\n```", 10),
+        response("\n```sh```\n```TASK\n[{\"content\":\"correcting\",\"status\":\"in_progress\"}]\n```", 10),
         response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -121,11 +122,11 @@ test("an EXEC operation error remains visible but does not bump the strike strea
             await rpcCall(ws, 1, "workspace.create", { name: "soft-exec" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 4 });
             assert.equal(finalStatus, 200);
-            assert.deepEqual(mock.seen, [0, 0], "the failed EXEC did not alter first-party strike metadata");
+            assert.deepEqual(mock.seen, [0, 0], "the failed execution did not alter first-party strike metadata");
             const ops = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             assert.ok(
-                ops.some(({ op, status_rx }) => op === "EXEC" && status_rx === 400),
-                "the exact EXEC failure remains durable evidence",
+                ops.some(({ op, status_rx }) => isExecutionOp(op) && status_rx === 400),
+                "the exact execution failure remains durable evidence",
             );
         } finally { ws.close(); }
     });

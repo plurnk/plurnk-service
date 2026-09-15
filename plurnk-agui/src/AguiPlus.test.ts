@@ -69,7 +69,7 @@ test("AG-UI-conventional names: every side-effecting proposal requests approval"
 test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps back to the exact proposal", () => {
     // AG-UI Run N: two concurrent stopped worlds terminate their Runs as tool-calls.
     const a = proposalToolCall(proposal({ logEntryId: 42, op: "EDIT" }));
-    const b = proposalToolCall(proposal({ logEntryId: 99, op: "EXEC" }));
+    const b = proposalToolCall(proposal({ logEntryId: 99, op: "sh" }));
     const idA = (a[0] as { toolCallId: string }).toolCallId;
     const idB = (b[0] as { toolCallId: string }).toolCallId;
     assert.notEqual(idA, idB, "distinct proposals get distinct toolCallIds");

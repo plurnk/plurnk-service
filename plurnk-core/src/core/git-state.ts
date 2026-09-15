@@ -32,7 +32,7 @@ export interface GitStatusSnapshot extends GitStatus {
 // `PLURNK_SERVICE_GIT_ALLOWED` (the
 // hard service ceiling) + a git worktree. Returns null when git is disabled,
 // headless, or non-git — the status block is then omitted entirely. This is the
-// *state* read; the model's arbitrary git *operations* go through EXEC runtime `git`.
+// *state* read; the model's arbitrary git *operations* go through the `git` runtime.
 export default class GitState {
     static #execFileP = promisify(execFile);
 

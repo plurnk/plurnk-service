@@ -1,7 +1,7 @@
 // Demos that require the model to run shell commands to answer
-// correctly. Natural prompts — no syntax hints, no mention of EXEC,
+// correctly. Natural prompts — no syntax hints, no mention of execution,
 // no exec:/// references. The model has to recognize from plurnk.md's
-// sysprompt that EXEC is the right tool.
+// sysprompt that execution is the right tool.
 //
 // Each task asks for a specific factual value the model genuinely
 // can't know without running something (machine state, filesystem
@@ -29,7 +29,7 @@ interface DemoOpts {
 }
 
 const runShellDemo = async ({ label, prompt, expected, signal }: DemoOpts): Promise<void> => {
-    // Sandbox EXEC's cwd to a throwaway temp dir — the model workers shell commands (and,
+    // Sandbox execution's cwd to a throwaway temp dir — the model workers shell commands (and,
     // when blind to its output, redirects them to files); without a project_root they'd
     // default to the daemon's cwd and land in the live repo. {§exec-env-scoped}
     const sandbox = await mkdtemp(join(tmpdir(), "plurnk-demo-"));
@@ -57,7 +57,7 @@ const runShellDemo = async ({ label, prompt, expected, signal }: DemoOpts): Prom
     await lifetime.disposeAsync();
 };
 
-test("demo: 'what is the hostname of this machine?' — model uses EXEC to run hostname", async (t) => {
+test("demo: 'what is the hostname of this machine?' — model uses execution to run hostname", async (t) => {
     const realHostname = execSync("hostname", { encoding: "utf8" }).trim();
     await runShellDemo({
         signal: t.signal,

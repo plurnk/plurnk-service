@@ -6,8 +6,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
-    // A non-auto EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
-    makeMockResponse("\n```EXEC\necho hold\n```\n\n```TASK\n[{\"content\":\"working\",\"status\":\"in_progress\"}]\n```", 10),
+    // A non-auto execution proposal holds loop 1 live (paused at the review) while injects arrive.
+    makeMockResponse("\n```sh\necho hold\n```\n\n```TASK\n[{\"content\":\"working\",\"status\":\"in_progress\"}]\n```", 10),
     makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     makeMockResponse("```SEND\ndone again\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
 ] });
@@ -129,7 +129,7 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```", 10),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
         ],
     });

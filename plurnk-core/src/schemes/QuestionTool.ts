@@ -3,7 +3,7 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, Ru
 import { Validator } from "@plurnk/plurnk-contracts";
 
 // {§question-tool} — the native request-user-input runtime. The model asks the
-// human through one registered EXEC tool, wired directly against the standard
+// human through one registered executor tool, wired directly against the standard
 // client-interaction lifecycle (no loopback MCP, no proposal masquerade). The
 // body is the MCP2 2026-07-28 form-elicitation shape verbatim —
 // `{ message, requestedSchema }` — and the result is the standard

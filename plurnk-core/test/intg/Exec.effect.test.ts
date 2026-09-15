@@ -21,7 +21,7 @@ import { localPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", aside: null, executor: runtime, target: target === null ? null : localPath(target),
+    runtime: "sh", aside: null, executor: runtime, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -64,7 +64,7 @@ test("effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, n
     } finally { await db.close(); }
 });
 
-test("effect-gating: a pure EXEC being applied is never discoverable as a client proposal", async () => {
+test("effect-gating: a pure execution being applied is never discoverable as a client proposal", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     const applyEntered = deferred<void>();
     const releaseApply = deferred<void>();
@@ -118,7 +118,7 @@ test("{§exec-target-routing}: targetless sqlite ignores workspace cwd and opens
         });
         assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
-        // The output streams like every EXEC; a project directory never becomes the SQLite target.
+        // The output streams like every execution; a project directory never becomes the SQLite target.
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -206,8 +206,8 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
             execStmt("tool", null, "inline"),
             execStmt("tool", "data.txt", "file input"),
             { ...execStmt("tool", null, "directory cwd"), metadata: ['{"cwd": "work"}'] },
-            { ...execStmt("tool", null, ""), executor: "tool", target: schemeTarget },
-            { ...execStmt("tool", null, "filter"), executor: "tool", target: schemeTarget },
+            { ...execStmt("tool", null, ""), runtime: "tool", target: schemeTarget },
+            { ...execStmt("tool", null, "filter"), runtime: "tool", target: schemeTarget },
         ];
         const effects: Effect[] = [];
         for (const [index, statement] of statements.entries()) {
@@ -253,7 +253,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
     }
 });
 
-test("bare EXEC resolves to sh through the shared workspace capability policy", async () => {
+test("bare execution resolves to sh through the shared workspace capability policy", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         await db.test_set_workspace_settings.run({

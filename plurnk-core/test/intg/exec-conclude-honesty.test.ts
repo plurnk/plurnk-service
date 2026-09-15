@@ -250,7 +250,7 @@ for (const specimen of [
                 ? ["receipts"] : ["receipts", "failed-stream-results"]);
             if (specimen.status === 200) {
                 assert.equal(completed.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet; a TASK now completes.`,
-                    "the executor's public name is used, not the internal EXEC operation");
+                    "the executor's public name is used, not an internal operation name");
             }
         } finally { await db.close(); }
     });

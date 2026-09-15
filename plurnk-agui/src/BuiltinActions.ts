@@ -214,7 +214,7 @@ export default class BuiltinActions {
                     return operationOutcome(result);
                 }
                 case "op.exec": {
-                    // EXEC constructed structurally (no DSL text): the model-facing shape,
+                    // An execution constructed structurally (no DSL text): the model-facing shape,
                     // proposal-gated by the engine like any client op.
                     if (typeof p.command !== "string" || p.command.length === 0) {
                         return actionFailure(
@@ -225,7 +225,7 @@ export default class BuiltinActions {
                         );
                     }
                     const statement: ExecStatement = {
-                        op: "EXEC", executor: null, aside: null, target: null,
+                        runtime: "sh", aside: null, target: null,
                         metadata: null, lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
                     // Client ops journal as client-origin turns in the client worker (worker split:

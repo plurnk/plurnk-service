@@ -31,7 +31,7 @@ test.after(() => {
     assert.deepEqual(
         lateWakeFailures,
         [],
-        "the real daemon/EXEC teardown path leaves no wake task beyond database ownership",
+        "the real daemon/execution teardown path leaves no wake task beyond database ownership",
     );
 });
 
@@ -167,7 +167,7 @@ test("Daemon composes deterministic scheme and MIME display capabilities for cli
         assert.equal(
             capabilities.some((capability) => capability.kind === "scheme" && capability.scheme === "exec"),
             false,
-            "the internal EXEC implementation is not advertised as an addressable URI scheme",
+            "the internal execution implementation is not advertised as an addressable URI scheme",
         );
     } finally {
         await daemon.stop();
@@ -1429,7 +1429,7 @@ test("the module setup seam registers a live tag, dispatchable through the engin
     });
 });
 
-test("the client-interface seam — a dispatched EXEC's stdout streams as stream/event on the event source", async () => {
+test("the client-interface seam — a dispatched execution's stdout streams as stream/event on the event source", async () => {
     // Client-raised parity check: a seam-dispatched exec must emit incremental stream/event, not just
     // the log/entry + stream/concluded. dispatchAsClient routes through engine.dispatch identically to
     // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the

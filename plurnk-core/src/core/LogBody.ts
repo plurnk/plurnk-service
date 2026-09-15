@@ -9,6 +9,7 @@ import TerminalResult from "./TerminalResult.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import LineSelection from "../content/line-selection.ts";
 import ByteView from "../content/byte-view.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 export interface LogBodyRow {
     readonly op: string | null;
@@ -166,7 +167,7 @@ export default class LogBody {
             return EMPTY_BODY;
         }
 
-        if (row.op === "EXEC" && tx !== null && typeof tx === "object") {
+        if (isExecutionOp(row.op) && tx !== null && typeof tx === "object") {
             const body = (tx as { body?: unknown }).body;
             if (typeof body === "string") {
                 return {

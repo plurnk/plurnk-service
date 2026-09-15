@@ -1,4 +1,4 @@
-// {§worker-optimistic-settlement} — an EXEC receives one turn-scoped opportunity
+// {§worker-optimistic-settlement} — an execution receives one turn-scoped opportunity
 // to settle before the terminal SEND judges whether the stream needs monitoring.
 
 import test from "node:test";
@@ -89,7 +89,7 @@ test("fast current-turn streams settle before waiting and do not become monitore
         });
         assert.equal(result.status, 102, "a concluded-but-unobserved stream continues to its observation turn");
         assert.deepEqual(result.outcomes, [
-            { op: "EXEC", status: 200, problemType: null },
+            { op: "sh", status: 200, problemType: null },
             { op: "TASK", status: 102, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt < 500, "settlement ends when the stream settles, not at the full cap");
@@ -120,7 +120,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
         });
         assert.equal(result.status, 202, "the still-live stream remains a genuine monitored obligation");
         assert.deepEqual(result.outcomes, [
-            { op: "EXEC", status: 200, problemType: null },
+            { op: "sh", status: 200, problemType: null },
             { op: "TASK", status: 202, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt >= 30, "SEND adjudication follows the configured settlement opportunity");

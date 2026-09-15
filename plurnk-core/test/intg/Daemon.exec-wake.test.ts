@@ -20,7 +20,7 @@ import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execDsl = (command: string, status: "waiting" | "in_progress" = "waiting"): string =>
-    `\`\`\`EXEC
+    `\`\`\`sh
 ${command}
 \`\`\`
 
@@ -41,7 +41,7 @@ const mockResponse = (dsl: string) => {
 
 test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async () => {
     const mock = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("```EXEC\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command's outcome.\",\"status\":\"waiting\"}]\n```"),
+        mockResponse("```sh\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command's outcome.\",\"status\":\"waiting\"}]\n```"),
         mockResponse("```SEND\nThe command was cancelled.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(mock, async (db, daemon) => {
@@ -89,7 +89,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
         finally { settled.resolve(); }
     });
     const provider = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("```EXEC\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command.\",\"status\":\"waiting\"}]\n```"),
+        mockResponse("```sh\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command.\",\"status\":\"waiting\"}]\n```"),
         mockResponse("```SEND\nA cancelled task must not reach this turn.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon, addr) => {
@@ -344,7 +344,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
 });
 
 test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
-    // First loop: EXEC echo + waiting TASK — the loop SLEEPS while the
+    // First loop: execution echo + waiting TASK — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
     // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
@@ -503,7 +503,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```EXEC\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n```\n\n```TASK <-1>\n[{\"content\":\"fire and forget\",\"status\":\"waiting\"}]\n```"),
+            mockResponse("```sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n```\n\n```TASK <-1>\n[{\"content\":\"fire and forget\",\"status\":\"waiting\"}]\n```"),
             // Wake-opened loop just terminates so the test completes:
             mockResponse("```SEND\nsaw the wake\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
@@ -561,7 +561,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+            mockResponse("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
             mockResponse("```SEND\nnever\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -612,7 +612,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```EXEC\nprintf 'a\\nb\\n'; sleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+            mockResponse("```sh\nprintf 'a\\nb\\n'; sleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
             mockResponse("```SEND\nnever\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });

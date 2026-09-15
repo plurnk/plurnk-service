@@ -1,5 +1,5 @@
 // Live exec — STRUCTURAL prompts allowed here. The model is explicitly
-// told to use the EXEC op shape per plurnk.md; we're testing the
+// told to use the execution op shape per plurnk.md; we're testing the
 // machinery (parser → engine → exec scheme → spawn → channels → wake)
 // against a real provider, not the model's tool-discovery ability.
 //
@@ -28,7 +28,7 @@ test("live exec: model emits a sh fence and the spawn captures stdout", async (t
             PlurnkParser.frame("sh", "echo plurnk-exec-live-ok"),
             PlurnkParser.frame("TASK", '[{"content":"Await the stdout probe result.","status":"waiting"}]'),
             "",
-            "Do not repeat the EXEC once you see the `sh:///...` stream entry in the log.",
+            "Do not repeat the command once you see the `sh:///...` stream entry in the log.",
         ].join("\n");
 
         const { finalStatus, hitMaxTurns, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 8 }, { signal: t.signal });

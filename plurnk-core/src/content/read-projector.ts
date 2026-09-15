@@ -26,7 +26,7 @@ const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
 
 // {§packet-attachment-parts} — a projected PDF member names its document: source mimetype, the
 // handler's page count when the page tree is readable ({§mimetype-pdf-facts}), and its size.
-// {§log-channel-miss-names-stream} — the stream address a log EXEC item recorded, when the scheme supplied it.
+// {§log-channel-miss-names-stream} — the stream address a log execution item recorded, when the scheme supplied it.
 const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
     const stream = attributes?.stream;
     return typeof stream === "string" ? stream : null;
@@ -213,7 +213,7 @@ export default class ReadProjector {
         const selectedRepresentation = Object.hasOwn(representation.channels, selected) ? representation.channels[selected] : undefined;
         if ((selected !== manifest.defaultChannel && !Object.hasOwn(manifest.channels, selected)) || selectedRepresentation === undefined) {
             // {§log-channel-miss-names-stream} (#502) — a representation that names the stream its
-            // item produced (a log EXEC item) points the miss at `<stream>#<channel>`, the way a
+            // item produced (a log execution item) points the miss at `<stream>#<channel>`, the way a
             // range miss names the available range; the model conflates the two addresses because
             // they share their coordinate.
             const stream = streamOf(representation.attributes);

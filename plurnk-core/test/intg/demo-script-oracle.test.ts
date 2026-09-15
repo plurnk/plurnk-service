@@ -19,7 +19,7 @@ test("script oracle recognizes actual shell terminal receipts through the daemon
     try {
         await writeFile(join(workspace, "greet.sh"), "#!/bin/sh\nprintf 'GREETING\\n'\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "```EXEC (greet.sh)```\n```TASK\n[{\"content\":\"Wait for the script.\",\"status\":\"waiting\"}]\n```", reasoning: null } },
+            { assistant: { content: "```sh (greet.sh)```\n```TASK\n[{\"content\":\"Wait for the script.\",\"status\":\"waiting\"}]\n```", reasoning: null } },
             { assistant: { content: "```SEND\nGREETING\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
@@ -29,7 +29,7 @@ test("script oracle recognizes actual shell terminal receipts through the daemon
                 const result = await runLoopToTerminal(ws, 2, { prompt: "run greet.sh", policy: { proposals: "accept" } });
                 assert.equal(result.finalStatus, 200);
                 assert.ok(result.modelWorkerId);
-                const execs = await db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: result.modelWorkerId, op: "EXEC" });
+                const execs = await db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: result.modelWorkerId, op: "sh" });
                 const reads = await db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: result.modelWorkerId, op: "READ" });
                 assert.equal(observedScriptExecution(execs, reads, "greet.sh", "GREETING"), true, JSON.stringify({ execs, reads }));
             } finally { ws.close(); }

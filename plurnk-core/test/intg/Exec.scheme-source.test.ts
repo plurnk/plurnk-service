@@ -44,9 +44,8 @@ const urlTarget = (raw: string): UrlPath => {
 
 const execStatement = (target: string, body: string, metadata: string[] | null = null): ExecStatement => ({
     metadata,
-    op: "EXEC",
     aside: null,
-    executor: "tool", target: urlTarget(target),
+    runtime: "tool", target: urlTarget(target),
     lineMarker: null,
     body,
     position: { line: 1, column: 0 },
@@ -178,7 +177,7 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
     };
 };
 
-// {§exec-target-routing} {§exec-source-temporary} A scheme-backed EXEC source
+// {§exec-target-routing} {§exec-source-temporary} A scheme-backed execution source
 // is one exact ordinary READ; non-native sources use a spawn-scoped temporary.
 test("{§op-execution-order}: create, launch, and delete are ordered without waiting for an asynchronous executor", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
@@ -192,14 +191,14 @@ test("{§op-execution-order}: create, launch, and delete are ordered without wai
             messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
         });
         const rows = await ctx.db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => ["EDIT", "EXEC", "KILL"].includes(op ?? "")).map(({ op, status_rx }) => [op, status_rx]), [
-            ["EDIT", 201], ["EXEC", 200], ["KILL", 200],
+        assert.deepEqual(rows.filter(({ op }) => ["EDIT", "tool", "KILL"].includes(op ?? "")).map(({ op, status_rx }) => [op, status_rx]), [
+            ["EDIT", 201], ["tool", 200], ["KILL", 200],
         ]);
         assert.equal(await ctx.db.test_get_entry_id_by_pathname.get({ pathname: "/script" }), undefined, "cleanup has happened while the executor remains in flight");
         assert.equal(ctx.runs.length, 0, "dispatch does not imply process completion");
         gate.resolve();
         await ctx.exec.idle();
-        assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), ["source code"], "EXEC acquired the source at its authored position before KILL");
+        assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), ["source code"], "execution acquired the source at its authored position before KILL");
     } finally {
         gate.resolve();
         await ctx.close();
@@ -208,7 +207,7 @@ test("{§op-execution-order}: create, launch, and delete are ordered without wai
     }
 });
 
-test("EXEC source READ preserves the complete authored scheme address (#163)", async () => {
+test("execution source READ preserves the complete authored scheme address (#163)", async () => {
     const ctx = await wire();
     const seen: RepresentationPreparationRequest[] = [];
     const completeSource = Array.from({ length: 20 }, (_, index) => `source line ${index + 1}`).join("\n");
@@ -324,7 +323,7 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
         assert.ok(tempPath !== null);
         assert.equal((await stat(tempPath)).isDirectory(), true, "the specimen leaves a real unlink failure behind");
         assert.equal(diagnostics.length, 1, "cleanup failure is diagnosed exactly once");
-        assert.match(String(diagnostics[0]?.[0]), /EXEC source temporary cleanup failed/);
+        assert.match(String(diagnostics[0]?.[0]), /Execution source temporary cleanup failed/);
         const cause = diagnostics[0]?.[1];
         assert.ok(cause instanceof Error);
         assert.equal("path" in cause ? cause.path : undefined, tempPath);
@@ -335,7 +334,7 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     }
 });
 
-test("EXEC source READ preserves literal shared and named scratch identities", async () => {
+test("execution source READ preserves literal shared and named scratch identities", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.workerId, "child");
@@ -375,7 +374,7 @@ test("EXEC source READ preserves literal shared and named scratch identities", a
         // {§worker-read-scope} — a sibling names another worker's space and materializes it (#394).
         const named = await ctx.dispatch(sibling, "worker://child/script#body");
         assert.equal(named.status, 200, JSON.stringify(named));
-        assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's EXEC materialized the named worker's script");
+        assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's execution materialized the named worker's script");
         const unknown = await ctx.dispatch(ctx.root, "worker://unknown/script#body");
         assert.equal(unknown.status, 404);
         assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
@@ -385,7 +384,7 @@ test("EXEC source READ preserves literal shared and named scratch identities", a
     }
 });
 
-test("{§execution-output-identity}: EXEC source READ uses the same workspace output from either worker", async () => {
+test("{§execution-output-identity}: execution source READ uses the same workspace output from either worker", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.workerId, "child");
@@ -418,7 +417,7 @@ test("{§execution-output-identity}: EXEC source READ uses the same workspace ou
     }
 });
 
-test("EXEC source eligibility and failures come from the owning READ contract (#163)", async () => {
+test("execution source eligibility and failures come from the owning READ contract (#163)", async () => {
     const ctx = await wire();
     let loggingPreparationCalled = false;
     try {
@@ -466,7 +465,7 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         const writeonly = await ctx.dispatch(ctx.root, "writeonly:///item");
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
-        // #425 F4 — the owning identity stays; the EXEC slot contract rides the recovery.
+        // #425 F4 — the owning identity stays; the execution slot contract rides the recovery.
         assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its stdin. Without a target, the body is the command.");
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
@@ -477,7 +476,7 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         assert.equal(absent.status, 404);
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
         // The recovery states the slot contract and never guesses that the missing resource was a tool call.
-        assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "EXEC does not guess that a missing resource was intended as a tool call");
+        assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "execution does not guess that a missing resource was intended as a tool call");
         assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its stdin. Without a target, the body is the command.");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");

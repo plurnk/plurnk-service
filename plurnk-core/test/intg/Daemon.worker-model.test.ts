@@ -728,7 +728,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"done\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"done\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nresumed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -751,7 +751,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
                 selector: spec.alias,
                 policy: { proposals: "accept" },
             });
-            // The EXEC stream keeps the loop parked (202); wait for that state.
+            // The execution stream keeps the loop parked (202); wait for that state.
             for (let i = 0; i < 100; i++) {
                 const loops = await db.test_all_loops.all<{ status: number }>({});
                 if (loops.some(({ status }) => status === 202)) break;

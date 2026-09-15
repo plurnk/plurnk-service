@@ -13,6 +13,8 @@ import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 export default class LogWriter {
     readonly #db: Db;
@@ -46,7 +48,7 @@ export default class LogWriter {
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
     }): Promise<number> {
-        if (statement.op === "EXEC" && result.status === 202 && result.attrs !== undefined) {
+        if (isExecution(statement) && result.status === 202 && result.attrs !== undefined) {
             const attrs = result.attrs as Record<string, unknown>;
             if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
             attrs.pathname = await ExecutionOutputs.claim(this.#db, workspaceId, execRouteOf(statement).runtime);
@@ -76,26 +78,26 @@ export default class LogWriter {
                 remove: curationPlan.remove,
             };
         }
-        const seqs = statement.op === "EXEC" || result.problem !== undefined
+        const seqs = isExecution(statement) || result.problem !== undefined
             ? await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId,
                 turn_id: turnId,
             })
             : undefined;
-        if ((statement.op === "EXEC" || result.problem !== undefined) && seqs === undefined) {
+        if ((isExecution(statement) || result.problem !== undefined) && seqs === undefined) {
             throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
         }
         if (statement.op === "READ") Results.assertReadResult(result);
         const coordinate = seqs === undefined ? null : LogEntryProjection.coordinate(
             `${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`,
-            { op: durableStatement.op, origin, tx: durableStatement, attrs: attrsObj },
+            { op: writtenOp(durableStatement), origin, tx: durableStatement, attrs: attrsObj },
         );
         if (result.problem !== undefined && seqs !== undefined) {
             Results.attachInstance(result, `log:///${coordinate}`);
         } else {
             Results.assert(result);
         }
-        if (statement.op === "EXEC" && typeof attrsObj.pathname === "string" && attrsObj.pathname !== "") {
+        if (isExecution(statement) && typeof attrsObj.pathname === "string" && attrsObj.pathname !== "") {
             attrsObj.stream = `${execRouteOf(statement).runtime}://${attrsObj.pathname}`;
             if (seqs === undefined) throw new Error("Execution provenance has no loop/turn coordinate.");
             attrsObj.coordinate = { loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence };
@@ -112,7 +114,7 @@ export default class LogWriter {
             origin,
             source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
             model_call_id: modelCallId,
-            op: durableStatement.op,
+            op: writtenOp(durableStatement),
             signal: this.#signalToJson(TurnDisposition.is(durableStatement) ? TurnDisposition.status(durableStatement) : null),
             scheme: target.scheme,
             username: target.username,
@@ -129,7 +131,7 @@ export default class LogWriter {
             mimetype_rx: "application/json",
             status_rx: result.status,
             weight: LogBody.weight({
-                op: durableStatement.op,
+                op: writtenOp(durableStatement),
                 attrs,
                 tx: txJson,
                 rx: rxJson,

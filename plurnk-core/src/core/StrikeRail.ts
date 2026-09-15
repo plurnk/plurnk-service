@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 // {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a TASK claim strikes
 // (a completion joins live work, {§completion-joins-live-work}; a claim over settled results
@@ -114,7 +115,7 @@ export default class StrikeRail {
         if (history.length > window) history.splice(0, history.length - window);
         const cycle = StrikeRail.detectCycle(history, turn.minCycles, turn.maxCyclePeriod);
         const recordedFailed = turn.outcomes.some(
-            (outcome) => outcome.op !== "EXEC"
+            (outcome) => !isExecutionOp(outcome.op)
                 && outcome.status >= 400
                 && !SOFT_FAILURE_STATUSES.has(outcome.status)
                 && !isExecutorEvidence(outcome),

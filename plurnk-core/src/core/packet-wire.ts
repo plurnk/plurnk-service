@@ -130,6 +130,7 @@ export interface RenderedLog {
 }
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
 import { imageWeight, pdfWeight } from "./attachments.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 export { imageWeight, pdfWeight };
 
 interface RenderedLogRow {
@@ -766,7 +767,7 @@ export default class PacketWire {
         const target = PacketWire.#renderActionTarget(e.target);
         // {§exec-stream}: a terminal stream observation's address is the stream it observed,
         // rendered under `stream` like the invocation's own link — never a `target`, which
-        // the model would otherwise author into an EXEC slot (#425 F4).
+        // the model would otherwise author into an execution slot (#425 F4).
         const terminalStream = op === "READ"
             && e.attrs !== null
             && typeof e.attrs === "object"
@@ -797,16 +798,16 @@ export default class PacketWire {
             && typeof (e.attrs as { worker?: unknown }).worker === "string") {
             meta.worker = (e.attrs as { worker: string }).worker;
         }
-        // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
+        // An execution's output is a separate stream entry ({§exec-stream}); its address rides in a
         // `stream` link, distinct from the runtime-owned invocation target.
         // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
         // when it is not the project root, and then in the model's own project-relative form;
         // the root is the default and a host-absolute path never reaches the packet.
-        if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
+        if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
             const cwd = PacketWire.#projectRelativeCwd((e.attrs as { cwd: string }).cwd, options.projectRoot ?? null);
             if (cwd !== null) meta.cwd = cwd;
         }
-        if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
+        if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
             meta.stream = (e.attrs as { stream: string }).stream;
         }
         return { meta, op, tx, coordinate, path, renderedLeaf, target, terminalStream };

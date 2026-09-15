@@ -174,7 +174,7 @@ const mcpFamily = async (): Promise<Family> => {
         family: "mcp",
         teaching: /## discover, then add/u,
         documentOf: (alias) => `/_plurnk/tools/${alias}.md`,
-        // `read` declares the probe tools read-effect so a client EXEC runs ungated; everything else proposes.
+        // `read` declares the probe tools read-effect so a client execution runs ungated; everything else proposes.
         service: { alias: "fixture", definition: { name: "fixture", transport: "stdio", command: process.execPath, args: [echo], read: ["echo"] }, probe: exec("fixture", "echo") },
         addable: { alias: "extra", definition: { name: "extra", transport: "stdio", command: process.execPath, args: [echo], tools: ["echo"], read: ["echo"] }, probe: exec("extra", "echo") },
         conflicting: { alias: "extra", definition: { name: "extra", transport: "stdio", command: process.execPath, args: [legacy], read: ["legacy_echo"] }, probe: exec("extra", "legacy_echo") },
@@ -263,7 +263,7 @@ const matrix = async (family: Family): Promise<void> => {
         return LIVE.has(status);
     };
     const document = (alias: string, workerId = model) => documentPresent(context(workerId), family.documentOf(alias));
-    // Model verbs: the family's EXEC manager streams JSON into its output entry.
+    // Model verbs: the family's execution manager streams JSON into its output entry.
     const exec = (program: string) => dispatch(context(), parseOne(program));
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: family.family, timeoutMs: 10_000 });
     const proposals: number[] = [];
@@ -272,7 +272,7 @@ const matrix = async (family: Family): Promise<void> => {
         events.push({ method, params });
         if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
     });
-    // An EXEC verb starts a stream: the dispatch reports `started`, the verb's
+    // An execution verb starts a stream: the dispatch reports `started`, the verb's
     // JSON outcome closes the family's results channel, and an accepted
     // mutation's publication settles at the turn boundary.
     const proposed = async (program: string, decision: "accept" | "reject") => {

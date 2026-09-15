@@ -687,7 +687,7 @@ test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sende
         const workerId = await insertWorker(db, workspaceId);
         await db.test_set_workspace_settings.run({
             id: workspaceId,
-            settings: JSON.stringify({ capabilities: { deny: [{ operation: "EXEC" }] } }),
+            settings: JSON.stringify({ capabilities: { deny: [{ scheme: "exec" }] } }),
         });
         const loopId = await insertLoop(db, workerId, 1, "delegate");
         await db.test_set_loop_policy.run({

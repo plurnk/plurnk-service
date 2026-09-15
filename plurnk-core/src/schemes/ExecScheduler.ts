@@ -39,14 +39,14 @@ export default class ExecScheduler {
 
     constructor(concurrency = readExecConcurrency()) {
         if (!isConcurrency(concurrency)) {
-            throw new RangeError("EXEC concurrency must be -1 (unbounded) or a positive safe integer.");
+            throw new RangeError("Execution concurrency must be -1 (unbounded) or a positive safe integer.");
         }
         this.#concurrency = concurrency;
     }
 
     admit(workspaceId: number, signal: AbortSignal): ExecAdmission {
         if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
-            throw new RangeError("EXEC scheduling requires a positive workspace id.");
+            throw new RangeError("Execution scheduling requires a positive workspace id.");
         }
         if (this.#concurrency === -1) {
             return {

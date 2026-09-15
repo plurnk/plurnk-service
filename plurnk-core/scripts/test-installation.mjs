@@ -607,13 +607,13 @@ raw stdin
     });
     const interrupts = proposed.events.find((event) => event.type === "RUN_FINISHED")?.outcome?.interrupts;
     if (!proposed.response.ok || interrupts?.length !== 1 || existsSync(packedSkillMarker)) {
-        throw new Error(`packed Skill EXEC did not pause for one approval: ${proposed.body}`);
+        throw new Error(`packed Skill execution did not pause for one approval: ${proposed.body}`);
     }
     const resumed = await aguiRun(address, { workspace: attached.name }, {
         resume: [{ interruptId: interrupts[0].id, status: "resolved", payload: { decision: "accept" } }],
     });
     const completed = resumed.events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
-    if (!resumed.response.ok || completed?.ok !== true) throw new Error(`packed Skill EXEC resume failed: ${resumed.body}`);
+    if (!resumed.response.ok || completed?.ok !== true) throw new Error(`packed Skill execution resume failed: ${resumed.body}`);
     const skillExec = completed.result.results[0];
     const deadline = Date.now() + 5000;
     while (!existsSync(packedSkillMarker) && Date.now() < deadline) await delay(20);
@@ -767,7 +767,7 @@ for (const packageName of defaultExecPackages) {
     for (const runtime of manifest.plurnk?.runtimes ?? []) {
         ok(
             packedExecs.owners[runtime.name] === packageName,
-            `EXEC runtime ${runtime.name} is discovered from the service-owned ${packageName} leaf`,
+            `runtime ${runtime.name} is discovered from the service-owned ${packageName} leaf`,
         );
     }
 }

@@ -14,6 +14,7 @@ import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
+import { isExecution, RuntimeTag } from "@plurnk/plurnk-contracts";
 
 type CapabilityScope = "service" | "workspace";
 
@@ -63,6 +64,33 @@ export default class CapabilityResolver {
                 ? demands(...items)
                 : [];
 
+        // An execution's operation is its runtime tag; the capability route is the runtime's.
+        if (isExecution(statement)) {
+            const executors = this.#executors();
+            const route = execRouteOf(statement);
+            const runtime = route.runtime;
+            const entry = executors?.entry(runtime, workspaceId);
+            if (entry === undefined) return [];
+            const registry = executors?.toolRegistry(runtime, workspaceId) ?? null;
+            const target = route.target === null ? null : route.target.raw;
+            const tool = registry?.tools.find((candidate) => candidate.target === target)?.target ?? null;
+            // A finite tool registry owns exact target resolution. Missing
+            // and unknown targets must reach that owner as ordinary
+            // tool-required/tool-not-enabled failures; policy cannot
+            // misrepresent absence as denied authority.
+            if (registry !== null && tool === null) return [];
+            const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workspaceId)];
+            const targetKind = entry.invocation.target?.kind;
+            const execTarget = route.target;
+            if ((targetKind === "resource" || targetKind === "script") && execTarget === null) {
+                if (entry.invocation.target?.required === true) return [];
+            } else if ((targetKind === "resource" || targetKind === "script") && execTarget !== null) {
+                const targetDemand = describe(statement.runtime, "observe", execTarget);
+                if (targetDemand === null) return [];
+                demands.push(...targetDemand);
+            }
+            return demands;
+        }
         switch (statement.op) {
             case "FIND":
             case "READ":
@@ -101,32 +129,6 @@ export default class CapabilityResolver {
                 const scheme = schemeNameOf(statement.target);
                 const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
                 return demands(describe("SEND", control ? "control" : "mutate", statement.target));
-            }
-            case "EXEC": {
-                const executors = this.#executors();
-                const route = execRouteOf(statement);
-                const runtime = route.runtime;
-                const entry = executors?.entry(runtime, workspaceId);
-                if (entry === undefined) return [];
-                const registry = executors?.toolRegistry(runtime, workspaceId) ?? null;
-                const target = route.target === null ? null : route.target.raw;
-                const tool = registry?.tools.find((candidate) => candidate.target === target)?.target ?? null;
-                // A finite tool registry owns exact target resolution. Missing
-                // and unknown targets must reach that owner as ordinary
-                // tool-required/tool-not-enabled failures; policy cannot
-                // misrepresent absence as denied authority.
-                if (registry !== null && tool === null) return [];
-                const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workspaceId)];
-                const targetKind = entry.invocation.target?.kind;
-                const execTarget = route.target;
-                if ((targetKind === "resource" || targetKind === "script") && execTarget === null) {
-                    if (entry.invocation.target?.required === true) return [];
-                } else if ((targetKind === "resource" || targetKind === "script") && execTarget !== null) {
-                    const targetDemand = describe("EXEC", "observe", execTarget);
-                    if (targetDemand === null) return [];
-                    demands.push(...targetDemand);
-                }
-                return demands;
             }
         }
     }
@@ -193,7 +195,8 @@ export default class CapabilityResolver {
             CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));
         const entryBearing = manifest.category === "data";
         const readable = entryBearing || coreRepresentationProvider(handler) !== null;
-        if (readable && (["READ", "COPY", "EXEC", "BARE"] as const).some((operation) => allows(operation, "observe"))) return true;
+        const observers: readonly CapabilityDescriptor["operation"][] = ["READ", "COPY", "BARE", ...(this.#executors()?.availableRuntimes(workspaceId) ?? []) as readonly RuntimeTag[]];
+        if (readable && observers.some((operation) => allows(operation, "observe"))) return true;
         if ((entryBearing || typeof handler.find === "function") && allows("FIND", "observe")) return true;
         if (!manifest.writableBy.includes("model")) return false;
         if (entryBearing && allows("COPY", "mutate")) return true;
@@ -243,7 +246,7 @@ export default class CapabilityResolver {
             ...this.#traits(runtime, workspaceId),
         ])].toSorted();
         return {
-            operation: "EXEC",
+            operation: runtime as RuntimeTag,
             scheme: "exec",
             runtime,
             access: traits.includes("interaction") ? "interact" : "execute",

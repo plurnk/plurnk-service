@@ -5,7 +5,7 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 
 const MEMORY = ":memory:";
 
-// Resolve the EXEC (target) slot to a db path: a relative target resolves
+// Resolve the execution's (target) slot to a db path: a relative target resolves
 // against cwd ({§executor-sinks}); null — or an explicit
 // `:memory:` — means no file target → an ephemeral in-memory db.
 const dbPath = (cwd: string | null, target: string | null): string => {
@@ -24,7 +24,7 @@ const stripComments = (sql: string): string =>
     sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
 
 // In-process SQLite executor (a logical runtime, not subprocess). Runs one SQL
-// statement via node:sqlite against the EXEC target db — defaulting to an
+// statement via node:sqlite against the target db — defaulting to an
 // ephemeral `:memory:` when no target is given — and writes the result to the
 // `results` channel as application/json, ready for the jsonpath body-matcher.
 //

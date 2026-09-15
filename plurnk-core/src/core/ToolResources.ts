@@ -7,6 +7,7 @@ import type {
     RuntimeSummaryDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 export interface ToolResource {
     readonly pathname: string;
@@ -110,9 +111,9 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
     // {§fence-heading-in-body} — the source's own runtime is the known executor for its summary.
     const { items } = PlurnkParser.parseStatements(summary, { executors: [source.runtime] });
     const item = items[0];
-    if (items.length !== 1 || item?.kind !== "statement" || item.statement.op !== "EXEC") return summary;
+    if (items.length !== 1 || item?.kind !== "statement" || !isExecution(item.statement)) return summary;
     const statement = item.statement;
-    if (statement.executor !== source.runtime || statement.body !== null || statement.target === null) return summary;
+    if (statement.runtime !== source.runtime || statement.body !== null || statement.target === null) return summary;
     const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
     const input = invocation === undefined ? undefined : invocationInput(invocation);
     if (input === undefined) return summary;

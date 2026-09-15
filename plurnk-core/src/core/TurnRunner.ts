@@ -1061,7 +1061,7 @@ export default class TurnRunner {
         // {§env-delta-log-pull} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
         // distinct byte-cursor path for this worker's streams.
-        // {§exec-poll} — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
+        // {§exec-poll} — an execution `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
@@ -1950,7 +1950,7 @@ export default class TurnRunner {
     // #note12 — plugin reference docs are materialized beneath
     // worker:///_plurnk/plurnk/ by LoopDocs.
 
-    // {§exec-poll} — EXEC `<0>` is turn-scoped: abort the worker's open turn-scoped streams via their
+    // {§exec-poll} — an execution `<0>` is turn-scoped: abort the worker's open turn-scoped streams via their
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
     // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its

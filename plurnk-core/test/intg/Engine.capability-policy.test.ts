@@ -220,7 +220,7 @@ test("unknown routes reach ordinary resolution even under matching capability de
     try {
         await setPolicies(db, workspaceId, loopId, policies({ deny: [
             { operation: "READ" },
-            { operation: "EXEC" },
+            { scheme: "exec" },
         ] }));
         const result = await engine.dispatch({
             statement: readStmt(urlPath("unknown-source", "/item")),
@@ -255,12 +255,12 @@ test("unknown routes reach ordinary resolution even under matching capability de
     } finally { await db.close(); }
 });
 
-test("EXEC admission precedes every target acquisition shape", async () => {
+test("execution admission precedes every target acquisition shape", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ operation: "EXEC" }] }));
+        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ scheme: "exec" }] }));
         const targets = [null, localPath("input.txt"), urlPath("file", "/input.txt"), urlPath("worker", "/source"), urlPath("web-source", "/source")];
         for (const [index, target] of targets.entries()) {
             const result = await engine.dispatch({
@@ -268,13 +268,13 @@ test("EXEC admission precedes every target acquisition shape", async () => {
                 workspaceId, workerId, loopId, turnId, sequence: index + 1, origin: "client",
             });
             assert.equal(result.status, 403);
-            assert.equal(result.problem?.operation, "EXEC");
+            assert.equal(result.problem?.operation, "fixture-tool");
         }
         assert.equal(web.preparations, 0);
     } finally { await exec.idle(); await db.close(); }
 });
 
-test("a resource-shaped EXEC target adds its own observe demand", async () => {
+test("a resource-shaped execution target adds its own observe demand", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
@@ -291,7 +291,7 @@ test("a resource-shaped EXEC target adds its own observe demand", async () => {
     } finally { await exec.idle(); await db.close(); }
 });
 
-test("a literal EXEC target is a tool identifier, never a resource route", async () => {
+test("a literal execution target is a tool identifier, never a resource route", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);

@@ -1,4 +1,4 @@
-// SPEC {§exec-env-scoped} — the environment one EXEC subprocess receives.
+// SPEC {§exec-env-scoped} — the environment one execution subprocess receives.
 //
 // Two mechanisms, in this order, and they are not the same kind of thing:
 //

@@ -4,7 +4,6 @@ import {
     Validator,
     TurnDisposition,
     type OperationResult,
-    type PlurnkOp,
     type PlurnkStatement,
     type ProposalDisposition,
     type ProposalProjection,
@@ -28,6 +27,7 @@ import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -347,7 +347,7 @@ export default class ProposalLifecycle {
 
     #target(
         row: ProposalRow,
-        op: PlurnkOp,
+        op: string,
         attrs: Record<string, unknown>,
     ): { scheme: string | null; authority: string | null; pathname: string | null } {
         const routed = attrs.proposalTarget;
@@ -428,14 +428,14 @@ export default class ProposalLifecycle {
     ): Promise<ProposalSettlement> {
         const { workspaceId, workerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
-        // EXEC routes to the exec scheme regardless of its runtime-owned target.
+        // An execution routes to the exec scheme regardless of its runtime-owned target.
         // All other unary ops resolve their handler from statement.target's scheme.
         // COPY/MOVE write the destination, not the source: the
         // accept must reach the dest scheme's applyResolution (File writes disk).
         const routedScheme = (originalResult.attrs as { proposalScheme?: unknown } | undefined)?.proposalScheme;
         const schemeName = typeof routedScheme === "string"
             ? routedScheme
-            : statement.op === "EXEC"
+            : isExecution(statement)
                 ? "exec"
                 : (statement.op === "COPY" || statement.op === "MOVE")
                     ? schemeNameOf(statement.destination.target)
@@ -490,7 +490,7 @@ export default class ProposalLifecycle {
                 : proposalTarget.authority;
             if (
                 manifest.category === "data"
-                && statement.op !== "EXEC"
+                && !isExecution(statement)
                 && authoredTarget !== null
             ) {
                 const binding = await this.#entryAddresses.resolve({
@@ -542,7 +542,7 @@ export default class ProposalLifecycle {
             }
             // Propagate applyResolution.outcome onto the accepted resolution
             // (operational metadata, e.g. exec's "started") AND its body — the applied result the
-            // model must see THIS turn: a file EDIT's line-numbered diff. EXEC
+            // model must see THIS turn: a file EDIT's line-numbered diff. An execution
             // never uses the body rail — its output streams uniformly ({§exec-stream}, NO same-turn
             // in-body exception; automatic admission only skips the review pause) and is READ next turn.
             const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined

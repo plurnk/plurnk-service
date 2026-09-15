@@ -16,8 +16,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, in
 
 const execStmt = (runtime: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC",
-    aside: null,
+    runtime: "sh", aside: null,
     executor: runtime, target: null,
     lineMarker: null,
     body: "echo hi",
@@ -49,7 +48,7 @@ const runWithPolicy = async (capabilities: CapabilityPolicy, runtime: string) =>
     } finally { await db.close(); }
 };
 
-test("{§capability-policy-cascade}: a workspace runtime denial refuses EXEC before executor resolution", async () => {
+test("{§capability-policy-cascade}: a workspace runtime denial refuses execution before executor resolution", async () => {
     const result = await runWithPolicy({ deny: [{ runtime: "sh" }] }, "sh");
     assert.equal(result.status, 403);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");

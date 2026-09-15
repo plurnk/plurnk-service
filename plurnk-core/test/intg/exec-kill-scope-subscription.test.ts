@@ -13,7 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, ma
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", aside: null, executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    runtime: "sh", aside: null, executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {

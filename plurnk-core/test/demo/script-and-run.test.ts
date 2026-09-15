@@ -6,7 +6,7 @@
 // mention of `exec:///` or file conventions. Pure intent.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). workspace.create
-// pins the workspace as project_root, so filesystem work lands there and EXEC
+// pins the workspace as project_root, so filesystem work lands there and execution
 // defaults there — the model finds what it just wrote, with no hand-wired engine.
 
 import { liveTest as test } from "../live-test.ts";
@@ -45,7 +45,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             // Execution may be delegated; receipts are paired within their owning worker.
             const workers = await s.db.test_workers_by_workspace.all<{ id: number }>({ workspace_id: s.workspaceId });
             const observed = await Promise.all(workers.map(async ({ id }) => observedScriptExecution(
-                await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "EXEC" }),
+                await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "sh" }),
                 await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "READ" }),
                 "greet.sh", marker,
             )));

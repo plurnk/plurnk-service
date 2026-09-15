@@ -695,7 +695,7 @@ export default class Engine {
     }
 
     //  — can this op open a wake edge mid-turn? The grounding scan for a
-    // same-turn spawn-then-hibernate: an EXEC (stream conclusion / poll cadence wakes), a COPY to
+    // same-turn spawn-then-hibernate: an execution (stream conclusion / poll cadence wakes), a COPY to
     // worker:// (child-conclusion wake, {§worker-lifecycle-child-wake}), a directed SEND to worker:// (irc — the
     // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
     // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a

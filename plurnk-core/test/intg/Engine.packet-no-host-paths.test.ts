@@ -1,5 +1,5 @@
 // {§fs-namespace} — host paths do not exist inside the jail. The 2026-08-29 benchlet showed the
-// EXEC receipt's absolute `cwd` (and the target-not-found Problem's `root`) in every packet, and
+// execution receipt's absolute `cwd` (and the target-not-found Problem's `root`) in every packet, and
 // the model pasting it back as `### EXEC_ (cwd: /host/path)`. This witness renders a real loop's
 // packets and asserts the workspace's host root never appears in them.
 import test from "node:test";
@@ -12,10 +12,11 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const execFileP = promisify(execFile);
 
-test("{§fs-namespace} no packet carries the workspace's host-absolute root: EXEC receipts, failed targets, and stream rows included", async () => {
+test("{§fs-namespace} no packet carries the workspace's host-absolute root: execution receipts, failed targets, and stream rows included", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-jail-")));
     try {
         const env = hermeticGitEnv();
@@ -29,7 +30,7 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: EXE
         // A targetless command (its receipt names the root — the default), a command whose
         // target does not resolve (the Problem used to carry the host root), then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```EXEC\nprintf ok\n```\n\n```EXEC (cwd: /nowhere)\nprintf never\n```\n\n```TASK\n[{\"content\":\"ran\",\"status\":\"in_progress\"}]\n```", 50),
+            makeMockResponse("```sh\nprintf ok\n```\n\n```sh (cwd: /nowhere)\nprintf never\n```\n\n```TASK\n[{\"content\":\"ran\",\"status\":\"in_progress\"}]\n```", 50),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -45,7 +46,7 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: EXE
                 }
                 assert.ok(texts.length >= 2, `every turn's packet is inspected; got ${texts.length}`);
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: result.modelWorkerId! });
-                const execs = rows.filter(({ op }) => op === "EXEC");
+                const execs = rows.filter(({ op }) => isExecutionOp(op));
                 assert.deepEqual(execs.map(({ status_rx }) => status_rx).toSorted(), [200, 400], "one command ran, one target was refused");
                 for (const text of texts) {
                     assert.doesNotMatch(text, new RegExp(root.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")), "the host root never appears in what the model sees");

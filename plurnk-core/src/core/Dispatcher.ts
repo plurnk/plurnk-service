@@ -41,10 +41,11 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import type EditSequence from "./EditSequence.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // READ/FIND are not gated — they read, never mutating an entry.
-const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL", "FORK", "WORK"]);
+const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "KILL", "FORK", "WORK"]);
 
 
 export type DispatchContext = {
@@ -566,8 +567,8 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.edit(this.#scopedEntryEdits.get(statement)!, schemeCtx, context.editSequence);
                 } else if (statement.op === "KILL") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
-                } else if (statement.op === "EXEC") {
-                    // EXEC routes unconditionally to its operation owner after
+                } else if (isExecution(statement)) {
+                    // An execution routes unconditionally to its operation owner after
                     // the shared capability resolver admits its runtime/tool.
                     result = await this.#dataRun.run("exec", statement, schemeCtx);
                 } else {
@@ -625,11 +626,11 @@ export default class Dispatcher {
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
             // Effect-gated auto-run (read/pure runtimes, {§exec-readpure-ungated}):
-            // EXEC stores its one canonical effect fact before admission. Reuse
+            // An execution stores its one canonical effect fact before admission. Reuse
             // that exact fact here; no human gate or loop/proposal notification.
             const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
             let autoAccept = false;
-            if (statement.op === "EXEC" || (statement.op === "SEND"
+            if (isExecution(statement) || (statement.op === "SEND"
                 && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId))) {
                 if (!EffectPolicy.isEffect(effect)) {
                     throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
@@ -874,7 +875,7 @@ export default class Dispatcher {
         };
     }
 
-    // An accepted EXEC reads a non-file source through the same registered
+    // An accepted execution reads a non-file source through the same registered
     // handler and addressed context as an authored READ. {§exec-target-routing}
     async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
         return ResourceBindings.using(this.#schemes, ctx,
@@ -889,7 +890,7 @@ export default class Dispatcher {
             return { nativePath: null, result: Dispatcher.#failure(
                 "exec-source-not-data",
                 501,
-                `Scheme '${schemeName}' is not a data source for EXEC.`,
+                `Scheme '${schemeName}' is not a data source for an execution.`,
                 {},
                 {
                     scheme: schemeName,
@@ -912,7 +913,7 @@ export default class Dispatcher {
         if (source?.nativePath === undefined) return { result, nativePath: null };
         const nativePath = await source.nativePath();
         if (nativePath === null) return { nativePath: null, result: Dispatcher.#failure(
-            "entry-not-found", 404, "The EXEC source file no longer exists.", {}, { target: target.raw },
+            "entry-not-found", 404, "The execution's source file no longer exists.", {}, { target: target.raw },
         ) };
         return { result, nativePath };
     }
@@ -955,12 +956,12 @@ export default class Dispatcher {
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
     #checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
-        if (!MUTATING_OPS.has(statement.op)) return null;
+        if (!isExecution(statement) && !MUTATING_OPS.has(statement.op)) return null;
         if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
 
-        // EXEC's operation authority always belongs to the exec scheme;
+        // An execution's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
-        if (statement.op === "EXEC") {
+        if (isExecution(statement)) {
             return this.#denyIfDisallowed("exec", origin, workspaceId);
         }
 
@@ -1244,9 +1245,8 @@ export default class Dispatcher {
         // {§naked-pattern} lifts prose after the path on FIND, READ and KILL as a literal matcher;
         // on a reply's first line a multi-word literal is prose, not a mis-fenced operation.
         if ("matcher" in statement && statement.matcher?.dialect === "glob" && /\s/u.test(statement.matcher.raw)) return null;
-        if (statement.op !== "EXEC") return line;
-        const executor = statement.executor;
-        if (executor === null || schemeCtx.executors?.entry(executor, schemeCtx.workspaceId) === undefined) return null;
+        if (!isExecution(statement)) return line;
+        if (schemeCtx.executors?.entry(statement.runtime, schemeCtx.workspaceId) === undefined) return null;
         return line;
     }
 

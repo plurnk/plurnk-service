@@ -27,6 +27,7 @@ import { openMigrated, seedEnvelope, seedEntryWithChannel, insertWorkspace, inse
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, killStmt, execStmt } from "./_dsl.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -214,7 +215,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
 
 // {§no-chunk-rows} — Channels are the source of truth for chunk content; the log captures
 // lifecycle ONLY (open/close), never one row per chunk. A real streaming exec
-// emits ≥5 stdout chunks (one per line) yet produces exactly ONE EXEC log row,
+// emits ≥5 stdout chunks (one per line) yet produces exactly ONE execution log row,
 // resolved at status 200 — proving chunks live on the channel, not in the log.
 test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
     const db = await openMigrated();
@@ -248,11 +249,11 @@ test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async (
         const stdoutChunks = chunkEvents.filter((e) => e.channel === "stdout" && e.state === "active");
         assert.ok(stdoutChunks.length >= 5, `≥5 stdout chunk events (content grew per line); got ${stdoutChunks.length}`);
 
-        // ...but the log holds exactly ONE EXEC row for this turn — the lifecycle
+        // ...but the log holds exactly ONE execution row for this turn — the lifecycle
         // event — never one row per chunk.
         const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turnId });
-        const execRows = rows.filter((r) => r.op === "EXEC");
-        assert.equal(execRows.length, 1, "exactly one EXEC log row regardless of chunk count");
+        const execRows = rows.filter((r) => isExecution(r));
+        assert.equal(execRows.length, 1, "exactly one execution log row regardless of chunk count");
         assert.equal(rows.length, 1, "no per-chunk log rows accumulated for the turn");
 
         const logRow = await db.test_get_log_entry_by_id.get<{ status_rx: number; state: string }>({ id: logEntryId });

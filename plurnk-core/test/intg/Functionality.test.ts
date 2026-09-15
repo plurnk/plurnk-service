@@ -400,7 +400,7 @@ for (const hold of ["", "fx:host"]) {
     });
 }
 
-test("{§functionality-model-mutation} EXEC verbs are the same owner: read verbs run ungated, host verbs propose, acceptance publishes at the turn boundary", async () => {
+test("{§functionality-model-mutation} execution verbs are the same owner: read verbs run ungated, host verbs propose, acceptance publishes at the turn boundary", async () => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-exec-${crypto.randomUUID()}`);

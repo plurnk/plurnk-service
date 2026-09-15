@@ -149,7 +149,7 @@ export default class Portal {
         thread.emit([{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/children", value: children }] }]);
     }
 
-    // The stream address a notification opens for the Run that owns it: a started or queued EXEC
+    // The stream address a notification opens for the Run that owns it: a started or queued execution
     // row's `attrs.stream`, or a stream/event's target. A detached execution (`<-1>`) is nobody's
     // obligation ({§worker-obligations}) and opens nothing.
     static #openedStream(method: string, params: unknown): string | null {

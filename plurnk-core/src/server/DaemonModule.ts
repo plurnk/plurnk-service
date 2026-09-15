@@ -60,7 +60,7 @@ export interface WorkspaceCapabilityIdentity {
 }
 
 // {§functionality-scope} — the identity a verb acts under. Every invocation names the workspace; one
-// that arrives through a Worker (a worker-scoped client action, or any EXEC operation) also names
+// that arrives through a Worker (a worker-scoped client action, or any execution) also names
 // that Worker, which a worker-scoped family acts for. Adapters keep seeing the workspace identity.
 export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
     readonly workerId?: number;
@@ -89,7 +89,7 @@ export interface WorkspaceCapabilityReplacement extends WorkspaceCapabilityIdent
 // publication, and both the client and model projections.
 type FunctionalityAlias = string;
 
-// Who invoked a verb: a client action, or the model's EXEC operation ({§functionality-model-projection}).
+// Who invoked a verb: a client action, or the model's execution ({§functionality-model-projection}).
 // A family may bound the model's authority ({§members-model-scope}) without a second grammar.
 export type FunctionalityCaller = "action" | "operation";
 
@@ -150,7 +150,7 @@ export interface FunctionalityPrepared {
 
 export interface FunctionalityAdapter {
     // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
-    // worker-scoped family) and the EXEC family tag.
+    // worker-scoped family) and the runtime family tag.
     readonly family: string;
     // {§functionality-scope} — who owns this family's definitions. Skills, MCP, members and
     // outbound A2A describe what exists in a WORKSPACE; env describes how one WORKER works, which

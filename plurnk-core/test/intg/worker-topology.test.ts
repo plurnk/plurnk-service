@@ -148,7 +148,7 @@ test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its wa
 test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```WORK (worker://stream-child)\nrun the empty failing stream and report its outcome\n```\n\n```TASK\n[{\"content\":\"waiting on stream-child\",\"status\":\"waiting\"}]\n```", 10),
-        makeMockResponse("```EXEC (emptyfail)\ngo\n```\n\n```TASK\n[{\"content\":\"waiting for emptyfail\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```sh (emptyfail)\ngo\n```\n\n```TASK\n[{\"content\":\"waiting for emptyfail\",\"status\":\"waiting\"}]\n```", 10),
         makeMockResponse("```SEND\nemptyfail failed with no output\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
         makeMockResponse("```SEND\nthe child reported the empty stream failure\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });

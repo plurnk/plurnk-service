@@ -1,4 +1,4 @@
-// grammar 0.74.20 — EXEC `<T>` (the repurposed `<L>` slot) caps the spawn's lifetime at T
+// grammar 0.74.20 — execution `<T>` (the repurposed `<L>` slot) caps the spawn's lifetime at T
 // MINUTES. After T the service aborts the spawn (bounded reap) and stamps the stream 504, distinct
 // from a deliberate kill (499). Own file: real subprocess + timing, process-isolated.
 
@@ -8,11 +8,11 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
 
-test("EXEC <T> kills the spawn after T minutes and closes the stream 504", { timeout: 150_000 }, async () => {
+test("execution <T> kills the spawn after T minutes and closes the stream 504", { timeout: 150_000 }, async () => {
     // `sleep 120` under a 1-minute timeout: the spawn MUST be killed near 60s, never run to completion.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
-        makeMockResponse("```EXEC <1>\nsleep 120\n```\n\n```TASK <-1>\n[{\"content\":\"waiting for the reap\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```sh <1>\nsleep 120\n```\n\n```TASK <-1>\n[{\"content\":\"waiting for the reap\",\"status\":\"waiting\"}]\n```", 10),
         makeMockResponse("```SEND\nthe spawn timed out; done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {

@@ -9,6 +9,7 @@ import { Validator } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { logEntries, openMigrated, packetSection, fixtureExecutors } from "./_helpers.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
 
@@ -35,7 +36,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const parsed = PlurnkParser.parseStatements(aside.replaceAll("\\n", "\n"), { executors: fixtureExecutors(aside.replaceAll("\\n", "\n")) });
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
-        assert.ok(item?.kind === "statement" && item.statement.op === "EXEC");
+        assert.ok(item?.kind === "statement" && isExecution(item.statement));
         assert.equal(item.statement.executor, "node");
         assert.equal(item.statement.target, null, "the program is not a script path or metadata modifier");
         assert.ok(typeof item.statement.body === "string" && item.statement.body.length > 0);

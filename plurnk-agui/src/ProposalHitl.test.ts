@@ -144,7 +144,7 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
 
 test("resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
     const pending: ProposalProjection[] = [
-        proposal({ logEntryId: 5, op: "EXEC", target: { scheme: null, authority: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
+        proposal({ logEntryId: 5, op: "sh", target: { scheme: null, authority: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
         proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
@@ -214,8 +214,7 @@ test("proposal disposition, not loop policy, owns live tool-call presentation", 
     }));
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 51,
-        op: "EXEC",
-        policy: { proposals: "reject" },
+        op: "sh", policy: { proposals: "reject" },
         disposition: { owner: "loop", decision: "reject", outcome: "no_review_channel" },
     }));
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");

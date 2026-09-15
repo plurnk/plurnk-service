@@ -51,17 +51,16 @@ export default class Dsl {
 
     // Build one statement from its already-formatted path and scope slots.
     static #buildStatement({
-        op, executor = "", target, metadata = "", lineMarker, body,
+        op, target, metadata = "", lineMarker, body,
     }: {
         op: string;
-        executor?: string;
         target: string;
         metadata?: string;
         lineMarker: string;
         body: string;
     }): string {
         const modifiers = [target, metadata, lineMarker].filter((value) => value.length > 0).join(" ");
-        const header = `${executor || op}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
+        const header = `${op}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
         return PlurnkParser.frame(header, body.length === 0 ? null : body);
     }
 
@@ -135,8 +134,7 @@ export default class Dsl {
 
     static buildExec(p: OpExecParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "EXEC",
-            executor: p.runtime ?? "",
+            op: p.runtime ?? "sh",
             target: "",
             metadata: p.cwd === undefined ? "" : `[${JSON.stringify({ cwd: p.cwd })}]`,
             lineMarker: "",

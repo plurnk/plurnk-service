@@ -27,6 +27,7 @@ import {
     type ChatMessage,
     type ProviderRequestCapacity,
 } from "@plurnk/plurnk-providers";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 export const testProviderCapacity = (
     messages: readonly ChatMessage[],
@@ -155,7 +156,7 @@ export const readLog = (
     ctx: PlurnkSchemeContext,
 ): Promise<EntryReadResult> => lookThroughScheme("log", null, statement, ctx);
 
-// Boot-style executor registry for EXEC tests. Memoized — built once (discover
+// Boot-style executor registry for execution tests. Memoized — built once (discover
 // + probe the installed siblings), shared across the suite. Pass to
 // engine.setExecutors(...) or makeSchemeCtx({ executors }). Production wires
 // this at Daemon.start(); direct-Engine fixtures must provide it themselves.
@@ -233,7 +234,7 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
 // Follow the actual invocation receipt; output URIs do not encode log coordinates.
 export const executionAddress = async (db: Db, turnId: number, sequence = 1): Promise<string> => {
     const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; attrs: string }>({ turn_id: turnId });
-    const row = rows.find((item) => item.sequence === sequence && item.op === "EXEC");
+    const row = rows.find((item) => item.sequence === sequence && isExecution(item));
     const stream: unknown = row === undefined ? undefined : JSON.parse(row.attrs).stream;
     if (typeof stream !== "string" || !/^[a-z][a-z0-9+.-]*:\/\/\/[a-f0-9]{8}$/u.test(stream)) {
         throw new Error(`Execution ${turnId}/${sequence} did not publish a workspace output address.`);
@@ -434,7 +435,7 @@ export const schemeManifest = (name: string, channels: Record<string, string> = 
     modelVisible: true,
 });
 
-// {§exec-stream} — an EXEC dispatch answers `started`; the verb's outcome
+// {§exec-stream} — an execution dispatch answers `started`; the verb's outcome
 // settles the channel of its `<tag>:///<loop>/<turn>/<seq>` output entry.
 // Await the newest settled output for one runtime scheme and parse its JSON.
 // A refusal travels on the operation's log row, never in the channel.

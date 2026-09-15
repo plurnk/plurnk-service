@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 // Fixture executors: every fence tag this file's DSL text writes opens as an executor.
 const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!))];
@@ -17,11 +18,11 @@ const statements = (source: string): PlurnkStatement[] => {
 };
 
 test("operations retain authored order across mutations, observations and asynchronous dispatch", () => {
-    const authored = statements("\n```READ (notes.md)```\n```EXEC\nnode verify.mjs\n```\n\n```EDIT (notes.md) <2>\nnew\n```\n\n```FIND (src/**)```\n```BARE\nclassify this independently\n```\n\n```WORK (worker://reviewer)\nreview\n```\n\n```KILL (node:///3/1/2/node)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
+    const authored = statements("\n```READ (notes.md)```\n```sh\nnode verify.mjs\n```\n\n```EDIT (notes.md) <2>\nnew\n```\n\n```FIND (src/**)```\n```BARE\nclassify this independently\n```\n\n```WORK (worker://reviewer)\nreview\n```\n\n```KILL (node:///3/1/2/node)```\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 
     assert.deepEqual(
-        scheduleTurnOps(authored).map(({ op }) => op),
-        ["READ", "EXEC", "EDIT", "FIND", "BARE", "WORK", "KILL", "SEND", "TASK"],
+        scheduleTurnOps(authored).map(writtenOp),
+        ["READ", "sh", "EDIT", "FIND", "BARE", "WORK", "KILL", "SEND", "TASK"],
     );
 });
 
@@ -34,7 +35,7 @@ test("scheduling preserves operation identity and does not mutate its input", ()
         "```COPY (b.md) (c.md)```",
         "```READ (a.md)```",
         "```READ (c.md)```",
-        "```EXEC",
+        "```sh",
         "one",
         "```",
         "",

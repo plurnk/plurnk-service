@@ -29,7 +29,7 @@ test("the full tier and the specimen share one invocation, with the pattern befo
 });
 
 test("a specimen selector must match at least one registered story, before any provider call (#597)", async () => {
-    const names = ["story: remember a fact, then recall it later", "demo: 'what is the hostname of this machine?' — model uses EXEC to run hostname", "demo: recover from attachments exceeding the budget and retrieve the recovery site"];
+    const names = ["story: remember a fact, then recall it later", "demo: 'what is the hostname of this machine?' — model uses execution to run hostname", "demo: recover from attachments exceeding the budget and retrieve the recovery site"];
     assert.deepEqual(matchingStories("remember a fact", names), [names[0]]);
     assert.deepEqual(matchingStories("demo:", names), [names[1], names[2]], "several matches run several stories");
     assert.throws(() => matchingStories("memory", names), {

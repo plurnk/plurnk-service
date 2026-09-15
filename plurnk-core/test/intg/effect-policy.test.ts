@@ -1,5 +1,5 @@
 // {§effect-policy-tunable} — the deployment override routes an otherwise-auto
-// EXEC through the human gate: with `pure:propose`, an inline jq invocation (whose
+// execution through the human gate: with `pure:propose`, an inline jq invocation (whose
 // default admission is auto) lands in the proposed state and completes only
 // after an explicit accept.
 
@@ -13,10 +13,10 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", aside: null, executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    runtime: "sh", aside: null, executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto EXEC through the human gate", async () => {
+test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto execution through the human gate", async () => {
     const prior = process.env.PLURNK_SERVICE_EFFECT_POLICY;
     process.env.PLURNK_SERVICE_EFFECT_POLICY = "pure:propose";
     const db = await openMigrated();
@@ -38,11 +38,11 @@ test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto EXEC thro
         });
         await new Promise((resolve) => setTimeout(resolve, 50));
         const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
-        assert.equal(row?.state, "proposed", "the overridden pure EXEC proposes instead of auto-running");
+        assert.equal(row?.state, "proposed", "the overridden pure execution proposes instead of auto-running");
         engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatched;
         await exec.idle();
-        assert.equal(result.status, 200, "the accepted override-gated EXEC completes normally");
+        assert.equal(result.status, 200, "the accepted override-gated execution completes normally");
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_POLICY;
         else process.env.PLURNK_SERVICE_EFFECT_POLICY = prior;

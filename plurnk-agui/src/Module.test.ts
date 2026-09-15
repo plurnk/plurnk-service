@@ -18,6 +18,7 @@ import { DEFAULT_LOOP_POLICY, Problems, Validator } from "@plurnk/plurnk-contrac
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 const MODULE_INPUT_SCHEMA = Object.freeze({
     type: "object",
@@ -610,7 +611,7 @@ test("#131: structured op.exec dispatches one valid statement with unknown sourc
         });
         assert.equal(dispatched.length, 1);
         assert.equal(dispatched[0].length, 1);
-        assert.equal(dispatched[0][0].op, "EXEC");
+        assert.equal(isExecution(dispatched[0][0]), true);
         assert.equal(Validator.validatePlurnkStatement(dispatched[0][0]).valid, true);
         assert.deepEqual(dispatched[0][0].position, { line: 0, column: 0 });
     } finally { await mod.close(); }
@@ -620,7 +621,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "```EXEC (😀) <-1s,300>\nx\n```";
+        const text = "```sh (😀) <-1s,300>\nx\n```";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
@@ -1261,8 +1262,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             workerId: 20,
             loopId: 9,
             turnId: 1,
-            op: "EXEC",
-            target: { scheme: "gitea", authority: null, pathname: "search_repos" },
+            runtime: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
             policy: DEFAULT_LOOP_POLICY,
@@ -1548,8 +1548,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         workerId: 20,
         loopId: 9,
         turnId: 12,
-        op: "EXEC",
-        target: { scheme: "sh", authority: null, pathname: "" },
+        op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
         policy: DEFAULT_LOOP_POLICY,
@@ -1772,8 +1771,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         workerId: 20,
         loopId: 9,
         turnId: 12,
-        op: "EXEC",
-        target: { scheme: "sh", authority: null, pathname: "" },
+        op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
         policy: DEFAULT_LOOP_POLICY,

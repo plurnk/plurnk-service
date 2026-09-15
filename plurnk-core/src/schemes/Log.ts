@@ -265,7 +265,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         state: "static",
                     },
                 },
-                // {§log-channel-miss-names-stream} (#502) — an EXEC item's stream link rides as
+                // {§log-channel-miss-names-stream} (#502) — an execution item's stream link rides as
                 // representation data so the projector's channel miss can name the address the
                 // model meant (`<runtime>:///<coord>/<runtime>#<channel>`); selection stays the projector's.
                 attributes,

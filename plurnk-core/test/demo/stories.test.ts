@@ -1,5 +1,5 @@
 // Storyline demos against a seeded project fixture. Each test is a
-// natural user prompt — no syntax hints, no mention of EXEC/EDIT/READ.
+// natural user prompt — no syntax hints, no mention of execution/EDIT/READ.
 // The model navigates real files (notes.md, src/config.json,
 // src/app.js, data/users.json, package.json) and we assert outcomes:
 // file content after edit, response text after query, etc.
@@ -297,7 +297,7 @@ test("story: pull just one line out of a file", async (t) => {
 test("story: list every admin user from a JSON file", async (t) => {
     // data/users.json: [{name:Alice,role:admin}, {name:Bob,role:viewer}].
     // jsonpath path: $.[?(@.role=='admin')].name → ["Alice"]
-    // Fallback paths: regex match on lines / EXEC + jq / full READ + reason.
+    // Fallback paths: regex match on lines / execution + jq / full READ + reason.
     const story = await runStory({
         signal: t.signal,
         label: "list-admins",
@@ -427,7 +427,7 @@ test("story: compute a value too big for arithmetic shortcuts", async (t) => {
     } finally { await story.cleanup(); }
 });
 
-test("an EXEC-restricted workspace answers a shell-tempting question without a denial cycle", async (t) => {
+test("an execution-restricted workspace answers a shell-tempting question without a denial cycle", async (t) => {
     // Deterministic coverage pins policy projection and dispatch; this story
     // probes whether a model naturally uses the remaining admitted surface.
     const story = await runStory({
@@ -435,7 +435,7 @@ test("an EXEC-restricted workspace answers a shell-tempting question without a d
         label: "capability-steer",
         prompt: "How many files are in this project, roughly? A ballpark from what you can see is fine.",
         maxTurns: 6,
-        capabilities: { deny: [{ operation: "EXEC" }] },
+        capabilities: { deny: [{ scheme: "exec" }] },
     });
     try {
         if (story.finalStatus !== 200) await story.dump();

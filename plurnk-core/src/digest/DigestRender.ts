@@ -24,6 +24,7 @@ import type {
     LogRow,
     DigestModel,
 } from "./digest-rows.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 export default class DigestRender {
     static #summarize(text: unknown, n = 80): string {
@@ -89,7 +90,7 @@ export default class DigestRender {
     }
 
     static #renderStream(le: LogRow): string | null {
-        if (le.op !== "EXEC") return null;
+        if (!isExecutionOp(le.op)) return null;
         const stream = (DigestRender.parseJson(le.attrs, {}) as { stream?: unknown }).stream;
         return typeof stream === "string" ? stream : null;
     }

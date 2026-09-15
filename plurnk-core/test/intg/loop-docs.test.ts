@@ -12,6 +12,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import { dispositionStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors, fixtureExecutors } from "./_helpers.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 class FixtureEngine extends Engine {
     documents: Array<{ pathname: string; content: string }> = [];
@@ -163,7 +164,7 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
             assert.equal(parsed.unparsedTail, undefined, raw);
             assert.equal(parsed.items.length, 1, raw);
             assert.equal(parsed.items[0]?.kind, "statement", raw);
-            return parsed.items.flatMap((item) => item.kind === "statement" && item.statement.op === "EXEC" ? [item.statement] : []);
+            return parsed.items.flatMap((item) => item.kind === "statement" && isExecution(item.statement) ? [item.statement] : []);
         });
         assert.ok(execs.length > 0);
         assert.ok(execs.every(({ executor }) => executor === runtime), `${runtime} is the executor, never the input target`);
@@ -204,7 +205,7 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
     }
 });
 
-test("{§exec-stream-page}: materialized shell documentation demonstrates scoped READ of an EXEC stream", async () => {
+test("{§exec-stream-page}: materialized shell documentation demonstrates scoped READ of an execution stream", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

@@ -36,7 +36,7 @@ export interface ExecutorMetadata {
 export interface ExecArgs {
     // The matched runtime tag. Multi-tag executors branch on it.
     runtime: string;
-    // The authored EXEC body; its role comes from the runtime invocation declaration.
+    // The authored fence body; its role comes from the runtime invocation declaration.
     body: string;
     // Ordered raw header blocks owned by this executor, never the source scheme.
     metadata: readonly string[] | null;
@@ -44,11 +44,11 @@ export interface ExecArgs {
     // runtimes resolve relative paths (including `target`) against it; subprocess
     // runtimes spawn in it. null for logical runtimes that touch no filesystem.
     cwd: string | null;
-    // The parsed EXEC `(target)` slot — a referenced file or entry, interpreted
+    // The parsed `(target)` slot — a referenced file or entry, interpreted
     // according to the runtime's invocation declaration. The framework has
     // already realized its declared literal/path/resource representation.
     // Resolved relative to `cwd`; null when the op names none (bare
-    // shell EXEC, inline jq EXEC, and `:memory:` SQLite). Kept distinct from
+    // a shell fence, an inline jq fence, and `:memory:` SQLite). Kept distinct from
     // `cwd` so a runtime receives BOTH the workspace and the slot.
     target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child

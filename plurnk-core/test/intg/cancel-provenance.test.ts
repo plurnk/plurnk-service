@@ -22,7 +22,7 @@ const terminalResult = (row: LoopRow): {
 
 test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+        makeMockResponse("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -82,7 +82,7 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
         else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previousSettlement;
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"awaiting the slow job\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"awaiting the slow job\",\"status\":\"waiting\"}]\n```"),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {

@@ -272,8 +272,8 @@ test("stream conclusions coalesce across the same worker-local settlement window
         contextWindow: 100_000,
         responses: [
             makeMockResponse(
-                "```EXEC\nsleep 0.25; echo first-stream\n\n```\n"
-                + "```EXEC\nsleep 0.40; echo second-stream\n\n```\n"
+                "```sh\nsleep 0.25; echo first-stream\n\n```\n"
+                + "```sh\nsleep 0.40; echo second-stream\n\n```\n"
                 + "```TASK <-1>\n[{\"content\":\"waiting for both streams\",\"status\":\"waiting\"}]\n```",
             ),
             makeMockResponse("```SEND\nboth streams landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
@@ -307,7 +307,7 @@ test("a child and stream conclusion share the same settlement window", async () 
         childCount: 1,
         parentTurns: [
             "```WORK (worker://child)\nfinish independently\n\n```\n"
-            + "```EXEC\nsleep 0.50; echo stream-done\n\n```\n"
+            + "```sh\nsleep 0.50; echo stream-done\n\n```\n"
             + "```TASK <-1>\n[{\"content\":\"waiting for child and stream\",\"status\":\"waiting\"}]\n```",
             "```SEND\nchild and stream landed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         ],

@@ -15,6 +15,8 @@ import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import { type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 type SchemeMethods = Partial<Record<keyof SchemeHandler, SchemeMethod>>;
 
@@ -109,9 +111,9 @@ export default class DataStatementRunner {
             return this.#failure(
                 "target-scheme-required",
                 400,
-                `${statement.op} requires a target scheme.`,
-                DataStatementRunner.#emptyFields(statement.op),
-                { operation: statement.op, retryable: false },
+                `${writtenOp(statement)} requires a target scheme.`,
+                DataStatementRunner.#emptyFields(writtenOp(statement)),
+                { operation: writtenOp(statement), retryable: false },
             );
         }
         const resourceRead = statement.op === "READ" || statement.op === "FIND";
@@ -127,7 +129,7 @@ export default class DataStatementRunner {
                 { scheme: schemeName, retryable: false },
             );
         }
-        const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
+        const methodName = writtenOp(statement).toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
@@ -148,12 +150,12 @@ export default class DataStatementRunner {
         const authoredCoordinate = statement.target === null
             ? { authority: "", pathname: "" }
             : entryCoordinateOf(statement.target, manifest.authority ?? "namespace");
-        // EXEC's authored target belongs to its declared invocation contract;
+        // An execution's authored target belongs to its declared invocation contract;
         // a resource target is input to the executor, never the output-stream
         // address owned by the internal exec scheme. {§exec-target-routing}
         const addressResolution = manifest.category === "data"
             && statement.target !== null
-            && statement.op !== "EXEC"
+            && !isExecution(statement)
             ? await this.#resolveDataEntryAddress({
                 target: statement.target,
                 routedScheme: schemeName,

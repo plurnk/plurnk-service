@@ -34,7 +34,7 @@ test("a genuinely-spinning model is still caught — identical turns cycle-strik
     assert.equal(cycleHit, true, "identical repetition is loop-detected — the spin backstop survives the soft 409");
 });
 
-test("a non-EXEC hard failure (500-class status) still strikes normally", async () => {
+test("a non-execution hard failure (500-class status) still strikes normally", async () => {
     const rail = new StrikeRail(db);
     let crossed = false;
     for (const fp of ["EDIT(a)", "EDIT(b)", "EDIT(c)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [outcome("EDIT", 500)] })).thresholdCrossed || crossed;
@@ -47,7 +47,7 @@ test("executor evidence never strikes, wherever it surfaces (#425 F1)", async ()
     const rail = new StrikeRail(db);
     const evidence = (op: StrikeOutcome["op"]): StrikeOutcome => ({ op, status: 500, problemType: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit" });
     let crossed = false;
-    for (const fp of ["EXEC(a)", "EXEC(b)", "EXEC(c)", "EXEC(d)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [evidence("READ"), evidence("READ")] })).thresholdCrossed;
+    for (const fp of ["execution(a)", "execution(b)", "execution(c)", "execution(d)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [evidence("READ"), evidence("READ")] })).thresholdCrossed;
     assert.equal(crossed, false, "four turns of red test runs are evidence, not strikes");
     assert.equal(await rail.streak(loopId), 0);
     // The same status without executor identity is a hard failure and strikes as before.
@@ -56,10 +56,10 @@ test("executor evidence never strikes, wherever it surfaces (#425 F1)", async ()
     assert.equal(struck, true, "a non-executor 500 still strikes to the threshold");
 });
 
-test("EXEC errors are soft regardless of status", async () => {
+test("execution errors are soft regardless of status", async () => {
     const rail = new StrikeRail(db);
-    await rail.assess(loopId, { ...base, fingerprint: "EXEC(python3)", outcomes: [outcome("EXEC", 400)] });
-    await rail.assess(loopId, { ...base, fingerprint: "EXEC(sh)", outcomes: [outcome("EXEC", 500)] });
+    await rail.assess(loopId, { ...base, fingerprint: "execution(python3)", outcomes: [outcome("python3", 400)] });
+    await rail.assess(loopId, { ...base, fingerprint: "execution(sh)", outcomes: [outcome("sh", 500)] });
     assert.equal(await rail.streak(loopId), 0, "an executor error remains evidence without pricing experimentation into the strike rail");
 });
 

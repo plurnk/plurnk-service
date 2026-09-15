@@ -1,6 +1,6 @@
 // {§functionality-model-projection} — the model-facing face of one managed
 // Functionality family for one workspace. Published inside that workspace's
-// snapshot like every other family: its verbs are ordinary EXEC targets, its
+// snapshot like every other family: its verbs are ordinary execution targets, its
 // documents render through the common tool-document machinery, and a host verb
 // proposes through the ordinary Exec proposal lifecycle. Acceptance calls the
 // exact coordinator method a client action calls.

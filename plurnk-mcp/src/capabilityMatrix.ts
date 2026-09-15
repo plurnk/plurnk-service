@@ -138,7 +138,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpExecutor 'MCP progress and cancellation remain on the owning EXEC lifecycle over stdio'"],
+        evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpExecutor 'MCP progress and cancellation remain on the owning execution lifecycle over stdio'"],
         note: "Projected onto the owning Plurnk operation; no independent protocol lifecycle.",
     },
     {

@@ -210,7 +210,7 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_worker_min_poll
--- EXEC `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence
+-- Execution `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence
 -- wins at its tightest positive value; otherwise any omitted cadence requests default backoff;
 -- only an all-zero set disables the timer. Child-only joins have no subscription policy.
 SELECT

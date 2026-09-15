@@ -265,7 +265,7 @@ export default class ChannelWrite {
         return ChannelWrite.#openSubsForWorkerStmt(db).all<{ id: number; scheme: string }>({ worker_id: workerId });
     }
 
-    // The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
+    // The worker's open turn-scoped (execution `<0>`) subscriptions — reaped at the worker's next pre-turn so a
     // `<0>` stream never survives into the subsequent turn ({§exec-poll}). Any open turn-scoped sub at
     // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).
     static async findOpenTurnScopedSubscriptionsForWorker(

@@ -1,4 +1,4 @@
-// SPEC {§exec} {§exec-env-scoped} — an EXEC subprocess must NOT inherit plurnk's own
+// SPEC {§exec} {§exec-env-scoped} — an execution subprocess must NOT inherit plurnk's own
 // secrets (provider keys, PLURNK_* config). The service scopes the env (ExecEnv.scoped:
 // drop PLURNK_* + the provider key-vars) and hands it to the executor, which spawns with
 // it (plurnk-execs 0.4.5+ ExecArgs.env). The canary is a PLURNK_*-shaped var, so the
@@ -19,7 +19,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 test(
-    "{§exec-env-scoped} an EXEC subprocess does not inherit plurnk's own env (provider keys / PLURNK_*)",
+    "{§exec-env-scoped} an execution subprocess does not inherit plurnk's own env (provider keys / PLURNK_*)",
     async () => {
         const CANARY = "PLURNK_ENV_LEAK_CANARY";
         const prev = process.env[CANARY];
@@ -50,7 +50,7 @@ test(
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
             const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
             const stdout = await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" });
-            assert.doesNotMatch(stdout?.content ?? "", /do-not-leak-to-subprocess/, "plurnk's own env must not reach the EXEC subprocess");
+            assert.doesNotMatch(stdout?.content ?? "", /do-not-leak-to-subprocess/, "plurnk's own env must not reach the execution subprocess");
         } finally {
             await db.close();
             if (prev === undefined) delete process.env[CANARY]; else process.env[CANARY] = prev;
@@ -63,7 +63,7 @@ test(
 // ordinary host name the policy does not admit never reaches the spawn, while one it does
 // admit arrives intact — the distinction a denylist could not make.
 test(
-    "{§exec-env-scoped} an EXEC subprocess inherits only the ambient names the policy admits",
+    "{§exec-env-scoped} an execution subprocess inherits only the ambient names the policy admits",
     async () => {
         const ADMITTED = "PLURNK_TEST_ADMITTED_NAME";
         const WITHHELD = "AGENT_SOCKET_CANARY";

@@ -70,7 +70,7 @@ export default class SchemeRegistry {
     constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
         this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
         this.#registerBuiltIn("log", new Log());
-        // {§scheme} — "exec" is internal machinery, not an addressable scheme: the EXEC op routes here
+        // {§scheme} — "exec" is internal machinery, not an addressable scheme: executions route here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
         // is worker:// (commons/~/name/plurnk), and task frames are prompt://.

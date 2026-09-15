@@ -21,9 +21,11 @@ import EditSequence from "./EditSequence.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult } from "./TurnRunner.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 // Operations that own their [metadata] slot; every other op takes only what its scheme declares.
-const OWNS_METADATA: ReadonlySet<string> = new Set(["EXEC", "WORK", "FORK"]);
+const OWNS_METADATA: ReadonlySet<string> = new Set(["WORK", "FORK"]);
 
 export default class AdmittedTurnExecutor {
     readonly #db: Db;
@@ -189,10 +191,10 @@ export default class AdmittedTurnExecutor {
 
         for (const [index, scheduledStatement] of scheduled.entries()) {
             // {§metadata-ignored} — a scheme that takes no [metadata] gets the operation without it,
-            // and the model gets one notice, never a refusal (operator, 2026-09-12). EXEC, WORK and
+            // and the model gets one notice, never a refusal (operator, 2026-09-12). Executions, WORK and
             // FORK own their slot ({§env-option}) and receive it whole.
             let statement = scheduledStatement;
-            if ("metadata" in statement && statement.metadata !== null && !OWNS_METADATA.has(statement.op)) {
+            if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
                 const schemeName = target === null || target === undefined ? null : target.kind === "url" ? target.scheme ?? null : "file";
                 const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);
@@ -269,7 +271,7 @@ export default class AdmittedTurnExecutor {
                         });
                     }
                     span.setAttribute("status", dispatchResult.status);
-                    recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
+                    recordCounter(OPS_DISPATCHED, { op: writtenOp(statement), status: dispatchResult.status });
                     return dispatchResult;
                 },
             );

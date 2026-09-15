@@ -20,7 +20,7 @@ const mockTurn = (dsl: string) => ({
 
 // A host exec that arms itself against the polite signals, then sleeps. Only the housekeeping
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
-const stubbornSpawn = "```EXEC\ntrap '' HUP TERM; sleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"parked with a stubborn spawn\",\"status\":\"waiting\"}]\n```";
+const stubbornSpawn = "```sh\ntrap '' HUP TERM; sleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"parked with a stubborn spawn\",\"status\":\"waiting\"}]\n```";
 
 test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
@@ -35,7 +35,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
                 const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park", policy: { proposals: "accept" } });
                 const loopId = (run.result as { loopId: number }).loopId;
 
-                // The loop parks (202) only AFTER its EXEC has spawned, so a 202 status is the
+                // The loop parks (202) only AFTER its execution has spawned, so a 202 status is the
                 // deterministic "the stubborn spawn is live" gate — never a fixed-sleep race.
                 await waitForDb(
                     () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),

@@ -33,7 +33,7 @@ test("{§exec-timeout} a detached spawn is observed once, then outlives its loop
     try {
         const mock = new Mock({
             contextWindow: viableWindow(),
-            responses: [mockTurn(`\`\`\`EXEC <-1>
+            responses: [mockTurn(`\`\`\`sh <-1>
 ${heartbeat(file)}
 \`\`\`
 

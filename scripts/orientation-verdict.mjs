@@ -43,7 +43,7 @@ export const evaluateOrientation = (record, digest) => {
     const lower = response.toLowerCase();
     const ops = flattenOps(record);
     const inspectionOps = ops.filter((op) =>
-        ["READ", "FIND", "EXEC"].includes(op?.op) && Number(op?.status) < 400);
+        (["READ", "FIND"].includes(op?.op) || /^[a-z][a-z0-9+.-]*$/.test(op?.op ?? "")) && Number(op?.status) < 400);
     const evidence = evidenceNames(response);
     const verifiedEvidence = inspectedEvidence(ops, evidence);
     const publicationErrors = setupErrors(digest);

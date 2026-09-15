@@ -5,6 +5,8 @@ import test from "node:test";
 import { hostname } from "node:os";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
@@ -41,7 +43,7 @@ for (const command of ["true", "hostname"]) {
                 assert.match(observedPacket, /terminal/, "the next packet contains the stream conclusion");
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-                assert.ok(rows.some((r) => r.op === "EXEC"), "the stream ran");
+                assert.ok(rows.some((r) => isExecution(r)), "the stream ran");
                 assert.equal(rows.filter((r) => r.op === "SEND" && r.status_rx === 200).length, 2, "both messages were delivered");
                 assert.equal(rows.filter((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102).length, hasTask ? 1 : 0,
                     "an explicit blind completion is deferred; omission continues silently");
@@ -52,7 +54,7 @@ for (const command of ["true", "hostname"]) {
     });
 }
 
-test("{§completion-defers-to-results}: a successful EXEC receipt defers completion one packet without a strike", async (t) => {
+test("{§completion-defers-to-results}: a successful execution receipt defers completion one packet without a strike", async (t) => {
     const previous = process.env.PLURNK_SERVICE_MAX_STRIKES;
     process.env.PLURNK_SERVICE_MAX_STRIKES = "1";
     t.after(() => {
@@ -76,7 +78,7 @@ test("{§completion-defers-to-results}: a successful EXEC receipt defers complet
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
             assert.deepEqual(rows.filter(({ op, origin }) => op === "TASK" && origin === "model").map(({ status_rx }) => status_rx), [102, 200]);
-            assert.equal(rows.filter(({ op, origin }) => op === "EXEC" && origin === "model").length, 1, "the submitted command was executed");
+            assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
         } finally {
             ws.close();
         }
@@ -87,7 +89,7 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```EXEC\nexit 3\n```\n```SEND\nconcluding blind\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```sh\nexit 3\n```\n```SEND\nconcluding blind\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             makeMockResponse("```SEND\nconcluding after reading the failure\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -106,7 +108,7 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
             assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
             assert.deepEqual(deferral.attrs?.pending, ["receipts", "failed-stream-results"]);
             assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet; a TASK now completes.");
-            assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the EXEC row");
+            assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the execution row");
         } finally {
             ws.close();
         }

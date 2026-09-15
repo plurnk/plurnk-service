@@ -89,12 +89,12 @@ export const moveStmt = (
     position: { line: 1, column: 1 },
 });
 
-// {§exec-executor-slot} — EXEC names its runtime as the first path segment and the
-// runtime's target (tool, program, cwd, or resource) after it; a bare EXEC is the shell.
+// {§exec-executor-slot} — execution names its runtime as the first path segment and the
+// runtime's target (tool, program, cwd, or resource) after it; a bare execution is the shell.
 // {§exec-executor-slot} — the executor is the bracket slot; null spells the default shell.
 export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
     metadata,
-    op: "EXEC", aside: null, executor: runtime, target, lineMarker: null, body,
+    runtime: "sh", aside: null, executor: runtime, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

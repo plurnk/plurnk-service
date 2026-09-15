@@ -121,7 +121,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
@@ -190,7 +190,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
@@ -236,7 +236,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
 });
 
 test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths into the publishing turn", async () => {
-    // Deterministic hold (no 50ms race): a non-auto EXEC proposal pauses
+    // Deterministic hold (no 50ms race): a non-auto execution proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
     // (no spawn → no stream → no wake side-effect); loop 1 then continues to
@@ -246,7 +246,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\ntrue\n```\n\n```TASK\n[{\"content\":\"continue after review\",\"status\":\"in_progress\"}]\n```"), // proposal pauses before the required disposition
+            sendOnly("```sh\ntrue\n```\n\n```TASK\n[{\"content\":\"continue after review\",\"status\":\"in_progress\"}]\n```"), // proposal pauses before the required disposition
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),      // turn 2 consumes the injected prompt, ends
         ],
     });
@@ -318,7 +318,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\ndone with the parked work\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
@@ -394,7 +394,7 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\ndone with the injected prompt\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
@@ -456,7 +456,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
     // let turn 1 complete so loop 1 ends and turn 2 never runs. The drain
     // must promote the orphaned frames to a fresh loop that surfaces them — so two
     // loops terminate for the worker, not one (it would be one if the wake were
-    // lost; no other op here spawns a loop — the EXEC proposal is rejected).
+    // lost; no other op here spawns a loop — the execution proposal is rejected).
     // 16384: the inject-then-reconcile path accumulates both loops' rows across turns, cresting at the 8192 edge;
     // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the reconcile, not a budget probe.
     const mock = new Mock({
@@ -465,7 +465,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             // The frames arrive during turn 1, so a model terminal over them defers
             // ({§completion-defers-to-prompts}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
-            sendOnly("```EXEC\ntrue\n```\n\n```SEND\nloop 1 ends at turn 1\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),  // pause, then end
+            sendOnly("```sh\ntrue\n```\n\n```SEND\nloop 1 ends at turn 1\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),  // pause, then end
             sendOnly("```SEND\nreconciled loop ran\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),                              // the promoted loop
         ],
     });
@@ -575,7 +575,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -615,7 +615,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```EXEC\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\nshould never run\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });

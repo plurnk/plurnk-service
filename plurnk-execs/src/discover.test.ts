@@ -62,7 +62,7 @@ test("{§executor-invocation} discovery requires and publishes each runtime invo
         name: "@plurnk/plurnk-execs-legacy",
         plurnk: {
             kind: "exec",
-            runtimes: [{ name: "legacy", summary: "Legacy runtime.", invocation, example: "```EXEC (legacy)```" }],
+            runtimes: [{ name: "legacy", summary: "Legacy runtime.", invocation, example: "```sh (legacy)```" }],
         },
     });
     await assert.rejects(

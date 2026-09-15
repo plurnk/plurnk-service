@@ -147,18 +147,16 @@ test("{§log-wire-format}: a present operation aside materializes and absence co
     const withAside = PacketWire.renderLog([{
         coordinate: "1/1/1",
         origin: "model",
-        op: "EXEC",
-        status: 200,
-        tx: { executor: "gitea", aside: "Lists issues", body: null },
+        op: "sh", status: 200,
+        tx: { runtime: "gitea", aside: "Lists issues", body: null },
     }], tok);
     assert.match(withAside, /"aside":"Lists issues"/);
 
     const absent = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
-        op: "EXEC",
-        status: 200,
-        tx: { executor: "gitea", aside: null, body: null },
+        op: "sh", status: 200,
+        tx: { runtime: "gitea", aside: null, body: null },
     }], tok);
     assert.doesNotMatch(absent, /"aside":/);
 });
@@ -219,8 +217,8 @@ test("{§log-wire-format}: receipt metadata leads with target, then aside, befor
         });
     }
 
-    for (const tx of [{ executor: "sh" }, { executor: "sh", aside: "no resource target" }]) {
-        const entry = { ...read, op: "EXEC", target: null, tx };
+    for (const tx of [{ runtime: "sh" }, { runtime: "sh", aside: "no resource target" }]) {
+        const entry = { ...read, runtime: "sh", target: null, tx };
         const out = PacketWire.renderLog([entry], tok);
         const metadata = JSON.parse(out.split("\n")[1]!);
         const keys = Object.keys(metadata);
@@ -260,10 +258,10 @@ test("environment-delta provenance renders as source, never a fictitious run ent
     assert.doesNotMatch(out, /"run":/);
 });
 
-test("{§fs-namespace} an EXEC receipt names its working directory project-relative, and never at the root", () => {
+test("{§fs-namespace} an execution receipt names its working directory project-relative, and never at the root", () => {
     const row = (cwd: string) => ({
-        coordinate: "1/1/3", origin: "model", op: "EXEC", status: 200, target: null,
-        tx: { executor: "sh" },
+        coordinate: "1/1/3", origin: "model", op: "sh", status: 200, target: null,
+        tx: { runtime: "sh" },
         rx: { status: 200, outcome: "started" }, attrs: { runtime: "sh", cwd, stream: "sh:///1/1/3/sh" },
     });
     const atRoot = PacketWire.renderLog([row("/host/proj")], tok, { projectRoot: "/host/proj" });
@@ -1070,18 +1068,18 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant
     // across READ, FIND, EDIT-span,
-    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and TASK/SEND bodies.
+    // execution-body, the foisted exec-stream delta (incl. its cross-turn startLine), and TASK/SEND bodies.
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
-    const execTx = (body: string) => ({ op: "EXEC", executor: null, target: { kind: "url", raw: "sh:///1/1/1/sh", scheme: "sh", pathname: "/1/1/1/sh", fragment: null }, body, lineMarker: null });
+    const execTx = (body: string) => ({ runtime: "sh", target: { kind: "url", raw: "sh:///1/1/1/sh", scheme: "sh", pathname: "/1/1/1/sh", fragment: null }, body, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
         { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}$/ },
         { label: "READ mixed newlines -> every physical line numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/plain", content: "a\r\nb\rc" } }, want: /1:a\r\n2:b\r3:c/ },
         { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:m1\n2:m2/ },
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
-        { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
+        { label: "execution body → numbered", entry: { ...base, op: "sh", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1/sh", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
         { label: "TASK body → the numbered json-result spread (#339), never an operation heading", entry: { ...base, op: "TASK", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## (?:PLAN|TASK)/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
@@ -1512,7 +1510,7 @@ test("every ordinary bounded body producer uses the same addressable preview", (
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
         { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
-        { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: { executor: "sh", body: long } },
+        { op: "sh", origin: "model", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: { op: "sh", body: long } },
         { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
         { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
     ];

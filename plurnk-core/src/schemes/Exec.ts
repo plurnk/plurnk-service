@@ -47,14 +47,15 @@ import ExecScheduler from "./ExecScheduler.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
+import { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "node", "python3", etc.
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
-    target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
-    body: string;           // body of the EXEC op
+    target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-sinks})
+    body: string;           // the fence body
     pathname: string;       // workspace output claim ({§execution-output-identity})
     coordinate?: StreamCoordinate;
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
@@ -196,7 +197,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             .map(([subscriptionId]) => {
                 const spawn = this.#activeSpawns.get(subscriptionId);
                 if (spawn === undefined) {
-                    throw new Error(`Active EXEC subscription ${subscriptionId} has no spawn settlement promise.`);
+                    throw new Error(`Active execution subscription ${subscriptionId} has no spawn settlement promise.`);
                 }
                 return spawn;
             });
@@ -269,7 +270,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         );
     }
 
-    // EXEC op handler — the actual model-facing entry point per plurnk.md.
+    // Execution handler — the model-facing entry point per plurnk.md.
     // Named executable fences lower to runtime-owned invocation buckets.
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
@@ -285,7 +286,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const runtime = route.runtime;
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
-        // executed command differ from the authored body. Bare EXEC remains the default-shell form.
+        // executed command differ from the authored body.
         const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
             return Results.failure(
@@ -412,7 +413,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 } else if (targetDecl.kind === "resource" || targetDecl.kind === "script") {
                     resourceSource = resourceSourceOf(execTarget);
                     if (resourceSource === null) {
-                        throw new Error(`EXEC '${runtime}' resource target could not be classified`);
+                        throw new Error(`'${runtime}' resource target could not be classified`);
                     }
                 } else {
                     return refuse(
@@ -456,7 +457,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
             } catch (cause) {
                 if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
-                    console.error(`EXEC target classification failed for '${inspected}':`, cause);
+                    console.error(`Execution target classification failed for '${inspected}':`, cause);
                     return Results.failure(
                         "scheme:exec",
                         "target-classification-failed",
@@ -509,7 +510,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // cwd is the workspace project_root unless target routing selected a
         // directory override. {§exec-target-routing}, {§executor-sinks}
         // The log writer claims the workspace output address before proposal application.
-        // EXEC repurposes the `<L>` slot as `<timeout, poll>` (MINUTES, held in seconds): mark[0] caps the spawn's
+        // An execution repurposes the `<L>` slot as `<timeout, poll>` (MINUTES, held in seconds): mark[0] caps the spawn's
         // lifetime, mark[1] sets the hibernation poll-wake cadence ({§exec-poll}). N>0 → deadline (504);
         // -1 / absent → unbounded (loop-life bounded); 0 → turn-scoped (reaped at the next pre-turn,
         // never surviving into the subsequent turn).
@@ -611,13 +612,13 @@ export default class Exec extends CoreSchemeAdapterBase {
         let target = (typeof attrs.target === "string" && attrs.target.length > 0) ? attrs.target : null;
         const effect = attrs.effect;
         if (typeof pathname !== "string" || pathname.length === 0) {
-            throw new InvalidOperationResultError("The accepted EXEC proposal is missing its stream pathname.");
+            throw new InvalidOperationResultError("The accepted execution proposal is missing its stream pathname.");
         }
         if (!EffectPolicy.isEffect(effect)) {
-            throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
+            throw new InvalidOperationResultError("The accepted execution proposal is missing its canonical effect fact.");
         }
         const invocation: ExecStatement = {
-            op: "EXEC", executor: runtime, aside: null, metadata: null,
+            runtime: runtime as RuntimeTag, aside: null, metadata: null,
             target: attrs.resourceSource ? parsePath(attrs.resourceSource) : target === null ? null : parsePath(target),
             lineMarker: null, body, position: { line: 1, column: 1 },
         };
@@ -628,7 +629,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (attrs.resourceSource !== undefined) {
             const sourceTarget = parsePath(attrs.resourceSource);
             if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
-                throw new InvalidOperationResultError("The accepted EXEC proposal has an invalid scheme source address.");
+                throw new InvalidOperationResultError("The accepted execution proposal has an invalid scheme source address.");
             }
             const source = await this.readExecSource({
                 op: "READ",
@@ -642,7 +643,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             }, core);
             const read = source.result;
             if (read.status >= 400) {
-                // {§exec-target-routing} — the failure stays the owning READ's (#163); the EXEC
+                // {§exec-target-routing} — the failure stays the owning READ's (#163); the execution
                 // contract rides its recovery, because a stream address in the target slot is
                 // almost always a command that belonged beneath a targetless heading (#425 F4).
                 const problem = read.problem === undefined ? undefined : {
@@ -675,18 +676,18 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
         }
         if (body.length === 0 && target === null) {
-            throw new InvalidOperationResultError("The accepted EXEC proposal has neither a body nor a realized target.");
+            throw new InvalidOperationResultError("The accepted execution proposal has neither a body nor a realized target.");
         }
 
         // Resolve the runtime's executor from the boot registry, then seed
         // channels from its declared topology ({§executor-channels}). Each executor declares its own
         // shape (subprocess → stdout/stderr; search → results; etc.).
         if (core.executors === undefined) {
-            throw new InvalidOperationResultError("An accepted EXEC proposal has no executor registry.");
+            throw new InvalidOperationResultError("An accepted execution proposal has no executor registry.");
         }
         const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
-            throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
+            throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
         }
         // {§executor-effect}, {§exec-hold-until-concluded}, #107: the admitted
         // effect fact rides the hold predicate unchanged through application.
@@ -837,7 +838,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
         const executor = isWorkerBound(opts.executor) ? opts.executor.forWorker(ctx.workerId) : opts.executor;
         const db = ctx.db;
-        // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
+        // an execution's `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.
         let timedOut = false;
         const timeoutTimer = timeoutSec !== null
@@ -1074,7 +1075,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     entry: entrySink,
                     interact: (request) => {
                         if (ctx.requestInteraction === undefined) {
-                            throw new Error("EXEC client interaction capability is unavailable.");
+                            throw new Error("The execution's client interaction capability is unavailable.");
                         }
                         return ctx.requestInteraction(request, signal);
                     },
@@ -1223,7 +1224,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             // executor result, but an exceptional failure remains observable.
             if (tempPath !== null) {
                 await unlink(tempPath).catch((cause: unknown) => {
-                    console.error(`EXEC source temporary cleanup failed for '${tempPath}':`, cause);
+                    console.error(`Execution source temporary cleanup failed for '${tempPath}':`, cause);
                 });
             }
             this.#activeAborts.get(subscriptionId)?.unlink();
@@ -1244,7 +1245,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
             if (finalizationErrors.length === 1) throw finalizationErrors[0];
             if (finalizationErrors.length > 1) {
-                throw new AggregateError(finalizationErrors, `EXEC narration ${completedNarration?.turnId ?? "unknown"} failed to settle`);
+                throw new AggregateError(finalizationErrors, `Execution narration ${completedNarration?.turnId ?? "unknown"} failed to settle`);
             }
         }
         return result;

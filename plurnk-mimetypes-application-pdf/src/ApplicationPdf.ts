@@ -7,7 +7,7 @@ import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 // which is the model-facing body. The document itself reaches a model that can read it as a native
 // document part of the packet, built by the service from the source bytes ({§mimetype-pdf-facts}).
 // A route that accepts no document input reports the attachment unsupported; the model's recourse
-// is the workspace's own tools through EXEC (`pdftotext` and the like), never daemon-side extraction.
+// is the workspace's own tools through an executor fence (`pdftotext` and the like), never daemon-side extraction.
 
 export interface PdfFacts {
     // The root page tree's `/Count`; null when the tree is inside a compressed object stream.

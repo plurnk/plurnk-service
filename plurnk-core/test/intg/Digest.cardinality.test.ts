@@ -24,7 +24,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         const insert = async (
             sequence: number,
             origin: "model" | "_plurnk",
-            op: "READ" | "EDIT" | "EXEC" | "KILL",
+            op: "READ" | "EDIT" | "atlas" | "KILL",
             pathname: string,
             attrs: object,
             hostname: string | null = null,
@@ -50,7 +50,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         for (let i = 1; i <= 50; i++) readIds.push(await insert(i, "model", "READ", "/whale", {}, "example.test"));
         for (let i = 51; i <= 62; i++) await insert(i, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, `result${i}.test`);
         await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org", "https", "b=2&a=1&a=3", 8443);
-        await insert(64, "model", "EXEC", "/filesystem_read_text_file", {
+        await insert(64, "model", "atlas", "/filesystem_read_text_file", {
             stream: "atlas:///1/1/64/atlas",
         }, null, null);
         await insert(65, "_plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
@@ -103,7 +103,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body source=worker:\/\/researcher ×2 \(seq 65–66\)/);
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/ source=worker:\/\/researcher\n/, "an absent query has its own group");
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=worker:\/\/researcher\n/, "an explicit empty query has its own group");
-        assert.match(markdown, /\[model\] EXEC\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
+        assert.match(markdown, /\[model\] atlas\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
         assert.equal(json.log_entries.length, 69, "machine-readable evidence remains lossless");
         assert.equal(json.log_curation_effects.length, 50, "the suppressed broad scoped KILL retains every exact selected target");
         assert.deepEqual(json.log_curation_effects[0], {
@@ -130,7 +130,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         assert.equal(json.log_entries[50]?.source, "worker://researcher", "JSON preserves the causal worker identity");
         assert.deepEqual(json.log_entries[50]?.attrs, { kind: "entry_materialized" }, "JSON preserves typed machine provenance");
         assert.equal(json.log_entries.find((entry) => entry.target?.includes("wikipedia"))?.target, "https://en.wikipedia.org:8443/wiki/Paris?b=2&a=1&a=3", "JSON preserves authority, port, and serialized query");
-        assert.equal(json.log_entries.find((entry) => entry.stream !== undefined)?.stream, "atlas:///1/1/64/atlas", "JSON preserves an EXEC's runtime stream identity");
+        assert.equal(json.log_entries.find((entry) => entry.stream !== undefined)?.stream, "atlas:///1/1/64/atlas", "JSON preserves an the execution's runtime stream identity");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

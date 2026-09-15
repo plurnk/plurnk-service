@@ -1429,10 +1429,10 @@ export default class Daemon implements ApplicationPort {
                 details: questionRuntimeDecl.details ?? "",
                 available: true,
                 detail: "in-process" } }]);
-        // {§effect-policy-tunable} — invalid operator policy fails boot, not the first EXEC.
+        // {§effect-policy-tunable} — invalid operator policy fails boot, not the first execution.
         EffectPolicy.validateConfiguration();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
-        // authority (sh:///l/t/s). The "exec" scheme stays for the EXEC op dispatch.
+        // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with

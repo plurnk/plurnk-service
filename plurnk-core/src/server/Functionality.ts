@@ -54,7 +54,7 @@ export interface FunctionalityHost {
 
 // "action": an explicit client action under user authority — publishes now,
 // rejects a failed preparation, 409 when the workspace is held. "operation": an
-// EXEC verb inside a turn that holds the workspace — its ordinary execution
+// execution verb inside a turn that holds the workspace — its ordinary execution
 // stream waits for publication and carries enabled-but-unavailable outcomes.
 export type { FunctionalityCaller };
 

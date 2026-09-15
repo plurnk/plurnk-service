@@ -132,7 +132,7 @@ test("{§exec-input}: workspace peers share input while SEND and original runtim
             undefined, { workerId: peer, loopId: peerLoop, turnId: peerTurn });
         assert.equal(other.status, 200);
         assert.deepEqual(executor.received.map(({ body }) => body), ["shared"]);
-        for (const deny of [{ operation: "SEND" }, { operation: "EXEC", runtime: "dialogue" }]) {
+        for (const deny of [{ operation: "SEND" }, { runtime: "dialogue" }]) {
             await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [deny] }) });
             const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nno\n\`\`\``);
             assert.equal(result.status, 403);
@@ -184,7 +184,7 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
         const inputId = Promise.withResolvers<number>();
         const pending = f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnot delivered\n\`\`\``, inputId.resolve);
         const logId = await inputId.promise;
-        await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [{ operation: "EXEC", runtime: "dialogue" }] }) });
+        await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [{ runtime: "dialogue" }] }) });
         f.engine.resolveProposal(logId, { decision: "accept" });
         const denied = await pending;
         assert.equal(denied.status, 403);

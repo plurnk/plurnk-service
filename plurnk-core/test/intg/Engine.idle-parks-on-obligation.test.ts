@@ -14,7 +14,7 @@ test("{§send-idle-turn} actionable TASK-only turns continue with or without a s
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse(`\`\`\`EXEC
+            makeMockResponse(`\`\`\`sh
 while [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished
 \`\`\`
 

@@ -18,7 +18,7 @@ import { parseLogRecords } from "../LogRecords.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", aside: null, executor: runtime, target: null,
+    runtime: "sh", aside: null, executor: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

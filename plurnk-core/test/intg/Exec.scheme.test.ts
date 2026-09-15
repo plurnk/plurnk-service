@@ -1,4 +1,4 @@
-// Exec scheme — the EXEC op handler per plurnk.md.
+// Exec scheme — the execution op handler per plurnk.md.
 //   ### EXEC_ [runtime] (target)\nbody
 // Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
 // authority); spawns the subprocess; streams stdout/stderr into channels; closes
@@ -23,7 +23,7 @@ import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 // {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `[{"cwd": "…"}]`.
 const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
     metadata: cwd === null ? null : [JSON.stringify({ cwd })],
-    op: "EXEC", aside: null, executor: runtime,
+    runtime: "sh", aside: null, executor: runtime,
     target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -58,7 +58,7 @@ const withWorkspace = async <T>(fn: (ctx: {
     }
 };
 
-test("EXEC: empty body and absent target → 400", async () => {
+test("execution: empty body and absent target → 400", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, null, ""),
@@ -95,7 +95,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
 
         const statement: ExecStatement = {
             metadata: null,
-            op: "EXEC", executor: "sh", aside: null,
+            runtime: "sh", aside: null,
             target: urlPath("worker", "/script"),
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
@@ -251,7 +251,7 @@ test("{§exec-target-routing} `[{\"cwd\": \".\"}]` in a headless workspace is th
         assert.equal(stdout?.content, `${process.cwd()}\n`);
     });
 });
-test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
+test("bare execution defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -469,7 +469,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
                 assert.equal(result.problem?.target, "not-a-directory/child.json");
                 assert.match(result.problem?.detail ?? "", /could not be inspected.*ENOTDIR/i);
                 assert.equal(diagnostics.length, 1);
-                assert.match(String(diagnostics[0]?.[0]), /EXEC target classification failed/);
+                assert.match(String(diagnostics[0]?.[0]), /Execution target classification failed/);
                 const cause = diagnostics[0]?.[1];
                 assert.ok(cause instanceof Error && "code" in cause && cause.code === "ENOTDIR");
             } finally {
@@ -562,7 +562,7 @@ test("sh: non-zero exit → channels=errored, stderr captured, subscription clos
         assert.equal(terminal.problem?.status, 500);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
         assert.equal(terminal.problem?.detail, "'sh' exited with code 7.");
-        // {§read-content-wins} — reading the failed command's stderr delivers the content; the exit stays the EXEC row's verdict.
+        // {§read-content-wins} — reading the failed command's stderr delivers the content; the exit stays the execution row's verdict.
         const stderrRead = await ctx.engine.dispatch({
             statement: readStmt(urlPath("sh", pathname, "stderr")),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
@@ -572,7 +572,7 @@ test("sh: non-zero exit → channels=errored, stderr captured, subscription clos
     });
 });
 
-test("EXEC: cwd defaults to workspace.project_root when statement target is null", async () => {
+test("execution: cwd defaults to workspace.project_root when statement target is null", async () => {
     // Writes a file via shell into "$PWD/<marker>", then asserts the file
     // exists at <project_root>/<marker> — proves cwd really was project_root.
     const { mkdtemp, rm, readFile } = await import("node:fs/promises");
@@ -599,7 +599,7 @@ test("EXEC: cwd defaults to workspace.project_root when statement target is null
             // The file landed in the project_root, not in plurnk-service's cwd.
             const written = await readFile(join(workspace, marker), "utf8").catch(() => null);
             assert.equal(written, "here\n",
-                `EXEC's cwd should have defaulted to workspace.project_root (${workspace}); file ${marker} should exist there`);
+                `the execution's cwd should have defaulted to workspace.project_root (${workspace}); file ${marker} should exist there`);
         });
     } finally {
         await rm(workspace, { recursive: true, force: true });
@@ -637,7 +637,7 @@ test("node: runs code via -e and captures stdout", async () => {
     });
 });
 
-test("EXEC: subscription row opens then closes; stream/event fires per chunk + transition", async () => {
+test("execution: subscription row opens then closes; stream/event fires per chunk + transition", async () => {
     type Event = { workspaceId: number; entryId: number; channel: string; state: string; contentLength: number };
     const events: Event[] = [];
     const db = await openMigrated();

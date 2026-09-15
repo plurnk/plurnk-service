@@ -347,7 +347,7 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
     }
 });
 
-test("MCP progress and cancellation remain on the owning EXEC lifecycle over stdio", async (t) => {
+test("MCP progress and cancellation remain on the owning execution lifecycle over stdio", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-exec-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "cancelled");
@@ -461,11 +461,11 @@ test("invalid tool arguments carry the one-object recovery", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
-        for (const body of ["{\"message\":\"a\"}\n```EXEC (echo/echo)\n{\"message\":\"b\"}\n```", "hello from MCP", "[1,2]"]) {
+        for (const body of ["{\"message\":\"a\"}\n```sh (echo/echo)\n{\"message\":\"b\"}\n```", "hello from MCP", "[1,2]"]) {
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 400, body);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
-            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call; a second call is a second EXEC.");
+            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call; a second call is a second fence.");
         }
     } finally {
         await connection.close();

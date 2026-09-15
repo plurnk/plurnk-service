@@ -5,6 +5,7 @@ import { Lexer } from "marked";
 import ToolResources from "./ToolResources.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import { functionalityRuntimeDecl, FUNCTIONALITY_VERBS } from "../server/FunctionalityManager.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 test("{§tools-resource-discovery} renders a general runtime as one self-describing resource", () => {
     const resources = ToolResources.render({
@@ -34,8 +35,9 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     assert.equal(parsed.items.length, 1);
     assert.equal(parsed.items[0]?.kind, "statement");
     if (parsed.items[0]?.kind === "statement") {
-        assert.equal(parsed.items[0].statement.op, "EXEC");
-        assert.equal((parsed.items[0].statement as { executor: string }).executor, "example");
+        assert.equal(isExecution(parsed.items[0].statement), true);
+        if (!isExecution(parsed.items[0].statement)) assert.fail("expected an execution");
+        assert.equal(parsed.items[0].statement.runtime, "example");
         assert.equal(parsed.items[0].statement.body, "something");
     }
     assert.match(content, /^## Scope$/m);

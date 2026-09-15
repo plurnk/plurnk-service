@@ -6,6 +6,7 @@ import CapabilityResolver from "./CapabilityResolver.ts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import SchemeRegistry from "./SchemeRegistry.ts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 const statement = (source: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: ["tools", "resource-tool", "optional-resource"] });
@@ -71,7 +72,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         { source: "```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", expected: [] },
         { source: "```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", expected: [] },
         { source: "```SEND\nupdate\n```", expected: [] },
-        { source: "```EXEC\ngit status --short\n```", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
+        { source: "```sh\ngit status --short\n```", expected: [{ operation: "sh", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: "```BARE\nWhat is 2 + 2?\n```", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
         { source: "```BARE (worker://alice/prompt.md)```", expected: [
             { operation: "BARE", access: "execute", traits: [] },
@@ -85,7 +86,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
     const covered = new Set<string>();
     for (const specimen of cases) {
         const parsed = statement(specimen.source);
-        covered.add(parsed.op);
+        covered.add(writtenOp(parsed));
         assert.deepEqual(resolver.descriptors(parsed, 1), specimen.expected, specimen.source);
     }
     assert.deepEqual([...covered].toSorted(), [...PLURNK_OPS].toSorted());
@@ -110,7 +111,7 @@ test("{§capability-admission} classifies target-dependent control and curation 
 test("{§capability-admission} leaves unknown finite-tool targets to their runtime owner", () => {
     assert.deepEqual(
         resolver.descriptors(statement("```tools (known)\n{}\n```"), 1),
-        [{ operation: "EXEC", scheme: "exec", runtime: "tools", tool: "known", access: "execute", traits: [] }],
+        [{ operation: "tools", scheme: "exec", runtime: "tools", tool: "known", access: "execute", traits: [] }],
     );
     assert.deepEqual(
         resolver.descriptors(statement("```tools (unknown)\n{}\n```"), 1),
@@ -145,7 +146,7 @@ test("{§capability-admission} leaves every partially unresolved composed route 
     );
     assert.deepEqual(
         resolver.descriptors(statement("```optional-resource\ntransform\n```"), 1),
-        [{ operation: "EXEC", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
+        [{ operation: "optional-resource", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
     );
 });
 
@@ -184,7 +185,7 @@ test("{§schemes-directory} scheme references follow supported capabilities, not
     for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "SEND", "KILL", "WORK", "FORK"] as const) {
         assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ operation }] }]), true, operation);
     }
-    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "EXEC", "BARE"] as const) {
+    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "sh", "BARE"] as const) {
         assert.equal(resolver.allowsSchemeAcross("file", 1, [{ only: [{ operation }] }]), true, operation);
     }
     assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ access: "observe" }] }]), true);

@@ -29,7 +29,7 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 // {§exec-executor-slot} — the battery's third column is the program path (a db file for sqlite), never a cwd.
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", aside: null, executor: runtime, target: target === null ? null : localPath(target),
+    runtime: "sh", aside: null, executor: runtime, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -69,7 +69,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         // a row-state check races automatic settlement. Accept only a host proposal.
         const proposal = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const effect = (JSON.parse(proposal?.attrs ?? "{}") as { effect: Effect }).effect;
-        assert.ok(effect === "pure" || effect === "read" || effect === "host", "EXEC persists its canonical effect fact");
+        assert.ok(effect === "pure" || effect === "read" || effect === "host", "execution persists its canonical effect fact");
         if (effect === "host") engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;
         await exec.idle(); // the spawn runs async; idle() awaits its close

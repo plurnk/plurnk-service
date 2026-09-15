@@ -21,14 +21,12 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
     assert.notEqual(first, channel);
 });
 
-test("EXEC bodies that share a long boilerplate prefix remain distinct cycle activities", () => {
+test("execution bodies that share a long boilerplate prefix remain distinct cycle activities", () => {
     // run25 (gemini-3.8-flash, 2026-09-03): five consecutive turns paged routing.py with the same
     // python3 preamble and different line ranges; a 64-character body prefix called that a cycle.
     const pager = (from: number, to: number): ExecStatement => ({
-        op: "EXEC",
-        aside: null,
+        runtime: "sh", aside: null,
         metadata: null,
-        executor: null,
         target: null,
         lineMarker: null,
         body: `python3 -c '\nwith open("fastapi/routing.py") as f:\n    lines = f.readlines()\nfor i in range(${from}, ${to}):\n    print(lines[i], end="")\n'`,

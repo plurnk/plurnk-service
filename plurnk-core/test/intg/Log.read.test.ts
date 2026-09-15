@@ -365,9 +365,9 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
     } finally { db.close(); }
 });
 
-// {§log-channel-miss-names-stream} (#502) — a channel READ on a log EXEC item is a miss the
+// {§log-channel-miss-names-stream} (#502) — a channel READ on a log execution item is a miss the
 // receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/sh#channel.
-test("Log.read: #channel on an EXEC log item names the command's stream address in its 404", async () => {
+test("Log.read: #channel on an execution log item names the command's stream address in its 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const schemes = new SchemeRegistry();
@@ -379,7 +379,7 @@ test("Log.read: #channel on an EXEC log item names the command's stream address 
         const dispatched = new Promise<number>((settle) => {
             void engine.dispatch({
                 statement: {
-                    metadata: null, op: "EXEC", executor: "sh", aside: null,
+                    metadata: null, runtime: "sh", aside: null,
                     target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
                 },
                 workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

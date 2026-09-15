@@ -1,4 +1,4 @@
-// {§executor-scheme-output} The EXEC-receipt orient-index is purely STRUCTURAL —
+// {§executor-scheme-output} The execution-receipt orient-index is purely STRUCTURAL —
 // counts / shape / keys / headings, never any
 // content. It carries just enough for the model to slice deliberately
 // (`READ <tag>://x<L>`) without a READ-to-orient; the body itself stays behind

@@ -1,5 +1,5 @@
 import LogBody from "./LogBody.ts";
-import { execRouteOf } from "../schemes/exec-runtime.ts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 interface LogEntryProjectionRow {
     readonly origin?: unknown;
@@ -31,15 +31,8 @@ export default class LogEntryProjection {
 
     static leaf(row: LogEntryProjectionRow): string {
         const op = LogEntryProjection.op(row);
-        if (op === "EXEC") {
-            const tx = LogEntryProjection.#decode(row.tx, "tx");
-            const executor = tx !== null && typeof tx === "object"
-                ? (tx as { executor?: unknown }).executor : undefined;
-            if (executor !== null && (typeof executor !== "string" || executor.length === 0)) {
-                throw new TypeError("An executor log row requires its durable submitted executor.");
-            }
-            return execRouteOf({ executor, target: null }).runtime;
-        }
+        // An execution row's leaf is its runtime: the op as written.
+        if (isExecutionOp(op)) return op;
         if (op !== null) return op;
         LogBody.actionlessKind({ op, attrs: row.attrs });
         return "attempt";

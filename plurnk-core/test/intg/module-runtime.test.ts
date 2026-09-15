@@ -187,7 +187,7 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
     }
 });
 
-test("{§runtime-resource-binding}: READ, FIND, COPY, EXEC, and BARE use the workspace attachment and channel", async () => {
+test("{§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use the workspace attachment and channel", async () => {
     const db = await openMigrated();
     try {
         const { engine, schemes } = wire(db);

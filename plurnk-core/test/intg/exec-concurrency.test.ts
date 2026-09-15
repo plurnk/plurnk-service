@@ -11,7 +11,7 @@ import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, ma
 
 const statement = (body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", executor: "controlled",
+    runtime: "controlled",
     aside: null,
     target: null,
     lineMarker: null,
@@ -100,7 +100,7 @@ const eventually = async (predicate: () => boolean, message: string): Promise<vo
     }
 };
 
-test("{§exec-concurrency}: EXEC admission is FIFO and workspace-scoped", async () => {
+test("{§exec-concurrency}: execution admission is FIFO and workspace-scoped", async () => {
     const previous = process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
     process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = "2";
     const db = await openMigrated();
@@ -168,10 +168,10 @@ test("{§exec-concurrency}: EXEC admission is FIFO and workspace-scoped", async 
         await eventually(() => executor.starts.includes("b1"), "the other workspace never entered its available slot");
 
         executor.release("a1");
-        await eventually(() => executor.starts.includes("a3"), "the oldest queued EXEC never started");
-        assert.equal(executor.starts.includes("a4"), false, "one released slot starts exactly one queued EXEC");
+        await eventually(() => executor.starts.includes("a3"), "the oldest queued execution never started");
+        assert.equal(executor.starts.includes("a4"), false, "one released slot starts exactly one queued execution");
         executor.release("a2");
-        await eventually(() => executor.starts.includes("a4"), "the second queued EXEC never started");
+        await eventually(() => executor.starts.includes("a4"), "the second queued execution never started");
         assert.deepEqual(
             executor.starts.filter((body) => body.startsWith("a")),
             ["a1", "a2", "a3", "a4"],
@@ -240,7 +240,7 @@ test("{§exec-concurrency}: KILL cancels queued work without invoking its execut
     }
 });
 
-test("{§exec-concurrency}: queue residence does not consume the EXEC timeout", async () => {
+test("{§exec-concurrency}: queue residence does not consume the execution timeout", async () => {
     const previous = process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
     process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = "1";
     const db = await openMigrated();

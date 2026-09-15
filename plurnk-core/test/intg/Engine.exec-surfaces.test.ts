@@ -1,6 +1,6 @@
-// Regression guard for the live/demo exec failure: a model workers an EXEC, the
+// Regression guard for the live/demo exec failure: a model workers an execution, the
 // entry is created in the DB — but its result must also surface in the next
-// turn's LOG (the EXEC log row links its output via stream=<runtime>:///<coord>),
+// turn's LOG (the execution log row links its output via stream=<runtime>:///<coord>),
 // or the model is blind to its own output and loops forever. The bug only manifested in the
 // e2e tier (model-in-loop); this reproduces it deterministically with a Mock
 // model driven through the REAL prod loop — loop.run via the daemon, the same
@@ -13,6 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async () => {
     const runtime = "search-api2";
@@ -42,7 +43,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             assert.equal(invocation.stream, undefined, "an unknown executor did not allocate an output resource");
             assert.match(packetSection(packets[0], "errors"), /log:\/\/\/1\/2\/2\/search-api2/);
             const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
-            assert.equal(JSON.parse(dispatched.find((row) => row.op === "EXEC")!.rx).problem.instance, path,
+            assert.equal(JSON.parse(dispatched.find((row) => isExecution(row))!.rx).problem.instance, path,
                 "the durable Problem and model-facing pointer address the same receipt");
             const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds![2]! });
             assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
@@ -67,7 +68,7 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the proposal decision.", policy: { proposals: "reject" } });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
-            const problem = JSON.parse(rows.find((row) => row.op === "EXEC")!.rx).problem;
+            const problem = JSON.parse(rows.find((row) => isExecution(row))!.rx).problem;
             assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/rejected");
             assert.equal(problem.instance, "log:///1/2/2/sh");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! });
@@ -77,10 +78,10 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
     });
 });
 
-test("regression: a model's EXEC result surfaces visibly in the next turn without an explicit READ", async () => {
+test("regression: a model's execution result surfaces visibly in the next turn without an explicit READ", async () => {
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\necho plurnk-index-probe\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```sh\necho plurnk-index-probe\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
 
@@ -164,9 +165,9 @@ test("a generated JSON result publishes its first page with the extent through t
     });
 });
 
-test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
+test("a failed execution reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
         makeMockResponse("```SEND\nfailure observed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
 
@@ -241,10 +242,10 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
 test("the cursor-terminal race: a one-burst stream consumed before its close still gets a visible terminal delta", async () => {
     // A channel written in one final burst can be complete while its process is still active; the
     // close then arrives with no new content. The model must still see the stream conclude. Turn 1:
-    // EXEC a slow-close command + [102]. Turn 2: the stream is active and represented only by Child
+    // execution a slow-close command + [102]. Turn 2: the stream is active and represented only by Child
     // Streams. Turn 3: the terminal marker MUST land visibly despite no new bytes — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\necho burst-payload && sleep 2\n```\n\n```TASK\n[{\"content\":\"spawned\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```sh\necho burst-payload && sleep 2\n```\n\n```TASK\n[{\"content\":\"spawned\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```TASK\n[{\"content\":\"waiting\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```TASK\n[{\"content\":\"checking\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
@@ -274,7 +275,7 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
 // {§exec-stream} — a silent command still concludes visibly: one bodyless row on its default channel.
 test("a command that prints nothing on any channel lands exactly one bodyless conclusion row", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```EXEC\ntrue\n```\n\n```TASK\n[{\"content\":\"spawned\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("```sh\ntrue\n```\n\n```TASK\n[{\"content\":\"spawned\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```TASK\n[{\"content\":\"checking\",\"status\":\"in_progress\"}]\n```", 10),
         makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });

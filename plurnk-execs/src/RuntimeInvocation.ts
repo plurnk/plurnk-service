@@ -10,6 +10,7 @@ import type {
     RuntimeTargetDecl,
     RuntimeTargetKind,
 } from "./types.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 const TARGET_KINDS = new Set<RuntimeTargetKind>(["literal", "path", "resource", "script"]);
 
@@ -72,7 +73,7 @@ const oneExecSection = (source: string, runtime: string, expectedTarget?: string
     const errors = parsed.items.filter((item) => item.kind === "error");
     const statement = statements[0]?.statement;
     return statements.length === 1
-        && statement?.op === "EXEC"
+        && statement !== undefined && isExecution(statement)
         && (expectedTarget === undefined || statement.target?.raw === expectedTarget)
         && errors.length === 0
         && parsed.unparsedTail === undefined;
@@ -161,7 +162,7 @@ export default class RuntimeInvocation {
         const exampleTarget = example.target === undefined ? "" : ` (${PathSyntax.escapeTarget(example.target)})`;
         const source = PlurnkParser.frame(`${runtime}${exampleTarget}`, example.body ?? null);
         if (!oneExecSection(source, runtime)) {
-            fail("invocation.example must render one valid EXEC section");
+            fail("invocation.example must render one valid executor fence");
         }
 
         return { ...shape, example };
@@ -191,7 +192,7 @@ export default class RuntimeInvocation {
             }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
             if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), runtime, exactTarget)) {
-                fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
+                fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid executor fence`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);
             if (

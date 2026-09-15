@@ -12,11 +12,11 @@ import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts
 
 const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
 
-test("a bare EXEC of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async () => {
+test("a bare execution of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async () => {
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```EXEC\nfail {\"message\":\"boom\"}\n```\n\n```TASK\n[{\"content\":\"waiting on the shell\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```sh\nfail {\"message\":\"boom\"}\n```\n\n```TASK\n[{\"content\":\"waiting on the shell\",\"status\":\"waiting\"}]\n```", 10),
             makeMockResponse("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });
@@ -36,7 +36,7 @@ test("a bare EXEC of a tool's name fails with a receipt that names the tool's re
             await rpcCall(ws, 1, "workspace.create", { name: `tool-fall-through-${crypto.randomUUID()}` });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "try the tool by name", policy: { proposals: "accept" } }, { timeoutMs: 30_000 });
             assert.equal(finalStatus, 200);
-            // {§exec-stream}: the spawn's EXEC row is `started`; the process's conclusion is the receipt
+            // {§exec-stream}: the spawn's execution row is `started`; the process's conclusion is the receipt
             // on the stream's terminal READ — one per channel with content, and the shell's complaint is on stderr alone.
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const receipts = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
@@ -63,7 +63,7 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```EXEC\nno_such_program_zq --help\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```sh\nno_such_program_zq --help\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
             makeMockResponse("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });

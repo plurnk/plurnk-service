@@ -256,7 +256,7 @@ test("log_entries: signal polymorphism", async () => {
         const ctx = await seedEnvelope(db, "ws-log-sigpoly");
         await minimalLog(db, ctx, { sequence: 1, op: "EDIT" });
         await minimalLog(db, ctx, { sequence: 2, op: "SEND",  signal: JSON.stringify(200) });
-        await minimalLog(db, ctx, { sequence: 3, op: "EXEC" });
+        await minimalLog(db, ctx, { sequence: 3, runtime: "sh" });
         await minimalLog(db, ctx, { sequence: 4, op: "READ",   });
         const rows = await db.test_log_entries_signals_by_turn.all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
         assert.deepEqual(rows.map((r) => r.signal), [null, '200', null, null], "only a SEND carries a status; every other op's signal is null");

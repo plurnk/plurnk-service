@@ -40,7 +40,7 @@ const journeys = Object.freeze({
         programs: [
             {
                 reasoning: "I will make one reviewed local change, then verify the settled result.",
-                content: "```EXEC\nprintf 'accepted\\n' > journey.txt\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"in_progress\"}]\n```",
+                content: "```sh\nprintf 'accepted\\n' > journey.txt\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"in_progress\"}]\n```",
             },
             {
                 reasoning: "The reviewed command succeeded, so I can conclude the requested journey.",

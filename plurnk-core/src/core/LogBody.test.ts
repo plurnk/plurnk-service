@@ -246,7 +246,7 @@ test("LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () =>
 });
 
 test("LogBody resolves built-in statement-backed and pushed bodies", () => {
-    assert.equal(LogBody.resolve({ op: "EXEC", tx: { body: "jq ." }, rx: null }).content, "jq .");
+    assert.equal(LogBody.resolve({ op: "sh", tx: { body: "jq ." }, rx: null }).content, "jq .");
 
     for (const op of ["SEND", "WORK", "FORK"]) {
         assert.equal(LogBody.resolve({ op, tx: { body: `${op} body` }, rx: null }).content, `${op} body`, op);

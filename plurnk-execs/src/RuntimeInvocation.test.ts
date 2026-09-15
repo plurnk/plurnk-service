@@ -182,7 +182,7 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
                 },
             }],
         }, "@plurnk/plurnk-mcp", "gitea"),
-        /target 'issue<read' must render one valid EXEC section/,
+        /target 'issue<read' must render one valid executor fence/,
     );
     assert.throws(
         () => RuntimeInvocation.assertToolRegistry({

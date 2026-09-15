@@ -1,4 +1,4 @@
-// Floor-scope capstone — drives the non-EXEC entry DSL ops end-to-end through the
+// Floor-scope capstone — drives the non-execution entry DSL ops end-to-end through the
 // canonical grammar parser, real Engine, real SchemeRegistry, real SqlRite.
 
 import test from "node:test";

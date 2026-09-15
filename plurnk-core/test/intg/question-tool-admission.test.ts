@@ -28,7 +28,7 @@ const findStatement = (): FindStatement => ({
 
 const execStatement = (): ExecStatement => ({
     metadata: null,
-    op: "EXEC", executor: "question", aside: null, target: null, lineMarker: null,
+    runtime: "question", aside: null, target: null, lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),
     position: { line: 1, column: 1 },
 });
@@ -94,7 +94,7 @@ test("{§worker-tool-admission}: an unrestricted worker's FIND lists the questio
     }
 });
 
-test("{§worker-tool-admission}: EXEC dispatch refuses an interaction-denied question runtime", async () => {
+test("{§worker-tool-admission}: execution dispatch refuses an interaction-denied question runtime", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await boot({ deny: [{ traits: ["interaction"] }] });
     try {
         const result = await engine.dispatch({
