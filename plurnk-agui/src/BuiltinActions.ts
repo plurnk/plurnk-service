@@ -2,7 +2,7 @@
 import { type ActionOutcome } from "./AguiPlus.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, UNKNOWN_POSITION, Validator, type AguiDiscovery, type ApplicationPort, type CapabilityPolicy, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { actionFailure, problemFromError } from "./action-results.ts";
+import { actionFailure } from "./action-results.ts";
 import Translator from "./Translator.ts";
 
 const operationOutcome = (result: OperationResult): ActionOutcome => {
@@ -437,7 +437,7 @@ export default class BuiltinActions {
                 default: throw new Error(`AG-UI built-in '${kind}' has no executor`);
             }
         } catch (err) {
-            const problem = problemFromError(err);
+            const problem = Problems.fromError(err);
             if (problem !== null) return { ok: false, problem };
             console.error(`AG-UI action '${kind}' failed:`, err);
             return actionFailure("action-failed", "The action failed unexpectedly.", 500);

@@ -167,15 +167,18 @@ const schemaDocument = (pathname: string, title: string, schema: JsonSchema, det
 });
 
 export default class ToolResources {
+    static documentPath(runtime: string, resourcesPath?: string): string {
+        return `${generatedPathname(resourcesPath ?? "/plurnk")}/${runtime}.md`;
+    }
+
     static targetSegment(target: string): string {
         return encodeURIComponent(target).replaceAll(/[!'()*]/gu, (character) =>
             `%${character.codePointAt(0)?.toString(16).toUpperCase()}`);
     }
 
     static render(source: ToolSource): ToolResource[] {
-        const toolsNamespace = source.resourcesPath !== undefined;
-        // A runtime's resourcesPath is relative to the generated root; Core owns the root.
-        const root = generatedPathname(toolsNamespace ? source.resourcesPath! : "/plurnk");
+        const pathname = ToolResources.documentPath(source.runtime, source.resourcesPath);
+        const childrenRoot = pathname.slice(0, -3);
         if (source.registry === null) {
             if (typeof source.summary !== "string") {
                 throw new Error("runtime summary derives from tools but the runtime has no exact tool registry");
@@ -185,10 +188,10 @@ export default class ToolResources {
             const headerOnly = schema === undefined && source.details.trim().length === 0;
             const summary = headerOnly ? `${source.summary} (invocation only)` : source.summary;
             const child = schema === undefined ? [] : [schemaDocument(
-                `${root}/${source.runtime}/input.md`, source.runtime, schema, source.details,
+                `${childrenRoot}/input.md`, source.runtime, schema, source.details,
             )];
             return [{
-                pathname: `${root}/${source.runtime}.md`,
+                pathname,
                 content: renderDocument(
                     source.runtime,
                     summaryWitness(source.runtime, source.invocation, undefined, summary),
@@ -201,7 +204,7 @@ export default class ToolResources {
 
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
-        const schemaPath = (target: string): string => `${root}/${source.runtime}/${ToolResources.targetSegment(target)}.md`;
+        const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.md`;
         // {§scheme-catalog-aside} — the family's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
@@ -240,7 +243,7 @@ export default class ToolResources {
             ["## Tools", "", familyInvocations.join("\n\n")],
             detailsBlock,
         );
-        return [{ pathname: `${root}/${source.runtime}.md`, content: family }, ...tools.flatMap((tool) =>
+        return [{ pathname, content: family }, ...tools.flatMap((tool) =>
             tool.invocation.inputSchema === undefined ? [] : [schemaDocument(
                 schemaPath(tool.target), `${source.runtime}: ${tool.target}`, tool.invocation.inputSchema, tool.details ?? "",
             )])];

@@ -321,7 +321,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     runtime,
                     availableTargetCount: availableTargets.length,
                     ...(availableTargets.length === 0 ? {} : {
-                        recovery: `Select a target documented under worker:///_plurnk/tools/${runtime}/.`,
+                        recovery: `Select a target from worker://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.`,
                     }),
                     retryable: false,
                 },

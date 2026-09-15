@@ -3853,6 +3853,10 @@ binds that Worker to the manager at the operation, so the published manager
 stays one per workspace and the executor framework's arguments carry no
 identity ({§functionality-scope}).
 
+Expected adapter failures retain their exact status and Problem in both client
+actions and the model operation's stream/result ({§problem-error-carrier}). An
+unexpected exception remains an executor fault, not a managed refusal.
+
 §functionality-document-body **A family's teaching is an authored file beneath
 its generated header.** The adapter names its package directory (`docsDir`);
 that package's `docs/<family>.md` is read once, by the same rule runtimes use
@@ -4740,7 +4744,9 @@ preserve the full tool description and raw input schema under
 {§executor-input-schema-preview}; their nested paths do not contribute extra
 Turn0 rows. A schema-backed general runtime uses `<runtime>/input.md`.
 Non-schema targets retain supplemental details in family sections.
-Tool-result/output schemas remain ordinary evidence, not teaching.
+Tool-result/output schemas remain ordinary evidence, not teaching. Unknown-target
+recovery names the published family document through the same path owner as
+materialization, including a runtime's declared `resourcesPath`.
 
 ```mermaid
 flowchart LR

@@ -1,5 +1,5 @@
-import Validator from "./Validator.ts";
-import type { ProblemDetails, ProblemProjection } from "./types.generated.ts";
+import Validator, { InvalidOperationResultError, InvalidProblemDetailsError } from "./Validator.ts";
+import type { OperationResult, ProblemDetails, ProblemProjection } from "./types.generated.ts";
 
 const TYPE_ROOT = "https://problems.plurnk.xyz";
 const OWNER = /^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)*$/;
@@ -30,6 +30,21 @@ const sameFact = (left: unknown, right: unknown): boolean => {
 };
 
 export default class Problems {
+    static fromError(error: unknown): ProblemDetails | null {
+        if (typeof error !== "object" || error === null) return null;
+        const result = (error as { result?: unknown }).result;
+        try {
+            if (result !== undefined) return Validator.assertOperationResult(result as OperationResult).problem ?? null;
+            const problem = (error as { problem?: unknown }).problem;
+            return problem === undefined ? null : Validator.assertProblemDetails(problem as ProblemDetails);
+        } catch (cause) {
+            // {§problem-error-carrier}: recognition rejects malformed carriers; the
+            // caller still owns the original exception and its complete cause.
+            if (cause instanceof InvalidOperationResultError || cause instanceof InvalidProblemDetailsError) return null;
+            throw cause;
+        }
+    }
+
     static create(
         owner: string,
         code: string,

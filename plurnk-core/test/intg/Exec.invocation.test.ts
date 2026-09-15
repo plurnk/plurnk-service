@@ -64,7 +64,7 @@ const statement = (runtime: string, target: string | null, body: string): ExecSt
     position: { line: 1, column: 1 },
 });
 
-const wire = async () => {
+const wire = async (resourcesPath?: string) => {
     const runs = new Map<string, Run[]>();
     const effects = new Map<string, Array<string | null>>();
     const entries = new Map([...Object.entries(INVOCATIONS)].map(([runtime, invocation]) => {
@@ -133,6 +133,7 @@ const wire = async () => {
             summary: `${runtime} fixture.`,
             invocation,
             details: "",
+            ...(resourcesPath === undefined ? {} : { resourcesPath }),
             available: true,
             detail: undefined,
         }] as const;
@@ -212,7 +213,9 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
         assert.equal(disabled.status, 404);
         assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
         assert.equal(disabled.problem?.availableTargetCount, 1);
-        assert.equal(disabled.problem?.recovery, "Select a target documented under worker:///_plurnk/tools/familytool/.");
+        assert.equal(disabled.problem?.recovery, "Select a target from worker:///_plurnk/plurnk/familytool.md.");
+        assert.ok(reference.some(({ pathname }) => disabled.problem?.recovery === `Select a target from worker://${pathname}.`),
+            "recovery names a published family document, not an assumed schema directory");
         assert.equal("availableTargets" in (disabled.problem ?? {}), false);
 
         const missingBody = await ctx.dispatch(statement("familytool", "enabled_tool", ""));
@@ -230,6 +233,22 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
         assert.deepEqual(ctx.effects.get("familytool"), ["enabled_tool"]);
     } finally {
         await ctx.close();
+    }
+});
+
+test("{§tools-resource-discovery} target recovery follows a runtime's declared document root", async () => {
+    for (const resourcesPath of ["/tools", "/modules/custom"]) {
+        const ctx = await wire(resourcesPath);
+        try {
+            const result = await ctx.dispatch(statement("familytool", "missing", "{}"));
+            assert.equal(result.status, 404);
+            const documents = await ctx.engine.referenceEntries(ctx.workspaceId);
+            const path = `/_plurnk${resourcesPath}/familytool.md`;
+            assert.equal(result.problem?.recovery, `Select a target from worker://${path}.`);
+            const document = documents.find(({ pathname }) => pathname === path);
+            assert.ok(document, "the recovery document is actually published");
+            assert.match(document.content, /enabled_tool/u);
+        } finally { await ctx.close(); }
     }
 });
 

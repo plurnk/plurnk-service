@@ -1194,6 +1194,19 @@ Internal invariant violations throw and preserve their cause. An external
 protocol may require its own error envelope; its adapter maps that envelope to
 or from the canonical Problem without creating another PLURNK failure contract.
 
+§problem-error-carrier `Problems.fromError(error)` recognizes existing failure
+carriers without depending on a producer's exception class:
+
+| Carrier | Interpretation |
+|---------|----------------|
+| `error.result` present | Validate the complete {§operation-result}; return its Problem, if any |
+| Otherwise, `error.problem` present | Validate and return {§problem-details} unchanged |
+| Absent or malformed carrier | Return `null`; the caller retains the original exception as an unexpected failure |
+
+Recognition never derives recovery text from an exception message, changes its
+status, or rescues a malformed result through a second Problem field. Unexpected
+accessor or validator exceptions propagate.
+
 §problem-projection `ProblemProjection` is the sole compact model-packet view of
 an exact `ProblemDetails`. `Problems.project(problem, context)` validates both
 representations and rejects a status that contradicts the enclosing row.

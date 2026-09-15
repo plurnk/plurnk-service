@@ -6,7 +6,7 @@
 // exact coordinator method a client action calls.
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
-import type { JsonSchema } from "@plurnk/plurnk-contracts";
+import { Problems, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
@@ -165,9 +165,10 @@ export default class FunctionalityManager extends BaseExecutor {
             // {§functionality-model-projection} — a coordinator refusal (alias taken, scope, admission) is the
             // verb's own outcome with its own status, never an executor fault: it streams as the result,
             // and the executor reports that same failure (status + Problem) as its operation result.
-            if (!(cause instanceof OperationFailureError)) throw cause;
-            refusal = cause.result;
-            result = { status: cause.result.status, body: cause.result };
+            const problem = Problems.fromError(cause);
+            if (problem === null) throw cause;
+            refusal = cause instanceof OperationFailureError ? cause.result : { status: problem.status, problem };
+            result = { status: refusal.status, body: refusal };
         }
         args.setState(CHANNEL, "active");
         args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");

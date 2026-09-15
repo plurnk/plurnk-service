@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import FunctionalityManager, { FUNCTIONALITY_VERBS, functionalityRuntimeDecl, type FunctionalityVerb } from "./FunctionalityManager.ts";
-import type { JsonSchema } from "@plurnk/plurnk-contracts";
+import { Problems, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";
 
 const invocations: Array<{ family: string; verb: string; params: unknown; caller: string }> = [];
@@ -85,6 +86,36 @@ test("{§functionality-model-projection} a verb runs through the coordinator as 
     assert.deepEqual(invocations, [{ family: "fx", verb: "add", params: { alias: "a", definition: { kind: "ok" } }, caller: "operation" }]);
     assert.deepEqual(states, ["active", "closed"]);
     assert.deepEqual(JSON.parse(written.join("")), { family: "fx", verb: "add", params: { alias: "a", definition: { kind: "ok" } } });
+});
+
+test("{§functionality-model-projection} every family's owned refusal survives its management executor", async () => {
+    const problem = Problems.create("fixture:management", "unavailable", 502, "The source could not be inspected.", {
+        source: "fixture", recovery: "Inspect the configured source.", retryable: false,
+    });
+    const result = { status: 502, problem };
+    for (const cause of [new OperationFailureError(result), Object.assign(new Error(problem.detail), { problem })]) {
+        const manager = new FunctionalityManager({
+            family: "fx", workspaceId: 1, inputSchemas,
+            coordinator: { invoke: async () => { throw cause; } } as unknown as Functionality,
+        });
+        const { args: runArgs, written, states } = args("discover", "{}");
+        assert.deepEqual(await manager.run(runArgs), result);
+        assert.deepEqual(JSON.parse(written.join("")), result);
+        assert.deepEqual(states, ["active", "errored"]);
+    }
+});
+
+test("{§functionality-model-projection} an unexpected exception is not reclassified as a managed refusal", async () => {
+    for (const cause of [new Error("internal fixture failure"), Object.assign(new Error("malformed failure"), { problem: { status: 502 } })]) {
+        const manager = new FunctionalityManager({
+            family: "fx", workspaceId: 1, inputSchemas,
+            coordinator: { invoke: async () => { throw cause; } } as unknown as Functionality,
+        });
+        const { args: runArgs, written, states } = args("discover", "{}");
+        await assert.rejects(() => manager.run(runArgs), (error) => error === cause);
+        assert.deepEqual(written, []);
+        assert.deepEqual(states, []);
+    }
 });
 
 test("{§functionality-model-projection} an empty body is an empty argument object; a non-JSON body and an unknown verb are exact refusals", async () => {

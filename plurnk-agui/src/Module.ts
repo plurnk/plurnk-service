@@ -17,10 +17,10 @@ import Portal from "./Portal.ts";
 import { aliveChildren, derivationActivity, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
-import { Validator, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
-import { HttpProblemError, actionFailure, problemFromError } from "./action-results.ts";
+import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions from "./BuiltinActions.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 import RunHandler from "./RunHandler.ts";
@@ -239,7 +239,7 @@ export default class Module {
                 retryable: false,
             }));
         } catch (err) {
-            const exactProblem = problemFromError(err);
+            const exactProblem = Problems.fromError(err);
             if (exactProblem === null) {
                 console.error("AG-UI request failed:", err);
             }
@@ -392,7 +392,7 @@ export default class Module {
         const outcome = await this.#action(action, null)
             .catch((err: unknown): ActionOutcome => {
                 console.error(`AG-UI action '${action.kind}' failed:`, err);
-                const problem = problemFromError(err);
+                const problem = Problems.fromError(err);
                 return problem === null
                     ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
                     : { ok: false, problem };
@@ -463,7 +463,7 @@ export default class Module {
             }
             return outcome;
         } catch (err) {
-            const problem = problemFromError(err);
+            const problem = Problems.fromError(err);
             if (problem !== null) return { ok: false, problem };
             console.error(`AG-UI action '${a.kind}' failed:`, err);
             return actionFailure("action-failed", "The action failed unexpectedly.", 500);

@@ -1,4 +1,4 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { Problems, TurnDisposition } from "@plurnk/plurnk-contracts";
 // The AG-UI Run endpoint: one client run resolved to its worker, streamed, and settled. Split out of the module, which keeps the delegating entry point.
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import Portal from "./Portal.ts";
@@ -8,7 +8,7 @@ import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from 
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { type ApplicationPort, type ClientEnvelope } from "@plurnk/plurnk-contracts";
 import { type ResolvedModuleOptions } from "./config.ts";
-import { HttpProblemError, actionFailure, problemFromError } from "./action-results.ts";
+import { HttpProblemError, actionFailure } from "./action-results.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 
 const LOOP_ADDRESSED_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel"]);
@@ -233,7 +233,7 @@ export default class RunHandler {
                 .then(async (outcome) => { await new Promise((r) => setImmediate(r)); finishAction(outcome); })
                 .catch((err: unknown) => {
                     console.error(`AG-UI action '${action.kind}' failed:`, err);
-                    const problem = problemFromError(err);
+                    const problem = Problems.fromError(err);
                     finishAction(problem === null
                         ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
                         : { ok: false, problem });
@@ -310,7 +310,7 @@ export default class RunHandler {
             // not enough — the heartbeat interval and the Portal binding are live, and a
             // throw that escapes past finish() leaks them forever (the drill-hang). emit()
             // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
-            const exactProblem = problemFromError(err);
+            const exactProblem = Problems.fromError(err);
             if (exactProblem === null) console.error("AG-UI Run failed:", err);
             const problem = exactProblem ?? httpProblem(
                 "run-failed",

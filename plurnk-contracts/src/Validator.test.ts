@@ -527,6 +527,25 @@ test("Problems creates canonical typed occurrences", () => {
     );
 });
 
+test("{§problem-error-carrier} Problems recognizes validated failures without depending on producer exception classes", () => {
+    const problem = Problems.create("fixture", "unavailable", 502, "The fixture is unavailable.", { retryable: false });
+    const result = { status: 502, problem };
+    for (const error of [Object.assign(new Error(problem.detail), { problem }), Object.assign(new Error(problem.detail), { result })]) {
+        assert.equal(Problems.fromError(error), problem);
+    }
+    for (const error of [
+        null, "failure", new Error("unexpected"),
+        { problem: { status: 502 } },
+        { result: { status: 502 } },
+        { result: { status: 200, problem } },
+        { result: { status: 500, problem }, problem },
+    ]) {
+        assert.equal(Problems.fromError(error), null, "malformed carriers remain unrecognized failures");
+    }
+    const unexpected = new Error("carrier accessor failed");
+    assert.throws(() => Problems.fromError({ get problem() { throw unexpected; } }), (error) => error === unexpected);
+});
+
 test("{§problem-projection} Problems projects one exact Problem without row-owned or duplicate facts", () => {
     const problem = Problems.create(
         "scheme:file",

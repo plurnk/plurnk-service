@@ -14,7 +14,7 @@ import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
+import { awaitExecOutcome, openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
 type Event = Readonly<Record<string, unknown>>;
@@ -85,6 +85,60 @@ const actionResult = (events: readonly Event[]): {
 
 const packet = (requests: PacketCapturingMock["requests"], index: number): string =>
     requests[index]?.map(({ content }) => content).join("\n\n") ?? "";
+
+test("{§functionality-model-projection} an absent MCP source has the same Problem through client actions and model execution", { timeout: 30_000 }, async (t) => {
+    const sandbox = await mkdtemp(join(tmpdir(), "mcp-discovery-refusal-"));
+    const source = join(sandbox, "absent-executable");
+    const provider = new PacketCapturingMock({
+        contextWindow: 1_000_000,
+        responses: [
+            makeMockResponse(`\`\`\`mcp (discover)\n${JSON.stringify({ source })}\n\`\`\`\n\`\`\`TASK\n[{"content":"Inspect the discovery outcome.","status":"in_progress"}]\n\`\`\``),
+            makeMockResponse("```SEND\nThe source could not be inspected.\n```\n```TASK\n[{\"content\":\"Discovery inspected.\",\"status\":\"completed\"}]\n```"),
+        ],
+    });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider });
+    daemon.registerModule(McpModule.init({ env: {
+        PLURNK_MCP_CONNECT_TIMEOUT: "1000", PLURNK_MCP_REQUEST_TIMEOUT: "1000",
+    } }));
+    const started = Promise.withResolvers<AguiModule>();
+    const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
+    daemon.registerModule({ start: async (seam) => {
+        const module = await registration.start(seam);
+        started.resolve(module);
+        return module;
+    } });
+    t.after(async () => {
+        await daemon.stop();
+        await db.close();
+        await rm(sandbox, { recursive: true, force: true });
+    });
+    await daemon.start();
+    const { port } = (await started.promise).address();
+    const workspace = "mcp-discovery-refusal";
+    const { workspaceId } = await daemon.createWorkspace({ name: workspace, projectRoot: sandbox });
+    const direct = actionResult(await post(port, runInput(workspace, "discover-client", {
+        forwardedProps: { plurnk: { workspace, action: { kind: "workspace.mcp.discover", source } } },
+    })));
+    const problem = {
+        type: "https://problems.plurnk.xyz/mcp/management/discover-failed",
+        title: "Discover failed", status: 502,
+        detail: `MCP target '${source}' could not be inspected.`,
+        stage: "mcp-management", source, retryable: true,
+    };
+    assert.equal(direct.ok, false);
+    assert.deepEqual(direct.problem, problem);
+    const events = await post(port, runInput(workspace, "discover-model", {
+        messages: [{ id: "discover", role: "user", content: "Inspect the configured source and report the outcome." }],
+    }));
+    assert.equal((events.at(-1)?.outcome as { type?: string })?.type, "success");
+    assert.equal(provider.requests.length, 2);
+    assert.match(packet(provider.requests, 1), /"type":"https:\/\/problems\.plurnk\.xyz\/mcp\/management\/discover-failed"/u,
+        "the next model packet preserves the source-owned failure, not executor-threw");
+    assert.match(packet(provider.requests, 1), /"status":502/u);
+    const result = await awaitExecOutcome(db, { workspaceId, scheme: "mcp" });
+    assert.deepEqual(result, { status: 502, problem }, "the durable execution output preserves the complete Problem");
+});
 
 test("AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
