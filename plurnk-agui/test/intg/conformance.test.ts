@@ -1,8 +1,5 @@
-// {§agui-daemon-client} The standard's own client is the conformance gate: HttpAgent
-// from @ag-ui/client — the exact engine under `npx create-ag-ui-app` frontends —
-// drives a REAL model worker against the in-process module. Their verifier validates
-// every event; a spec drift is THEIR rejection, not our opinion. Env-gated like the
-// go-live smoke against the official client.
+// {§agui-official-client-conformance} Optional real-model counterpart of the
+// deterministic official-client gate in conformance-fixture.test.ts.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -46,8 +43,8 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
         // Their verifier throwing = rejection; reaching here = the stream validated.
         assert.ok(seen.has("RUN_FINISHED"), "the worker completed through their client");
         assert.ok(seen.has("TEXT_MESSAGE_CONTENT"), "assistant speech flowed through their parser");
-        const last = agent.messages.at(-1) as { role: string; content?: string };
-        assert.equal(last.role, "assistant", "their message-builder assembled the reply");
+        const last = agent.messages.findLast(({ role }) => role === "assistant");
+        assert.ok(last, "their message-builder assembled the reply alongside plan activity");
         assert.match(String(last.content ?? ""), /pong/i, "the reply answers the prompt");
     } finally {
         await daemon.stop();

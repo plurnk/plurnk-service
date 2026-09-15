@@ -231,20 +231,7 @@ try {
         PLURNK_SERVICE_MAX_TURNS: "8",
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
         PLURNK_MCP_ENABLED: "[]",
-        PLURNK_MODEL: "journey",
-        PLURNK_MODEL_journey: "journey-fixture/plurnk-installed-journey",
-        PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_NPM: "@ai-sdk/openai-compatible",
-        PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_BASE_URL: fixture.baseUrl,
-        PLURNK_PROVIDERS_CONTEXT_WINDOW_journey: "32768",
-        PLURNK_PROVIDERS_OUTPUT_BUDGET_journey: "4096",
-        PLURNK_PROVIDERS_REASONING_journey: "adaptive",
-        PLURNK_PROVIDERS_RETRY_ATTEMPTS_journey: "0",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT_journey: "5000",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT_journey: "15000",
-        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT_journey: "5000",
-        PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT_journey: "5000",
-        PLURNK_PROVIDERS_CACHE_AFFINITY_journey: "0",
-        PLURNK_PROVIDERS_CACHE_WRITE_POLICY_journey: "off",
+        ...fixture.env,
     };
     const boot = async () => {
         const child = spawn(daemonBin, ["start"], {

@@ -202,6 +202,13 @@ every other daemon surface.
 
 ## §agui-first-party-client-conformance First-party client conformance
 
+§agui-official-client-conformance The ordinary integration gate runs the official
+`@ag-ui/client` 0.0.59 against the real daemon and a deterministic HTTP model fixture.
+Its verifier and message builder exercise lifecycle, state, streaming reasoning,
+assistant speech, PLAN activity, and provider refusals. The optional real-model test adds provider
+evidence; it does not substitute for the deterministic gate. Wire shapes derive
+from the installed `@ag-ui/core` schemas ({§agui-run-authority}).
+
 The one-shot CLI, interactive terminal, and Neovim plugin consume one AG-UI+
 semantic contract. Each client verifies the contracts-owned conformance corpus
 through its production transport and separately verifies the presentation its

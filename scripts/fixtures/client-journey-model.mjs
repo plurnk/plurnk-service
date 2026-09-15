@@ -178,7 +178,22 @@ export const startClientJourneyModel = async () => {
         throw new Error("client-journey fixture did not bind a TCP port");
     }
     return {
-        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        env: {
+            PLURNK_MODEL: "journey",
+            PLURNK_MODEL_journey: `journey-fixture/${MODEL}`,
+            PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_NPM: "@ai-sdk/openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+            PLURNK_PROVIDERS_CONTEXT_WINDOW_journey: "32768",
+            PLURNK_PROVIDERS_OUTPUT_BUDGET_journey: "4096",
+            PLURNK_PROVIDERS_REASONING_journey: "adaptive",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS_journey: "0",
+            PLURNK_PROVIDERS_FETCH_TIMEOUT_journey: "5000",
+            PLURNK_PROVIDERS_OPERATION_TIMEOUT_journey: "15000",
+            PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT_journey: "5000",
+            PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT_journey: "5000",
+            PLURNK_PROVIDERS_CACHE_AFFINITY_journey: "0",
+            PLURNK_PROVIDERS_CACHE_WRITE_POLICY_journey: "off",
+        },
         requests,
         assertComplete: () => {
             for (const [name, { programs }] of Object.entries(journeys)) {
