@@ -36,14 +36,16 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
             // The stable door still finds the original root; later fresh conversations never shadow it.
             assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh conversations");
 
-            // Name invariants mirror forkWorker's: reserved + taken are legible refusals.
+            // Name invariants mirror forkWorker's: plurnk is an ordinary name; unmintable + taken are legible refusals.
+            const plurnk = await daemon.createConversationWorker({ workspaceId, name: "plurnk" });
+            assert.equal(plurnk.workerName, "plurnk", "the operator may hold a conversation named plurnk");
             await assert.rejects(
-                () => daemon.createConversationWorker({ workspaceId, name: "plurnk" }),
+                () => daemon.createConversationWorker({ workspaceId, name: "_plurnk" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
-                    assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-reserved");
-                    assert.equal(error.result.problem.name, "plurnk");
-                    assert.equal(error.result.problem.recovery, "Choose another worker name.");
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
+                    assert.equal(error.result.problem.name, "_plurnk");
+                    assert.equal(error.result.problem.recovery, "Choose a lowercase DNS-label worker name.");
                     return true;
                 },
             );

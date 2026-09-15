@@ -1,6 +1,6 @@
 // SPEC {§actor-boundary} — the actor boundary (isolation by worker, two doors, self-hosting).
 // Composed coverage for structural log isolation, the environment/voice doors,
-// and ordinary runtime-owned operations through the reserved plurnk worker.
+// and ordinary runtime-owned operations through the runtime worker `_plurnk`.
 
 import test from "node:test";
 import assert from "node:assert/strict";

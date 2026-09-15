@@ -137,7 +137,8 @@ test("{§worker-auto-name}: unnamed conversations retry occupied names; explicit
         assert.equal(afterOccupiedLiteral.name, "de6a8901", "explicit and generated names share the same namespace");
 
         assert.equal((await Envelope.createModelWorker(db, ws, "commons")).name, "commons");
-        await assert.rejects(Envelope.createModelWorker(db, ws, "plurnk"), /reserved/, "the kernel row's name is refused");
+        await assert.rejects(Envelope.createModelWorker(db, ws, "_plurnk"), /lowercase DNS-label/, "the runtime actor's name is not mintable");
+        assert.equal((await Envelope.createModelWorker(db, ws, "plurnk")).name, "plurnk", "plurnk is an ordinary literal worker name");
         await assert.rejects(Envelope.createModelWorker(db, ws, "~"), /lowercase DNS-label/, "tilde is not a worker name");
         assert.equal((await Envelope.createModelWorker(db, ws, "self")).name, "self", "self is an ordinary literal worker name");
     } finally { await db.close(); }

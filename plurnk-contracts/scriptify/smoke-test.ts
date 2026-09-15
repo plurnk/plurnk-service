@@ -76,7 +76,6 @@ const {
     PlurnkParseError,
     PLURNK_OPS,
     Problems,
-    RESERVED_AUTHORITIES,
     UNKNOWN_POSITION,
     Validator,
     WORKER_NAME,
@@ -103,7 +102,6 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
 }
 if (!PLURNK_OPS.includes("TASK") || PLURNK_OPS.includes("PLAN")) throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
 if (!WORKER_NAME.test("worker-1")) throw new Error("WORKER_NAME rejects a legal worker name");
-if (RESERVED_AUTHORITIES.join(",") !== "plurnk") throw new Error("RESERVED_AUTHORITIES drifted: " + RESERVED_AUTHORITIES.join(","));
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
     throw new Error("unknown position sentinel is not intact");
 }

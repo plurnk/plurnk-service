@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import AstBuilder from "../../src/AstBuilder.ts";
 import { PlurnkParser } from "../../src/index.ts";
-import { PathSyntax, PlurnkParseError, WORKER_NAME, RESERVED_AUTHORITIES } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, WORKER_NAME } from "@plurnk/plurnk-contracts";
 
 // {§path-syntax} Detailed target admission behind the public parsePath helper.
 
@@ -204,10 +204,9 @@ test("worker-name contract: WORKER_NAME is a lowercase DNS label", () => {
     for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "self", "plurnk"]) {
         assert.ok(WORKER_NAME.test(ok), `${ok} must be mintable`);
     }
-    for (const bad of ["Alice", "-lead", "trail-", "under_score", "dot.name", "~", "", "sp ace"]) {
+    for (const bad of ["Alice", "-lead", "trail-", "under_score", "_plurnk", "dot.name", "~", "", "sp ace"]) {
         assert.ok(!WORKER_NAME.test(bad), `${bad} must NOT be mintable`);
     }
-    assert.deepEqual([...RESERVED_AUTHORITIES], ["plurnk"]);
 });
 
 test("worker-name contract: the case footgun is real — parser preserves authority case", () => {

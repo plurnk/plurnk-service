@@ -55,7 +55,6 @@ test("the package root exposes exactly the supported runtime values", () => {
         "PlurnkParseError",
         "Problems",
         "REASONING_POLICIES",
-        "RESERVED_AUTHORITIES",
         "RUNTIME_TAG",
         "TurnDisposition",
         "UNKNOWN_POSITION",

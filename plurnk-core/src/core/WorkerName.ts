@@ -1,11 +1,7 @@
-import {
-    RESERVED_AUTHORITIES,
-    WORKER_NAME,
-} from "@plurnk/plurnk-contracts";
+import { WORKER_NAME } from "@plurnk/plurnk-contracts";
 import { randomBytes } from "node:crypto";
 import type { Db } from "./Db.ts";
 
-export type WorkerNameRejection = "invalid" | "reserved";
 export type WorkerOrigin = "model" | "client" | "_plurnk";
 
 export interface WorkerNameClaim {
@@ -32,44 +28,27 @@ export class WorkerNameConflictError extends Error {
 
 export class WorkerNameError extends Error {
     readonly workerName: string;
-    readonly rejection: WorkerNameRejection;
-    readonly code: "name-invalid" | "name-reserved";
-    readonly recovery: string;
+    readonly code = "name-invalid";
+    readonly recovery = "Choose a lowercase DNS-label worker name.";
 
-    constructor(workerName: string, rejection: WorkerNameRejection) {
-        const reserved = rejection === "reserved";
-        super(reserved
-            ? `Worker name '${workerName}' is reserved.`
-            : `Worker name '${workerName}' must match the lowercase DNS-label contract.`);
+    constructor(workerName: string) {
+        super(`Worker name '${workerName}' must match the lowercase DNS-label contract.`);
         this.name = "WorkerNameError";
         this.workerName = workerName;
-        this.rejection = rejection;
-        this.code = reserved ? "name-reserved" : "name-invalid";
-        this.recovery = reserved
-            ? "Choose another worker name."
-            : "Choose a lowercase DNS-label worker name.";
     }
 }
 
-// {§worker-name-minting} Model/client minting only; internal reserved actors and
-// generic URI ingestion have their own contracts.
+// {§worker-name-minting} Model/client minting only; the runtime actor
+// ({§actor-boundary-self-hosting}) and generic URI ingestion have their own contracts.
 export default class WorkerName {
-    static readonly #RESERVED = new Set<string>(RESERVED_AUTHORITIES);
-
     static async forId(db: Db, workerId: number): Promise<string> {
         const row = await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId });
         if (row === undefined) throw new Error(`Worker ${workerId} does not exist.`);
         return row.name;
     }
 
-    static rejection(workerName: string): WorkerNameRejection | null {
-        if (WorkerName.#RESERVED.has(workerName.toLowerCase())) return "reserved";
-        return WORKER_NAME.test(workerName) ? null : "invalid";
-    }
-
     static assert(workerName: string): string {
-        const rejection = WorkerName.rejection(workerName);
-        if (rejection !== null) throw new WorkerNameError(workerName, rejection);
+        if (!WORKER_NAME.test(workerName)) throw new WorkerNameError(workerName);
         return workerName;
     }
 

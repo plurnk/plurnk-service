@@ -1258,9 +1258,10 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
 
-        // attach — core's namespace invariant refuses reserved and non-mintable worker names;
-        // a plain attach returns an envelope.
-        await assert.rejects(() => daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" }), /reserved/, "attachWorkspace refuses a reserved worker name");
+        // attach — core's namespace invariant admits plurnk as an ordinary worker name and refuses
+        // non-mintable spellings; a plain attach returns an envelope.
+        const plurnkAttach = await daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" });
+        assert.equal(plurnkAttach.workerName, "plurnk", "attachWorkspace admits plurnk as an ordinary worker name");
         const invalidWorkerName = await rejectedProblem(() =>
             daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "bad_name" }));
         assert.equal(invalidWorkerName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
@@ -1379,8 +1380,8 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
             const parent = await daemon.readWorker({ workspaceId: created.id, identity: { id: clientWorker.id } });
             assert.equal(parent?.kind, "conversation");
 
-            // invariants: a reserved name and a foreign worker are both refused.
-            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "plurnk" }), /reserved/);
+            // invariants: the runtime actor's name and a foreign worker are both refused.
+            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "_plurnk" }), /DNS-label/);
             const invalidName = await rejectedProblem(() => daemon.forkWorker({
                 workspaceId: created.id,
                 workerId: clientWorker.id,

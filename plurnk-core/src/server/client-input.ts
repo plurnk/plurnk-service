@@ -84,7 +84,7 @@ export default class ClientInput {
             throw new OperationFailureError(Results.failure(
                 "daemon:worker",
                 error.code,
-                error.rejection === "reserved" ? 409 : 400,
+                400,
                 error.message,
                 {},
                 {

@@ -2,18 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { openMigrated, insertWorkspace } from "./_helpers.ts";
 import Envelope from "../../src/server/envelope.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 
 let nameCounter = 0;
 const n = (suffix: string): string => `worker-${suffix}-${++nameCounter}`;
 
-test("a client cannot create or resume a worker named 'plurnk' (runtime impersonation)", async () => {
+test("{§worker-name-minting}: 'plurnk' is an ordinary worker name; the runtime actor's '_plurnk' is not mintable", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, "ws-reserved");
-        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" }), /reserved/, "forging a plurnk worker is refused");
-        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" }), /reserved/, "case variants are refused too");
-        const ok = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "my-feature" });
-        assert.equal(ok.workerName, "my-feature", "a normal worker name still resolves");
+        const workspaceId = await insertWorkspace(db, "ws-plurnk-name");
+        const runtimeId = await RuntimeWorker.ensure(db, workspaceId);
+        const plurnk = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" });
+        assert.equal(plurnk.workerName, "plurnk", "an operator may name a worker plurnk");
+        assert.notEqual(plurnk.workerId, runtimeId, "and holds a worker of their own, not the runtime actor");
+        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "_plurnk" }), /DNS-label/, "the runtime actor cannot be resumed by name");
+        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" }), /DNS-label/, "uppercase lies outside the mintable alphabet");
     } finally { await db.close(); }
 });
 

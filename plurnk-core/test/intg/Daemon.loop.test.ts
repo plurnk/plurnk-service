@@ -142,12 +142,12 @@ test("run.fork branches the model worker into a named worker; errors with no wor
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });
             assert.equal((named.result as { workerName: string | null }).workerName, "harvest", "an explicit name names the branch");
 
-            // Reserved + taken names are refused up front (workers.name is UNIQUE per workspace) —
+            // Unmintable + taken names are refused up front (workers.name is UNIQUE per workspace) —
             // mirrors workspace.attach, never falling through to the insert.
-            const reserved = await rpcCall(ws, 6, "run.fork", { name: "plurnk" });
-            const reservedResult = reserved.result as { status: number; problem: { type: string } };
-            assert.equal(reservedResult.status, 409);
-            assert.equal(reservedResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-reserved");
+            const runtimeName = await rpcCall(ws, 6, "run.fork", { name: "_plurnk" });
+            const runtimeNameResult = runtimeName.result as { status: number; problem: { type: string } };
+            assert.equal(runtimeNameResult.status, 400);
+            assert.equal(runtimeNameResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
 
             const taken = await rpcCall(ws, 7, "run.fork", { name: "harvest" });
             const takenResult = taken.result as { status: number; problem: { type: string } };

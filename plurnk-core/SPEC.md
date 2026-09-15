@@ -465,9 +465,8 @@ continues to decompose other authorities without treating them as mintable.
 
 | Candidate                                      | Minting result                                                        |
 | ---------------------------------------------- | --------------------------------------------------------------------- |
-| `WORKER_NAME` match, not reserved              | Admitted as the exact literal worker name.                            |
-| `plurnk` (any case variant) | Refused as reserved before lookup or insertion.                       |
-| Any other spelling                             | Refused as `name-invalid` before lookup, insertion, or child startup. |
+| `WORKER_NAME` match                            | Admitted as the exact literal worker name; `plurnk` is one.           |
+| `_plurnk`, or any other spelling               | Refused as `name-invalid` before lookup, insertion, or child startup. |
 | Automatic name                                 | Generated, then admitted through the same predicate.                  |
 
 §worker-read-scope **Scratch is workspace-readable.** Any actor reads and searches any named or shared scratch address. Parentage and writer identity do not change resolution. Scratch namespaces do not require a namesake Worker. A pathless actor address requires a named Worker; an unknown actor returns 404.
@@ -3924,11 +3923,11 @@ later create or attach result without requiring a new transport; it resolves the
 conversation worker separately, while each client action allocates its own
 administrative loop under {§connection-lifecycle}.
 
-§methods-worker-name-reserved **Client worker-name admission.** Attach,
+§methods-worker-name-admission **Client worker-name admission.** Attach,
 fresh-conversation, and fork apply {§worker-name-minting} before lookup or
-creation. A client therefore cannot forge or resume an internal worker, insert
-a non-mintable spelling, or make the client registry diverge from model worker
-control.
+creation. A client therefore cannot forge or resume the runtime actor (its
+name lies outside `WORKER_NAME`), insert a non-mintable spelling, or make the
+client registry diverge from model worker control.
 
 §capability-admission **One admission path owns external authority.** Core
 derives one or more `CapabilityDescriptor` demands from each routed statement,
