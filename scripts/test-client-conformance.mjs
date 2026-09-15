@@ -340,9 +340,9 @@ try {
     // repeated it — and the place (workspace, loop, turn, worker) is the prompt prefix's,
     // asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️ · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜 0/);
-    // {plurnk#58} — the prompt prefix names the place: [workspace/loop/turn:~worker].
-    await tui.waitFor(/\[installed-tui(?:\/\d+\/\d+)?:[\s\S]{0,80}?tui-worker\]/);
+    await tui.waitFor(/⏹️  · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜 0/);   // two spaces after the glyph (plurnk#67)
+    // {plurnk#58} — the prompt prefix names the place: [workspace/~worker(loop/turn)].
+    await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~tui-worker(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
@@ -362,9 +362,9 @@ try {
     tui.write("Exercise the rejected provider request.\r");
     await tui.waitFor(/The requested model is unavailable; select an available model\./);
     // {plurnk#58} — the glyph is the lifecycle and the turn count left the status line.
-    await tui.waitFor(/❌ · \d/);
+    await tui.waitFor(/❌  · \d/);
     tui.write("/workers\r");
-    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌ · \d/);
+    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌  · \d/);
     if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
         throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
     }
