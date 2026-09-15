@@ -2519,3 +2519,43 @@ test("the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISH
         assert.equal(finished?.workerId, undefined, "plurnk's worker noun NEVER rides the standard face");
     } finally { await mod.close(); }
 });
+
+test("{§agui-thread-binding}: a thread name never binds a client or runtime actor; minting answers instead", async () => {
+    const { seam } = mockSeam();
+    const minted: string[] = [];
+    const runWorkers: number[] = [];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.listWorkers = async () => [workerRow(10, "c", "client"), workerRow(5, "_plurnk", "_plurnk"), workerRow(20, "model-1")];
+    const refusals: Record<string, ReturnType<typeof Problems.create>> = {
+        _plurnk: Problems.create("daemon:worker", "name-invalid", 400, "Worker name '_plurnk' must match the lowercase DNS-label contract.", { context: "worker.create", field: "name", name: "_plurnk", retryable: false }),
+        c: Problems.create("daemon:worker", "name-conflict", 409, "Worker name 'c' is already in use in workspace 3 by a client worker.", { workspaceId: 3, name: "c", actualOrigin: "client", retryable: false }),
+    };
+    seam.createConversationWorker = async (a) => {
+        minted.push(a.name ?? "");
+        const problem = refusals[a.name ?? ""];
+        if (problem === undefined) throw new Error(`unexpected mint: ${a.name}`);
+        throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
+    };
+    seam.runLoop = async ({ workerId }) => {
+        runWorkers.push(workerId);
+        return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        for (const [threadId, problem] of Object.entries(refusals)) {
+            // The binding fails before the SSE opens, so the refusal is the HTTP Problem itself.
+            const res = await fetch(`http://127.0.0.1:${port}/`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId, messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })),
+            });
+            const body = await res.json() as { type?: string; status?: number };
+            assert.equal(res.status, problem.status, `thread '${threadId}' fails at minting instead of binding the worker that holds the name`);
+            assert.equal(body.type, problem.type, `thread '${threadId}' surfaces the daemon's exact Problem`);
+        }
+        assert.deepEqual(minted, ["_plurnk", "c"], "each name reached createConversationWorker; neither resolved among non-model workers");
+        assert.deepEqual(runWorkers, [], "no loop ran on a client or runtime actor");
+    } finally { await mod.close(); }
+});

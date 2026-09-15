@@ -273,7 +273,8 @@ export default class Module {
     // violation the client must fix — never a workspace forged from the threadId.
     // The threadId is the CONVERSATION over that world — resolved to a worker by
     // #conversationWorker ({§agui-thread-binding}: the three doors are ensureModelWorker, forkWorker,
-    // createConversationWorker).
+    // createConversationWorker; a name resolves among model-origin workers only, so a client
+    // connection's worker or the runtime actor is never a conversation).
     async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
         if (typeof workspace !== "string" || workspace.length === 0) {
@@ -341,7 +342,7 @@ export default class Module {
         if (cached !== undefined) return cached;
         const workerId = threadId === env.workspaceName
             ? await this.#seam.ensureModelWorker(env.workspaceId)
-            : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId)?.id
+            : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId && r.origin === "model")?.id
                 ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId;
         this.#threadWorkers.set(key, workerId);
         return workerId;

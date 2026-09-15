@@ -28,8 +28,10 @@ does not recompute them.
   BOTH levels: `threadId` == the workspace name binds the workspace's model worker (the default
   conversation, `ensureModelWorker` — its durable default-conversation role identifies it,
   never a name parse or root ordering); a DISTINCT
-  `threadId` names its own conversation worker — found by name if it exists (forks and prior
-  conversations are addressable as threads), minted via `createConversationWorker`
+  `threadId` names its own conversation worker — found by name among model-origin workers if
+  it exists (forks and prior conversations are addressable as threads; a client connection's
+  worker or the runtime actor `_plurnk` is never a conversation, and a thread named after one
+  fails at minting rather than binding), minted via `createConversationWorker`
   if it doesn't. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
   Process-local bindings use the complete `(workspace, threadId)` identity; equal thread names

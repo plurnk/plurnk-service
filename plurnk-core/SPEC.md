@@ -4020,7 +4020,8 @@ cascade. A WORK/FORK child copies the spawning loop's effective spawn model
 no live link and begins with no override, so a later parent change affects
 only that worker's future loops and descendants. Client operation actors and
 Plurnk-owned bookkeeping workers run no model loops and own no model
-selection. An explicit model, spawn-override, or reasoning-policy change while
+selection; the model, spawn-override, and reasoning controls refuse them with
+`409 model-worker-required` before any policy row is initialized or written. An explicit model, spawn-override, or reasoning-policy change while
 the worker holds any queued, running, or parked loop is a precise
 `409 worker-loop-active` ({§worker-lifecycle-live}), independent of a process-local
 drain. The policy write checks liveness atomically, including selections carried

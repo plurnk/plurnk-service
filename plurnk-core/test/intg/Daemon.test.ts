@@ -1075,6 +1075,19 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal(kernelProblem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
             assert.equal(kernelProblem.status, 409);
             assert.equal(kernelProblem.workerId, kernelWorker.id);
+            // {§worker-model-selection} — the model, reasoning, and spawn-model controls are model-worker
+            // surfaces: a client or runtime actor is refused before any policy row is initialized.
+            for (const [surface, call] of [
+                ["worker.model.get", () => daemon.readWorkerModel({ workspaceId: created.id, workerId: kernelWorker.id })],
+                ["worker.model.set", () => daemon.setWorkerModel({ workspaceId: created.id, workerId: clientWorker.id, selector: "mock/mocktest" })],
+                ["worker.reasoning.get", () => daemon.readWorkerReasoning({ workspaceId: created.id, workerId: clientWorker.id })],
+                ["worker.reasoning.set", () => daemon.setWorkerReasoning({ workspaceId: created.id, workerId: kernelWorker.id, policy: "low" })],
+                ["worker.child.set", () => daemon.setWorkerSpawnModel({ workspaceId: created.id, workerId: clientWorker.id, selector: null })],
+            ] as const) {
+                const refused = await rejectedProblem(call);
+                assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required", `${surface} refuses a non-model worker`);
+                assert.equal(refused.status, 409);
+            }
             const modelWorkerId = await daemon.ensureModelWorker(created.id);
             const res = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");

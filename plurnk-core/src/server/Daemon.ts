@@ -635,7 +635,7 @@ export default class Daemon implements ApplicationPort {
     async readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
         const workspaceId = ClientInput.assertId("worker.model.get", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.model.get", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         const modelSpec = await specForRoute(this.#db, row.model_route_id);
@@ -650,7 +650,7 @@ export default class Daemon implements ApplicationPort {
     async setWorkerModel(args: { workspaceId: number; workerId: number; selector: string }): Promise<ModelRoute> {
         const workspaceId = ClientInput.assertId("worker.model.set", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.model.set", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         const selector = ClientInput.assertSelector("worker.model.set", "selector", args.selector);
         const policy = await this.#workerModels.resolveWorkerModel(workerId, selector);
         if (policy === null) {
@@ -674,7 +674,7 @@ export default class Daemon implements ApplicationPort {
     }): Promise<{ policy: ReasoningPolicy | null; source: ReasoningSource; supportedPolicies: readonly ReasoningPolicy[] }> {
         const workspaceId = ClientInput.assertId("worker.reasoning.get", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.reasoning.get", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         await this.#workerModels.resolveWorkerModel(workerId, undefined);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
@@ -714,7 +714,7 @@ export default class Daemon implements ApplicationPort {
                 { field: "policy", retryable: false },
             );
         }
-        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         await this.#workerModels.resolveWorkerModel(workerId, undefined);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
@@ -745,7 +745,7 @@ export default class Daemon implements ApplicationPort {
     async setWorkerSpawnModel(args: { workspaceId: number; workerId: number; selector: string | null }): Promise<ModelRoute | null> {
         const workspaceId = ClientInput.assertId("worker.child.set", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.child.set", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         const selector = ClientInput.assertChildSelector("worker.child.set", args.selector);
         const spec = await this.#workerModels.resolveWorkerSpawnModel(workerId, selector);
         if (spec === null) return null;
@@ -776,8 +776,9 @@ export default class Daemon implements ApplicationPort {
     }
 
     // {§machine-processes} — provider inference is an exclusive capability of a
-    // model worker. The same assertion is used by early client admissions and
-    // the final drain callback, so recovery and internal callers cannot bypass it.
+    // model worker. The same assertion is used by early client admissions, the final
+    // drain callback, and the model, reasoning, and spawn-model controls
+    // ({§worker-model-selection}), so recovery and internal callers cannot bypass it.
     async #assertModelWorker(workspaceId: number, workerId: number): Promise<void> {
         const worker = await this.#db.envelope_get_worker_by_id.get<{
             workspace_id: number;
@@ -814,7 +815,7 @@ export default class Daemon implements ApplicationPort {
                 {
                     workerId,
                     actualOrigin: worker.origin,
-                    recovery: "Select or create a model worker for this loop.",
+                    recovery: "Select or create a model worker.",
                     retryable: false },
             );
         }
@@ -1180,14 +1181,14 @@ export default class Daemon implements ApplicationPort {
             );
         }
         if (name !== undefined) {
-            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
+            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) {
                 throw daemonFailure(
                     "daemon:worker",
                     "name-conflict",
                     409,
-                    `Worker name '${name}' is already in use in workspace ${workspaceId}.`,
-                    { workspaceId, name, recovery: "Choose another worker name.", retryable: false },
+                    `Worker name '${name}' is already in use in workspace ${workspaceId} by a ${taken.origin} worker.`,
+                    { workspaceId, name, actualOrigin: taken.origin, recovery: "Choose another worker name.", retryable: false },
                 );
             }
         }
@@ -1225,14 +1226,14 @@ export default class Daemon implements ApplicationPort {
             );
         }
         if (name !== undefined) {
-            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
+            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) {
                 throw daemonFailure(
                     "daemon:worker",
                     "name-conflict",
                     409,
-                    `Worker name '${name}' is already in use in workspace ${workspaceId}.`,
-                    { workspaceId, name, recovery: "Choose another worker name.", retryable: false },
+                    `Worker name '${name}' is already in use in workspace ${workspaceId} by a ${taken.origin} worker.`,
+                    { workspaceId, name, actualOrigin: taken.origin, recovery: "Choose another worker name.", retryable: false },
                 );
             }
         }
