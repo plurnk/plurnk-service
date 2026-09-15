@@ -12,7 +12,7 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 
 ## Database target
 
-The EXEC target slot is the database file; with no target it defaults to an ephemeral in-memory db:
+The execution's target slot is the database file; with no target it defaults to an ephemeral in-memory db:
 
 ````sqlite
 SELECT 1 AS value;
@@ -43,7 +43,7 @@ Writes to the `results` channel as `application/json`, ready for the jsonpath bo
 - **Mutations** (INSERT/UPDATE/DELETE/DDL) → `{ changes, lastInsertRowid }`.
 
 The query/mutation split is decided by the prepared statement's `columns()`,
-never by parsing the SQL. One statement per EXEC. Errors return RFC 9457
+never by parsing the SQL. One statement per fence. Errors return RFC 9457
 Problems in the terminal operation result.
 
 ## Configuration

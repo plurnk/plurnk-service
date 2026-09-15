@@ -130,9 +130,9 @@ operation until an explicit client decision, while core-owned proposal policy
 may resolve only proposals automatically; client convenience and daemon
 authority are not interchangeable.
 
-## How an EXEC outcome is observed
+## How an execution outcome is observed
 
-An EXEC dispatch answers `200 started` — for every executor, gated or not: the
+An execution answers `200 started` — for every executor, gated or not: the
 runtime slot resolves the executor ({§exec-registry-resolves}), the spawn
 backgrounds, and its output is *observed, not fetched* ({§exec-stream}). The
 executor streams into the channels of its `<tag>:///<loop>/<turn>/<seq>/<tag>`

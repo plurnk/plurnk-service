@@ -312,7 +312,7 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.prompts`      | Workspace | `limit?`                                             | `ApplicationPort.listPrompts`.                                                                                            |
 | `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread conversation by default, preserving validated {§entry-read-result}. |
-| `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `ApplicationPort.dispatchClientAction` on the client worker, attached to the conversation Worker (`conversationWorkerId`, else the workspace's model worker) for Functionality.                      |
+| `op.exec`                | Workspace | `command`                                            | Constructs one execution statement on the default `sh` runtime and calls `ApplicationPort.dispatchClientAction` on the client worker, attached to the conversation Worker (`conversationWorkerId`, else the workspace's model worker) for Functionality.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
 | `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's conversation worker.                                                       |
@@ -492,7 +492,7 @@ this Run.
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
 An operation Run owns an execution from the row that announces it: a started or
-queued EXEC row carries `attrs.stream`, and that address stays open for the Run
+queued execution row carries `attrs.stream`, and that address stays open for the Run
 until its `stream/concluded`, so the action result is deferred even when the
 command writes late or never (a `stream/event` is a race the result must not
 win). A detached execution (`<-1>`) is nobody's obligation and never defers the

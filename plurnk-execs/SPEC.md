@@ -6,7 +6,7 @@ the framework; executor leaves implement it.
 ## §executor-role Role and ownership
 
 An executor owns one declared runtime-specific invocation shape, its mapping
-from that EXEC body and realized target to work, declared output channels,
+from that fence body and realized target to work, declared output channels,
 environment availability, and effect classification. The consumer owns
 dispatch, invocation-shape enforcement and target realization, proposal policy,
 storage, subscriptions, deadlines, polling, cancellation delivery, packet
@@ -17,7 +17,7 @@ flowchart LR
     Manifest["package runtime declarations"] --> Discover["framework discovery"]
     Discover --> Registry["runtime-tag registry"]
     Registry --> Probe["consumer instantiates and probes each tag"]
-    Request["EXEC with runtime tag"] --> Effect["executor effect fact"]
+    Request["fence with runtime tag"] --> Effect["executor effect fact"]
     Effect --> Admission["consumer proposal policy"]
     Admission --> Stream["consumer creates tag-addressed stream"]
     Stream --> Run["executor run with consumer sinks"]
@@ -94,7 +94,7 @@ The framework constructs one executor per matched runtime tag with
 `this.runtime`; it must not retain per-run state on the executor instance. The
 derived addressable runtime scheme retains `glyph` for client discovery
 ({§manifest-client-display}); runtime aliases remain excluded from scheme
-model-teaching because the EXEC invocation directory owns that hot-path
+model-teaching because the execution invocation directory owns that hot-path
 surface.
 
 ### §executor-sinks Inputs and sinks
@@ -102,9 +102,9 @@ surface.
 | Field      | Contract                                                                                                |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
 | `runtime`  | The matched tag.                                                                                        |
-| `body`     | The authored EXEC body, interpreted according to the runtime's invocation declaration.                |
+| `body`     | The authored fence body, interpreted according to the runtime's invocation declaration.                |
 | `cwd`      | Consumer-selected project working directory, or `null` for a runtime that has none.                     |
-| `target`   | Consumer-realized optional EXEC target. Its representation and role come from the invocation declaration. |
+| `target`   | Consumer-realized optional execution target. Its representation and role come from the invocation declaration. |
 | `metadata` | Exact ordered header blocks owned by the invoked executor, retained separately from the body and target. |
 | `env`      | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy.  |
 | `signal`   | Consumer cancellation. Every executor must honor it at each cancellable boundary.                       |
@@ -123,7 +123,7 @@ consumer side of {§executor-role}.
 
 The invoked executor owns its `[metadata]` for every target kind. The source
 scheme supplies the program or data; it does not inherit the invoking tool's
-options. An internal source READ therefore carries no EXEC metadata. An
+options. An internal source READ therefore carries no execution metadata. An
 authored READ retains its own source-scheme metadata contract.
 
 | Stage | Contract |
@@ -236,7 +236,7 @@ reclassifies the materialized path.
 | `pure` | Has no externally observable side effect.    | Automatically accepted.    |
 
 The classification controls admission policy and may be reused as operational
-metadata; it never changes within the invocation. After acceptance, every EXEC
+metadata; it never changes within the invocation. After acceptance, every execution
 uses the same background stream path: output is not returned in the dispatching
 turn. Core owns that composed behavior in {§exec-host-proposes},
 {§exec-readpure-ungated}, and {§exec-stream}.
@@ -258,7 +258,7 @@ unavailable is a fail-hard boot error.
 
 ## §executor-output-address Tag-addressed output
 
-`exec` is the consumer's internal EXEC dispatcher; it is not a model-facing
+`exec` is the consumer's internal execution dispatcher; it is not a model-facing
 output namespace. Every available runtime receives one derived read-only
 scheme face from its tag, channels, and default channel. The executor authors
 no second scheme manifest.
@@ -412,11 +412,11 @@ details; the generated tool document owns the one model-facing H1.
 | `resource`  | Pass a local/file path directly. After acceptance, resolve a non-file data-scheme address through one exact READ; use its owner-supplied native file or a standalone temporary representation ({§exec-source-temporary}). |
 | `script`    | As `resource`, and the local path must be an existing file: a directory or an absent path is refused before anything spawns ({§exec-executor-slot}). |
 
-Every EXEC must supply at least a body or target even when neither field is
+Every execution must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is
 empty or non-empty. `exclusive` requires a target declaration. Exactly one of `example`,
 `signature`, or `inputSchema` is present. An example must satisfy the same required, refused,
-and exclusive buckets and parse as exactly one EXEC section for the runtime. A
+and exclusive buckets and parse as exactly one executor fence for the runtime. A
 signature is presentation, not an executable example; dispatch still enforces
 the invocation's body and target declarations. An invocation declaration
 with a missing field, unknown field, invalid combination, multiline role, or
@@ -490,8 +490,8 @@ Runtime-name admission is one identity contract:
 
 | Constraint  | Contract                                                                                                      |
 | ----------- | ------------------------------------------------------------------------------------------------------------- |
-| Syntax      | `[a-z][a-z0-9+.-]*`: canonical lowercase RFC-scheme syntax that is also an admitted EXEC identifier.           |
-| Identity    | The exact name is the EXEC selector, registry key, tool-family identity, and output URI-scheme name.           |
+| Syntax      | `[a-z][a-z0-9+.-]*`: canonical lowercase RFC-scheme syntax that is also an admitted execution identifier.           |
+| Identity    | The exact name is the fence name, registry key, tool-family identity, and output URI-scheme name.           |
 | Reservation | `only` is unavailable because `PLURNK_EXECS_ONLY` owns that case-insensitive configuration key.               |
 
 Installed static declarations, trusted dynamic-hook declarations, and
@@ -595,7 +595,7 @@ violations for the consumer to contain.
 
 ### §executor-cancellation Cancellation and consumer timing
 
-Executors know only the supplied `AbortSignal`. Core owns EXEC timeout and poll
+Executors know only the supplied `AbortSignal`. Core owns execution timeout and poll
 syntax, timers, wakes, and loop lifetime in {§exec-timeout} and {§exec-poll}.
 Subprocess cancellation signals the process group: a caller-supplied kill code
 is delivered once; ordinary cancellation uses SIGHUP; loop-end housekeeping
@@ -607,7 +607,7 @@ The consumer:
 
 1. discovers declared tags, instantiates and probes each tag, and caches the verdict;
 2. registers a derived output scheme for every admitted, available tag;
-3. resolves EXEC to exactly one tag and obtains its effect fact;
+3. resolves the fence name to exactly one tag and obtains its effect fact;
 4. applies proposal policy, creates the stream entry, and supplies sinks plus cancellation;
 5. validates the terminal result and closes every declared channel and subscription coherently; and
 6. projects stream observations and later reads without calling back into the executor.

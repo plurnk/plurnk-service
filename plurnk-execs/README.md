@@ -1,7 +1,7 @@
 # plurnk-execs
 
 Lean framework and contract for `@plurnk/plurnk-execs-*` runtime packages. Core
-uses it to discover EXEC tags, admit calls, and stream each runtime's output
+uses it to discover runtime tags, admit calls, and stream each runtime's output
 under its own tag-addressed scheme. The default service manifest, not this
 framework, owns the standard installed leaf set ({§bundled-set}).
 
@@ -18,7 +18,7 @@ framework or service.
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — authoritative executor author and consumer contract.
-- [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) — EXEC AST and shared runtime-neutral contracts.
+- [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) — the execution AST and shared runtime-neutral contracts.
 - [plurnk-schemes](https://github.com/plurnk/plurnk-service/tree/main/plurnk-schemes) — universal operation results and derived output-scheme contract.
 
 ## Write an executor
@@ -80,7 +80,7 @@ acceptance is not a same-turn result. See {§executor-effect}.
 
 ### Understand the target
 
-The EXEC `(target)` slot is runtime-specific:
+The execution's `(target)` slot is runtime-specific:
 
 | Runtime family | Typical mapping                                                   |
 | -------------- | ----------------------------------------------------------------- |
@@ -95,7 +95,7 @@ to its tool rather than reconstructing filesystem or scheme policy.
 `prepare(input)` validates the tool's raw header metadata before admission and
 returns the effective cwd. `run(args)` receives that cwd and the original
 metadata, separately from the unchanged body. Source acquisition never inherits
-EXEC metadata. `BaseExecutor` supplies `[{"cwd": "..."}]`; `SubprocessExecutor` adds
+execution metadata. `BaseExecutor` supplies `[{"cwd": "..."}]`; `SubprocessExecutor` adds
 literal script arguments with `[{"args": ["arg",...]}]`. Override preparation for
 tool-specific options. See {§executor-metadata}.
 

@@ -63,7 +63,7 @@ published by the coordinator and the two continuations by this module:
 The model manages the same family through ```` ```mcp (list|discover|add|enable|disable|remove) ````.
 
 Tool discovery uses ordinary `FIND (worker:///_plurnk/tools/*.md)` and READ.
-Each server's document lists enabled EXEC calls with required-field previews
+Each server's document lists enabled tool calls with required-field previews
 and links to full input schemas under `tools/<server>/<encoded-tool>.md`.
 The manager uses the same layout under `plurnk/mcp.md` and `plurnk/mcp/`;
 schema documents preserve descriptions and constraints without adding them to

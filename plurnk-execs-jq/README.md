@@ -25,7 +25,7 @@ line ({§executor-output-address}).
 
 - **`effect`** — inline/`-n` is `pure`; a target data source is `read`. Both
   bypass the human proposal gate, then stream on the same next-turn path as
-  every EXEC ({§executor-effect}).
+  every execution ({§executor-effect}).
 - **`probe`** — `jq` on PATH (`jq --version`).
 - **Errors** return RFC 9457 Problems (`jq-error`, `spawn-failed`) in the
   terminal operation result.

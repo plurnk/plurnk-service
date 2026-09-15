@@ -73,7 +73,7 @@ The daemon can emit OpenTelemetry traces and low-cardinality metrics through the
 
 ## The file sandbox
 
-Plurnk sees what Git tracks or a `members` definition includes. The AGENTS.md policy path is injected separately as privileged policy, not as a file entry. A path admitted by neither source does not exist to the model and cannot be overwritten. Accepted creation is exclusive and never orphaned: it is Git-added or receives an inspectable exact pick. Creation defaults to `project_root`, can be disabled or expanded to the canonical namespace by operator policy, and only an explicit pick overrides Git ignore. Member edits remain proposal-gated; an outside-root member is read-only unless a pick grants it. `EXEC` deliberately reaches beyond this file sandbox, so its proposal policy is the machine perimeter. Details: SPEC {§scheme-address} ({§fs-namespace} through {§fs-world-state}).
+Plurnk sees what Git tracks or a `members` definition includes. The AGENTS.md policy path is injected separately as privileged policy, not as a file entry. A path admitted by neither source does not exist to the model and cannot be overwritten. Accepted creation is exclusive and never orphaned: it is Git-added or receives an inspectable exact pick. Creation defaults to `project_root`, can be disabled or expanded to the canonical namespace by operator policy, and only an explicit pick overrides Git ignore. Member edits remain proposal-gated; an outside-root member is read-only unless a pick grants it. An execution deliberately reaches beyond this file sandbox, so its proposal policy is the machine perimeter. Details: SPEC {§scheme-address} ({§fs-namespace} through {§fs-world-state}).
 
 ## Tests
 
