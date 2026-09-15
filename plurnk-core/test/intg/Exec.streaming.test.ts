@@ -26,7 +26,7 @@ import { join } from "node:path";
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    runtime: runtime ?? "sh", aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {

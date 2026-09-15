@@ -57,7 +57,7 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
 
 const statement = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime, aside: null, target: target === null ? null : parsePath(target),
+    runtime: runtime ?? "sh", aside: null, target: target === null ? null : parsePath(target),
     lineMarker: null,
     body,
     position: { line: 1, column: 1 },

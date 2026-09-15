@@ -13,7 +13,7 @@ import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLo
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    runtime, aside: null, target: null,
+    runtime: runtime ?? "sh", aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

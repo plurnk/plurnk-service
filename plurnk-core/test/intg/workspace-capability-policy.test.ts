@@ -16,7 +16,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, in
 
 const execStmt = (runtime: string): ExecStatement => ({
     metadata: null,
-    runtime, aside: null, target: null,
+    runtime: runtime ?? "sh", aside: null, target: null,
     lineMarker: null,
     body: "echo hi",
     position: { line: 1, column: 1 },
