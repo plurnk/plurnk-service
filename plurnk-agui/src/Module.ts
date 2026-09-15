@@ -53,8 +53,9 @@ export default class Module {
     #opts: ResolvedModuleOptions;
     #portal!: Portal;
     #http: HttpServer;
-    #threadEnvelopes = new Map<string, ClientEnvelope>(); // [workspace, threadId] → envelope
-    #threadWorkers = new Map<string, number>();           // [workspace, threadId] → conversation workerId
+    #threadEnvelopes = new Map<string, ClientEnvelope>();
+    #threadWorkers = new Map<string, Promise<number>>();
+    #workspaceAcquisitions = new Map<string, Promise<void>>();
     #actions = new Map<string, RegisteredAction>();
     #listening = false;
     #activated = false;
@@ -292,6 +293,23 @@ export default class Module {
         const key = Module.#threadKey(workspace, threadId);
         const cached = this.#threadEnvelopes.get(key);
         if (cached !== undefined) return { env: cached, reattached: true };
+        const previous = this.#workspaceAcquisitions.get(workspace);
+        const acquisition = Promise.withResolvers<void>();
+        this.#workspaceAcquisitions.set(workspace, acquisition.promise);
+        try {
+            await previous;
+            const acquired = this.#threadEnvelopes.get(key);
+            if (acquired !== undefined) return { env: acquired, reattached: true };
+            const result = await this.#openWorkspace(workspace, forwarded, options);
+            this.#threadEnvelopes.set(key, result.env);
+            return result;
+        } finally {
+            acquisition.resolve();
+            if (this.#workspaceAcquisitions.get(workspace) === acquisition.promise) this.#workspaceAcquisitions.delete(workspace);
+        }
+    }
+
+    async #openWorkspace(workspace: string, forwarded: Record<string, unknown> | undefined, options: { readonly create?: boolean }): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const known = (await this.#seam.listWorkspaces()).find((s) => s.name === workspace);
         let env: ClientEnvelope;
         let reattached = false;
@@ -329,7 +347,6 @@ export default class Module {
                     : {}),
             });
         }
-        this.#threadEnvelopes.set(key, env);
         return { env, reattached };
     }
 
@@ -340,12 +357,16 @@ export default class Module {
         const key = Module.#threadKey(env.workspaceName, threadId);
         const cached = this.#threadWorkers.get(key);
         if (cached !== undefined) return cached;
-        const workerId = threadId === env.workspaceName
+        const pending = (async () => threadId === env.workspaceName
             ? await this.#seam.ensureModelWorker(env.workspaceId)
             : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId && r.origin === "model")?.id
-                ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId;
-        this.#threadWorkers.set(key, workerId);
-        return workerId;
+                ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId)();
+        this.#threadWorkers.set(key, pending);
+        try { return await pending; }
+        catch (cause) {
+            this.#threadWorkers.delete(key);
+            throw cause;
+        }
     }
 
     async #workerStatus(workspaceId: number, workerId: number): Promise<AguiStatusState> {

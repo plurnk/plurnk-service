@@ -36,6 +36,12 @@ does not recompute them.
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
   Process-local bindings use the complete `(workspace, threadId)` identity; equal thread names
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
+  Concurrent first requests acquire one envelope and conversation binding. Workspace
+  acquisition is serialized across threads, retaining each request's create/attach contract;
+  the creating request supplies settings, and other threads acquire their own
+  client actors in that world. Failed acquisitions retain their cause and leave no failed
+  cache entry preventing a later retry. Explicit Core creation retains its name-conflict
+  semantics; protocol binding is not a second creation request.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's conversation.
   `loop.inject` and `loop.cancel` steer a loop already running in a world, so they attach only:
   a workspace name that does not exist is the client's error, answered 404

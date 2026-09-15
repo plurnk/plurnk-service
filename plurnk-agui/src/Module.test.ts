@@ -2293,6 +2293,141 @@ test("a distinct threadId MINTS a conversation worker named for it, and the loop
     } finally { await mod.close(); }
 });
 
+test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelope and one conversation", async () => {
+    const { seam } = mockSeam();
+    let attached = 0;
+    let created = 0;
+    seam.listWorkspaces = async () => [workspaceRow(3, "world")];
+    seam.attachWorkspace = async () => {
+        attached += 1;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return { workspaceId: 3, workspaceName: "world", projectRoot: null, workerId: 10, workerName: "client-1" };
+    };
+    seam.listWorkers = async () => [];
+    seam.createConversationWorker = async ({ name }) => {
+        created += 1;
+        await new Promise<void>((resolve) => setTimeout(resolve, 30));
+        return { workerId: 77, workerName: name! };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const runs = await Promise.all(Array.from({ length: 8 }, (_, index) => post(mod.address().port, {
+            threadId: "new-worker", workerId: `run-${index}`,
+            forwardedProps: { plurnk: { workspace: "world", action: { kind: "workspace.workers" } } },
+        })));
+        for (const events of runs) {
+            const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result");
+            assert.equal((result as { value?: { ok: boolean } } | undefined)?.value?.ok, true);
+        }
+        assert.equal(attached, 1, "concurrent requests share envelope acquisition");
+        assert.equal(created, 1, "concurrent requests do not mint duplicate named workers");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-thread-binding}: concurrent conversations create one world with separate client actors", async () => {
+    const { seam, finish } = mockSeam();
+    const created: Parameters<ApplicationPort["createWorkspace"]>[0][] = [];
+    const actors: number[] = [];
+    let available = false;
+    let workerId = 40;
+    seam.listWorkspaces = async () => available ? [workspaceRow(3, "cold")] : [];
+    seam.createWorkspace = async (args) => {
+        created.push(args);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        available = true;
+        actors.push(10);
+        return { workspaceId: 3, workspaceName: "cold", projectRoot: null, workerId: 10, workerName: "client-10" };
+    };
+    seam.attachWorkspace = async () => {
+        const id = 10 + actors.length;
+        actors.push(id);
+        return { workspaceId: 3, workspaceName: "cold", projectRoot: null, workerId: id, workerName: `client-${id}` };
+    };
+    seam.listWorkers = async () => [];
+    seam.createConversationWorker = async ({ name }) => ({ workerId: ++workerId, workerName: name! });
+    seam.runLoop = async ({ workspaceId, workerId }) => {
+        finish(workspaceId, workerId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const runs = await Promise.all(Array.from({ length: 8 }, (_, index) => post(mod.address().port, {
+            threadId: `thread-${index}`, runId: `run-${index}`, messages: [{ role: "user", content: "go" }],
+            forwardedProps: { plurnk: { workspace: "cold", projectRoot: `/root-${index}` } },
+        })));
+        assert.ok(runs.every((events) => events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated")));
+        assert.equal(created.length, 1);
+        assert.match(created[0]!.projectRoot!, /^\/root-\d$/);
+        assert.equal(new Set(actors).size, 8);
+        assert.equal(workerId, 48);
+    } finally { await mod.close(); }
+});
+
+test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued conversation its create contract", async () => {
+    const { seam, finish } = mockSeam();
+    const lookup = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let calls = 0;
+    seam.listWorkspaces = async () => {
+        if (++calls === 1) { lookup.resolve(); await release.promise; }
+        return [];
+    };
+    seam.createWorkspace = async () => ({ workspaceId: 3, workspaceName: "cold", projectRoot: null, workerId: 10, workerName: "client-10" });
+    seam.runLoop = async ({ workspaceId, workerId }) => {
+        finish(workspaceId, workerId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const action = fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({
+            threadId: "cold", runId: "inspect", forwardedProps: { plurnk: { workspace: "cold", action: { kind: "loop.inject", prompt: "hello" } } },
+        })) });
+        await lookup.promise;
+        const run = post(mod.address().port, { threadId: "cold", runId: "start", messages: [{ role: "user", content: "go" }], forwardedProps: { plurnk: { workspace: "cold" } } });
+        release.resolve();
+        const refused = await action;
+        assert.equal(refused.status, 404);
+        assert.equal((await refused.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
+        assert.ok((await run).some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
+        assert.equal(calls, 2, "the creating request performs its own lookup after the failed action");
+    } finally { release.resolve(); await mod.close(); }
+});
+
+for (const stage of ["envelope", "conversation"] as const) {
+    test(`{§agui-thread-binding}: a failed ${stage} acquisition preserves its Problem and permits retry`, async () => {
+        const { seam } = mockSeam();
+        let fail = true;
+        let attached = 0;
+        let created = 0;
+        const problem = Problems.create("daemon:worker", "fixture-unavailable", 503, "Fixture acquisition unavailable.", { retryable: true });
+        const failure = Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
+        seam.listWorkspaces = async () => [workspaceRow(3, "world")];
+        seam.attachWorkspace = async () => {
+            attached += 1;
+            if (fail && stage === "envelope") throw failure;
+            return { workspaceId: 3, workspaceName: "world", projectRoot: null, workerId: 10, workerName: "client-10" };
+        };
+        seam.listWorkers = async () => [];
+        seam.createConversationWorker = async () => {
+            created += 1;
+            if (fail && stage === "conversation") throw failure;
+            return { workerId: 42, workerName: "named" };
+        };
+        const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+        const input = { threadId: "named", runId: "fixture", forwardedProps: { plurnk: { workspace: "world", action: { kind: "workspace.workers" } } } };
+        try {
+            const refused = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(input)) });
+            assert.equal(refused.status, 503);
+            assert.deepEqual(await refused.json(), problem);
+            fail = false;
+            const events = await post(mod.address().port, input);
+            assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result" && (event.value as { ok: boolean }).ok));
+            assert.equal(attached, stage === "envelope" ? 2 : 1);
+            assert.equal(created, stage === "conversation" ? 2 : 1);
+        } finally { await mod.close(); }
+    });
+}
+
 test("a threadId naming an existing worker (a fork or prior conversation) binds it — no mint", async () => {
     let created = 0;
     const driven: number[] = [];
