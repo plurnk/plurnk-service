@@ -386,7 +386,7 @@ under {§plan-value}. Closing fences are conventional, never required
 ({§closer-fallback}).
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
-EXEC executors from the shared AST, with one blank line between operations.
+runtime fences from the shared AST, with one blank line between operations.
 Every closing fence occupies its own line, including bodyless operations;
 inline fences remain accepted input, not generated examples.
 It chooses at least four backticks and more than any run within the body, and a
@@ -469,7 +469,7 @@ whose block left no metadata back bare when the bare form reads back identically
 
 | Element | Shape or role |
 |---|---|
-| Native OP | `FIND READ EDIT COPY MOVE SEND EXEC BARE WORK FORK KILL TASK` |
+| Native OP | `FIND READ EDIT COPY MOVE SEND BARE WORK FORK KILL TASK` |
 | Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
 | Fence | Three or more backticks, matched by exact count |
 | `(path)` | Local path, URI, program or tool name; §5 |
@@ -489,7 +489,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | EDIT | required file or entry                       | required for an existing target | literal text                   |
 | COPY | required source and destination              | optional region after each path | empty                          |
 | MOVE | required source and destination              | optional region after each path | empty                          |
-| EXEC | fence names executor; optional program/tool path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
+| execution | the fence name is the runtime; optional program/tool path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
@@ -549,13 +549,13 @@ commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
 §exec-executor-slot The fence name selects the executor directly: for example,
 `python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.
-Reserved native OP names take precedence. Other names lower to the same EXEC
-AST with `executor`, `target`, metadata, timing and body fields.
+Reserved native OP names take precedence. Any other name is an executor fence: its
+AST carries the `runtime` tag and no operation keyword, then `target`, metadata, timing and body fields.
 Registration is checked by the runtime, not by the syntax parser. An attached
 MCP service uses that executor path and its owner validates the named tool and
 input-body JSON against its schema. Unknown names do not fall back to a shell.
-The native `EXEC` form without a selected executor retains the runtime's
-default executor contract; canonical shell examples name `sh` explicitly.
+There is no runtime-less form: every execution names its runtime, and canonical
+shell examples name `sh` explicitly.
 The path names a program or tool and is never split. Metadata such as
 `[{"cwd": "…"}]` remains interpreted by the selected executor.
 
@@ -592,7 +592,7 @@ and is refused there; a bracket before the target of a non-executor OP is one
 bounded header diagnostic that selects nothing.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
-scopes ordered results. EXEC and SEND scope owner-defined timing. READ, EDIT, COPY,
+scopes ordered results. Executions and SEND scope owner-defined timing. READ, EDIT, COPY,
 MOVE, and KILL use one universal text algebra independent of mimetype; a log
 KILL admits only its one- and two-line forms for canonical log-body visibility:
 
@@ -674,7 +674,7 @@ Mutation semantics:
 | COPY | Source and destination selections plus ordered destination effects                |
 | MOVE | Source and destination selections plus ordered destination and source effects     |
 | SEND | Status and recipient acknowledgement when applicable                              |
-| EXEC | Spawn acknowledgement; output arrives through named stream channels               |
+| execution | Spawn acknowledgement; output arrives through named stream channels               |
 | BARE | The one-shot model response                                                        |
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
@@ -836,7 +836,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
-| EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
+| execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
 | ```` ```TASK ````     | `timeout[,poll]`                       | Waiting intent: bounded or indefinite wait and optional poll cadence ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Worker actors schedule a task with `delay[,interval]` ({§send-directed-scope}) |
 
@@ -890,7 +890,7 @@ npm test
 ````
 `````
 
-The inner shell example is EDIT content, not an EXEC invocation. The same
+The inner shell example is EDIT content, not an execution. The same
 rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. Turn dispositions
@@ -915,7 +915,7 @@ one intention. Without TASK, an operation-bearing turn continues silently.
 The engine verifies an explicit intention against the loop's actual
 obligations (spawned children, open streams, pending results); the grammar
 polices *shape* only. Asking
-the human is the native `question` EXEC tool ({§question-tool}), not a
+the human is the native `question` executor tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation TASK has a reserved token ({§turn-disposition}).
@@ -931,7 +931,7 @@ disposition. The shape rules ARE structural:
   position. TASK omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
 - §park-202-only TASK wait intent applies `<T>` (wait up to T minutes),
-  `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
+  `<T,P>` (adds a poll cadence, mirroring the execution slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the scope
   slot's shape. Other intents leave timing unapplied
   with a factual warning; timing does not override the inventory's intent.
@@ -1436,7 +1436,7 @@ diagnostics are:
 - §invalid-scope-diagnostic **Malformed scope content.** After a properly spaced
   scope opener, report the offending scope (at most 64 code points, ending at
   `>` or the heading's line end) and its operation's constraint: FIND result
-  positions, EXEC/TASK minutes, text coordinates, or no scope. Do not append advice for
+  positions, execution/TASK minutes, text coordinates, or no scope. Do not append advice for
   other operations or infer why the producer supplied the value. Spacing and
   boundary-loss diagnostics retain their own contracts.
 - §misplaced-aside-advisory **Aside in the body.** A READ or FIND whose

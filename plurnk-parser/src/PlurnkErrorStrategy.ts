@@ -68,7 +68,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             const op = lexer.getOpenOp();
             const constraint = op === "FIND"
                 ? "use numeric result positions, e.g. `<1,16>`"
-                : op === "EXEC" || op === "SEND" || op === "TASK"
+                : lexer.isExecFence() || op === "SEND" || op === "TASK"
                     ? "use minutes, e.g. `<5,1>`"
                     : lexer.isTextCoordinateOp()
                         ? "use numeric coordinates or `@hash` line anchors"

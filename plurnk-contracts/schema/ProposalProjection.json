@@ -23,8 +23,12 @@
         "loopId": { "type": "integer", "minimum": 1 },
         "turnId": { "type": "integer", "minimum": 1 },
         "op": {
-            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL",
-                "TASK"]
+            "description": "An operation keyword, or a runtime tag: an execution's operation is its runtime.",
+            "anyOf": [
+                { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL", "TASK"] },
+                { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" }
+            ],
+            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | \"TASK\" | Lowercase<string>"
         },
         "target": {
             "type": "object",

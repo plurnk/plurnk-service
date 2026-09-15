@@ -7,7 +7,7 @@
     "required": ["name", "transport"],
     "properties": {
         "name": {
-            "description": "Server alias used as its EXEC selector and resource scheme.",
+            "description": "Server alias: the runtime tag whose fence invokes it, and its resource scheme.",
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
         },

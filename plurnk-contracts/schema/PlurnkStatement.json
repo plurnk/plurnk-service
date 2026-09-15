@@ -365,10 +365,9 @@
         "ExecStatement": {
             "type": "object",
             "required": [
-                "op",
+                "runtime",
                 "aside",
                 "metadata",
-                "executor",
                 "target",
                 "lineMarker",
                 "body",
@@ -376,21 +375,22 @@
             ],
             "additionalProperties": false,
             "properties": {
+                "runtime": {
+                    "description": "The runtime tag the fence names, in its registered lowercase spelling. An execution has no operation keyword: the fence name is the runtime, and the log row's op shows it as written.",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9+.-]*$",
+                    "tsType": "Lowercase<string>"
+                },
                 "op": {
-                    "const": "EXEC"
+                    "description": "Never present: an execution is named by its runtime.",
+                    "not": {},
+                    "tsType": "never"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "executor": {
-                    "description": "The registered executor selected by the fence name; null is the default shell for native EXEC.",
-                    "type": [
-                        "string",
-                        "null"
-                    ]
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"

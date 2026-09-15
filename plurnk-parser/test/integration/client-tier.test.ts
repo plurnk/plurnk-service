@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 const clientStatementsOf = (input: string) =>
     PlurnkParser.parseClient(input).items.filter((i) => i.kind === "statement");
@@ -93,7 +94,7 @@ test("client: parseStatements (protocol) reads a retired client op name as prose
     assert.deepEqual(prose.items.filter((i) => i.kind === "statement"), []);
     const named = PlurnkParser.parseStatements("```BUFF (p)```", { executors: ["BUFF"] }).items.filter((i) => i.kind === "statement");
     assert.equal(named.length, 1);
-    assert.equal(named[0]?.kind === "statement" ? named[0].statement.op : null, "EXEC");
+    assert.equal(named[0]?.kind === "statement" ? writtenOp(named[0].statement) : null, "BUFF");
 });
 
 test("client: a LOOK mid-turn breaks parse() (not a protocol op)", () => {

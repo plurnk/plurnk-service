@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
 import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("TASK", '[{"content":"Explain the example.","status":"completed"}]');
 const unlabeled = (body: string, ticks = 4, newline = "\n") => `${"`".repeat(ticks)}${newline}${body}${newline}${"`".repeat(ticks)}`;
@@ -90,7 +91,7 @@ test("{§fence-boundary}: unlabeled fences already inside a body remain ordinary
         assert.deepEqual(errors(result), []);
         const ops = statements(result);
         assert.equal(ops.length, 1);
-        assert.ok(ops[0].op === "SEND" || ops[0].op === "EDIT" || ops[0].op === "EXEC");
+        assert.ok(ops[0].op === "SEND" || ops[0].op === "EDIT" || isExecution(ops[0]));
         const actual = ops[0].body;
         assert.equal(typeof actual === "object" && actual !== null && "raw" in actual ? actual.raw : actual, body);
     }
@@ -109,11 +110,11 @@ test("{§executor-case}: an executor tag in any case opens the registered execut
     const upper = PlurnkParser.parseStatements("````SH\necho hi\n````\n", { executors: ["sh", "python3"] });
     const ops = upper.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(ops.length, 1);
-    assert.equal(ops[0]!.op, "EXEC");
-    assert.equal(ops[0]!.op === "EXEC" ? ops[0]!.executor : null, "sh", "the AST carries the registered spelling");
+    assert.equal(isExecution(ops[0]!), true);
+    assert.equal(isExecution(ops[0]!) ? ops[0]!.runtime : null, "sh", "the AST carries the registered spelling");
     const mixed = PlurnkParser.parseStatements("````Python3 (script.py)\nprint(1)\n````\n", { executors: ["sh", "python3"] });
     const py = mixed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.equal(py[0]?.op === "EXEC" ? py[0].executor : null, "python3");
+    assert.equal(py[0] !== undefined && isExecution(py[0]) ? py[0].runtime : null, "python3");
     const unknown = PlurnkParser.parseStatements("````Python\nprint(1)\n````\n", { executors: ["sh", "python3"] });
     assert.equal(unknown.items.some((item) => item.kind === "statement"), false, "an unregistered name in any case is still prose");
 });

@@ -1,7 +1,13 @@
-const SHAPE = /^[a-z][a-z0-9+.-]*$/;
+import { RUNTIME_TAG } from "@plurnk/plurnk-contracts";
+
+const SHAPE = RUNTIME_TAG;
 const SHAPE_TEXT = "[a-z][a-z0-9+.-]*";
+// A runtime tag is also an execution's op on the wire, so the internal "exec" scheme and the
+// prompt row's op can never be runtime names.
 const RESERVED = new Map([
     ["only", "PLURNK_EXECS_ONLY"],
+    ["exec", "the execution scheme"],
+    ["prompt", "the prompt row"],
 ]);
 
 // One admission rule for installed and module-owned executor identities

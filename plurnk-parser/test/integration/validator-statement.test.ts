@@ -80,8 +80,8 @@ test("PlurnkStatement: SEND with plain text body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: EXEC with executor and code body", () => {
-    const r = validateRoundTrip("```EXEC (node/./)\nconsole.log(1)\n```");
+test("PlurnkStatement: an execution with a runtime target and code body", () => {
+    const r = validateRoundTrip("```sh (node/./)\nconsole.log(1)\n```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -160,6 +160,17 @@ const baseFields = (op: string) => ({
     position: { line: 1, column: 0 },
 });
 
+// An execution has no op: its fence name is the runtime.
+const execFields = () => ({
+    runtime: "sh",
+    aside: null,
+    target: null,
+    metadata: null,
+    lineMarker: null,
+    body: null,
+    position: { line: 1, column: 0 },
+});
+
 const transferFields = (op: "COPY" | "MOVE") => ({
     op,
     aside: null,
@@ -185,14 +196,14 @@ test("PlurnkStatement: TASK accepts a wait scope", () => {
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });
-test("PlurnkStatement: EXEC rejects numeric signal", () => {
-    const stmt = { ...baseFields("EXEC"), status: 200 };
+test("PlurnkStatement: an execution rejects a numeric signal", () => {
+    const stmt = { ...execFields(), status: 200 };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: EXEC accepts a lineMarker (timeout,poll)", () => {
-    const stmt = { ...baseFields("EXEC"), executor: "node", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } };
+test("PlurnkStatement: an execution accepts a lineMarker (timeout,poll)", () => {
+    const stmt = { ...execFields(), runtime: "node", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true);
 });

@@ -50,6 +50,6 @@ export { aguiConformanceReport } from "./AguiConformance.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
 export type * from "./ApplicationPort.ts";
 
-export { DEFAULT_CAPABILITY_POLICY, DEFAULT_LOOP_POLICY, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, REASONING_POLICIES, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
+export { DEFAULT_CAPABILITY_POLICY, DEFAULT_LOOP_POLICY, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, RUNTIME_TAG, isExecution, isExecutionOp, writtenOp, REASONING_POLICIES, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

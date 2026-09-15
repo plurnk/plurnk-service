@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
+import { isExecution } from "@plurnk/plurnk-contracts";
 
-const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "toString", "__proto__"];
+// Registered tags are lowercase ({§executor-runtime-declaration}); the fence may spell them in any case.
+const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "tostring", "valueof"];
 const statements = (source: string) => {
     const result = PlurnkParser.parseStatements(source, { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
@@ -23,14 +25,14 @@ test("fenced operations: empty single-line and multiline blocks have the same se
     assert.equal(inline.op, "READ");
 });
 
-test("fenced operations: executor and MCP names lower to the existing EXEC shape", () => {
+test("fenced operations: executor and MCP names lower to the execution shape", () => {
     const [shell, mcp] = statements('```bash\necho "Hello world";\n```\n```gitea (issue_list)\n{"issue_id":42}\n```');
-    assert.equal(shell.op, "EXEC");
-    assert.equal(mcp.op, "EXEC");
-    if (shell.op !== "EXEC" || mcp.op !== "EXEC") return;
-    assert.equal(shell.executor, "bash");
+    assert.equal(isExecution(shell), true);
+    assert.equal(isExecution(mcp), true);
+    if (!isExecution(shell) || !isExecution(mcp)) return;
+    assert.equal(shell.runtime, "bash");
     assert.equal(shell.body, 'echo "Hello world";');
-    assert.equal(mcp.executor, "gitea");
+    assert.equal(mcp.runtime, "gitea");
     assert.equal(mcp.target?.raw, "issue_list");
     assert.equal(mcp.body, '{"issue_id":42}');
 });
@@ -115,8 +117,8 @@ test("fenced operations: framing excludes only its own newlines, preserving CRLF
 test("fenced operations: transfer operands and opaque metadata keep their contracts", () => {
     const [copy, exec] = statements('```COPY (a) <@abcde> (b) <0>```\n```gitea (issue_list) [{"headers": {"x": "]"}}] <1,0.1> <!-- list issues -->\n{}\n```');
     assert.equal(copy.op, "COPY");
-    assert.equal(exec.op, "EXEC");
-    if (copy.op !== "COPY" || exec.op !== "EXEC") return;
+    assert.equal(isExecution(exec), true);
+    if (copy.op !== "COPY" || !isExecution(exec)) return;
     assert.equal(copy.destination.target.raw, "b");
     assert.deepEqual(copy.destination.lineMarker?.marks, [0]);
     assert.deepEqual(exec.metadata, ['{"headers": {"x": "]"}}']);
@@ -159,10 +161,10 @@ test("fenced operations: canonical serialization retains bodies, operands, and e
 });
 
 test("fenced operations: inherited JavaScript property names are ordinary executor names", () => {
-    for (const name of ["constructor", "toString", "__proto__"]) {
+    for (const name of ["constructor", "toString", "valueOf"]) {
         const [statement] = statements(`\`\`\`${name}\n{}\n\`\`\``);
-        assert.equal(statement.op, "EXEC");
-        if (statement.op === "EXEC") assert.equal(statement.executor, name);
+        assert.equal(isExecution(statement), true);
+        if (isExecution(statement)) assert.equal(statement.runtime, name.toLowerCase(), "the AST carries the canonical lowercase tag");
     }
 });
 

@@ -8,7 +8,12 @@
     "additionalProperties": false,
     "properties": {
         "operation": {
-            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"]
+            "description": "An operation keyword, or a runtime tag: an execution's operation is its runtime.",
+            "anyOf": [
+                { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL"] },
+                { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" }
+            ],
+            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | Lowercase<string>"
         },
         "scheme": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" },
         "runtime": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" },

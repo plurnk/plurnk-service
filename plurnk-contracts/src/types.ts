@@ -5,6 +5,7 @@ export * from "./types.generated.ts";
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
 import type {
     CapabilityPolicy,
+    ClientStatement,
     LoopPolicy,
     Position,
     PlurnkStatement,
@@ -18,7 +19,7 @@ import type PlurnkParseError from "./PlurnkParseError.ts";
 
 // Runtime protocol alphabet; PlurnkOp is structurally derived from this tuple. {§op-shapes}
 export const PLURNK_OPS = [
-    "FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL",
+    "FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL",
     "TASK",
 ] as const;
 
@@ -27,6 +28,18 @@ export const PLURNK_OPS = [
 export const DEFAULT_RETRIEVAL_LIMIT = 16;
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
+
+// An execution is written as its runtime's fence, so its operation IS the runtime tag: lowercase
+// by {§executor-runtime-declaration}, which is why it can never collide with an operation keyword.
+// The prompt row's `prompt` is the one lowercase op that is not an execution.
+export type RuntimeTag = Lowercase<string>;
+export const RUNTIME_TAG = /^[a-z][a-z0-9+.-]*$/;
+export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag => typeof op === "string" && op !== "prompt" && RUNTIME_TAG.test(op);
+export const isExecution = <T extends { readonly op?: string | undefined }>(statement: T): statement is Extract<T, { runtime: RuntimeTag }> =>
+    "runtime" in statement;
+// The heading token as written: an operation keyword, or an execution's runtime. This is the
+// log row's `op`.
+export const writtenOp = (statement: PlurnkStatement | ClientStatement): string => isExecution(statement) ? statement.runtime : statement.op;
 
 // Runtime-neutral cardinal observation for one physical inference request.
 // The caller opens identity before I/O; the producer settles that exact

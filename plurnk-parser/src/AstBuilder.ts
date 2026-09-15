@@ -9,6 +9,7 @@ import type {
     CopyStatement,
     EditStatement,
     ExecStatement,
+    RuntimeTag,
     FindStatement,
     KillStatement,
     WorkStatement,
@@ -412,11 +413,11 @@ export default class AstBuilder {
 
     static #buildExec(ctx: ExecStatementContext): ExecStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, AstBuilder.#executorOf(ctx) ?? "sh");
+        const runtime = AstBuilder.#executorOf(ctx);
+        const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, runtime);
         return {
-            op: "EXEC",
+            runtime,
             aside: AstBuilder.#asideOf(ctx),
-            executor: AstBuilder.#executorOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -426,10 +427,9 @@ export default class AstBuilder {
     // {§executor-case} — the AST carries the registered spelling; the tag may be written in any case.
     static executorSpellings: ReadonlyMap<string, string> = new Map();
 
-    static #executorOf(ctx: ExecStatementContext): string | null {
-        const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "");
-        if (name === "EXEC") return null;
-        return AstBuilder.executorSpellings.get(name.toLowerCase()) ?? name;
+    static #executorOf(ctx: ExecStatementContext): RuntimeTag {
+        const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "").toLowerCase();
+        return (AstBuilder.executorSpellings.get(name) ?? name) as RuntimeTag;
     }
 
     static #buildBare(ctx: BareStatementContext): BareStatement {

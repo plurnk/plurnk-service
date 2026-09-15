@@ -5,7 +5,6 @@ import AstBuilder from "./AstBuilder.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import {
-    PLURNK_OPS,
     PlanValue,
     PlurnkParseError,
     TurnDisposition,
@@ -16,6 +15,7 @@ import {
     type Position,
     type ResourceSelection,
 } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; the turn disposition attaches as a direct
@@ -62,11 +62,7 @@ export default class PlurnkParser {
     // {§statement-rendering} — framing is syntax, never persisted AST state.
     static stringify(statements: readonly ClientStatement[]): string {
         return statements.map((statement) => {
-            const name = statement.op === "EXEC" ? statement.executor ?? "EXEC" : statement.op;
-            if (statement.op === "EXEC" && statement.executor !== null
-                && [...PLURNK_OPS, "LOOK"].includes(name)) {
-                throw new TypeError(`Executor name ${JSON.stringify(name)} is reserved for a Plurnk operation.`);
-            }
+            const name = writtenOp(statement);
             const modifiers: string[] = [];
             // {§naked-pattern} — a lifted matcher is written back bare when the bare form reads back
             // identically; otherwise as its `pattern` option ({§matcher-option}), the escape.

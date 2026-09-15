@@ -441,7 +441,7 @@ test("Notice accepts open producer observations and typed positions", () => {
             source: "exec:search",
             kind: "search_progress",
             level: "info",
-            position: { type: "log-coordinate", coordinate: "log:///1/2/3", op: "EXEC" },
+            position: { type: "log-coordinate", coordinate: "log:///1/2/3", op: "sh" },
         },
         {
             source: "engine:turn",
@@ -663,7 +663,7 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
 
 test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", () => {
     const descriptor = {
-        operation: "EXEC" as const,
+        operation: "sh" as const,
         scheme: "exec",
         runtime: "brave",
         tool: "brave_web_search",

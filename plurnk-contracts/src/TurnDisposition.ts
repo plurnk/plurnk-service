@@ -7,8 +7,8 @@ export default class TurnDisposition {
         return op === "TASK";
     }
 
-    static is(statement: { op: string }): statement is DispositionStatement {
-        return TurnDisposition.isOp(statement.op);
+    static is(statement: { op?: string | undefined }): statement is DispositionStatement {
+        return TurnDisposition.isOp(statement.op ?? "");
     }
 
     static bodyText(statement: DispositionStatement): string {

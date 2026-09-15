@@ -18,7 +18,7 @@ const editFile: CapabilityDescriptor = {
 };
 
 const search: CapabilityDescriptor = {
-    operation: "EXEC",
+    operation: "sh",
     scheme: "exec",
     runtime: "brave",
     tool: "brave_web_search",

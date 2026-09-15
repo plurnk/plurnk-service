@@ -11,6 +11,8 @@ tokens {
 
 @lexer::members {
 private openOp: string = "";
+// {§executor-runtime-declaration} — the opener names a runtime rather than an operation keyword.
+private execFence: boolean = false;
 private openHeading: string = "";
 private openHeadingLine: number = 0;
 private openHeadingColumn: number = 0;
@@ -97,7 +99,7 @@ public takeUnknownTags(): Array<{ line: number; column: number; tag: string }> {
 private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
     EDIT: plurnkLexer.OPEN_EDIT, COPY: plurnkLexer.OPEN_COPY, MOVE: plurnkLexer.OPEN_MOVE,
-    SEND: plurnkLexer.OPEN_SEND, EXEC: plurnkLexer.OPEN_EXEC, BARE: plurnkLexer.OPEN_BARE,
+    SEND: plurnkLexer.OPEN_SEND, BARE: plurnkLexer.OPEN_BARE,
     TASK: plurnkLexer.OPEN_TASK,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
     LOOK: plurnkLexer.OPEN_LOOK,
@@ -112,7 +114,8 @@ private open(implicitName?: string): void {
     this.fenceDelimiter = this.text.slice(this.fenceLength, digits);
     const name = implicitName ?? this.text.slice(digits);
     const native = Object.hasOwn(plurnkLexer.OPERATIONS, name) ? plurnkLexer.OPERATIONS[name] : undefined;
-    this.openOp = native === undefined ? "EXEC" : name;
+    this.openOp = name;
+    this.execFence = native === undefined;
     this.type = native ?? plurnkLexer.OPEN_EXEC;
     this.inlineChain = false;
     this.inlineCloserSeen = false;
@@ -122,7 +125,7 @@ private open(implicitName?: string): void {
     this.started = true;
     this.slotReady = true;
     // {§one-line-turn} - TASK takes its inventory as a heading-line block; a bracket there is a slot.
-    this.metadataReady = this.openOp === "EXEC" || this.openOp === "TASK";
+    this.metadataReady = this.execFence || this.openOp === "TASK";
     this.inlineBody = false;
 }
 
@@ -284,6 +287,7 @@ public takeInlineBodies(): Array<{ line: number; column: number; heading: string
 
 public getOpenTag(): string { return this.openOp; }
 public getOpenOp(): string { return this.openOp; }
+public isExecFence(): boolean { return this.execFence; }
 public getOpenTagLine(): number { return this.openHeadingLine; }
 public getOpenTagColumn(): number { return this.openHeadingColumn; }
 public getOpenHeading(): string { return this.openHeading; }
@@ -356,7 +360,7 @@ TARGET_BACKSLASH : '\\' -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
 TARGET_TEXT_SCOPE : { this.isTextCoordinateOp() }? TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
-TARGET_SCOPE : { this.openOp === "FIND" || this.openOp === "EXEC" || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
+TARGET_SCOPE : { this.openOp === "FIND" || this.execFence || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_TICK : '`' -> type(TARGET_TEXT) ;
 TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; } -> type(RPAREN), mode(SLOTS) ;
 

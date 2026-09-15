@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
+import { isExecution } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("TASK", '[{"content":"Observe the result.","status":"completed"}]');
 const statements = (result: ReturnType<typeof PlurnkParser.parse>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -40,8 +42,8 @@ test("{§whitespace-contract}: the topology witness ignores a model-written resu
     assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
     const ops = statements(parsed);
-    assert.deepEqual(ops.map(({ op }) => op), ["EXEC", "SEND", "TASK"]);
-    assert.equal(ops[0].op === "EXEC" ? ops[0].body : null, "length");
+    assert.deepEqual(ops.map(writtenOp), ["jq", "SEND", "TASK"]);
+    assert.equal(isExecution(ops[0]) ? ops[0].body : null, "length");
     assert.equal(ops[1].op === "SEND" ? ops[1].body?.raw : null, "3\nTop-level JSON array.");
     assert.deepEqual(ops[1].position, { line: 6, column: 0 });
 });

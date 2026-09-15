@@ -213,7 +213,10 @@ display: CapabilityDisplay
 }
 
 export interface CapabilityDescriptor {
-operation: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL")
+/**
+ * An operation keyword, or a runtime tag: an execution's operation is its runtime.
+ */
+operation: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | Lowercase<string>
 scheme?: string
 runtime?: string
 tool?: string
@@ -230,7 +233,10 @@ deny?: CapabilitySelector[]
  */
 
 export interface CapabilitySelector {
-operation?: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL")
+/**
+ * An operation keyword, or a runtime tag: an execution's operation is its runtime.
+ */
+operation?: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | Lowercase<string>
 scheme?: string
 runtime?: string
 tool?: string
@@ -525,16 +531,19 @@ json: unknown
 }
 
 export interface ExecStatement {
-op: "EXEC"
+/**
+ * The runtime tag the fence names, in its registered lowercase spelling. An execution has no operation keyword: the fence name is the runtime, and the log row's op shows it as written.
+ */
+runtime: Lowercase<string>
+/**
+ * Never present: an execution is named by its runtime.
+ */
+op?: never
 aside: (string | null)
 /**
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-/**
- * The registered executor selected by the fence name; null is the default shell for native EXEC.
- */
-executor: (string | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (string | null)
@@ -808,7 +817,7 @@ export interface McpConfigurationOverlay {
 
 export type McpServerDefinition = {
 /**
- * Server alias used as its EXEC selector and resource scheme.
+ * Server alias: the runtime tag whose fence invokes it, and its resource scheme.
  */
 name: string
 /**
@@ -1177,7 +1186,10 @@ logEntryId: number
 workerId: number
 loopId: number
 turnId: number
-op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "TASK")
+/**
+ * An operation keyword, or a runtime tag: an execution's operation is its runtime.
+ */
+op: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | "TASK" | Lowercase<string>
 target: {
 scheme: (string | null)
 authority: (string | null)

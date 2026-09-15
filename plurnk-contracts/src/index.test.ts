@@ -4,8 +4,9 @@ import * as Contracts from "./index.ts";
 import { UNKNOWN_POSITION, Validator } from "./index.ts";
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 
-test("ProposalProjection's operation enum is the closed runtime alphabet", () => {
-    assert.deepEqual(proposalProjectionSchema.properties.op.enum, Contracts.PLURNK_OPS);
+test("ProposalProjection's op keywords are the closed operation alphabet; a runtime tag is the other branch", () => {
+    assert.deepEqual(proposalProjectionSchema.properties.op.anyOf[0].enum, Contracts.PLURNK_OPS);
+    assert.equal(proposalProjectionSchema.properties.op.anyOf[1].pattern, Contracts.RUNTIME_TAG.source);
 });
 
 test("the package root exposes exactly the supported runtime values", () => {
@@ -54,14 +55,18 @@ test("the package root exposes exactly the supported runtime values", () => {
         "Problems",
         "REASONING_POLICIES",
         "RESERVED_AUTHORITIES",
+        "RUNTIME_TAG",
         "TurnDisposition",
         "UNKNOWN_POSITION",
         "Validator",
         "WORKER_NAME",
         "aguiConformanceReport",
         "formatJsonDocument",
+        "isExecution",
+        "isExecutionOp",
         "lifecycleOfLoopStatus",
         "renderJsonResult",
+        "writtenOp",
     ]);
 });
 

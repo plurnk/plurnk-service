@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser, parsePath } from "../../src/index.ts";
-import { PlurnkParseError, Validator, type PlurnkOp, type Plan } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, Validator, type Plan } from "@plurnk/plurnk-contracts";
+import { isExecution } from "@plurnk/plurnk-contracts";
+import { writtenOp } from "@plurnk/plurnk-contracts";
 
-type Op = PlurnkOp;
 
 // {§fence-heading-in-body} — the executors these witnesses invoke, as the host would name them.
 const EXECUTORS = ["sh", "bash", "node", "python3", "gitea", "brave", "search-api", "example", "plurnk", "crm", "c++", "jq"];
-const section = (op: Op, slots = "", body?: string): string => PlurnkParser.frame(op + slots, body ?? null);
+const section = (op: string, slots = "", body?: string): string => PlurnkParser.frame(op + slots, body ?? null);
 
 const sections = (...values: string[]): string => values.join("\n\n");
 const inventory = (content: string, status: Plan[number]["status"] = "in_progress") =>
@@ -46,7 +47,7 @@ test("PlurnkParseError keeps diagnostic text separate from structured context", 
 });
 
 test("protocol operations parse as executable fences", () => {
-    const cases: Array<[Op, string, string | undefined]> = [
+    const cases: Array<[string, string, string | undefined]> = [
         ["TASK", "", "inspect, act, report"],
         ["TASK", " <5>", "[]"],
         ["FIND", " (known:///**) <1,20> [{\"pattern\": \"Paris*\"}]", undefined],
@@ -57,7 +58,7 @@ test("protocol operations parse as executable fences", () => {
         ["KILL", " (log:///**) <@aB3dE> [{\"pattern\": \"~topic\"}]", undefined],
         ["KILL", " (log:///**) <17,-1>", undefined],
         ["SEND", " (worker://child)", "progress"],
-        ["EXEC", " (node/./) <60,5>", "console.log(1)"],
+        ["sh", " (node/./) <60,5>", "console.log(1)"],
         ["BARE", "", "What is the capital of Germany?"],
         ["WORK", " (worker://child)", "do the work"],
         ["FORK", " (worker://child)", "recheck the work"],
@@ -66,7 +67,7 @@ test("protocol operations parse as executable fences", () => {
 
     for (const [op, slots, body] of cases) {
         const statement = oneStatement(section(op, slots, body));
-        assert.equal(statement.op, op, op);
+        assert.equal(writtenOp(statement), op, op);
         assert.equal(Object.hasOwn(statement, "delimiter"), false, op);
     }
 });
@@ -98,7 +99,7 @@ test("trailing operation asides are durable, single-line, and follow every modif
     assert.equal(oneStatement("```READ (README.md) <!-- -->```").aside, "");
 
     for (const input of [
-        "```EXEC <!-- Lists issues --> [gitea] (list_issues)\n{}\n```",
+        "```sh <!-- Lists issues --> [gitea] (list_issues)\n{}\n```",
         "```gitea (list_issues) <!-- Lists\nissues\n-->\n{}\n```",
         "```gitea (list_issues) <!-- Lists issues\n{}```",
     ]) {
@@ -179,13 +180,13 @@ test("COPY and MOVE bind a terminal scope to the immediately preceding operand",
     }
 });
 
-test("{§error-shape} invalid EXEC scopes name the supplied scope and timing constraint", () => {
+test("{§error-shape} invalid execution scopes name the supplied scope and timing constraint", () => {
     for (const slots of [" (sh/curl submit) <30s>", " (crm/crm_query) <crm:///1/6/1>", " (pm/pm_search_issues) <poll>"]) {
-        const result = PlurnkParser.parseStatements(section("EXEC", slots, "{}"));
+        const result = PlurnkParser.parseStatements(section("sh", slots, "{}"));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.ok(errors.length >= 1, slots);
         assert.equal(errors[0]?.error.source, "lexer");
-        assert.equal(errors[0]?.error.message, `invalid EXEC scope ${JSON.stringify(slots.slice(slots.indexOf("<")))}; use minutes, e.g. \`<5,1>\``, slots);
+        assert.equal(errors[0]?.error.message, `invalid sh scope ${JSON.stringify(slots.slice(slots.indexOf("<")))}; use minutes, e.g. \`<5,1>\``, slots);
     }
     // Slot spacing does not change the meaning of an invalid scope.
     const glued = PlurnkParser.parseStatements(section("READ", " (notes.md)<foo>"));
@@ -298,7 +299,7 @@ test("empty sections normalize to their operation-owned empty values", () => {
         ["EDIT", " (a) <1>"],
         ["KILL", " (log:///1)"],
         ["SEND", " (worker://child)"],
-        ["EXEC", ""],
+        ["sh", ""],
         ["BARE", ""],
         ["WORK", " (worker://child)"],
         ["FORK", " (worker://child)"],
@@ -430,29 +431,29 @@ test("model turns without TASK or SEND stand as written", () => {
 test("example is an executor name, not a transparent document wrapper", () => {
     const body = section("READ", " (notes.md)");
     const result = oneStatement(PlurnkParser.frame("example", body));
-    assert.equal(result.op, "EXEC");
-    assert.equal(result.op === "EXEC" ? result.executor : null, "example");
+    assert.equal(isExecution(result), true);
+    assert.equal(isExecution(result) ? result.runtime : null, "example");
     assert.equal("body" in result ? result.body : null, body);
 });
 test("plurnk is an executor name, not a transparent document wrapper", () => {
     const body = section("READ", " (notes.md)") + "\n" + section("TASK", "", inventory("done", "completed"));
     const result = oneStatement(PlurnkParser.frame("plurnk", body));
-    assert.equal(result.op === "EXEC" ? result.executor : null, "plurnk");
+    assert.equal(isExecution(result) ? result.runtime : null, "plurnk");
     assert.equal("body" in result ? result.body : null, body);
 });
 test("{§fence-heading-in-body}: a four-backtick TASK inside an undelimited executor block is the turn's TASK", () => {
     const result = PlurnkParser.parseStatements("`````plurnk\n" + section("TASK", "", inventory("done", "completed")), { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EXEC", "TASK"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["plurnk", "TASK"]);
     const exec = result.items.find((item) => item.kind === "statement");
-    assert.equal(exec?.kind === "statement" && exec.statement.op === "EXEC" ? exec.statement.body : "?", null, "the executor block ended at the heading with no body");
+    assert.equal(exec?.kind === "statement" && isExecution(exec.statement) ? exec.statement.body : "?", null, "the executor block ended at the heading with no body");
 });
 test("{§fence-closer}: a longer bare fence closes a shorter undelimited block and what follows is prose", () => {
     const result = PlurnkParser.parseStatements("```sh\n````\necho hello", { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EXEC"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["sh"]);
     const exec = result.items.find((item) => item.kind === "statement");
-    assert.equal(exec?.kind === "statement" && exec.statement.op === "EXEC" ? exec.statement.body : "?", null);
+    assert.equal(exec?.kind === "statement" && isExecution(exec.statement) ? exec.statement.body : "?", null);
 });
 test("{§disposition-anywhere}: an operation after TASK is admitted in authored order with no diagnostic", () => {
     const result = PlurnkParser.parse(sections(
@@ -537,10 +538,11 @@ test("scheme metadata is an opaque ordered modifier outside the target", () => {
 });
 
 test("{§slot-order}: target and scope precede opaque metadata in every scoped heading", () => {
-    for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "EXEC"] as const) {
-        const header = `${op === "EXEC" ? "node" : op} (known:///item) <1,4> [{"request": {"value": "]"}}] [{"mode": "quiet"}] <!-- inspect -->`;
+    for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "node"] as const) {
+        const header = `${op} (known:///item) <1,4> [{"request": {"value": "]"}}] [{"mode": "quiet"}] <!-- inspect -->`;
         const statement = oneStatement(PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
-        assert.equal(statement.op, op);
+        if (isExecution(statement)) assert.equal(statement.runtime, op);
+        else assert.equal(statement.op, op);
         assert.equal(statement.target?.raw, "known:///item");
         assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
         assert.deepEqual(statement.metadata, ['{"request": {"value": "]"}}', '{"mode": "quiet"}']);
@@ -591,7 +593,7 @@ test("{§scheme-metadata-modifier}: quoted brackets and escapes remain exact met
         const statement = oneStatement(`\`\`\`node (script.js) [${metadata}] [{"cwd": "sub"}]
 stdin
 \`\`\``);
-        if (statement.op !== "EXEC") assert.fail("expected EXEC");
+        if (!isExecution(statement)) assert.fail("expected an execution");
         assert.deepEqual(statement.metadata, [metadata, '{"cwd": "sub"}']);
         assert.equal(statement.body, "stdin");
     }
@@ -753,7 +755,7 @@ test("text-coordinate operations admit Base62 anchors only in line positions", (
 
     for (const input of [
         section("FIND", " (p) <@aZ09b>"),
-        section("EXEC", " (node) <@aZ09b>", "run"),
+        section("sh", " (node) <@aZ09b>", "run"),
         section("READ", " (p) <@aZ09>"),
         section("EDIT", " (p) <@aZ09bQ>", "body"),
         section("COPY", " (p) <@aZ-9b> (q)"),
@@ -783,7 +785,7 @@ test("a combined anchor and displayed line number reads as the anchor, with one 
     }
 });
 
-test("TASK wait scope and EXEC timeout/poll are retained", () => {
+test("TASK wait scope and execution timeout/poll are retained", () => {
     const terminal = oneStatement(section("TASK", " <30>", "polling"));
     if (terminal.op !== "TASK") assert.fail("expected TASK");
     assert.deepEqual(terminal.lineMarker, { marks: [30] });
@@ -791,7 +793,7 @@ test("TASK wait scope and EXEC timeout/poll are retained", () => {
     if (appended.op !== "TASK") assert.fail("expected TASK");
     assert.deepEqual(appended.lineMarker, { marks: [-1] });
     const exec = oneStatement("```node (./) <60,5>\ncommand\n```");
-    if (exec.op !== "EXEC") assert.fail("expected EXEC");
+    if (!isExecution(exec)) assert.fail("expected an execution");
     assert.deepEqual(exec.lineMarker, { marks: [60, 5] });
 });
 
@@ -1108,16 +1110,16 @@ test("SEND projects JSON when valid and always preserves raw body", () => {
     assert.equal(text.body.json, null);
 });
 
-test("multiline EDIT and EXEC bodies remain character-perfect raw strings", () => {
+test("multiline EDIT and execution bodies remain character-perfect raw strings", () => {
     const edit = oneStatement(section("EDIT", " (known://entry)", "line one\nline two"));
-    const exec = oneStatement(section("EXEC", " (node/./)", "console.log(1+1)"));
-    if (edit.op !== "EDIT" || exec.op !== "EXEC") assert.fail("expected EDIT and EXEC");
+    const exec = oneStatement(section("sh", " (node/./)", "console.log(1+1)"));
+    if (edit.op !== "EDIT" || !isExecution(exec)) assert.fail("expected EDIT and an execution");
     assert.equal(edit.body, "line one\nline two");
     assert.equal(exec.body, "console.log(1+1)");
 });
 
 test("header diagnostics use PLURNK vocabulary and point to the malformed slot", () => {
-    const executor = firstError("```EXEC (node) (./)\ncommand\n```");
+    const executor = firstError("```sh (node) (./)\ncommand\n```");
     assert.match(executor.message, /sh accepts one `\(program\)` path at most once/);
     for (const runtime of ["python3", "brave", "search-api"]) {
         const error = firstError(`\`\`\`${runtime} (first) (second)\ninput\n\`\`\``);
@@ -1162,7 +1164,7 @@ test("body punctuation and Markdown remain opaque", () => {
         section("SEND", " (worker://parent)", "result ] arr[0]"),
         section("TASK", "", "# User heading\n\n- one\n- two"),
     ]) {
-        assert.equal(["SEND", "EDIT", "TASK", "TASK"].includes(oneStatement(input).op), true, input);
+        assert.equal(["SEND", "EDIT", "TASK", "TASK"].includes(writtenOp(oneStatement(input))), true, input);
     }
 });
 
@@ -1226,13 +1228,13 @@ test("parser positions count Unicode code points and CRLF lines", () => {
 // {§heading-inline-body}
 test("body text on the heading line is the first body line when it cannot open a slot", () => {
     const exec = oneStatement("```crm (crm_query) SELECT Id FROM Case\n```");
-    if (exec.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(exec.executor, "crm");
+    if (!isExecution(exec)) assert.fail("expected an execution");
+    assert.equal(exec.runtime, "crm");
     assert.equal(exec.target?.raw, "crm_query");
     assert.equal(exec.body, "SELECT Id FROM Case");
 
     const multi = oneStatement("```crm (crm_query)\n{\"soql\":\n \"SELECT Id FROM Case\"}\n```");
-    if (multi.op !== "EXEC") assert.fail("expected EXEC");
+    if (!isExecution(multi)) assert.fail("expected an execution");
     assert.equal(multi.body, '{"soql":\n "SELECT Id FROM Case"}', "the inline start joins the following body lines");
 
     const send = oneStatement("```SEND Paris.\n```");
@@ -1246,56 +1248,56 @@ test("body text on the heading line is the first body line when it cannot open a
 
     // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
     const unspaced = oneStatement("```crm (crm_query)[{\"soql\": \"x\"}]```");
-    if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
+    if (!isExecution(unspaced)) assert.fail("expected an execution");
     assert.deepEqual(unspaced.metadata, ['{"soql": "x"}']);
     assert.equal(oneStatement("```READ (a.md) <1,3>```").op, "READ");
 });
 
 // {§exec-executor-slot}
-test("the fence name selects EXEC while its modifiers retain their contracts", () => {
+test("the fence name selects the execution while its modifiers retain their contracts", () => {
     const railed = oneStatement('```python3 (tools/report.py) [{"cwd": "build"}] <30>\ninput\n```');
-    if (railed.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(railed.executor, "python3");
+    if (!isExecution(railed)) assert.fail("expected an execution");
+    assert.equal(railed.runtime, "python3");
     assert.equal(railed.target?.raw, "tools/report.py");
     assert.deepEqual(railed.metadata, ['{"cwd": "build"}']);
     assert.deepEqual(railed.lineMarker, { marks: [30] });
     assert.equal(railed.body, "input");
-    const bare = oneStatement("```EXEC\npwd\n```");
-    if (bare.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(bare.executor, null);
+    const bare = oneStatement("```sh\npwd\n```");
+    if (!isExecution(bare)) assert.fail("expected an execution");
+    assert.equal(bare.runtime, null);
     assert.equal(bare.target, null);
     const alone = oneStatement("```node\nconsole.log(1)\n```");
-    if (alone.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(alone.executor, "node");
+    if (!isExecution(alone)) assert.fail("expected an execution");
+    assert.equal(alone.runtime, "node");
     assert.equal(alone.target, null);
     const plus = oneStatement("```c++ (main.cpp)```");
-    if (plus.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(plus.executor, "c++");
+    if (!isExecution(plus)) assert.fail("expected an execution");
+    assert.equal(plus.runtime, "c++");
     const unspaced = oneStatement("```jq(data.json)\n.a\n```");
-    if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(unspaced.executor, "jq");
+    if (!isExecution(unspaced)) assert.fail("expected an execution");
+    assert.equal(unspaced.runtime, "jq");
     assert.equal(unspaced.target?.raw, "data.json");
     // {§legacy-bracket-slot} — a bracket after the program or leading an executor fence is metadata
     // for that executor, never a selector: the fence name still selects the executor.
     for (const [input, executor, metadata] of [
-        ["```EXEC (tool.py) [python3]\ninput\n```", null, "python3"],
+        ["```sh (tool.py) [python3]\ninput\n```", null, "python3"],
         ["```python3 (tool.py) [node]\ninput\n```", "python3", "node"],
         ["```python3 [node] (tool.py)\ninput\n```", "python3", "node"],
     ] as const) {
         const legacy = oneStatement(input);
-        if (legacy.op !== "EXEC") assert.fail("expected EXEC");
-        assert.equal(legacy.executor, executor, input);
+        if (!isExecution(legacy)) assert.fail("expected an execution");
+        assert.equal(legacy.runtime, executor, input);
         assert.equal(legacy.target?.raw, "tool.py", input);
         assert.deepEqual(legacy.metadata, [metadata], input);
         assert.equal(legacy.body, "input", input);
     }
-    const cwdOnly = oneStatement('```EXEC [{"cwd": "sub"}]\nmake test\n```');
-    if (cwdOnly.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(cwdOnly.executor, null);
+    const cwdOnly = oneStatement('```sh [{"cwd": "sub"}]\nmake test\n```');
+    if (!isExecution(cwdOnly)) assert.fail("expected an execution");
+    assert.equal(cwdOnly.runtime, null);
     assert.deepEqual(cwdOnly.metadata, ['{"cwd": "sub"}']);
     assert.equal(cwdOnly.body, "make test");
     const executorCwd = oneStatement('```node [{"cwd": "sub"}]\nconsole.log(process.cwd())\n```');
-    if (executorCwd.op !== "EXEC") assert.fail("expected EXEC");
+    if (!isExecution(executorCwd)) assert.fail("expected an execution");
     assert.deepEqual(executorCwd.metadata, ['{"cwd": "sub"}']);
     assert.match(firstError("```READ [python3] (tool.py)```").message, /unexpected bracket modifier; the fence name selects the executor/);
 });
