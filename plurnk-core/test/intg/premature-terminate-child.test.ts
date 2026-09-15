@@ -399,7 +399,7 @@ test("{§completion-defers-to-results}: a retrieval-only deferral states the obs
         assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
         assert.equal(
             deferral.detail,
-            "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.",
+            "Completion deferred until READ reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.",
         );
         assert.deepEqual(deferral.attrs?.pending, ["receipts"]);
         assert.equal(deferral.recovery, undefined);
@@ -499,7 +499,7 @@ test("a deferred TASK row carries its deferral detail on its META LINE — the r
         const inventory = parseLogRecords(log).find((record) => typeof record.path === "string" && record.path.endsWith("/TASK")
             && record.status === 102 && typeof (record as { detail?: unknown }).detail === "string");
         assert.ok(inventory !== undefined, "the deferred TASK row renders");
-        assert.equal((inventory as { detail?: string }).detail, "Completion deferred until READ reached a packet. It is in this packet; a TASK now completes.", "the compact detail rides the metadata line - visible in every packet, never hidden with the body");
+        assert.equal((inventory as { detail?: string }).detail, "Completion deferred until READ reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.", "the compact detail rides the metadata line - visible in every packet, never hidden with the body");
         assert.equal((inventory as { problem?: unknown }).problem, undefined, "a deferral carries no Problem");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });

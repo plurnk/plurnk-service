@@ -9,6 +9,8 @@ import ErrorDetail from "./ErrorDetail.ts";
 import { promptLoopPrefix } from "./plurnk-uri.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
+const observedResultsGuidance = "If your final response has already been sent and these results require no further work or response revision, submit only TASK.";
+
 export interface PacketBoundaries {
     operations: Array<{ op: string; tx: string | null }>;
     streamTerminations: Array<{ closeStatus: number }>;
@@ -216,15 +218,14 @@ export default class TurnDispositionHandler {
             return {
                 status: 102,
                 detail: `${verb} deferred: ${failCount} operation${failCount === 1 ? "" : "s"} failed in the same turn. `
-                    + `The failure${failCount === 1 ? " is" : "s are"} in this packet; address ${failCount === 1 ? "it" : "them"} or ${concludes} with a TASK now.`,
+                    + `The failure${failCount === 1 ? " is" : "s are"} in this packet. ${observedResultsGuidance}`,
                 attrs: { failures: failCount },
             };
         }
         const settled = pending.filter((kind) => kind !== "streams" && kind !== "workers");
         if (settled.length === 0) return null;
         // The receipt is read one packet later, beside the results it names, so it speaks from
-        // that moment: what deferred the claim is now in the packet, and the same TASK is the
-        // correct next request.
+        // that moment. The model decides whether the results change its work or response.
         const detail = settled.every((kind) => kind === "receipts")
             ? TurnDispositionHandler.deferredReceiptsDetail(receipts, verb)
             : TurnDispositionHandler.deferredWorkDetail(settled, verb);
@@ -234,7 +235,7 @@ export default class TurnDispositionHandler {
     // {§completion-defers-to-results} Receipts-only deferral, worded at read time.
     static deferredReceiptsDetail(receipts: readonly string[], verb: "Completion" | "Abandonment" = "Completion"): string {
         const plural = receipts.length > 1;
-        return `${verb} deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`;
+        return `${verb} deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet. ${observedResultsGuidance}`;
     }
 
     // {§completion-joins-live-work} The join receipt, read when the wake lands.
@@ -242,7 +243,7 @@ export default class TurnDispositionHandler {
         const parts: string[] = [];
         if (live.includes("workers")) parts.push("child workers were still running");
         if (live.includes("streams")) parts.push("an execution was still running");
-        return `Completion joined: ${parts.join(" and ")}. The loop waited, and what concluded is in this packet; a TASK now completes.`;
+        return `Completion joined: ${parts.join(" and ")}. The loop waited, and what concluded is in this packet. ${observedResultsGuidance}`;
     }
 
     // {§completion-defers-to-results} Observed-now results name the packet.
@@ -251,7 +252,7 @@ export default class TurnDispositionHandler {
         if (pending.includes("worker-results")) landed.push("a child worker's result");
         if (pending.includes("failed-stream-results")) landed.push("a failed execution result");
         if (pending.includes("receipts")) landed.push("operation receipts");
-        return `${verb} deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet; a TASK now ${verb === "Completion" ? "completes" : "concludes"}.`;
+        return `${verb} deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet. ${observedResultsGuidance}`;
     }
 
 }

@@ -154,7 +154,7 @@ test("{§completion-joins-live-work} Engine.runLoop: a completion over a live st
         const join = JSON.parse(joined!.rx) as { problem?: unknown; detail?: string; attrs?: { waiting?: number; pending?: string[] } };
         assert.equal(join.problem, undefined, "a join carries no Problem and no strike");
         assert.deepEqual(join.attrs, { waiting: -1, pending: ["streams"] });
-        assert.equal(join.detail, "Completion joined: an execution was still running. The loop waited, and what concluded is in this packet; a TASK now completes.");
+        assert.equal(join.detail, "Completion joined: an execution was still running. The loop waited, and what concluded is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
     } finally { await db.close(); }
 });
 

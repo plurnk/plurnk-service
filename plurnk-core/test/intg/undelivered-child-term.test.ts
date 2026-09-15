@@ -73,7 +73,7 @@ test("completion over a just-concluded child is refused with the steer", async (
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
         const r = await engine.dispatch({ statement: dispositionStmt("completed", "done"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
-        assert.equal(r.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet; a TASK now completes.");
+        assert.equal(r.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
         assert.equal(r.problem, undefined, "a deferral carries no Problem and no strike");
         assert.deepEqual((r.attrs as { pending?: string[] }).pending, ["worker-results"], "the structured fact names the pending kind");
     } finally { await db.close(); }

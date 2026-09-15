@@ -263,7 +263,7 @@ test("{§completion-defers-to-results}: retiring a failed receipt does not make 
         assert.equal(result.status, 102, "the unseen failure defers the completion; it does not refuse it");
         assert.equal(result.problem, undefined, "a deferral carries no Problem and no strike");
         assert.deepEqual(result.attrs, { failures: 1 });
-        assert.equal(result.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet; address it or complete with a TASK now.");
+        assert.equal(result.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
     } finally { await db.close(); }
 });
 

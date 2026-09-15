@@ -31,7 +31,7 @@ for (const specimen of [
                 const tasks = rows.filter((r) => r.op === "TASK" && r.origin === "model");
                 assert.equal(tasks[0]?.status_rx, 102, "the first completion was deferred over the unseen receipt");
                 const deferral = JSON.parse(tasks[0]?.rx ?? "{}") as { problem?: unknown; detail?: string; attrs?: { pending?: string[] }; recovery?: unknown };
-                assert.equal(deferral.detail, `Completion deferred until ${specimen.names} reached a packet. ${specimen.names.includes(",") ? "They are" : "It is"} in this packet; a TASK now completes.`);
+                assert.equal(deferral.detail, `Completion deferred until ${specimen.names} reached a packet. ${specimen.names.includes(",") ? "They are" : "It is"} in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.`);
                 assert.deepEqual(deferral.attrs?.pending, ["receipts"]);
                 assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
                 assert.equal(deferral.recovery, undefined, "the receipt boundary needs no guessed workflow prescription");

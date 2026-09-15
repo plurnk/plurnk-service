@@ -2643,14 +2643,19 @@ accounting and model-visible failure evidence remain separately owned by
   child's result — is deferred: the TASK answers 102 with no Problem and no strike,
   the loop continues, and the next packet carries what deferred it. The engine
   owns every observe edge, so such a claim is early in the observation order, not
-  false about the world; the same TASK is the correct next request and completes,
-  or abandons, once the packet has shown the results ({§send-undelivered-child-term}).
+  false about the world. After observing the results, the model can continue work,
+  revise its response, or conclude with TASK alone while retaining its last SEND
+  ({§loop-response-messages}, {§send-undelivered-child-term}).
   The deferral's `detail` is read one packet later, beside the results it names,
   and speaks from that moment: a receipts-only deferral names the distinct
   blocking operations in execution order using their model-facing log names
   ({§log-coordinate-hierarchy}), plus `stream completion` for undelivered terminal
   stream results; a results deferral names the landed kinds; a failure deferral
-  counts the failures and asks for them to be addressed or concluded over. Its
+  counts the failures. These deferrals and the live-work join receipt share the
+  conditional guidance: `If your final response has already been sent and these
+  results require no further work or response revision, submit only TASK.` This
+  avoids repeating a delivered response, not delivering one; newly arrived prompts
+  retain their distinct feedback under {§completion-defers-to-prompts}. Their
   `attrs` carry the pending kinds or the failure count. The rail's streak never
   enters the decision: a deferral is admissible at any streak, and a loop that
   keeps issuing operations before each claim pays one packet per claim, never a

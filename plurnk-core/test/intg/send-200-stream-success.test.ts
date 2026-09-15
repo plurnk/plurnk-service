@@ -106,7 +106,7 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
             const deferral = JSON.parse(entry?.rx ?? "{}") as { problem?: unknown; detail?: string; attrs?: { pending?: string[] } };
             assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
             assert.deepEqual(deferral.attrs?.pending, ["receipts", "failed-stream-results"]);
-            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet; a TASK now completes.");
+            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
             assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the execution row");
         } finally {
             ws.close();
