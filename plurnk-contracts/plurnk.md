@@ -115,7 +115,7 @@
     ````
 
 > [!CAUTION]
-> logTokensTotal must not exceed logTokensMax. KILL on log items and lines hides them from your context without deleting anything; successful log KILL receipts are not shown.
+> logTokensTotal must not exceed logTokensMax. KILL on log items and lines removes them from your context; successful log KILL receipts are not shown.
 
 ## `<scope|range>`
 
