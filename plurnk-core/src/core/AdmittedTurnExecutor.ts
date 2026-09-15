@@ -211,7 +211,7 @@ export default class AdmittedTurnExecutor {
             if (scheduledStatement === finalOp) await settleTurn();
             const result = await observed(
                 "op.dispatch",
-                { op: statement.op },
+                { op: writtenOp(statement) },
                 async (span) => {
                     let dispatchResult: DispatchResult;
                     if (statement.op === "BARE") {
@@ -275,7 +275,7 @@ export default class AdmittedTurnExecutor {
                     return dispatchResult;
                 },
             );
-            outcomes.push({ op: statement.op, status: result.status, problemType: result.problem?.type ?? null });
+            outcomes.push({ op: writtenOp(statement), status: result.status, problemType: result.problem?.type ?? null });
             results.push(result);
             rowSequence += (result.rowsWritten as number | undefined) ?? 1;
             if (failOnOperationError && result.status >= 400) {

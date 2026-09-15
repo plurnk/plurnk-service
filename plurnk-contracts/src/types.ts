@@ -40,7 +40,8 @@ export const isExecution = <T extends { readonly op?: string | undefined }>(stat
     "runtime" in statement;
 // The heading token as written: an operation keyword, or an execution's runtime. This is the
 // log row's `op`.
-export const writtenOp = (statement: PlurnkStatement | ClientStatement): string => isExecution(statement) ? statement.runtime : statement.op;
+export const writtenOp = <T extends PlurnkStatement | ClientStatement>(statement: T): Exclude<T["op"], undefined> | RuntimeTag =>
+    (isExecution(statement) ? statement.runtime : statement.op) as Exclude<T["op"], undefined> | RuntimeTag;
 
 // Runtime-neutral cardinal observation for one physical inference request.
 // The caller opens identity before I/O; the producer settles that exact

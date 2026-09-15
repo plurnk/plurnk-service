@@ -1264,7 +1264,7 @@ test("the fence name selects the execution while its modifiers retain their cont
     assert.equal(railed.body, "input");
     const bare = oneStatement("```sh\npwd\n```");
     if (!isExecution(bare)) assert.fail("expected an execution");
-    assert.equal(bare.runtime, null);
+    assert.equal(bare.runtime, "sh", "the default shell is explicit: a bare form is the sh runtime");
     assert.equal(bare.target, null);
     const alone = oneStatement("```node\nconsole.log(1)\n```");
     if (!isExecution(alone)) assert.fail("expected an execution");
@@ -1280,7 +1280,7 @@ test("the fence name selects the execution while its modifiers retain their cont
     // {§legacy-bracket-slot} — a bracket after the program or leading an executor fence is metadata
     // for that executor, never a selector: the fence name still selects the executor.
     for (const [input, executor, metadata] of [
-        ["```sh (tool.py) [python3]\ninput\n```", null, "python3"],
+        ["```sh (tool.py) [python3]\ninput\n```", "sh", "python3"],
         ["```python3 (tool.py) [node]\ninput\n```", "python3", "node"],
         ["```python3 [node] (tool.py)\ninput\n```", "python3", "node"],
     ] as const) {
@@ -1293,7 +1293,7 @@ test("the fence name selects the execution while its modifiers retain their cont
     }
     const cwdOnly = oneStatement('```sh [{"cwd": "sub"}]\nmake test\n```');
     if (!isExecution(cwdOnly)) assert.fail("expected an execution");
-    assert.equal(cwdOnly.runtime, null);
+    assert.equal(cwdOnly.runtime, "sh", "the default shell is explicit");
     assert.deepEqual(cwdOnly.metadata, ['{"cwd": "sub"}']);
     assert.equal(cwdOnly.body, "make test");
     const executorCwd = oneStatement('```node [{"cwd": "sub"}]\nconsole.log(process.cwd())\n```');
