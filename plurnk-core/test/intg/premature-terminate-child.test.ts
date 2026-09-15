@@ -12,7 +12,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperatio
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { execStmt, killStmt, dispositionStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -231,7 +231,7 @@ test("waiting cannot complete an empty join over a same-turn failed operation", 
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "the loop never records a false successful terminal");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
-        assert.ok((rows.find((row) => isExecution(row))?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
+        assert.ok((rows.find((row) => isExecutionOp(row.op))?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
         assert.equal(rows.find((row) => row.op === "TASK")?.status_rx, 102, "the failed result enters the next packet without an additional correction");
     } finally { await db.close(); }
 });

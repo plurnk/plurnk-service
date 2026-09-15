@@ -27,7 +27,7 @@ import { openMigrated, seedEnvelope, seedEntryWithChannel, insertWorkspace, inse
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, killStmt, execStmt } from "./_dsl.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -252,7 +252,7 @@ test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async (
         // ...but the log holds exactly ONE execution row for this turn — the lifecycle
         // event — never one row per chunk.
         const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turnId });
-        const execRows = rows.filter((r) => isExecution(r));
+        const execRows = rows.filter((r) => isExecutionOp(r.op));
         assert.equal(execRows.length, 1, "exactly one execution log row regardless of chunk count");
         assert.equal(rows.length, 1, "no per-chunk log rows accumulated for the turn");
 

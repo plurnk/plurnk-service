@@ -21,7 +21,8 @@ import { localPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    runtime, aside: null, target: target === null ? null : localPath(target),
+    // The default shell is explicit: a fixture with no runtime is an `sh` execution (plurnk-service #659).
+    runtime: runtime ?? "sh", aside: null, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

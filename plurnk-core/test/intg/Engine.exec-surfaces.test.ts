@@ -13,7 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecution, isExecutionOp } from "@plurnk/plurnk-contracts";
 
 test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async () => {
     const runtime = "search-api2";
@@ -43,7 +43,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             assert.equal(invocation.stream, undefined, "an unknown executor did not allocate an output resource");
             assert.match(packetSection(packets[0], "errors"), /log:\/\/\/1\/2\/2\/search-api2/);
             const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
-            assert.equal(JSON.parse(dispatched.find((row) => isExecution(row))!.rx).problem.instance, path,
+            assert.equal(JSON.parse(dispatched.find((row) => isExecutionOp(row.op))!.rx).problem.instance, path,
                 "the durable Problem and model-facing pointer address the same receipt");
             const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds![2]! });
             assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
@@ -68,7 +68,7 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the proposal decision.", policy: { proposals: "reject" } });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
-            const problem = JSON.parse(rows.find((row) => isExecution(row))!.rx).problem;
+            const problem = JSON.parse(rows.find((row) => isExecutionOp(row.op))!.rx).problem;
             assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/rejected");
             assert.equal(problem.instance, "log:///1/2/2/sh");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! });

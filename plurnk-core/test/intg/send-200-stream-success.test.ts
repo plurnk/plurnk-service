@@ -5,7 +5,7 @@ import test from "node:test";
 import { hostname } from "node:os";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecutionOp } from "@plurnk/plurnk-contracts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {
@@ -43,7 +43,7 @@ for (const command of ["true", "hostname"]) {
                 assert.match(observedPacket, /terminal/, "the next packet contains the stream conclusion");
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-                assert.ok(rows.some((r) => isExecution(r)), "the stream ran");
+                assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
                 assert.equal(rows.filter((r) => r.op === "SEND" && r.status_rx === 200).length, 2, "both messages were delivered");
                 assert.equal(rows.filter((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102).length, hasTask ? 1 : 0,
                     "an explicit blind completion is deferred; omission continues silently");
