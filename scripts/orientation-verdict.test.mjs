@@ -24,7 +24,7 @@ was available, so the current stabilization goal is unverified; that missing con
 };
 
 const digest = {
-    workers: [{ id: 1, name: "plurnk" }, { id: 2, name: "meta" }],
+    workers: [{ id: 1, name: "_plurnk" }, { id: 2, name: "meta" }],
     loops: [{ id: 1, worker_id: 1 }, { id: 2, worker_id: 2 }],
     turns: [
         { id: 1, loop_id: 1, model: null },

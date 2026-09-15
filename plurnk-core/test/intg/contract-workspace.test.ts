@@ -331,9 +331,9 @@ test("out-of-band change to a member remains truthful runtime-actor evidence", a
             "runtime reconciliation does not broadcast the project-file change into the model worker");
         const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
             workspace_id: ctx.workspaceId,
-            name: "plurnk",
+            name: "_plurnk",
         });
-        assert.ok(runtimeWorker, "filesystem reconciliation owns a reserved runtime worker");
+        assert.ok(runtimeWorker, "filesystem reconciliation owns the runtime worker");
         const runtimeRows = await db.engine_render_log.all<{ source: string | null; op: string; pathname: string | null }>({
             worker_id: runtimeWorker.id,
         });

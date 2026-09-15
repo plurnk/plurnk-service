@@ -192,7 +192,7 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
             { pathname: "/_plurnk/plurnk/stable.md", content: "# Stable" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
-        const runtime = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        const runtime = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
         assert.ok(runtime !== undefined, "maintenance has its actual runtime actor");
         const before = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: runtime.id });
         assert.ok(before !== undefined, "initial materialization recorded a maintenance loop");

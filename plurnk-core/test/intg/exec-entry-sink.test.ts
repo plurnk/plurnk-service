@@ -214,10 +214,10 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         assert.ok(entry !== undefined, "the https entry materialized at its exact resource coordinate");
         assert.equal(entry.scheme, "https");
         assert.equal(entry.authority, "example.org");
-        // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
+        // The ambience: the runtime worker carries ONE narration row per write (2 here), the
         // fs-fiction shape — origin _plurnk, source = the calling worker, weight on the meta line.
-        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
-        assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
+        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
+        assert.ok(plurnkWorker !== undefined, "the runtime worker exists");
         const narrationLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
         assert.ok(narrationLoop !== undefined);
         const [narrationTurn] = await db.test_list_turns_in_loop.all<{
@@ -312,7 +312,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
 
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
             workspace_id: workspaceId,
-            name: "plurnk",
+            name: "_plurnk",
         });
         assert.ok(plurnkWorker !== undefined);
         const narrationLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });

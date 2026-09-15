@@ -601,7 +601,7 @@ test("an out-of-band disk change is runtime evidence, not a workspace broadcast"
         const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; folded: string; attrs: string; weight: number }>({ worker_id: workerA });
         assert.ok(!rows.some((r) => r.source === "file"), "project-file divergence does not enter an unrelated worker log");
-        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
         assert.ok(runtimeWorker, "the runtime actor owns the reconciliation evidence");
         const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string; weight: number }>({ worker_id: runtimeWorker!.id });
         const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "notes.md");
@@ -644,7 +644,7 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
         assert.equal(channel, undefined, "a deleted file cannot remain READable from a stale body channel");
         const rows = await db.engine_render_log.all<{ source: string | null; pathname: string }>({ worker_id: workerId });
         assert.ok(!rows.some((row) => row.source === "file"), "the deletion does not broadcast into the model worker");
-        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
         assert.ok(runtimeWorker);
         const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: runtimeWorker!.id });
         const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "removed.md");

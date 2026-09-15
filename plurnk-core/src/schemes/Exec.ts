@@ -38,6 +38,7 @@ import {
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import Turn from "../core/Turn.ts";
+import RuntimeWorker from "../core/RuntimeWorker.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
@@ -972,10 +973,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     }),
                 );
                 if (narration === null) {
-                    const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
-                        ?? await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "_plurnk" });
-                    if (worker === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
-                    const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: worker.id });
+                    const workerId = await RuntimeWorker.ensure(db, ctx.workspaceId);
+                    const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: workerId });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
                     const turn = await Turn.open(db, {
                         loopId: loop.id,
@@ -983,7 +982,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         kind: "operation",
                     });
                     narration = {
-                        workerId: worker.id,
+                        workerId,
                         loopId: loop.id,
                         loopSeq: loop.sequence,
                         turnId: turn.id,

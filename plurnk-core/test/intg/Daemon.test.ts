@@ -1063,7 +1063,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal(problem.workerId, clientWorker.id);
             const kernelWorker = await db.envelope_insert_worker.get<{ id: number }>({
                 workspace_id: created.id,
-                name: "plurnk",
+                name: "_plurnk",
                 origin: "_plurnk",
             });
             if (kernelWorker === undefined) throw new Error("kernel worker insert returned no row");

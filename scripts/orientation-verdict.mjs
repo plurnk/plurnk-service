@@ -31,7 +31,7 @@ const setupErrors = (digest) => {
         if (Number(entry?.status_rx) < 400) return false;
         const turn = turns.get(entry.turn_id);
         const loop = loops.get(turn?.loop_id);
-        return workers.get(loop?.worker_id)?.name === "plurnk";
+        return workers.get(loop?.worker_id)?.name === "_plurnk";
     });
 };
 

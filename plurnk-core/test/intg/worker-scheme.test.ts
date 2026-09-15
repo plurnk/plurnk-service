@@ -19,6 +19,7 @@ import type {
     FindStatement,
 } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import type { InjectWorkerNotify } from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
@@ -891,27 +892,22 @@ for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "p
     } finally { await db.close(); }
 });
 
-test("the reserved runtime worker is an ordinary named space: readable and writable by everyone", async () => {
+test("the runtime worker is an ordinary named space: readable and writable by everyone", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
         const workspaceId = await insertWorkspace(db, `plurnk-ro-${crypto.randomUUID()}`);
-        await insertWorker(db, workspaceId, null, "plurnk"); // the kernel principal must resolve by name
         const meId = await insertWorker(db, workspaceId, null, "me");
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
-        const kernelId = (await db.worker_resolve_by_name.get<{ id: number }>({
-            workspace_id: workspaceId,
-            name: "plurnk",
-        }))?.id;
-        assert.ok(kernelId);
-        const kernelLoop = await insertLoop(db, kernelId!, 1, "runtime evidence");
+        const kernelId = await RuntimeWorker.ensure(db, workspaceId);
+        const kernelLoop = await insertLoop(db, kernelId, 1, "runtime evidence");
         const kernelTurn = await insertTurn(db, kernelLoop, 1, 102);
         const runtimeWrite = await engine.dispatch({
-            statement: editStmt(workerEntry("plurnk", "runtime.md"), "private runtime evidence"),
+            statement: editStmt(workerEntry("_plurnk", "runtime.md"), "private runtime evidence"),
             workspaceId,
-            workerId: kernelId!,
+            workerId: kernelId,
             loopId: kernelLoop,
             turnId: kernelTurn,
             sequence: 1,
@@ -920,7 +916,7 @@ test("the reserved runtime worker is an ordinary named space: readable and writa
         assert.equal(runtimeWrite.status, 201);
 
         const read = await engine.dispatch({
-            statement: readStmt(workerEntry("plurnk", "runtime.md")),
+            statement: readStmt(workerEntry("_plurnk", "runtime.md")),
             workspaceId,
             workerId: meId,
             loopId,
@@ -929,7 +925,7 @@ test("the reserved runtime worker is an ordinary named space: readable and writa
             origin: "model",
         });
         assert.equal(read.status, 200, "an independent root reads the runtime actor's named space (#394)");
-        const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "runtime.md"), "updated", fullReplace), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
+        const write = await engine.dispatch({ statement: editStmt(workerEntry("_plurnk", "runtime.md"), "updated", fullReplace), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(write.status, 200, "the runtime actor has no privileged scratch access");
         const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/runtime.md" });
         assert.equal(leaked, undefined, "named writes do not create a second copy in shared scratch");

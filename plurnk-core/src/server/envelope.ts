@@ -226,17 +226,6 @@ export default class Envelope {
         return worker.id;
     }
 
-    // Self-hosting keystone ({§actor-boundary-self-hosting}): the workspace's
-    // reserved `plurnk` worker. One durable worker per workspace, reused across
-    // the ephemeral administrative loops that dispatch ordinary runtime-owned ops.
-    static async ensurePlurnkWorker(db: Db, workspaceId: number): Promise<number> {
-        const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
-        if (existing !== undefined) return existing.id;
-        const worker = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "_plurnk" });
-        if (worker === undefined) throw new Error("ensurePlurnkWorker: worker insert returned no row");
-        return worker.id;
-    }
-
     static async listWorkersForWorkspace(
         db: Db,
         workspaceId: number,

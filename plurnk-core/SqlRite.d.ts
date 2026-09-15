@@ -265,6 +265,7 @@ export class SqlRiteSync {
 	retention_retire_responses: SqlRiteSyncPreparedStatements;
 	retention_collect_packet_items: SqlRiteSyncPreparedStatements;
 	retention_collect_derivations: SqlRiteSyncPreparedStatements;
+	runtime_worker_get: SqlRiteSyncPreparedStatements;
 	runtime_worker_ensure: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
@@ -527,6 +528,7 @@ export default class SqlRite {
 	retention_retire_responses: SqlRitePreparedStatements;
 	retention_collect_packet_items: SqlRitePreparedStatements;
 	retention_collect_derivations: SqlRitePreparedStatements;
+	runtime_worker_get: SqlRitePreparedStatements;
 	runtime_worker_ensure: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;

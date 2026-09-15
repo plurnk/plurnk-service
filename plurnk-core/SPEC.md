@@ -51,7 +51,7 @@ flowchart LR
 
 | Term              | Layer                 | Meaning |
 |-------------------|-----------------------|---------|
-| **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the reserved `plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
+| **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the `_plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
 | **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
 | **worker**        | Core                  | Durable actor and history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
 | **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
@@ -302,13 +302,13 @@ never wake; they queue until another cause produces a turn ({§env-delta}). The
 obligation edge is continuation control, not a third door through which
 arbitrary workspace state can enter.
 
-§actor-boundary-self-hosting **Use the actor path when the work has an operation; retain irreducible rails in the kernel.** The workspace has one reserved `plurnk` Worker. `DispatchAsPlurnk` opens ordinary administrative loops and turns for its work. Generated references are shared entries; the runtime actor has no privileged scratch access.
+§actor-boundary-self-hosting **Use the actor path when the work has an operation; retain irreducible rails in the kernel.** The workspace has one runtime Worker, `_plurnk` (origin `_plurnk`), a name `WORKER_NAME` never admits, so no model or client can mint or resume it ({§worker-name-minting}). `DispatchAsPlurnk` opens ordinary administrative loops and turns for its work. Generated references are shared entries; the runtime actor has no privileged scratch access.
 
 | Work                                    | Owning path                                                         | Why                                                                                 |
 | --------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Workspace reference documents | Runtime actor; `_plurnk` EDIT through engine dispatch. | Maintaining generated workspace scratch is an ordinary operation. |
 | Git membership and disk materialization | Kernel `GitMembership` / entry CRUD.                                | Ingesting existing disk state is not a model-authored EDIT.                         |
-| Disk-divergence narration               | Kernel writes an EDIT-shaped `source=file` row to the `plurnk` log. | It reports an environment event honestly; no operation is fabricated as having run. |
+| Disk-divergence narration               | Kernel writes an EDIT-shaped `source=file` row to the `_plurnk` log. | It reports an environment event honestly; no operation is fabricated as having run. |
 | Search derivation and catalog render    | Kernel.                                                             | They are indexes and read-only projections, not entry operations.                   |
 | Packet assembly and budget rails        | Kernel.                                                             | They are the execution substrate on which actor operations depend.                  |
 
@@ -323,7 +323,7 @@ file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
 remains system-prompt policy ({§policy-sections}); the stunt carries only
 local repo guidance.
 
-§actor-boundary-doc-injection **Generated documents use the actor path.** Workspace references and projected project instructions are materialized in `worker:///_plurnk/` through the reserved actor's ordinary maintenance turns. Their exact programs and operation evidence remain durable in that actor's log; generation is not a hidden database write.
+§actor-boundary-doc-injection **Generated documents use the actor path.** Workspace references and projected project instructions are materialized in `worker:///_plurnk/` through the runtime actor's ordinary maintenance turns. Their exact programs and operation evidence remain durable in that actor's log; generation is not a hidden database write.
 
 Maintenance turns create neither lineage nor commons broadcasts. Their loops are not work-lifecycle observations ({§application-worker-observation}, {§application-loop-observation}); `work_loops` excludes loops whose turns are all maintenance, but retains empty queued loops and loops containing any other purpose. Scheduling and forensic history remain intact.
 
@@ -476,7 +476,7 @@ continues to decompose other authorities without treating them as mintable.
 
 §worker-generated-subtree **Generated documents share `worker:///_plurnk/`.** Project instructions (`agents.md` and subtree-scoped `instructions/**`), scheme/runtime references (`plurnk/**`), tool details (`tools/**`), and family catalogs are workspace resources. Agent Skills retain their own trees at `skill://<name>/` ({§skills-resources}).
 
-The subtree has ordinary scratch access, not an ACL. Runtime maintenance reconciles it from workspace Functionality through the reserved actor's ordinary turns ({§actor-boundary-doc-injection}); reconciliation may replace manual edits. There are no per-Worker copies or fork rederivation. A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}).
+The subtree has ordinary scratch access, not an ACL. Runtime maintenance reconciles it from workspace Functionality through the runtime actor's ordinary turns ({§actor-boundary-doc-injection}); reconciliation may replace manual edits. There are no per-Worker copies or fork rederivation. A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}).
 
 §worker-control-addressing **Explicit worker control addresses are authority-only.**
 WORK and FORK may omit their address to allocate one ({§worker-auto-name}).
@@ -3028,7 +3028,7 @@ body prefixes.
   | Supplied bytes | Retain the original bytes and declared mimetype in an ordinary channel ({§binary-parity}). |
   | Supplied text | Preserve text resources; HTTP/HTML materialization retains source and derived channels under {§html-materialization}. |
   | Null content | Acquire an HTTP(S) resource through the checked WebFetcher, using the same configured materializers as exact HTTP acquisition ({§http-materializer-plugins}). |
-  | Durable evidence | One typed EDIT event in the reserved runtime actor, with the calling Worker as causal source. Binary evidence describes the resource; its complete bytes live in the resource channel. |
+  | Durable evidence | One typed EDIT event in the runtime actor, with the calling Worker as causal source. Binary evidence describes the resource; its complete bytes live in the resource channel. |
   | Model orientation | The executor includes returned addresses in its result. Publication does not independently wake inference or broadcast an observer row ({§env-delta-entry-materialization}). READ controls content acquisition and native delivery. |
 
   A failed acquisition, projection, or write rejects the sink with its cause; it does not erase the upstream operation or imply no external effect. Parallel acquisition begins before the per-invocation serialized write chain. A rejected publication leaves that chain usable. Execution completion and shutdown await the whole chain; one lazily created runtime narration turn owns the invocation's publication evidence.

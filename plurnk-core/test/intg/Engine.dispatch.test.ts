@@ -1,5 +1,5 @@
 import test from "node:test";
-import Envelope from "../../src/server/envelope.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import assert from "node:assert/strict";
 import { PlanValue } from "@plurnk/plurnk-contracts";
 import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, DispositionStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
@@ -863,9 +863,9 @@ test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client ow
 test("Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
-        await Envelope.ensurePlurnkWorker(db, env.workspaceId);
+        await RuntimeWorker.ensure(db, env.workspaceId);
         const result = await engine.dispatch({
-            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/private.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/private.md", query: null, fragment: null }, body: "y" }),
+            statement: editStmt({ target: { kind: "url", raw: "worker://_plurnk/private.md", scheme: "worker", username: null, password: null, hostname: "_plurnk", port: null, pathname: "/private.md", query: null, fragment: null }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
