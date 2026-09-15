@@ -20,7 +20,7 @@ import type {
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import type { ContentBlock, Progress, Tool } from "@modelcontextprotocol/client";
 import { resourcePath } from "./McpResources.ts";
-import ResourceContent from "./ResourceContent.ts";
+import ContentProjection from "./ContentProjection.ts";
 import type { ToolPolicy } from "./config.ts";
 import { toolRegistry as presentTools } from "./ToolPresentation.ts";
 
@@ -96,20 +96,16 @@ export const toolResultBody = async (result: ToolResultShape, runtime: string, e
     }
     const rendered: string[] = [];
     for (const part of parts) {
-        if (part.type === "text") {
-            rendered.push(part.text);
-            continue;
-        }
-        if (part.type === "resource_link") {
-            rendered.push(`<${runtime}://${resourcePath(part.uri)}> — ${part.name}`);
-            continue;
-        }
-        if (entry === undefined) throw new Error("MCP content requires the executor resource publisher.");
-        const name = part.type === "resource" ? ResourceContent.name(part.resource) : undefined;
-        const channel = part.type === "resource" ? ResourceContent.channel(part.resource)
-            : { content: "", bytes: Buffer.from(part.data, "base64"), mimetype: part.mimeType };
-        const uri = await entry(null, channel.bytes ?? channel.content, { mimetype: channel.mimetype, ...(name === undefined ? {} : { name }) });
-        rendered.push(`<${uri}> — ${channel.mimetype}`);
+        const projected = await ContentProjection.project(part, {
+            address: (uri) => `${runtime}://${resourcePath(uri)}`,
+            ...(entry === undefined ? {} : {
+                publish: (channel, name) => entry(null, channel.bytes ?? channel.content, {
+                    mimetype: channel.mimetype, ...(name === undefined ? {} : { name }),
+                }),
+            }),
+        });
+        rendered.push(projected.type === "text" ? projected.text
+            : `<${projected.uri}> — ${part.type === "resource_link" ? projected.name : projected.mimeType}`);
     }
     const text = rendered.join("\n");
     const formatted = formatJsonDocument(text);

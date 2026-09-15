@@ -14,6 +14,7 @@ import {
 import { ErrorDetail, ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import ResourceContent from "./ResourceContent.ts";
+import ContentProjection from "./ContentProjection.ts";
 
 const ROOT = "/";
 const RESOURCES = "/resources";
@@ -219,9 +220,13 @@ export default class McpResources {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<void> {
-        const encoded = request.pathname.slice(PROMPT_PREFIX.length);
-        if (encoded.length === 0 || encoded.includes("/")) {
+        const [encoded, folder, leaf, ...tail] = request.pathname.slice(PROMPT_PREFIX.length).split("/");
+        if (!encoded || (folder !== undefined && (folder !== "resources" || !leaf || tail.length !== 0))) {
             throw new ResourceAddressError(`Invalid MCP prompt address '${request.pathname}'.`);
+        }
+        if (folder !== undefined) {
+            requireEntrySuccess(await ctx.entries.read(request.pathname));
+            return;
         }
         let name: string;
         try {
@@ -245,12 +250,29 @@ export default class McpResources {
             ctx.signal,
             (interaction) => ctx.interactions.request(interaction),
         );
+        const names = new ResourceNames();
+        const messages = [];
+        for (const message of result.messages) {
+            const content = await ContentProjection.project(message.content, {
+                address: (uri) => ctx.entries.address(resourcePath(uri)),
+                publish: async (channel, name) => {
+                    const child = `${request.pathname}/resources/${names.allocate(name, JSON.stringify(message.content))}`;
+                    requireEntrySuccess(await ctx.entries.write(child, {
+                        channels: { body: channel },
+                        attributes: { kind: RESOURCE_KIND },
+                    }));
+                    return ctx.entries.address(child);
+                },
+            });
+            messages.push({ ...message, content });
+        }
         requireEntrySuccess(await ctx.entries.write(request.pathname, {
             channels: {
                 body: {
-                    content: JSON.stringify(result, null, 2),
+                    content: JSON.stringify({ ...result, messages }, null, 2),
                     mimetype: "application/json",
                 },
+                json: { content: JSON.stringify(result, null, 2), mimetype: "application/json" },
             },
             attributes: { kind: PROMPT_KIND },
         }));

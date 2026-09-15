@@ -76,10 +76,10 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         authorityRef: "2026-07-28 @ 5f5440bb26a62e2cf3440b92da5a667efa03b267",
         advertised: "never",
         interactive: false,
-        disposition: "partial",
+        disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpResources 'prompt definitions and retrieval use the server resource authority'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
-        note: "Discovery, arguments, and elicitation compose through the resource authority. Retrieved messages retain roles and content as JSON; non-text prompt parts do not yet receive typed resource projection.",
+        evidence: ["{§mcp-core-matrix}", "{§mcp-prompt-content}", "plurnk-mcp McpResources 'prompt definitions and retrieval use the server resource authority'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-core/test/intg/mcp-prompt-composition.test.ts"],
+        note: "Discovery, arguments, and elicitation compose through the resource authority. Messages retain roles/order as data; typed content snapshots and lazy links share tool projection. Native modality support belongs to the core attachment/provider contract.",
     },
     {
         id: "completion",

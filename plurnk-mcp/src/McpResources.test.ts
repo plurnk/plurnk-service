@@ -9,6 +9,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
+import type { GetPromptResult, ResourceLink } from "@modelcontextprotocol/client";
 import McpExecutor from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
@@ -194,6 +195,59 @@ test("resource materialization routes MCP elicitation through SchemeCtx", async 
     } finally {
         await connection.close();
     }
+});
+
+test("prompt content keeps roles and order while exposing typed snapshots and lazy resource links", async () => {
+    const result: GetPromptResult = {
+        description: "Inspect these resources.",
+        messages: [
+            { role: "user", content: { type: "text", text: "Keep this text unchanged.\n" } },
+            { role: "assistant", content: { type: "image", data: "AQID", mimeType: "image/png", annotations: { audience: ["assistant"] } } },
+            { role: "user", content: { type: "audio", data: "BAUG", mimeType: "audio/wav" } },
+            { role: "user", content: { type: "resource", resource: { uri: "test:///notes.txt", text: "notes\r\n", mimeType: "text/plain" } } },
+            { role: "user", content: { type: "resource", resource: { uri: "test:///notes.txt", blob: "BwgJ", mimeType: "application/octet-stream" } } },
+            { role: "user", content: { type: "resource_link", name: "remote", uri: "test:///remote", mimeType: "image/png" } },
+        ],
+    };
+    const calls: unknown[] = [];
+    const connection = {
+        async getPrompt(...args: unknown[]) { calls.push(args.slice(0, 2)); return result; },
+    } as unknown as ServerConnection;
+    const resources = new McpResources("echo", connection, {} as ServerCatalog);
+    const { ctx, entries } = context();
+    const pathname = "/prompts/inspect";
+    const base = preparationRequest(pathname);
+    assert.equal(base.target.kind, "url");
+    if (base.target.kind !== "url") throw new Error("Expected URL fixture");
+    const request = { ...base, target: { ...base.target, query: "topic=images" } };
+    assert.equal((await resources.prepareRepresentation(request, ctx)).status, 200);
+    assert.deepEqual(calls, [["inspect", { topic: "images" }]]);
+    const root = entries.get(pathname)!;
+    const projected = JSON.parse(root.channels.body!.content) as GetPromptResult;
+    assert.deepEqual(projected.messages.map(({ role }) => role), result.messages.map(({ role }) => role));
+    assert.deepEqual(projected.messages[0], result.messages[0]);
+    assert.deepEqual(JSON.parse(root.channels.json!.content), result, "raw protocol evidence is unchanged");
+    assert.doesNotMatch(root.channels.body!.content, /AQID|BAUG|BwgJ/u);
+    const parts = projected.messages.slice(1).map(({ content }) => {
+        assert.equal(content.type, "resource_link");
+        return content as ResourceLink;
+    });
+    assert.match(parts[0]!.uri, /echo:\/\/owner\/prompts\/inspect\/resources\/[a-f0-9]{8}$/u);
+    assert.deepEqual(parts[0]!.annotations, { audience: ["assistant"] });
+    assert.match(parts[2]!.uri, /\/notes\.txt$/u);
+    assert.match(parts[3]!.uri, /\/notes\.txt\.[a-f0-9]{8}$/u);
+    assert.equal(parts[4]!.uri, "echo://owner/resources/test%3A%2F%2F%2Fremote");
+    const children = parts.slice(0, 4).map(({ uri }) => new URL(uri).pathname);
+    assert.deepEqual(entries.get(children[0]!)!.channels.body!.bytes, Buffer.from([1, 2, 3]));
+    assert.equal(entries.get(children[1]!)!.channels.body!.mimetype, "audio/wav");
+    assert.equal(entries.get(children[2]!)!.channels.body!.content, "notes\r\n");
+    assert.deepEqual(entries.get(children[3]!)!.channels.body!.bytes, Buffer.from([7, 8, 9]));
+    for (const path of children) assert.equal((await resources.prepareRepresentation(preparationRequest(path), ctx)).status, 200);
+    assert.equal(calls.length, 1, "reading a snapshot never re-executes the argument-bearing prompt");
+    assert.equal((await resources.prepareRepresentation(preparationRequest(`${pathname}/resources/missing`), ctx)).status, 404);
+    assert.equal(calls.length, 1, "a missing snapshot does not silently re-execute the prompt");
+    assert.equal((await resources.prepareRepresentation(request, ctx)).status, 200);
+    assert.equal(entries.get(pathname)!.channels.body!.content, root.channels.body!.content, "reconstructed resources keep their names");
 });
 
 test("resource facet rejects malformed encoded addresses as non-retryable client errors", async () => {

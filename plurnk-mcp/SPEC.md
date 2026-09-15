@@ -548,6 +548,16 @@ standalone `blob` content block is not a modern `tools/call` content member
 protocol-invalid. Size limits and MIME trust remain ordinary channel and
 entry policy, not MCP-specific rules.
 
+§mcp-prompt-content Retrieved prompts retain their ordered message list, roles,
+text, and metadata as data, not conversation injections. The same content
+projection used for tools replaces non-text parts with resource links: embedded
+content becomes typed snapshots under the prompt's `resources/` folder; remote
+links resolve through the server resource authority. Reading a snapshot does
+not retrieve the prompt again or discard its arguments. A missing snapshot is
+not found, never an implicit prompt re-execution. The prompt's `#json` preserves
+the complete original response. Media acquisition, native delivery, retention,
+and curation use the ordinary READ contract, not a separate prompt lifecycle.
+
 ## §mcp-apps-exclusion MCP Apps exclusion
 
 Plurnk does not advertise or implement MCP Apps. An Apps host must sandbox
