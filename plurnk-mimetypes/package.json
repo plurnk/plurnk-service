@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "1.17.0",
+    "version": "1.18.0",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler packages.",
     "keywords": [
         "plurnk",
@@ -63,7 +63,7 @@
         "grammars:update": "node --conditions=plurnk-dev scripts/update-grammars.mjs",
         "grammars:publish": "node --conditions=plurnk-dev scripts/publish-grammars.mjs",
         "deps:check": "node --conditions=plurnk-dev scripts/deps-check.mjs",
-    "memory:probe": "node --expose-gc --conditions=plurnk-dev --env-file=.env.defaults scripts/memory-probe.mjs",
+        "memory:probe": "node --expose-gc --conditions=plurnk-dev --env-file=.env.defaults scripts/memory-probe.mjs",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test",
         "prepack": "npm run build"
     },
@@ -107,8 +107,8 @@
         "@types/picomatch": "^4.0.3"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.17.0",
-        "@plurnk/plurnk-meta": "1.17.0",
+        "@plurnk/plurnk-contracts": "1.18.0",
+        "@plurnk/plurnk-meta": "1.18.0",
         "@xmldom/xmldom": "^0.9.10",
         "antlr4ng": "^3.0.16",
         "json-p3": "2.2.2",

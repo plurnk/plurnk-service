@@ -1,8 +1,13 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-markdown",
-    "version": "1.17.0",
+    "version": "1.18.0",
     "description": "text/markdown mimetype handler for plurnk-service.",
-    "keywords": ["plurnk","mimetype","markdown","gfm"],
+    "keywords": [
+        "plurnk",
+        "mimetype",
+        "markdown",
+        "gfm"
+    ],
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -52,7 +57,7 @@
         "yaml": "^2.9.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.17.0"
+        "@plurnk/plurnk-mimetypes": "^1.18.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-text-markdown#readme",
     "bugs": {
