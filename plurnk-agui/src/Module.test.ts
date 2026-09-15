@@ -1262,7 +1262,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             workerId: 20,
             loopId: 9,
             turnId: 1,
-            runtime: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
+            op: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
             policy: DEFAULT_LOOP_POLICY,
