@@ -34,8 +34,8 @@ per-connection and absent from a legacy peer.
 ## §mcp-core-matrix Core capability matrix
 
 The accountable capability matrix lives in `capabilityMatrix.ts`
-({§mcp-capability-matrix}); this section states the core surface contract the
-matrix rows cite.
+({§mcp-capability-matrix}). This table describes the pinned revision;
+{§mcp-authority} owns the SDK-negotiated older-peer surface.
 
 | Surface | Upstream contract | Plurnk host disposition |
 |---|---|---|
@@ -107,7 +107,7 @@ nothing task-shaped is written to SQLite and no MCP sidecar lifecycle exists.
 | Deprecated | Roots, Sampling, Logging | Do not advertise or implement; use explicit resources/tool arguments, Plurnk's provider layer, and stderr/OpenTelemetry respectively |
 | Deprecated | HTTP+SSE transport; Sampling `includeContext` values | Do not adopt; use Streamable HTTP and no Sampling |
 | Deprecated fallback | OAuth Dynamic Client Registration | Prefer pre-registration, then CIMD when advertised; use DCR only when authorization-server metadata advertises `registration_endpoint`; otherwise fail without probing an inferred endpoint |
-| Removed | `initialize`, `notifications/initialized`, `Mcp-Session-Id`, HTTP GET event stream | Reject the legacy lifecycle; every request is stateless and self-contained |
+| Removed at pinned revision | `initialize`, `notifications/initialized`, `Mcp-Session-Id`, HTTP GET event stream | Absent on modern connections; the negotiated older-peer lifecycle remains SDK-owned ({§mcp-authority}) |
 | Removed | `ping`, `logging/setLevel`, `notifications/roots/list_changed` | Do not send, handle, or teach |
 | Removed | `resources/subscribe`, `resources/unsubscribe`, SSE resumption and `Last-Event-ID` | Use `subscriptions/listen`; reissue a lost request with a new ID |
 | Removed | Legacy Tasks `tasks/list`, `tasks/result`, and task-augmentation request fields | Use only the negotiated final Tasks extension |
@@ -140,14 +140,14 @@ conformance stays a separate named gate, never folded into a matrix row.
 | Binding | Contract |
 |---|---|
 | stdio | Spawn one exact executable with an explicit argument array and no shell; newline-delimited JSON-RPC is the only stdout/stdin traffic; stderr is diagnostic; shutdown closes stdin, waits, then terminates if necessary |
-| Streamable HTTP | Send one POST per request or notification; accept JSON or SSE responses; close the response stream to cancel; never open the removed general GET stream |
+| Streamable HTTP | Send one POST per request or notification; accept JSON or SSE responses; close the response stream to cancel; modern connections never open the removed general GET stream |
 
 §mcp-stdio-process-ownership A stdio connection owns the complete process group
 created for its server. Ordinary closure forwards stdin EOF and permits a
 bounded graceful exit; an expired shutdown bound or disappearance of the host
 process forcibly terminates the group, including descendants.
 
-Every HTTP request carries matching `MCP-Protocol-Version` and `Mcp-Method`
+At the pinned revision, HTTP requests carry matching `MCP-Protocol-Version` and `Mcp-Method`
 headers. Named requests also carry `Mcp-Name`; declared primitive tool
 parameters carry validated `Mcp-Param-*` headers. Header names compare
 case-insensitively, and body/header disagreement fails instead of guessing.
@@ -482,7 +482,8 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | Task handle | Keeps the original execution stream active, follows `tasks/get` and selected Task notifications, and settles that same stream with the terminal result or error. |
 | Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
 | Task cancellation | The owning execution's cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |
-| List/resource invalidation | List changes invalidate SDK catalogs and atomically refresh the attachment snapshot. Updates to selected resource URIs invalidate their SDK cache entries; private entries remain authorization-partitioned. |
+| List invalidation | Invalidates SDK catalogs and atomically refreshes the attachment snapshot. |
+| Selected resource update | Invalidates that URI's SDK cache entry; a subsequent READ acquires current content. Private entries remain authorization-partitioned. Earlier READ receipts stay unchanged; ordinary remote changes neither broadcast nor wake workers ({§actor-boundary-lineage-attention}). |
 | Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
 
 The general executor interaction contract, not this package, owns client
@@ -524,7 +525,8 @@ complete result, including metadata and annotations, remains available in
 Unnamed resources receive eight-character hexadecimal identifiers, not ordinal
 labels. No binary base64 is copied into the default result body. Listing a
 resource creates no native model attachment; READ uses {§packet-attachment-parts},
-including scoped byte reads, supported modalities, and single-request delivery.
+including scoped byte reads, supported modalities, and the owning READ's retention
+and curation lifecycle.
 Resource publication is passive; completion of the originating execution retains
 its ordinary wake semantics. A single `resources/read` content item becomes the
 resource's typed body; multiple items become named children under its `resources/`

@@ -43,7 +43,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-authority}", "{§mcp-core-matrix}", "plurnk-core intg 'AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery'"],
-        note: "Retains identity, instructions, capabilities, versions, and cache hints; modern peers only.",
+        note: "Modern peers use server/discover; older peers use the SDK's negotiated initialization surface. No extension wire is imposed on an older peer.",
     },
     {
         id: "tools",
@@ -66,7 +66,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-mcp McpResources 'resource facet materializes current MCP resources as ordinary entries'"],
+        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-core/test/intg/mcp-resource-owners.test.ts", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
         note: "Published through the server's resource authority into Plurnk entries; not a raw client surface.",
     },
     {
@@ -76,10 +76,10 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         authorityRef: "2026-07-28 @ 5f5440bb26a62e2cf3440b92da5a667efa03b267",
         advertised: "never",
         interactive: false,
-        disposition: "supported",
+        disposition: "partial",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpResources 'prompt definitions and retrieval use the server resource authority'"],
-        note: "Prompt definitions and retrieval share the server resource authority.",
+        evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpResources 'prompt definitions and retrieval use the server resource authority'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
+        note: "Discovery, arguments, and elicitation compose through the resource authority. Retrieved messages retain roles and content as JSON; non-text prompt parts do not yet receive typed resource projection.",
     },
     {
         id: "completion",
@@ -113,8 +113,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         advertised: "never",
         interactive: false,
         disposition: "supported",
-        composed: false,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'resource reads maintain one overlap-replaced subscription for selected cache entries'"],
+        composed: true,
+        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'resource reads maintain one overlap-replaced subscription for selected cache entries'", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
         note: "Freshness honored with notification invalidation; private entries partitioned by authorization context.",
     },
     {
@@ -126,8 +126,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'"],
-        note: "One current filter for list changes, cached resource URIs, and active Task IDs; overlap replacement and re-listen after loss.",
+        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
+        note: "One current filter for list changes, cached resource URIs, and active Task IDs; overlap replacement and re-listen after loss. Resource changes invalidate cache, not worker history or attention.",
     },
     {
         id: "progress",
@@ -174,7 +174,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core intg ClientInteractions"],
+        evidence: ["{§mcp-core-matrix}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
         note: "Opaque requestState echoed byte-for-byte; only the originating request retried with a fresh ID.",
     },
     {
@@ -186,7 +186,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp Module 'form and URL responses are validated before retrying the origin'", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk TUI question tool (plurnk repo)", "plurnk.nvim lua/plurnk/question.lua (plurnk.nvim repo)"],
+        evidence: ["{§mcp-core-matrix}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk TUI question tool (plurnk repo)", "plurnk.nvim lua/plurnk/question.lua (plurnk.nvim repo)"],
         note: "Modes form and url advertised; routed through Plurnk's client-owned interaction lifecycle.",
     },
     {
@@ -222,7 +222,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-tasks}", "{§tasks-lifetime}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core intg ClientInteractions", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
+        evidence: ["{§mcp-tasks}", "{§tasks-lifetime}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
         note: "Advertised only when the complete in-process lifecycle is active; never core conformance. Task input routes through the general interaction owner; handles are in-process per {§tasks-lifetime}.",
     },
     {
