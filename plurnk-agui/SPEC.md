@@ -316,7 +316,7 @@ successfully transported management Run; it does not turn the Run into
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread conversation by default, preserving validated {§entry-read-result}. |
 | `op.exec`                | Workspace | `command`                                            | Constructs one execution statement on the default `sh` runtime and calls `ApplicationPort.dispatchClientAction` on the client worker, attached to the conversation Worker (`conversationWorkerId`, else the workspace's model worker) for Functionality.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
-| `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
+| `op.look`                | Workspace | `text`, `workerId?`                                  | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection as the conversation worker. |
 | `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's conversation worker.                                                       |
 | `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
 | `worker.model.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
@@ -388,6 +388,12 @@ a parser fact.
 
 Parser failures use `stage: "parsing"`; action-shape failures use
 `stage: "action-validation"`. Both are non-retryable.
+
+The observation resolves as the thread's conversation worker, so `log:///`,
+`reasoning:///`, and `ops:///` read as the model sees them; `workerId` pins another workspace worker, the
+way `entry.read` does. The closed observation segment stays on the connection's own
+worker: a look never adds a loop to the conversation, so its lifecycle, packet count, and
+history are unchanged by inspection.
 
 §agui-module-actions **One public action namespace.** Core rejects empty and
 duplicate extension registrations ({§module-action-registration}). At module

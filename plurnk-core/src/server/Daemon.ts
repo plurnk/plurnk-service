@@ -952,11 +952,16 @@ export default class Daemon implements ApplicationPort {
     // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
     // required by plugin context and relative log:/// addresses without impersonating an active
     // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
-    async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+    // {§op-look} — the segment is the acting worker's; the READ resolves as the perspective worker.
+    async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement; perspectiveWorkerId?: number }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
+        const perspective = args.perspectiveWorkerId === undefined
+            ? workerId
+            : ClientInput.assertId("operation.look", "perspectiveWorkerId", args.perspectiveWorkerId);
         const { statement } = args;
         await this.#assertWorkerOwned(workspaceId, workerId);
+        if (perspective !== workerId) await this.#assertWorkerOwned(workspaceId, perspective);
         const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
             const releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
@@ -964,7 +969,7 @@ export default class Daemon implements ApplicationPort {
                 await this.#residency.reconcile(workspaceId);
                 const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
                 try {
-                    const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
+                    const result = await this.#engine.look({ statement, workspaceId, workerId: perspective, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
                     await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                     return result;
                 } catch (error) {

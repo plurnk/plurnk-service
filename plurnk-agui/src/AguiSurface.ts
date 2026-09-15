@@ -132,7 +132,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "op.parse": action("workspace", object({ text: NONEMPTY }, ["text"]), object({
         results: array(OPERATION_RESULT),
     }, ["results"])),
-    "op.look": action("workspace", object({ text: NONEMPTY }, ["text"]), OPERATION_RESULT),
+    "op.look": action("workspace", object({ text: NONEMPTY, workerId: POSITIVE }, ["text"]), OPERATION_RESULT),
     "run.fork": action("workspace", object({ name: NONEMPTY }), object({
         workerId: POSITIVE,
         workerName: nullable(NONEMPTY),

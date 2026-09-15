@@ -338,14 +338,28 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Use LOOK as the observation operation." },
                         );
                     }
+                    if (Object.hasOwn(p, "workerId")
+                        && (typeof p.workerId !== "number" || !Number.isSafeInteger(p.workerId) || p.workerId <= 0)) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "op.look workerId must be a positive integer.",
+                            400,
+                            { field: "workerId", recovery: "Use a workerId from workspace.workers." },
+                        );
+                    }
                     // LOOK is the client's observation with a matcher body; on the seam it is a READ whose
                     // heading pattern is that matcher ({§read-pattern}): the matching lines, no log row.
+                    // It resolves as the conversation worker — `log:///`, `reasoning:///`, and `ops:///` as the
+                    // model sees them — while the observation segment stays on the connection's own worker (plurnk#68).
                     const { body: matcher, ...look } = item.statement;
                     const statement = { ...look, op: "READ", matcher, body: null } as unknown as PlurnkStatement;
                     return operationOutcome(await this.#seam().look({
                         workspaceId: world.workspaceId,
                         workerId: world.workerId,
                         statement,
+                        perspectiveWorkerId: typeof p.workerId === "number"
+                            ? p.workerId
+                            : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     }));
                 }
                 case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };

@@ -214,10 +214,14 @@ export interface ApplicationPort {
         // {§notice-level}: the producer's level rides unchanged — `warn` when a completed pass carries failed members.
         readonly level: "info" | "warn" | "error";
     } | null;
+    // {§op-look} — `workerId` owns the closed observation segment; `perspectiveWorkerId`, when
+    // given, is the worker the READ resolves as (`log:///`, `reasoning:///`, `ops:///`), so a human's look
+    // sees the conversation as the model does without touching the conversation's loops.
     look(args: {
         readonly workspaceId: number;
         readonly workerId: number;
         readonly statement: PlurnkStatement;
+        readonly perspectiveWorkerId?: number;
     }): Promise<OperationResult>;
     readEntry(args: {
         readonly workspaceId: number;

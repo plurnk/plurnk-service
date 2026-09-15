@@ -706,6 +706,9 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");
         assert.equal(calls.length, 1);
+        // plurnk#68 — the segment is the connection's own worker; the READ resolves as the conversation.
+        assert.equal(calls[0].workerId, 10, "the observation segment belongs to the connection's worker");
+        assert.equal(calls[0].perspectiveWorkerId, 77, "the look resolves as the thread's own conversation worker");
         const expected = PlurnkParser.parseClient(source).items.find((item) => item.kind === "statement")?.statement;
         assert.ok(expected !== undefined);
         // {§read-pattern} — LOOK's matcher body becomes the READ's heading pattern; nothing else moves.
@@ -739,6 +742,24 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(outside.ok, true, "outside text is ignored under {§whitespace-contract}");
         assert.equal(outside.result?.content, "looked");
         assert.equal(calls.length, 2);
+
+        const pinned = await post(mod.address().port, {
+            threadId: "look-admission",
+            forwardedProps: { plurnk: { workspace: "look-admission", action: { kind: "op.look", text: source, workerId: 33 } } },
+        });
+        const pinnedValue = (pinned.find((candidate) => candidate.type === "CUSTOM" && (candidate as { name?: string }).name === "plurnk.action.result") as { value?: { ok: boolean } } | undefined)?.value;
+        assert.equal(pinnedValue?.ok, true);
+        assert.equal(calls[2].perspectiveWorkerId, 33, "workerId pins another workspace worker as the perspective, as entry.read does");
+        const badPin = await invoke("```LOOK (worker:///x)```");
+        assert.equal(badPin.ok, true, "an omitted workerId is the conversation");
+        const invalidPin = await post(mod.address().port, {
+            threadId: "look-admission",
+            forwardedProps: { plurnk: { workspace: "look-admission", action: { kind: "op.look", text: source, workerId: -1 } } },
+        });
+        const invalidValue = (invalidPin.find((candidate) => candidate.type === "CUSTOM" && (candidate as { name?: string }).name === "plurnk.action.result") as { value?: { ok: boolean; problem?: Record<string, unknown> } } | undefined)?.value;
+        assert.equal(invalidValue?.ok, false);
+        assert.match(String(invalidValue?.problem?.detail), /workerId/, "the advertised schema refuses the pin before dispatch");
+        assert.equal(calls.length, 4, "an invalid pin never reaches the seam");
         assert.deepEqual(calls[1].statement.position, { line: 1, column: 5 }, "ignored preamble does not shift source positions");
 
         const tailed = await invoke("```LOOK (worker:///x)```\n```EDIT (worker:///y");
@@ -755,7 +776,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             stage: "parsing",
             retryable: false,
         });
-        assert.equal(calls.length, 2, "no rejected parse reaches ApplicationPort.look");
+        assert.equal(calls.length, 4, "no rejected parse reaches ApplicationPort.look");
     } finally { await mod.close(); }
 });
 

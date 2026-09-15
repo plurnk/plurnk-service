@@ -3865,7 +3865,7 @@ Core's behavior behind them.
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, policy?, openPaths?, selector?, childSelector? })` | Validates a model worker and complete loop policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the workspace's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
-| Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver in the workspace's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
+| Client observation                                | `look({ workspaceId, workerId, statement, perspectiveWorkerId? })` | Runs an already-parsed READ through the full resolver in the workspace's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
@@ -4116,7 +4116,10 @@ spelling and grammar parsing. It rewrites a valid LOOK statement to READ and
 hands the AST to core's `look`; core owns the full resolver and the no-log
 invariant. The internal closed, rowless observation segment supplies an honest
 numeric loop coordinate for relative `log:///` addressing without leaving
-active lifecycle behind. LOOK text anchors resolve through the same
+active lifecycle behind. The segment belongs to the acting worker (`workerId`);
+the READ resolves as `perspectiveWorkerId` when one is given — `log:///`, `reasoning:///`,
+and `ops:///` as that worker sees them — so a client can look at a conversation without
+adding a loop to it. LOOK text anchors resolve through the same
 {§line-anchors} path as READ.
 
 ### §notifications Core events
