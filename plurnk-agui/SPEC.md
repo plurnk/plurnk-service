@@ -85,8 +85,8 @@ this standards boundary under {§plan-acp-projection}. Provider reasoning is a
 separate channel, so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
 `<threadId>/plan` identity makes every live update replace the prior activity;
 reattach includes only the newest model inventory. The same ACP projection replaces
-`tx.body` on every client-facing TASK `CUSTOM plurnk.row` and
-`CUSTOM plurnk.ambient`; all other row and transaction fields remain intact:
+`tx.body` on every client-facing TASK row, whether delivered by `CUSTOM plurnk.row`,
+`CUSTOM plurnk.ambient`, or `log.read`; all other row and transaction fields remain intact:
 
 | Projection | Standard representation |
 | ---------- | ----------------------- |

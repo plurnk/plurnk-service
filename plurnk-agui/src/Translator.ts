@@ -118,15 +118,19 @@ export default class Translator {
         return events;
     }
 
+    static projectRow(entry: Record<string, unknown>): { entry: Record<string, unknown>; plan: AcpPlan | null } {
+        const projection = typeof entry.op === "string" && TurnDisposition.isOp(entry.op)
+            ? Translator.#projectPlanTransaction(entry.tx)
+            : null;
+        return projection === null
+            ? { entry, plan: null }
+            : { entry: { ...entry, tx: projection.tx }, plan: projection.plan };
+    }
+
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        const planProjection = typeof e.op === "string" && TurnDisposition.isOp(e.op)
-            ? Translator.#projectPlanTransaction(e.tx)
-            : null;
-        const clientEntry = planProjection === null
-            ? e
-            : { ...e, tx: planProjection.tx };
+        const { entry: clientEntry, plan } = Translator.projectRow(e);
         // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
@@ -152,7 +156,7 @@ export default class Translator {
         // TEXT_MESSAGE. Delay that one mirror until after the standard reasoning
         // lifecycle so both generic and family clients observe reasoning before speech.
         const response = Translator.isResponse(e);
-        const delayedSendRow = e.origin === "model" && (response || planProjection !== null);
+        const delayedSendRow = e.origin === "model" && (response || plan !== null);
         if (!delayedSendRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         if (e.origin !== "model") {
@@ -160,17 +164,17 @@ export default class Translator {
             return events;
         }
         const id = e.coordinate ?? String(e.id);
-        if (response || planProjection !== null) {
+        if (response || plan !== null) {
             const text = Translator.#txBody(e.tx);
             events.push(...Translator.#readableReasoningEvents(id,
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
             events.push(row);
-            if (planProjection !== null) {
+            if (plan !== null) {
                 events.push({
                     type: EventType.ACTIVITY_SNAPSHOT,
                     messageId: this.#planMessageId,
                     activityType: "PLAN",
-                    content: planProjection.plan,
+                    content: plan,
                     replace: true,
                 });
                 events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });

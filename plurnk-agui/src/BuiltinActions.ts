@@ -3,6 +3,7 @@ import { type ActionOutcome } from "./AguiPlus.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, UNKNOWN_POSITION, Validator, type AguiDiscovery, type ApplicationPort, type CapabilityPolicy, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { actionFailure, problemFromError } from "./action-results.ts";
+import Translator from "./Translator.ts";
 
 const operationOutcome = (result: OperationResult): ActionOutcome => {
     const exact = Validator.assertOperationResult(result);
@@ -144,7 +145,7 @@ export default class BuiltinActions {
                         ...(Object.hasOwn(p, "turnSeq") ? { turnSeq: p.turnSeq as number } : {}),
                         ...(Object.hasOwn(p, "sequence") ? { sequence: p.sequence as number } : {}),
                     });
-                    return { ok: true, result: { entries } };
+                    return { ok: true, result: { entries: entries.map((entry) => Translator.projectRow(entry).entry) } };
                 }
                 case "loop.inject": {
                     if (typeof p.prompt !== "string" || p.prompt.length === 0) {

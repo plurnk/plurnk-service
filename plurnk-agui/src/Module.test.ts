@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import Module from "./Module.ts";
+import Translator from "./Translator.ts";
 import type {
     ApplicationActionContext,
     ApplicationPort,
@@ -184,6 +185,55 @@ const post = async (port: number, body: Record<string, unknown>): Promise<AguiEv
     const text = await res.text();
     return text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
 };
+
+test("{§agui-plan-activity}: log.read and live rows share the ACP TASK projection without mutating history", async () => {
+    const { seam, loopRuns } = mockSeam();
+    const body = [
+        { content: "Inspect", status: "todo" },
+        { content: "Implement", status: "in_progress" },
+        { content: "Review", status: "waiting", _meta: { "example.org/evidence": "child" } },
+        { content: "Verify", status: "completed" },
+        { content: "Unavailable", status: "failed" },
+    ];
+    const tx = { runtime: "TASK", aside: "inventory", target: null, body };
+    const rows = [
+        { id: 3, worker_id: 20, loop_id: 1, turn_id: 2, coordinate: "1/2/1/TASK", origin: "model", op: "TASK", tx, rx: { status: 200 }, reasoning: "Evidence retained." },
+        { id: 2, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/2/READ", origin: "model", op: "READ", tx: { body: null }, rx: { status: 200, content: "verbatim\n" } },
+        { id: 1, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/1/TASK", origin: "_plurnk", op: "TASK", tx: JSON.stringify(tx), rx: null },
+    ];
+    const before = structuredClone(rows);
+    const expectedPlan = { entries: [
+        { content: "Inspect", status: "pending", priority: "medium" },
+        { content: "Implement", status: "in_progress", priority: "medium" },
+        { content: "Waiting: Review", status: "in_progress", priority: "medium", _meta: { "example.org/evidence": "child", "plurnk.xyz/status": "waiting" } },
+        { content: "Verify", status: "completed", priority: "medium" },
+        { content: "Failed: Unavailable", status: "completed", priority: "medium", _meta: { "plurnk.xyz/status": "failed" } },
+    ] };
+    seam.readLog = async () => rows;
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "history",
+            forwardedProps: { plurnk: { workspace: "history", action: { kind: "log.read", limit: 20 } } },
+        });
+        const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result");
+        assert.equal(result?.type, "CUSTOM");
+        if (result?.type !== "CUSTOM") throw new Error("missing log.read result");
+        assert.deepEqual(result.value, { kind: "log.read", ok: true, result: { entries: rows.map((row) => row.op === "TASK"
+            ? { ...row, tx: { ...tx, body: expectedPlan } }
+            : row) } });
+        const translator = new Translator({ threadId: "history", runId: "live", modelWorkerId: 20 });
+        for (const [index, row] of rows.entries()) {
+            const live = translator.logEntry({ entry: row }).find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
+            assert.equal(live?.type, "CUSTOM");
+            if (live?.type === "CUSTOM") assert.deepEqual(result.value.result.entries[index], live.value);
+        }
+        assert.deepEqual(rows, before, "the standards boundary does not rewrite the stored native inventory");
+        assert.deepEqual(loopRuns, [], "reading history does not invoke a model");
+    } finally {
+        await mod.close();
+    }
+});
 
 // A streaming reader that stays OPEN, collecting events until the connection ends —
 // lets a test hold concurrent AG-UI Runs on one workspace and observe routing live.
