@@ -1,5 +1,6 @@
-// Pack the parser package, install it into a clean consumer beside its published
-// dependency, and exercise its entrypoint and a browser-Worker bundle ({§parser-build}).
+// Install the packed parser and contracts candidates into a clean consumer,
+// then exercise the entrypoint, CLI and browser-Worker bundle ({§parser-build}).
+import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
@@ -15,21 +16,22 @@ const run = promisify(execFile);
 // --workspaces/omit and misread the temp consumer. The consumer gets a CLEAN npm env.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
 const parserDir = process.cwd();
+const contractsDir = join(parserDir, "..", "plurnk-contracts");
 const expectedRootValues = Object.keys(SourceParser).sort();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-parser-smoke-"));
-let tarballPath: string | undefined;
 
 const cleanup = async (): Promise<void> => {
-    if (tarballPath) await rm(tarballPath, { force: true });
     await rm(tempDir, { recursive: true, force: true });
 };
 
 try {
-    process.stdout.write(`[smoke] packing tarball in ${parserDir}...\n`);
-    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent", "--ignore-scripts"], { cwd: parserDir, env: cleanEnv });
-    const tarballName = JSON.parse(packOut)[0].filename;
-    tarballPath = join(parserDir, tarballName);
-    process.stdout.write(`[smoke] tarball: ${tarballName}\n`);
+    const candidates = await Promise.all([contractsDir, parserDir].map(async (cwd) => {
+        const manifest = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
+        const { stdout } = await run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", tempDir], { cwd, env: cleanEnv });
+        const tarball = join(tempDir, JSON.parse(stdout)[0].filename);
+        process.stdout.write(`[smoke] candidate: ${manifest.name}@${manifest.version}\n`);
+        return { name: manifest.name as string, version: manifest.version as string, tarball };
+    }));
 
     process.stdout.write(`[smoke] setting up consumer in ${tempDir}...\n`);
     await writeFile(join(tempDir, "package.json"), JSON.stringify({
@@ -39,8 +41,12 @@ try {
         private: true,
     }, null, 2) + "\n");
 
-    process.stdout.write(`[smoke] installing tarball...\n`);
-    await run("npm", ["install", "--no-package-lock", "--no-audit", "--no-fund", "--silent", tarballPath], { cwd: tempDir, env: cleanEnv });
+    process.stdout.write(`[smoke] installing candidate tarballs...\n`);
+    await run("npm", ["install", "--no-package-lock", "--no-audit", "--no-fund", ...candidates.map(({ tarball }) => tarball)], { cwd: tempDir, env: cleanEnv });
+    for (const { name, version } of candidates) {
+        const installed = JSON.parse(await readFile(join(tempDir, "node_modules", name, "package.json"), "utf8"));
+        assert.equal(installed.version, version, `installed ${name} must be the packed candidate`);
+    }
 
     const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-parser");
     const installedPackage = JSON.parse(await readFile(join(installedRoot, "package.json"), "utf8"));

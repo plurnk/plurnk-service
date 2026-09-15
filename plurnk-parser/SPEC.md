@@ -28,7 +28,8 @@ client that installs contracts installs no `antlr4ng`, `xpath`, or `json-p3`.
 
 `npm run build:grammar` regenerates `src/generated` from the grammars with
 antlr-ng; generated files are artifacts, never edited, and are not tracked.
-`npm run build` emits `dist`. `npm run test:installation` packs the package,
-installs it into a clean consumer beside its published dependency, exercises
-every tier entry point, `parsePath`, and a browser-Worker bundle of the
-installed package.
+`npm run build` emits `dist`. `npm run test:installation` packs the built parser
+and contracts candidates, installs both into a clean consumer, verifies their
+installed versions, and exercises every tier entry point, `parsePath`, the CLI,
+and a browser-Worker bundle. Prepublication checks must not resolve the candidate
+contracts version from the registry.
