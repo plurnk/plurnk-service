@@ -1983,13 +1983,14 @@ READ is the one fan-out core performs ({§read-fan-out}).
   resources, not lines, so that READ dispatches as the FIND survey. Operator,
   2026-09-13: "give it what it asked for" — a model that asked to read the pantry
   looped five turns on the catalog it was handed instead.
-- §read-bytes A binary channel with no readable projection, and the `#bytes` view of
+- §read-bytes A binary channel, and the `#bytes` view of
   any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
   octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
   default is the same `<1,16>`, `<1,-1>` is the whole resource, and the extent carries
   `unit: "byte"`. The result keeps the source mimetype and names `projection: "hex"`;
   anchors do not exist there (400). Bytes are read from the source at READ time, sized
-  then windowed, never stored: `file:` supplies them from the member on disk, and a
+  then windowed: `file:` supplies them from the member on disk, DB-backed schemes
+  recover their stored bytes under {§binary-parity}, and a
   scheme that keeps no bytes answers 501 `bytes-unavailable` for `#bytes` and 415 for a
   binary channel, as before. An execution whose target is a file member already runs the
   bytes on disk. Byte selection affects only this hexadecimal projection: when the
@@ -2017,8 +2018,10 @@ READ is the one fan-out core performs ({§read-fan-out}).
   window is preserved, and the whole spliced result is re-written through the proposal gate. A binary
   **lives in a DB entry** as its bytes base64 in the channel's TEXT content; the same READ, byte range,
   and COPY/MOVE recover them through a byte source synthesized from that content, so a File member and a
-  `worker://` entry hold and yield a binary identically. This supersedes the older blanket refusal (#140)
-  for both the file and the entry case. Native image/PDF attachment facts come from the configured
+  `worker://` entry hold and yield a binary identically. An empty binary channel represents
+  zero bytes, not an unsupported format; its producer outcome remains authoritative.
+  This supersedes the older blanket refusal (#140)
+  for both the file and the entry case. Native image/PDF/audio attachment facts come from the configured
   mimetype handler over original bytes, whether supplied by a file or stored channel
   ({§packet-attachment-parts}); the hexadecimal view remains available. The exceptions are narrow and
   defined, each a clear receipt rather than a dead end: a binary region addressed by a **textual anchor**

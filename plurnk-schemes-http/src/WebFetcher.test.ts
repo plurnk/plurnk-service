@@ -2,6 +2,7 @@
 // and IP literals or explicit guard mocks (no DNS). Env from --env-file=.env.defaults.
 
 import test, { after, before, beforeEach } from "node:test";
+import { buffer } from "node:stream/consumers";
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,7 +40,9 @@ after(() => {
 
 const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
     async readable() { return null; },
-    async readableBytes() { return null; },
+    async binary(chunks, mimetype) {
+        return { bytes: await buffer(chunks), readable: null, projectionIdentity: `${mimetype}-projection` };
+    },
     async identity(mimetype) { return `${mimetype}-projection`; },
     async isBinary(mimetype) { return MimetypeClassifier.isBinary(mimetype); },
     ...overrides,
@@ -148,8 +151,8 @@ test("HTML → byte response materializes local floor projection when no materia
         assert.equal(fetched.body, "<html><body><h1>Title</h1></body></html>");
         assert.equal(fetched.mimetype, "text/html");
         const materialized = await WebFetcher.materialize(fetched, projection);
-        assert.equal(materialized?.body?.content, "# Local Projected Floor");
-        assert.equal(materialized?.html?.content, "<html><body><h1>Title</h1></body></html>");
+        assert.equal(materialized?.readable?.content, "# Local Projected Floor");
+        assert.equal(materialized?.body?.content, "<html><body><h1>Title</h1></body></html>");
         assert.match(
             materialized?.header ?? "",
             new RegExp(`^${MATERIALIZER_ID_HEADER}: local-projection:v1:unconfigured$`, "m"),
@@ -182,9 +185,9 @@ test("HTML → materializes the configured materializer's Markdown ({§http-mate
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         const materialized = await WebFetcher.materialize(fetched, projection);
-        assert.equal(materialized?.body?.content, "# Stub Extracted Page");
-        assert.equal(materialized?.body?.mimetype, "text/markdown");
-        assert.equal(materialized?.html?.content, "<html><body>Original</body></html>");
+        assert.equal(materialized?.readable?.content, "# Stub Extracted Page");
+        assert.equal(materialized?.readable?.mimetype, "text/markdown");
+        assert.equal(materialized?.body?.content, "<html><body>Original</body></html>");
         assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: stub-extract:v1/);
         assert.match(materialized?.header ?? "", /x-plurnk-stub-request-id: req-777/);
         assert.match(materialized?.header ?? "", /x-plurnk-stub-credits: 0\.2/);
@@ -222,7 +225,7 @@ test("supplied HTML never consults the materializer", async () => {
             header: "HTTP 200 OK",
             allowConfiguredMaterializer: false,
         }, projection);
-        assert.equal(materialized?.body?.content, "local supplied content");
+        assert.equal(materialized?.readable?.content, "local supplied content");
         assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: local-projection:v1:ineligible/);
     });
     assert.equal(calls, 0);
@@ -264,8 +267,8 @@ test("a recoverable materializer outcome uses an identified local floor", async 
             header: "HTTP 200 OK",
             allowConfiguredMaterializer: true,
         }, projection);
-        assert.equal(materialized?.body?.content, "local fallback");
-        assert.equal(materialized?.bodyOutcome.status, 203);
+        assert.equal(materialized?.readable?.content, "local fallback");
+        assert.equal(materialized?.readableOutcome?.status, 203);
         assert.match(
             materialized?.header ?? "",
             /x-plurnk-materializer-id: local-fallback:stub-extract:v1/,
@@ -310,10 +313,10 @@ test("a hard materializer failure preserves HTML but does not bless a local body
             header: "HTTP 200 OK",
             allowConfiguredMaterializer: true,
         }, projection);
-        assert.equal(materialized?.body, undefined);
-        assert.equal(materialized?.html?.content, "<html><body>Origin</body></html>");
-        assert.equal(materialized?.bodyOutcome.failure?.code, "stub-authentication-failed");
-        assert.equal(materialized?.htmlOutcome?.status, 200);
+        assert.equal(materialized?.readable, undefined);
+        assert.equal(materialized?.body?.content, "<html><body>Origin</body></html>");
+        assert.equal(materialized?.readableOutcome?.failure?.code, "stub-authentication-failed");
+        assert.equal(materialized?.bodyOutcome?.status, 200);
         assert.match(materialized?.header ?? "", new RegExp(`^x-plurnk-stub-reason: authentication$`, "m"));
     });
     assert.equal(projectionCalls, 0);
@@ -358,11 +361,11 @@ test("the materializer may produce the readable text after admitted origin trans
             WebFetcher.unavailable(PUB, new Error("origin reset"), true),
             PROJECTION,
         );
-        assert.equal(materialized?.body?.content, "# Provider-only body");
-        assert.equal(materialized?.bodyOutcome.status, 200);
-        assert.equal(materialized?.html, undefined);
+        assert.equal(materialized?.readable?.content, "# Provider-only body");
+        assert.equal(materialized?.readableOutcome?.status, 200);
+        assert.deepEqual(materialized?.body, { content: "", mimetype: "text/html" });
         // {§readable-channel} — the source channel's failure is the origin's own, not a generic one.
-        assert.equal(materialized?.htmlOutcome?.failure?.code, "fetch-failed");
+        assert.equal(materialized?.bodyOutcome?.failure?.code, "fetch-failed");
         assert.match(materialized?.header ?? "", /x-plurnk-origin-error: origin reset/);
     });
 });
@@ -385,8 +388,8 @@ test("origin Markdown is the source itself: one request, no variant, never the m
         assert.equal(fetched.body, "# Origin Markdown");
         const materialized = await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "# Origin Markdown");
-        assert.equal(materialized?.html, undefined, "{§readable-channel}: readable text needs no projection and no HTML variant");
-        assert.equal(materialized?.htmlOutcome, undefined);
+        assert.equal(materialized?.readable, undefined, "{§readable-channel}: readable text needs no projection and no HTML variant");
+        assert.equal(materialized?.readableOutcome, undefined);
         assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: origin-markdown:v1/);
         assert.equal(materialized?.bodyOutcome.status, 200);
     });
@@ -420,8 +423,8 @@ test("an authored Markdown Accept is honored and yields the Markdown as the body
         assert.ok(fetched !== null);
         const materialized = await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "# Authored representation");
-        assert.equal(materialized?.html, undefined);
-        assert.equal(materialized?.htmlOutcome, undefined);
+        assert.equal(materialized?.readable, undefined);
+        assert.equal(materialized?.readableOutcome, undefined);
     });
     assert.deepEqual(observed, ["text/markdown"]);
 });
@@ -488,18 +491,18 @@ test("non-2xx → null", async () => {
     });
 });
 
-test("handler-declared binary bytes reach one readable projection without a durable byte lane", async () => {
+test("handler-declared binary bytes retain their source beside the readable projection", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "text/x-binary"; },
-        async readableBytes(chunks, mimetype) {
+        async binary(chunks, mimetype) {
             const bytes: number[] = [];
             for await (const chunk of chunks) bytes.push(...chunk);
-            return {
+            return { bytes: Uint8Array.from(bytes), projectionIdentity: "binary-reader-v1", readable: {
                 content: `projected:${bytes.join(",")}`,
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
                 projectionIdentity: "binary-reader-v1",
-            };
+            } };
         },
     });
     await withFetch((async () => resp(Uint8Array.of(1, 2, 3), 200, {
@@ -511,9 +514,11 @@ test("handler-declared binary bytes reach one readable projection without a dura
         assert.match(fetched.header ?? "", /^content-type: text\/x-binary$/m);
         const materialized = await WebFetcher.materialize(fetched, projection);
         assert.deepEqual(materialized, {
-            body: { content: "projected:1,2,3", mimetype: "text/markdown" },
+            body: { content: "", bytes: Uint8Array.of(1, 2, 3), mimetype: "text/x-binary" },
+            readable: { content: "projected:1,2,3", mimetype: "text/markdown" },
             header: `${fetched.header}\nx-plurnk-projection-id: binary-reader-v1`,
             bodyOutcome: { status: 200 },
+            readableOutcome: { status: 200 },
             projection: {
                 sourceMimetype: "text/x-binary",
                 identity: "binary-reader-v1",
@@ -530,13 +535,13 @@ test("binary materialization cancels unread response bytes after a projection re
     });
     const projection = projectionCaps({
         async isBinary() { return true; },
-        async readableBytes(_chunks, mimetype) {
-            return {
+        async binary(_chunks, mimetype) {
+            return { bytes: new Uint8Array(), projectionIdentity: "non-consuming-reader", readable: {
                 content: "projected without reading",
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
                 projectionIdentity: "non-consuming-reader",
-            };
+            } };
         },
     });
     await withFetch(async () => new Response(stream, {
@@ -545,7 +550,7 @@ test("binary materialization cancels unread response bytes after a projection re
     }), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
-        assert.equal((await WebFetcher.materialize(fetched, projection))?.body?.content, "projected without reading");
+        assert.equal((await WebFetcher.materialize(fetched, projection)).readable?.content, "projected without reading");
     });
     assert.equal(cancelled, true);
 });

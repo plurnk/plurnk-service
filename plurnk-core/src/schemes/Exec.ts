@@ -933,7 +933,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 } else {
                     const fetched = await materialized;
                     if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
-                    let web: WebMaterializedResult | null;
+                    let web: WebMaterializedResult;
                     try {
                         web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
                     } catch (error) {
@@ -942,14 +942,13 @@ export default class Exec extends CoreSchemeAdapterBase {
                         }
                         throw error;
                     }
-                    if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable projection`);
-                    if (web.body === undefined) throw new Error(web.bodyOutcome.failure?.detail ?? `entry(): '${path.slice(0, 80)}' produced no readable body`);
                     channels = WebFetcher.materializedChannels(
                         web,
                         content === null && fetchAddress !== null ? { url: fetchAddress.url, method: "GET" } : undefined,
                     );
-                    decisive = web.body.content;
-                    source = web.html?.content ?? decisive;
+                    decisive = web.readable?.content ?? (web.body.bytes === undefined
+                        ? web.body.content : `${web.body.mimetype}; ${web.body.bytes.byteLength} bytes`);
+                    source = web.body.bytes === undefined ? web.body.content : decisive;
                 }
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(

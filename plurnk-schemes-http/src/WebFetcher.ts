@@ -4,6 +4,7 @@ import {
     type ChannelProducerResult,
     type EntryData,
     type ProjectedText,
+    type ProjectedBinary,
     type ProjectionCaps,
 } from "@plurnk/plurnk-schemes";
 import { formatJsonDocument } from "@plurnk/plurnk-contracts";
@@ -82,11 +83,11 @@ export interface WebFetchResult {
 }
 
 export interface WebMaterializedResult {
-    readonly body?: { content: string; mimetype: string };
-    readonly html?: { content: string; mimetype: string };
+    readonly body: EntryData["channels"][string];
+    readonly readable?: { content: string; mimetype: string };
     readonly header?: string;
     readonly bodyOutcome: WebChannelOutcome;
-    readonly htmlOutcome?: WebChannelOutcome;
+    readonly readableOutcome?: WebChannelOutcome;
     readonly projection?: { sourceMimetype: string; identity: string };
 }
 
@@ -171,62 +172,27 @@ export default class WebFetcher {
         };
     }
 
-    // {§readable-channel} — a page's server source is its `body`; the curated text (the selected
-    // materializer's Markdown, or the installed local projection) is `readable`. A response that is
-    // not an HTML page has no projection: its `body` is the response text, or the readable text of a
-    // binary body under {§mimetype-binary-input}.
+    // {§readable-channel}/{§http-binary-source} — source and projection have the same channel
+    // identities here as in the durable entry, regardless of the source format.
     static materializedChannels(
         materialized: WebMaterializedResult,
         source?: { readonly url: string; readonly method: string },
     ): EntryData["channels"] {
-        const channels: EntryData["channels"] = {};
-        const page = materialized.html !== undefined || materialized.htmlOutcome !== undefined;
-        const curated = materialized.body;
-        const curatedOutcome = materialized.bodyOutcome;
-        if (page) {
-            if (materialized.html !== undefined) {
-                channels.body = {
-                    ...materialized.html,
-                    ...(materialized.htmlOutcome?.failure === undefined ? {} : { state: "errored" }),
-                };
-            } else if (materialized.htmlOutcome?.failure !== undefined) {
-                channels.body = { content: "", mimetype: "text/html", state: "errored" };
-            }
-            if (curated !== undefined) {
-                channels.readable = {
-                    ...curated,
-                    ...(curatedOutcome.failure === undefined ? {} : { state: "errored" }),
-                };
-            } else if (curatedOutcome.failure !== undefined) {
-                channels.readable = { content: "", mimetype: "text/markdown", state: "errored" };
-            }
-        } else if (curated !== undefined) {
-            channels.body = {
-                ...curated,
-                ...(curatedOutcome.failure === undefined ? {} : { state: "errored" }),
-            };
-        } else if (curatedOutcome.failure !== undefined) {
-            channels.body = { content: "", mimetype: "text/markdown", state: "errored" };
-        }
+        const channels: EntryData["channels"] = { body: materialized.body };
+        if (materialized.readable !== undefined) channels.readable = materialized.readable;
         if (materialized.header !== undefined) {
             channels.header = { content: materialized.header, mimetype: "text/plain" };
         }
-        if (source === undefined) return channels;
-
         const headerOutcome = materialized.header === undefined
-            ? failure(502, "header-unavailable", `Acquisition evidence for ${source.url} was unavailable.`, true)
+            ? failure(502, "header-unavailable", `Acquisition evidence for ${source?.url ?? "the response"} was unavailable.`, true)
             : success();
-        const outcomes: Readonly<Record<string, WebChannelOutcome>> = page
-            ? {
-                body: materialized.htmlOutcome ?? (materialized.html === undefined
-                    ? failure(502, "html-unavailable", `Server-source HTML for ${source.url} was unavailable.`, true)
-                    : success()),
-                header: headerOutcome,
-                readable: curatedOutcome,
-            }
-            : { body: curatedOutcome, header: headerOutcome };
+        const outcomes: Readonly<Record<string, WebChannelOutcome>> = {
+            body: materialized.bodyOutcome,
+            ...(source === undefined ? {} : { header: headerOutcome }),
+            ...(materialized.readableOutcome === undefined ? {} : { readable: materialized.readableOutcome }),
+        };
         const defaults: Readonly<Record<string, string>> = {
-            body: page ? "text/html" : "text/markdown",
+            body: "application/octet-stream",
             header: "text/plain",
             readable: "text/markdown",
         };
@@ -235,7 +201,7 @@ export default class WebFetcher {
                 content: "",
                 mimetype: defaults[channel]!,
             };
-            const producerResult = WebFetcher.#producerResult(source, outcome);
+            const producerResult = source === undefined ? undefined : WebFetcher.#producerResult(source, outcome);
             channels[channel] = {
                 ...existing,
                 ...(outcome.failure === undefined ? {} : { state: "errored" as const }),
@@ -276,7 +242,7 @@ export default class WebFetcher {
             "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
         projection: ProjectionCaps,
         signal?: AbortSignal,
-    ): Promise<WebMaterializedResult | null> {
+    ): Promise<WebMaterializedResult> {
         // One materializer owns page-body production and independent channel
         // outcomes {§html-materialization}/{§http-channel-outcomes}.
         if (fetched.originUnavailable === true) {
@@ -295,10 +261,12 @@ export default class WebFetcher {
                     fetched.mimetype,
                     projection,
                 );
-                if (projected === null) return null;
-                return WebFetcher.#materialized(projected, {
+                return WebFetcher.#materialized(projected.readable, {
+                    source: { content: "", bytes: projected.bytes, mimetype: fetched.mimetype },
+                    projectionIdentity: projected.projectionIdentity,
                     header: fetched.header,
                     bodyOutcome: originOutcome,
+                    readableOutcome: originOutcome,
                 });
             }
             const content = WebFetcher.readableText(await fetched.body.text(), fetched.mimetype);
@@ -339,7 +307,7 @@ export default class WebFetcher {
             "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
         projection: ProjectionCaps,
         signal?: AbortSignal,
-    ): Promise<WebMaterializedResult | null> {
+    ): Promise<WebMaterializedResult> {
         const html = fetched.originUnavailable === true
             ? undefined
             : { content: fetched.body as string, mimetype: fetched.mimetype };
@@ -359,11 +327,11 @@ export default class WebFetcher {
             if (result.outcome === "success") {
                 const header = WebFetcher.#appendEvidence(fetched.header, evidence);
                 return {
-                    body: { content: result.body, mimetype: "text/markdown" },
-                    ...(html === undefined ? {} : { html }),
+                    readable: { content: result.body, mimetype: "text/markdown" },
+                    body: html ?? { content: "", mimetype: "text/html" },
                     ...(header === undefined ? {} : { header }),
-                    bodyOutcome: success(),
-                    htmlOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
+                    readableOutcome: success(),
+                    bodyOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
                 };
             }
             if (result.outcome === "hard" || html === undefined) {
@@ -380,23 +348,23 @@ export default class WebFetcher {
                         retryable: true,
                     });
                 return {
-                    ...(html === undefined ? {} : { html }),
+                    body: html ?? { content: "", mimetype: "text/html" },
                     ...(header === undefined ? {} : { header }),
-                    bodyOutcome: failure(
+                    readableOutcome: failure(
                         problem.status,
                         problem.code,
                         problem.detail,
                         problem.retryable,
                     ),
-                    htmlOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
+                    bodyOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
                 };
             }
             const projected = await WebFetcher.#project(html, projection);
             if (projected === null) {
                 return {
-                    html,
+                    body: html,
                     header: WebFetcher.#appendEvidence(fetched.header, evidence),
-                    bodyOutcome: result.problem === undefined
+                    readableOutcome: result.problem === undefined
                         ? failure(
                             502,
                             "materializer-recoverable",
@@ -409,20 +377,20 @@ export default class WebFetcher {
                             result.problem.detail,
                             result.problem.retryable,
                         ),
-                    htmlOutcome: originOutcome,
+                    bodyOutcome: originOutcome,
                 };
             }
             return WebFetcher.#materialized(
                 projected,
                 {
-                    html,
+                    source: html,
                     header: fetched.header,
                     materializerIdentity: `local-fallback:${identity}`,
                     additionalEvidence: result.evidence.map(({ name, value }) => `${name}: ${value}`),
-                    bodyOutcome: originOutcome.failure === undefined
+                    readableOutcome: originOutcome.failure === undefined
                         ? success(203)
                         : originOutcome,
-                    htmlOutcome: originOutcome,
+                    bodyOutcome: originOutcome,
                 },
             );
         }
@@ -432,9 +400,10 @@ export default class WebFetcher {
             // own failure, the source first.
             const unavailable = WebFetcher.#sourceUnavailable(fetched);
             return {
+                body: { content: "", mimetype: "text/html" },
                 ...(fetched.header === undefined ? {} : { header: fetched.header }),
                 bodyOutcome: unavailable,
-                htmlOutcome: unavailable,
+                readableOutcome: unavailable,
             };
         }
         const projected = await WebFetcher.#project(html, projection);
@@ -443,27 +412,27 @@ export default class WebFetcher {
             : LOCAL_INELIGIBLE_MATERIALIZER_ID;
         if (projected === null) {
             return {
-                html,
+                body: html,
                 header: WebFetcher.#appendEvidence(fetched.header, [
                     WebFetcher.materializerEvidence(materializerIdentity),
                 ]),
-                bodyOutcome: failure(
+                readableOutcome: failure(
                     422,
                     "no-readable-projection",
                     `The HTML representation of ${fetched.url} produced no readable body.`,
                     false,
                 ),
-                htmlOutcome: originOutcome,
+                bodyOutcome: originOutcome,
             };
         }
         return WebFetcher.#materialized(
             projected,
             {
-                html,
+                source: html,
                 header: fetched.header,
                 materializerIdentity,
                 bodyOutcome: originOutcome,
-                htmlOutcome: originOutcome,
+                readableOutcome: originOutcome,
             },
         );
     }
@@ -510,10 +479,10 @@ export default class WebFetcher {
         body: Pick<WebResponseBody, "chunks" | "cancel">,
         mimetype: string,
         projection: ProjectionCaps,
-    ): Promise<ProjectedText | null> {
-        let projected: ProjectedText | null;
+    ): Promise<ProjectedBinary> {
+        let projected: ProjectedBinary;
         try {
-            projected = await projection.readableBytes(body.chunks, mimetype);
+            projected = await projection.binary(body.chunks, mimetype);
         } catch (cause) {
             return await WebFetcher.#projectionFailure(body, mimetype, cause);
         }
@@ -534,10 +503,13 @@ export default class WebFetcher {
         try {
             await body.cancel();
         } catch (cleanupCause) {
-            failureCause = new AggregateError(
-                [cause, cleanupCause],
-                `Projection and response-body cleanup both failed for ${mimetype}.`,
-            );
+            // A cancelled/errored ReadableStream rejects cancel() with its existing error.
+            if (cleanupCause !== cause) {
+                failureCause = new AggregateError(
+                    [cause, cleanupCause],
+                    `Projection and response-body cleanup both failed for ${mimetype}.`,
+                );
+            }
         }
         throw new WebMaterializationError(mimetype, failureCause);
     }
@@ -553,42 +525,43 @@ export default class WebFetcher {
         }
     }
 
-    static #materialized(projected: ProjectedText, options: {
-        readonly html?: { content: string; mimetype: string };
+    static #materialized(projected: ProjectedText | null, options: {
+        readonly source: EntryData["channels"][string];
+        readonly projectionIdentity?: string;
         readonly header?: string;
         readonly materializerIdentity?: string;
         readonly additionalEvidence?: ReadonlyArray<string>;
         readonly bodyOutcome?: WebChannelOutcome;
-        readonly htmlOutcome?: WebChannelOutcome;
-    } = {}): WebMaterializedResult {
+        readonly readableOutcome?: WebChannelOutcome;
+    }): WebMaterializedResult {
         const {
-            html,
+            source,
+            projectionIdentity = projected?.projectionIdentity,
             header,
             materializerIdentity,
             additionalEvidence = [],
             bodyOutcome = success(),
-            htmlOutcome = success(),
+            readableOutcome = success(),
         } = options;
         const evidence = [
             ...(materializerIdentity === undefined
                 ? []
                 : [WebFetcher.materializerEvidence(materializerIdentity)]),
             ...additionalEvidence,
-            WebFetcher.projectionEvidence(projected.projectionIdentity),
+            ...(projectionIdentity === undefined ? [] : [WebFetcher.projectionEvidence(projectionIdentity)]),
         ];
         const materializedHeader = WebFetcher.#appendEvidence(header, evidence);
         return {
-            body: { content: projected.content, mimetype: projected.mimetype },
-            ...(html === undefined ? {} : { html }),
+            body: source,
+            ...(projected === null ? {} : { readable: { content: projected.content, mimetype: projected.mimetype }, readableOutcome }),
             ...(materializedHeader === undefined
                 ? {}
                 : { header: materializedHeader }),
             bodyOutcome,
-            ...(html === undefined ? {} : { htmlOutcome }),
-            projection: {
+            ...(projected === null ? {} : { projection: {
                 sourceMimetype: projected.sourceMimetype,
                 identity: projected.projectionIdentity,
-            },
+            } }),
         };
     }
 

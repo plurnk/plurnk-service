@@ -143,7 +143,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
                 projectionIdentity: `test:${mimetype}`,
             };
         },
-        async readableBytes() { return null; },
+        async binary() { throw new Error("binary projection is outside the WebSocket specimen"); },
         async identity(mimetype) { return `test:${mimetype}`; },
         async isBinary() { return false; },
         async parseIssues() { return undefined; },

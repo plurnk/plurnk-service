@@ -101,8 +101,8 @@ but cold and warm representations pass through the same core projection.
 | No response body                        | Present empty text                                       | Response and package metadata in `header`                 | Static representation; body READ is `204`   |
 | Origin HTTP `4xx`/`5xx`                 | Preserve available origin or independently produced text | Exact response evidence; origin-backed channels errored   | Selected channel's durable outcome          |
 | Configured textual type                 | Complete Fetch-decoded Unicode                           | Response and package metadata in `header`                 | Static representation                       |
-| Readable binary type                    | Derived Unicode under the projection output type        | Origin type and projection identity in `header`           | Static representation; bytes never durable  |
-| Unreadable binary or unknown bytes      | No representation is fabricated                         | Exact non-retryable Problem                               | `415 binary-response-unsupported`           |
+| Readable binary type                    | Complete original bytes                                  | Derived Unicode in `readable`; projection identity in `header` | Static representation, then core projection |
+| Unreadable binary or unknown bytes      | Complete original bytes                                  | No readable projection or native media claim              | Static representation; ordinary hex READ    |
 | Binary input exceeds configured bound   | No representation is fabricated                         | Exact size evidence in the Problem                        | `413 projection-input-limit`                |
 
 The producer persists every available channel; core publishes only the channel
@@ -125,8 +125,16 @@ returns the selected channel's requested text projection.
 
 This decoder boundary remains text normalization, not a media-format processor.
 A configured binary type bypasses it and enters the mimetype family's bounded
-readable-byte projection {§mimetype-binary-input}; raw bytes never become a
-durable channel.
+source acquisition {§mimetype-binary-input}; original bytes remain in `body`.
+
+§http-binary-source Finite binary responses retain bounded original bytes in `body`,
+with optional derived facts/text in `readable`. GET, exact FIND acquisition, executor
+acquisition, and mutation responses use the same source/projection contract.
+Core READ of `body`, `#bytes`, or `#readable` may attach that complete native source
+under {§packet-attachment-parts}; scope selects the text/hex view, never native bytes.
+Headers carry transport evidence, not native media. Invalid or unsupported formats
+remain byte-readable without invented facts or native parts. Incomplete transfers
+and over-limit input publish no partial binary payload.
 
 §http-json-presentation Finite `application/json` and `+json` responses use
 {§json-document-presentation} in their canonical body channel before indexing,
@@ -139,14 +147,14 @@ entries, non-JSON text, SSE, and JSONL retain their original formatting.
 
 `WebFetcher.materialize` is the shared readable-representation seam for exact
 GET/FIND preparation and executor entry acquisition. It returns complete
-Unicode channel material for one atomic canonical entry write; only SSE and
-mutation responses retain incremental streaming.
+source and derived channels for one atomic canonical entry write; SSE and
+textual mutation responses retain incremental streaming.
 
 | Input or event                              | Action                                      | Result                                                             |
 | ------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
 | Configured non-HTML text                    | Decode with Fetch UTF-8                     | Original representation in `body`                                  |
-| Configured binary with reader               | Apply the bounded byte projection           | Derived Unicode plus source type and identity                       |
-| Configured binary without reader            | Cancel without retaining bytes              | `null`; the consumer applies its absence policy                    |
+| Configured binary with reader               | Retain bounded bytes and apply projection   | Original `body`, derived `readable`, and projection identity         |
+| Configured binary without reader            | Retain bounded bytes                        | Original `body` and projection identity; no `readable`               |
 | Binary input exceeds the common bound       | Cancel and preserve the typed cause         | `WebMaterializationError` caused by `ProjectionInputLimitError`     |
 | Negotiated origin `text/markdown`           | Accept it without the materializer          | Exact Markdown in `body`; no `readable`, no second request          |
 | Eligible HTML with a materializer selected  | Use the materializer as the readable producer | Origin server source in `body`; materializer Markdown in `readable` |
@@ -177,8 +185,8 @@ origin credentials cross the materializer boundary.
 
 When no `Accept` is authored, origin acquisition offers
 `text/markdown, text/html;q=0.9, */*;q=0.1`. An origin `text/markdown`
-representation wins and the materializer is skipped; a second origin request
-with `Accept: text/html` may populate `html`. An authored `Accept` value is
+representation wins and the materializer is skipped; no second HTML request is
+made. An authored `Accept` value is
 sent unchanged and makes any returned HTML use the local projection route.
 
 The materializer's `eligible(url)` returns its identity string when it will
@@ -236,9 +244,8 @@ an origin is first being read.
 | Selected HTML-page channel fails                              | That channel's exact durable producer Problem            |
 | Local HTML projection is absent                               | `422` (`no-readable-projection`)                         |
 | Recoverable materializer failure uses local projection        | Readable body with durable status `203`                  |
-| Finite textual or projected-binary response                   | Universal READ result                                    |
+| Finite textual or binary response                             | Universal READ result                                    |
 | Finite empty text response                                    | `204`                                                    |
-| Finite binary response has no readable projection             | `415` (`binary-response-unsupported`)                    |
 | Binary projection input exceeds the configured byte bound     | `413` (`projection-input-limit`)                         |
 | `KILL` with no live acquisition                               | Exact entry-delete result                                |
 | `KILL` of a live acquisition                                  | `200`; the owner settles `499` through its aborted signal |
@@ -270,15 +277,12 @@ applied its effect when acquisition fails and is therefore non-retryable. Once
 an SSE response has been acquired, a parser or transfer failure is likewise
 non-retryable because replay could duplicate an already-consumed prefix.
 
-A binary response first asks the installed mimetype family for a bounded
-readable projection. A present result stores only its derived Unicode and
-appends authoritative `x-plurnk-projection-id` evidence after the origin and
-acquisition fields. A finite GET with no projection returns non-retryable `415`
-without fabricating a text entry; exceeding the input ceiling similarly returns
-`413` with configured and observed sizes. A streamed mutation response already
-owns a seeded lifecycle entry and settles its typed channel as errored instead.
-These statuses describe Plurnk's materialization boundary, not the remote HTTP
-outcome—a POST, PUT, or DELETE might already have changed the remote resource.
+Binary responses follow {§http-binary-source}, appending authoritative
+`x-plurnk-projection-id` evidence after the origin and acquisition fields.
+Exceeding the input ceiling returns `413` with configured and observed sizes;
+a mutation response retains its lifecycle/header evidence and settles errored
+without publishing partial bytes. This is a materialization failure, not the
+remote HTTP outcome—a POST, PUT, or DELETE might already have changed the resource.
 Missing or malformed `Content-Type` becomes `application/octet-stream`; the
 handler does not sniff or guess unknown bytes.
 
@@ -450,14 +454,13 @@ operation is cancelled.
 | Result                               | Meaning                                                                                  |
 | ------------------------------------ | ---------------------------------------------------------------------------------------- |
 | Origin HTML                          | Exact source text, MIME type, package-stamped evidence, and page-producer eligibility    |
-| Negotiated origin Markdown           | Exact body plus independent HTML-variant outcome                                         |
+| Negotiated origin Markdown           | Exact body without a second HTML acquisition                                             |
 | Other accepted body                  | One unconsumed byte stream, MIME type, package-stamped headers, and cancellation owner   |
 | Admitted origin transport failure    | Bounded origin failure plus eligibility for provider-only page production                |
 | Materialized configured text         | Complete Fetch-decoded UTF-8 body                                                        |
-| Materialized readable binary         | Bounded derived Unicode plus source type, projection identity, and enriched header       |
-| Materialized HTML page               | Independent body/html outcomes and complete route/provider evidence                      |
+| Materialized binary                  | Original bounded `body` bytes, optional `readable`, and projection identity in `header`  |
+| Materialized HTML page               | Independent source/readable outcomes and complete route/provider evidence                 |
 | Automatic top-level `null`           | Refused target, non-2xx response, or unavailable response with no provider route          |
-| Non-page materialization `null`      | No final readable binary projection                                                      |
 | Caller-cancelled acquisition         | Rejects with the caller signal's exact reason                                            |
 
 Top-level `null` is an automatic-acquisition liveness value rather than a thrown

@@ -1,4 +1,5 @@
-import type { ParseIssueTransition, ProjectedText, ProjectionCaps } from "@plurnk/plurnk-schemes";
+import type { ParseIssueTransition, ProjectedBinary, ProjectedText, ProjectionCaps } from "@plurnk/plurnk-schemes";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ErrorDetail from "../ErrorDetail.ts";
 
@@ -19,11 +20,16 @@ export default class DbProjectionCaps implements ProjectionCaps {
         return projected === null ? null : { ...projected, mimetype: "text/markdown" };
     }
 
-    async readableBytes(chunks: AsyncIterable<Uint8Array>, mimetype: string): Promise<ProjectedText | null> {
+    async binary(chunks: AsyncIterable<Uint8Array>, mimetype: string): Promise<ProjectedBinary> {
         const mimetypes = this.#ctx.mimetypes;
-        if (mimetypes === undefined) throw new Error("projection.readableBytes: mimetype registry is required");
-        const projected = await mimetypes.projectReadableStream(chunks, mimetype);
-        return projected === null ? null : { ...projected, mimetype: "text/markdown" };
+        if (mimetypes === undefined) throw new Error("projection.binary: mimetype registry is required");
+        const bytes = await Mimetypes.collectBinary(chunks, mimetype);
+        const projected = await mimetypes.projectReadable({ content: bytes, hint: mimetype });
+        return {
+            bytes,
+            readable: projected === null ? null : { ...projected, mimetype: "text/markdown" },
+            projectionIdentity: projected?.projectionIdentity ?? await mimetypes.projectionIdentity(mimetype),
+        };
     }
 
     async identity(mimetype: string): Promise<string> {

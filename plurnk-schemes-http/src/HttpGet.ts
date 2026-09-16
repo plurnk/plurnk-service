@@ -1,7 +1,7 @@
 // The GET path of the http scheme: the fetch, event-stream opening, and the llms.txt piggyback. Split out of Http.
 import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducerResult, PassthroughResult, RepresentationPreparationResult, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
-import WebFetcher, { WebMaterializationError, type WebFetchResult, type WebMaterializedResult } from "./WebFetcher.ts";
+import WebFetcher, { WebMaterializationError, type WebFetchResult } from "./WebFetcher.ts";
 import { BODY, HEADER } from "./http-names.ts";
 import LiveAcquisitions from "./LiveAcquisitions.ts";
 
@@ -113,14 +113,14 @@ export default class HttpGet {
             return { status: 200 };
         }
 
-        let fetched: WebFetchResult | null;
         // {§http-kill} — a KILL of the address aborts this acquisition through the tracked controller.
         const liveKey = LiveAcquisitions.key(ctx.workspaceId, url);
         const local = new AbortController();
         const release = this.#live.track(liveKey, local);
+        const signal = LiveAcquisitions.composed(ctx.signal, local.signal);
         try {
-            fetched = await this.#webFetcher.fetch(url, {
-                signal: LiveAcquisitions.composed(ctx.signal, local.signal),
+            let fetched = await this.#webFetcher.fetch(url, {
+                signal,
                 headers: requestHeaders,
                 ...(conditional.length > 0
                     ? { conditionalHeaders: conditional }
@@ -129,99 +129,6 @@ export default class HttpGet {
                 acceptHttpErrors: true,
                 preserveUnavailable: true,
             });
-        } catch (error) {
-            if ((ctx.signal?.aborted === true && error === ctx.signal.reason) || local.signal.aborted) {
-                return this.#cancelled(url, "GET");
-            }
-            throw error;
-        } finally {
-            release();
-        }
-        if (fetched === null) {
-            return this.#bad(
-                404,
-                "http",
-                "not-materialized",
-                `The URL ${url} could not be materialized.`,
-                {
-                    target: url,
-                    stage: "acquisition",
-                    retryable: true,
-                },
-            );
-        }
-
-        if (fetched.status === 304) {
-            if (cached === undefined) {
-                return this.#bad(
-                    502,
-                    "http",
-                    "fetch-failed",
-                    `HTTP GET ${url} returned 304 without a reusable stored representation.`,
-                    {
-                        target: url,
-                        method: "GET",
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
-            }
-            const cachedHeader = cached.channels[HEADER]!.content;
-            if (this.#materializerIdentity(cachedHeader) !== undefined) {
-                return this.#bad(
-                    502,
-                    "http",
-                    "fetch-failed",
-                    `HTTP GET ${url} returned 304 for a stored representation that requires full reacquisition.`,
-                    {
-                        target: url,
-                        method: "GET",
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
-            }
-            const responseHeaders = fetched.responseHeaders ?? [];
-            if (this.#revalidationCorresponds(
-                cachedHeader,
-                new Headers(responseHeaders.map(([name, value]) => [name, value])),
-            )) {
-                const channels: EntryData["channels"] = {
-                    ...cached.channels,
-                    [HEADER]: {
-                        ...cached.channels[HEADER]!,
-                        content: this.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
-                    },
-                };
-                const written = await ctx.entries.write(pathname, {
-                    channels,
-                });
-                if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
-                return { status: 200 };
-            }
-            // {§revalidation} — a genuinely mismatched 304 (different opaque
-            // tags): the conditional is the problem, so fall back to one
-            // unconditional GET and acquire normally instead of surfacing
-            // an unrecoverable 502. A second 304 has no way out and is the
-            // honest failure.
-            const retry = new AbortController();
-            const releaseRetry = this.#live.track(liveKey, retry);
-            try {
-                fetched = await this.#webFetcher.fetch(url, {
-                    signal: LiveAcquisitions.composed(ctx.signal, retry.signal),
-                    headers: requestHeaders,
-                    guarded: false,
-                    acceptHttpErrors: true,
-                    preserveUnavailable: true,
-                });
-            } catch (error) {
-                if ((ctx.signal?.aborted === true && error === ctx.signal.reason) || retry.signal.aborted) {
-                    return this.#cancelled(url, "GET");
-                }
-                throw error;
-            } finally {
-                releaseRetry();
-            }
             if (fetched === null) {
                 return this.#bad(
                     404,
@@ -235,64 +142,120 @@ export default class HttpGet {
                     },
                 );
             }
+
             if (fetched.status === 304) {
-                return this.#bad(
-                    502,
-                    "http",
-                    "fetch-failed",
-                    `HTTP GET ${url} returned 304 without identifying the stored representation nominated for revalidation.`,
-                    {
-                        target: url,
-                        method: "GET",
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
+                if (cached === undefined) {
+                    return this.#bad(
+                        502,
+                        "http",
+                        "fetch-failed",
+                        `HTTP GET ${url} returned 304 without a reusable stored representation.`,
+                        {
+                            target: url,
+                            method: "GET",
+                            stage: "acquisition",
+                            retryable: true,
+                        },
+                    );
+                }
+                const cachedHeader = cached.channels[HEADER]!.content;
+                if (this.#materializerIdentity(cachedHeader) !== undefined) {
+                    return this.#bad(
+                        502,
+                        "http",
+                        "fetch-failed",
+                        `HTTP GET ${url} returned 304 for a stored representation that requires full reacquisition.`,
+                        {
+                            target: url,
+                            method: "GET",
+                            stage: "acquisition",
+                            retryable: true,
+                        },
+                    );
+                }
+                const responseHeaders = fetched.responseHeaders ?? [];
+                if (this.#revalidationCorresponds(
+                    cachedHeader,
+                    new Headers(responseHeaders.map(([name, value]) => [name, value])),
+                )) {
+                    const channels: EntryData["channels"] = {
+                        ...cached.channels,
+                        [HEADER]: {
+                            ...cached.channels[HEADER]!,
+                            content: this.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
+                        },
+                    };
+                    const written = await ctx.entries.write(pathname, {
+                        channels,
+                    });
+                    if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
+                    return { status: 200 };
+                }
+                // {§revalidation} — a genuinely mismatched 304 (different opaque
+                // tags): the conditional is the problem, so fall back to one
+                // unconditional GET and acquire normally instead of surfacing
+                // an unrecoverable 502. A second 304 has no way out and is the
+                // honest failure.
+                fetched = await this.#webFetcher.fetch(url, {
+                    signal,
+                    headers: requestHeaders,
+                    guarded: false,
+                    acceptHttpErrors: true,
+                    preserveUnavailable: true,
+                });
+                if (fetched === null) {
+                    return this.#bad(
+                        404,
+                        "http",
+                        "not-materialized",
+                        `The URL ${url} could not be materialized.`,
+                        {
+                            target: url,
+                            stage: "acquisition",
+                            retryable: true,
+                        },
+                    );
+                }
+                if (fetched.status === 304) {
+                    return this.#bad(
+                        502,
+                        "http",
+                        "fetch-failed",
+                        `HTTP GET ${url} returned 304 without identifying the stored representation nominated for revalidation.`,
+                        {
+                            target: url,
+                            method: "GET",
+                            stage: "acquisition",
+                            retryable: true,
+                        },
+                    );
+                }
+                // Non-304: fall through to ordinary acquisition below.
             }
-            // Non-304: fall through to ordinary acquisition below.
-        }
 
-        if (fetched.mimetype === "text/event-stream"
-            && fetched.response?.body !== null
-            && fetched.response?.body !== undefined) {
-            return this.#openEventStream(address, fetched, ctx);
-        }
+            if (fetched.mimetype === "text/event-stream"
+                && fetched.response?.body !== null
+                && fetched.response?.body !== undefined) {
+                return this.#openEventStream(address, fetched, ctx);
+            }
 
-        let materialized: WebMaterializedResult | null;
-        const projecting = new AbortController();
-        const releaseProjecting = this.#live.track(liveKey, projecting);
-        try {
-            materialized = await WebFetcher.materialize(fetched, ctx.projection, LiveAcquisitions.composed(ctx.signal, projecting.signal));
+            const materialized = await WebFetcher.materialize(fetched, ctx.projection, signal);
+            const written = await ctx.entries.write(pathname, {
+                channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
+            });
+            if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
+            await this.#piggybackLlmsText(address, ctx);
+            return { status: 200 };
         } catch (error) {
-            releaseProjecting();
-            if (ctx.signal?.aborted === true || projecting.signal.aborted) return this.#cancelled(url, "GET");
+            const cause = error instanceof WebMaterializationError ? error.cause : error;
+            if (signal.aborted && cause === signal.reason) return this.#cancelled(url, "GET");
             if (error instanceof WebMaterializationError) {
                 return this.#materializationFailure(url, "GET", error);
             }
             throw error;
+        } finally {
+            release();
         }
-        if (materialized === null) {
-            return this.#bad(
-                415,
-                "http",
-                "binary-response-unsupported",
-                `HTTP GET ${url} returned ${fetched.mimetype}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`,
-                {
-                    target: url,
-                    method: "GET",
-                    mimetype: fetched.mimetype,
-                    stage: "materialization",
-                    recovery: "Inspect #header or use a byte-capable client.",
-                    retryable: false,
-                },
-            );
-        }
-        const written = await ctx.entries.write(pathname, {
-            channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
-        });
-        if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
-        await this.#piggybackLlmsText(address, ctx);
-        return { status: 200 };
     }
 
 
@@ -353,9 +316,11 @@ export default class HttpGet {
             });
             if (fetched === null) return;
             // A missing companion (404) or any non-2xx is quiet — no entry.
-            if ((fetched.status ?? 200) >= 400) return;
+            if ((fetched.status ?? 200) >= 400 || await ctx.projection.isBinary(fetched.mimetype)) {
+                if (typeof fetched.body !== "string") await fetched.body.cancel();
+                return;
+            }
             const materialized = await WebFetcher.materialize(fetched, ctx.projection, ctx.signal);
-            if (materialized === null) return;
             await ctx.entries.write("/llms.txt", {
                 channels: WebFetcher.materializedChannels(materialized, { url: llmsUrl, method: "GET" }),
             });

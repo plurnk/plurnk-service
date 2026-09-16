@@ -555,3 +555,10 @@ test("containment whose inner lines occur twice in the outer body stays refused 
     assert.equal(result.status, 409);
     assert.match(String(result.problem?.recovery), /one contains the other/);
 });
+test("{§slicer-window} an empty byte source returns no coordinates, never the invalid [1,0] range", () => {
+    for (const marks of [[1, 16], [1, -1], [0], [-1]] satisfies [number, ...number[]][]) {
+        assert.deepEqual(Slicer.window({ marks }, 0, "byte"), {
+            status: 200, start: null, end: null, range: { unit: "byte", total: 0, requested: marks.length === 1 ? [marks[0], marks[0]] : marks },
+        });
+    }
+});

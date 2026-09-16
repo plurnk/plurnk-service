@@ -58,14 +58,15 @@ channel is the sole authority for deriving model-readable Unicode.
 | `PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES` | One positive-integer ceiling for filesystem, inline, and streamed binary inputs before handler execution   |
 | `projectReadable(input)`                 | Return derived Unicode, source mimetype, and opaque projection identity; `null` means no content projection |
 | `projectReadableStream(chunks, mimetype)` | Consume `Uint8Array` chunks within the same ceiling only for an installed binary content projection         |
+| `collectBinary(chunks, mimetype)` | Collect source bytes within that ceiling independently of readable projection availability; storage remains consumer-owned |
 | Limit exceeded                           | Throw `MimetypeInputLimitError` with source mimetype, maximum bytes, and observed bytes                     |
 
-The framework checks projection presence before reading a binary filesystem or
-stream source. It never buffers bytes merely to discover that the installed
-handler has no readable projection. A format handler may impose a stricter
+Readable-only requests check projection presence before reading a binary filesystem or
+stream source. Source acquisition uses `collectBinary` when bytes must survive independently
+of a readable projection. A format handler may impose a stricter
 limit; it may not weaken the framework ceiling.
 
-§mimetype-projection-facts A readable projection may carry the handler's structured facts: when a handler overrides `facts`, `projectReadable` requests that channel beside `content` and returns them as `facts`, so a consumer can record what the source is (an image's format and pixel dimensions) without reading it again. A source the handler's `validate` refuses has no readable projection: `projectReadable` answers null rather than throwing, so a mislabelled member stays a marker and a mislabelled response stays unsupported.
+§mimetype-projection-facts A readable projection may carry the handler's structured facts: when a handler overrides `facts`, `projectReadable` requests that channel beside `content` and returns them as `facts`, so a consumer can record what the source is (an image's format and pixel dimensions) without reading it again. A source the handler's `validate` refuses has no readable projection: `projectReadable` answers null rather than throwing. This does not prevent retaining or reading the original bytes; it supplies no facts authorizing native media delivery.
 
 §mimetype-image `@plurnk/plurnk-mimetypes-image` serves `image/png`, `image/jpeg`, `image/gif`, and `image/webp` as binary handlers that decode nothing: `validate` checks the header magic, `content` is the header's facts as one line (`PNG image, 640×480 px, 12345 bytes`), and `deepJson` is those facts (`format`, `width`, `height`, `bytes`). The picture itself is the service's to attach ({§packet-attachment-parts} in the core specification).
 

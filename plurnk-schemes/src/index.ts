@@ -94,6 +94,7 @@ export type {
     ProjectionCaps,
     InteractionCaps,
     ProjectedText,
+    ProjectedBinary,
     NotifyCaps,
     ProposalApplyRequest,
     ProposalApplyResult,

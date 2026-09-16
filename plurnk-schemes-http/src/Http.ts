@@ -193,12 +193,11 @@ export default class Http implements SchemeHandler {
         name: "https",
         authority: "resource",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
-        // body is retyped per-call via notifyChunk's mimetype arg — to the real
-        // response Content-Type or the configured readable projection type;
+        // body is retyped per-call to the real response Content-Type;
         // octet-stream is the honest "unknown until fetched". header is always the status
         // line + headers (text/plain).
         // {§readable-channel} — body is the response as served (a page's server source); readable
-        // is a page's curated Markdown, materializer or local projection; header is evidence.
+        // is curated Markdown or binary facts; header is transport evidence.
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", readable: "text/markdown" },
         defaultChannel: BODY,
         category: "data",
@@ -223,7 +222,7 @@ export default class Http implements SchemeHandler {
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher();
         this.#get = new HttpGet({ live: this.#live, errorDetailLimit: this.#errorDetailLimit, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
-        this.#requester = new HttpRequester({ live: this.#live, manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, writeHeader: Http.#writeHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
+        this.#requester = new HttpRequester({ live: this.#live, manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, responseHeader: Http.#responseHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
     }
 
     async ready(): Promise<void> {
@@ -376,21 +375,6 @@ export default class Http implements SchemeHandler {
 
     // {§revalidation} Origin headers come first; authoritative package method
     // and acquisition metadata are appended last.
-    static async #writeHeader(
-        subscription: StreamSubscription,
-        method: string,
-        status: number,
-        statusText: string,
-        responseHeaders: ReadonlyArray<readonly [string, string]>,
-        requestHeaders: ReadonlyArray<readonly [string, string]>,
-    ): Promise<void> {
-        await subscription.notifyChunk(
-            HEADER,
-            Http.#responseHeader(method, status, statusText, responseHeaders, requestHeaders),
-            "text/plain",
-        );
-    }
-
     static #responseHeader(
         method: string,
         status: number,
@@ -788,7 +772,7 @@ export default class Http implements SchemeHandler {
     }
 
     // Conditional-request headers from the prior fetch's stored response headers
-    // (the HEADER channel text #writeHeader wrote): ETag → If-None-Match,
+    // (the HEADER channel's response evidence): ETag → If-None-Match,
     // Last-Modified → If-Modified-Since. Empty when neither is present — the
     // origin then just 200s with a full body, which is correct.
     static #validators(priorHeader: string): Array<[string, string]> {
@@ -836,7 +820,7 @@ export default class Http implements SchemeHandler {
                 413,
                 "http",
                 "projection-input-limit",
-                `HTTP ${method} ${url} exceeded the ${error.cause.maximumBytes}-byte readable-projection input limit.`,
+                `HTTP ${method} ${url} exceeded the ${error.cause.maximumBytes}-byte binary input limit.`,
                 {
                     target: url,
                     method,
@@ -853,7 +837,7 @@ export default class Http implements SchemeHandler {
             500,
             "http",
             "projection-failed",
-            `HTTP ${method} ${url} acquired content, but its readable projection failed.`,
+            `HTTP ${method} ${url} response materialization failed.`,
             {
                 target: url,
                 method,

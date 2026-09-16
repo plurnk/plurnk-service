@@ -180,9 +180,15 @@ export interface ProjectedText {
     projectionIdentity: string;
 }
 
+export interface ProjectedBinary {
+    readonly bytes: Uint8Array;
+    readonly readable: ProjectedText | null;
+    readonly projectionIdentity: string;
+}
+
 export interface ProjectionCaps {
     readable(content: string, mimetype: string): Promise<ProjectedText | null>;
-    readableBytes(chunks: AsyncIterable<Uint8Array>, mimetype: string): Promise<ProjectedText | null>;
+    binary(chunks: AsyncIterable<Uint8Array>, mimetype: string): Promise<ProjectedBinary>;
     identity(mimetype: string): Promise<string>;
     isBinary(mimetype: string): Promise<boolean>;
     parseIssues(content: string, mimetype: string): Promise<number | undefined>;

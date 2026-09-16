@@ -52,13 +52,13 @@ when its content is empty. `422 no-readable-projection` on `#readable` means the
 local route produced no readable text. An internal projection exception returns
 non-retryable `500 projection-failed`.
 
-A binary response uses the installed mimetype reader when one supplies a
-bounded Unicode projection; raw bytes never enter a durable channel. Without a
-reader, finite GET preparation returns `415 binary-response-unsupported`
-without fabricating an entry. Input above the configured byte ceiling returns
-`413 projection-input-limit`. A streamed POST, PUT, or DELETE response already
-owns lifecycle evidence in `#header`; do not retry a mutation solely to
-retrieve its binary body.
+A binary response retains its original bytes in `body`; READ shows their hex
+and, on a supporting model, attaches the complete native media. `#readable`
+holds facts/text when a reader exists and attaches the same native source.
+`#bytes` explicitly selects the hex view; scope never clips native media.
+Unknown formats remain byte-readable. Input above the configured byte ceiling
+returns `413 projection-input-limit`. Failed mutation responses retain lifecycle
+evidence in `#header`; do not retry a mutation solely to retrieve its body.
 
 `#header` contains origin and package acquisition evidence. A materializer attempt
 adds its route, status, timing, any reported request ID and credits, and bounded

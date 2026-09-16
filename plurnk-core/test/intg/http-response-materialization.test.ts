@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
+import { type ReadStatement, type SendStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Http from "@plurnk/plurnk-schemes-http";
 import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { resolve } from "node:path";
@@ -72,6 +72,46 @@ const readablePdf = () => new Uint8Array(Buffer.from(
     "base64",
 ));
 
+for (const mode of ["complete", "oversize", "interrupted"] as const) {
+    test(`{§http-binary-source} mutation response (${mode}) preserves headers and publishes only complete binary content`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, `http-mutation-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const pdf = readablePdf();
+        const maximum = process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
+        process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = mode === "oversize" ? "3" : "104857600";
+        t.after(() => { if (maximum === undefined) delete process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES; else process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = maximum; });
+        t.mock.method(globalThis, "fetch", async () => new Response(mode === "interrupted" ? new ReadableStream({
+            start(controller) { controller.enqueue(pdf.subarray(0, 4)); },
+            pull(controller) { controller.error(new Error("connection interrupted")); },
+        }) : pdf, { headers: { "content-type": "application/pdf", "x-response-id": "mutation" } }));
+        const send = PlurnkParser.parseStatements("```SEND (https://93.184.216.34/paper.pdf)\ncreate\n```").items[0];
+        assert.ok(send?.kind === "statement");
+        const result = await new Http().send(send.statement as SendStatement, handlerCtx);
+        assert.equal(result.status, mode === "complete" ? 102 : mode === "oversize" ? 413 : 500);
+        const entry = (await handlerCtx.entries.read("/paper.pdf")).entry;
+        assert.ok(entry);
+        assert.match(entry.channels.header.content, /^x-response-id: mutation$/m);
+        assert.match(entry.channels.header.content, /^x-plurnk-request-method: POST$/m);
+        assert.equal(entry.channels.body.mimetype, "application/pdf");
+        assert.deepEqual(Buffer.from(entry.channels.body.content, "base64"), mode === "complete" ? Buffer.from(pdf) : Buffer.alloc(0));
+        assert.equal(entry.channels.body.state, mode === "complete" ? "closed" : "errored");
+        if (mode === "complete") {
+            assert.match(entry.channels.readable.content, /^PDF document, 1 page,/u);
+            assert.equal(entry.channels.readable.state, "closed");
+            assert.match(entry.channels.header.content, /^x-plurnk-projection-id: [a-f0-9]{64}$/m);
+        } else {
+            assert.equal(entry.channels.body.producerResult?.status, result.status);
+            assert.equal(entry.channels.readable.content, "");
+            assert.equal(entry.channels.readable.state, "errored");
+            assert.equal(entry.channels.readable.producerResult?.status, result.status);
+        }
+    });
+}
+
 const emptyStatement = (): ReadStatement => ({
     metadata: null,
     op: "READ",
@@ -114,7 +154,30 @@ const legacyTextStatement = (): ReadStatement => ({
     position: { line: 1, column: 0 },
 });
 
-test("an unsupported binary response returns an exact 415 without fabricating a text entry", async () => {
+for (const status of [200, 404]) {
+for (const size of [0, 3]) {
+    test(`{§http-binary-source} a ${status} binary response with ${size} bytes preserves its source outcome`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const bytes = Uint8Array.from([1, 2, 3].slice(0, size));
+        t.mock.method(globalThis, "fetch", async () => new Response(bytes, {
+            status, statusText: status === 200 ? "OK" : "Not Found", headers: { "content-type": "application/octet-stream" },
+        }));
+        const workspaceId = await insertWorkspace(db, `http-outcome-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const http = new Http();
+        for (const fragment of ["", "#bytes"]) {
+            const read = await readHttp(http, parsedRead(`https://93.184.216.34/result.bin${fragment}`), ctx);
+            assert.equal(read.status, status === 404 ? 404 : size === 0 ? 204 : 200, JSON.stringify(read));
+            assert.equal(read.content, size === 0 ? "" : "01\n02\n03");
+            if (status === 404) assert.equal(read.problem?.type, "https://problems.plurnk.xyz/scheme/http/http-response-status");
+        }
+    });
+}
+}
+
+test("{§http-binary-source} an invalid image remains byte-readable without invented native media", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -127,17 +190,20 @@ test("an unsupported binary response returns an exact 415 without fabricating a 
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const acquired = await readHttp(http, statement(), ctx);
-        assert.equal(acquired.status, 415);
-        assert.equal(acquired.problem?.type, "https://problems.plurnk.xyz/scheme/http/binary-response-unsupported");
+        assert.equal(acquired.status, 200);
+        assert.equal(acquired.content, "89\n50\n4e\n47\n00\nff");
+        assert.equal(acquired.projection, "hex");
+        assert.equal(acquired.image, undefined);
+        assert.equal(acquired.nativeContentHash, undefined);
 
-        const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({
-            pathname: "/93.184.216.34/logo.png",
-        });
-        assert.equal(entry, undefined);
+        const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const entry = await handlerCtx.entries.read("/logo.png");
+        assert.equal(entry.status, 200);
+        assert.deepEqual(Buffer.from(entry.entry!.channels.body.content, "base64"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
 
         const reread = await readHttp(http, statement({ marks: [1] }), ctx);
-        assert.equal(reread.status, 415);
-        assert.equal(reread.problem?.type, "https://problems.plurnk.xyz/scheme/http/binary-response-unsupported");
+        assert.equal(reread.status, 200);
+        assert.equal(reread.content, "89");
     } finally {
         globalThis.fetch = originalFetch;
         await db.close();
@@ -146,7 +212,7 @@ test("an unsupported binary response returns an exact 415 without fabricating a 
 
 // {§mimetype-pdf-facts} (#542) — a fetched PDF's readable body is its header facts, never extracted
 // text; the bytes ride the packet as a native document part on a route that accepts one.
-test("a direct readable PDF persists only its header facts plus projection evidence", async () => {
+test("{§http-binary-source} a direct PDF retains its complete bytes beside facts and projection evidence", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -164,8 +230,9 @@ test("a direct readable PDF persists only its header facts plus projection evide
 
         assert.equal((await readHttp(http, statement(null, "/paper.pdf"), ctx)).status, 200);
         const entry = await handlerCtx.entries.read("/paper.pdf");
-        assert.equal(entry.entry?.channels.body.mimetype, "text/markdown");
-        assert.match(entry.entry?.channels.body.content ?? "", /^PDF document, 1 page, \d+ bytes$/u, "the readable body is the header facts, nothing extracted");
+        assert.equal(entry.entry?.channels.body.mimetype, "application/pdf");
+        assert.deepEqual(Buffer.from(entry.entry?.channels.body.content ?? "", "base64"), Buffer.from(readablePdf()));
+        assert.match(entry.entry?.channels.readable.content ?? "", /^PDF document, 1 page, \d+ bytes$/u, "the readable projection is the header facts, nothing extracted");
         assert.equal(entry.entry?.channels.body.state, "static");
         assert.match(entry.entry?.channels.header.content ?? "", /^content-type: application\/pdf$/m);
         assert.match(
@@ -175,8 +242,13 @@ test("a direct readable PDF persists only its header facts plus projection evide
 
         const reread = await readHttp(http, statement({ marks: [1] }, "/paper.pdf"), ctx);
         assert.equal(reread.status, 200);
-        assert.match(reread.content ?? "", /^PDF document, 1 page, \d+ bytes$/u);
-        assert.equal(reread.mimetype, "text/markdown");
+        assert.equal(reread.content, "25");
+        assert.equal(reread.mimetype, "application/pdf");
+        const facts = await readHttp(http, parsedRead("https://93.184.216.34/paper.pdf#readable"), ctx);
+        assert.equal(facts.status, 200);
+        assert.match(facts.content ?? "", /^PDF document, 1 page, \d+ bytes$/u);
+        assert.deepEqual(facts.document, { mimetype: "application/pdf", pages: 1, bytes: readablePdf().byteLength });
+        assert.ok(facts.nativeContentHash);
     } finally {
         globalThis.fetch = originalFetch;
         await db.close();

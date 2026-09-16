@@ -15,13 +15,13 @@ export default class HttpRequester {
     readonly #bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
     readonly #seedEntry: () => EntryData;
     readonly #passthrough: (result: SchemeResult) => PassthroughResult & ChannelProducerResult;
-    readonly #writeHeader: (subscription: StreamSubscription, method: string, status: number, statusText: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => Promise<void>;
+    readonly #responseHeader: (method: string, status: number, statusText: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
     readonly #writeProjectionIdentity: (subscription: StreamSubscription, identity: string) => Promise<void>;
     readonly #cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
     readonly #materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
 
     readonly #live: LiveAcquisitions;
-    constructor({ live, manifest, errorDetailLimit, address, requestHeaders, bad, seedEntry, passthrough, writeHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
+    constructor({ live, manifest, errorDetailLimit, address, requestHeaders, bad, seedEntry, passthrough, responseHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
         manifest: SchemeManifest;
         errorDetailLimit: number;
         address: (target: UrlPath) => NetworkAddress | PassthroughResult;
@@ -29,7 +29,7 @@ export default class HttpRequester {
         bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
         seedEntry: () => EntryData;
         passthrough: (result: SchemeResult) => PassthroughResult & ChannelProducerResult;
-        writeHeader: (subscription: StreamSubscription, method: string, status: number, statusText: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => Promise<void>;
+        responseHeader: (method: string, status: number, statusText: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
         writeProjectionIdentity: (subscription: StreamSubscription, identity: string) => Promise<void>;
         cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
         materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
@@ -43,7 +43,7 @@ export default class HttpRequester {
         this.#bad = bad;
         this.#seedEntry = seedEntry;
         this.#passthrough = passthrough;
-        this.#writeHeader = writeHeader;
+        this.#responseHeader = responseHeader;
         this.#writeProjectionIdentity = writeProjectionIdentity;
         this.#cancelled = cancelled;
         this.#materializationFailure = materializationFailure;
@@ -111,11 +111,10 @@ export default class HttpRequester {
 
             const responseMime = responseMimetype(response.headers.get("content-type"));
 
-            // {§http-lifecycle}/{§mimetype-classifier} String channels retain
-            // textual response data. Binary input is transient: an installed
-            // reader may derive Unicode, otherwise the durable body is a typed
-            // empty marker rather than a fabricated byte channel.
-            await this.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers], headers);
+            // {§http-binary-source} — completed binary input uses ordinary entry byte storage;
+            // text responses retain their incremental subscription path.
+            const header = this.#responseHeader(method, response.status, response.statusText, [...response.headers], headers);
+            await subscription.notifyChunk("header", header, "text/plain");
             const bodyMime = responseMime;
             if (response.body === null) {
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
@@ -139,33 +138,21 @@ export default class HttpRequester {
                     await subscription.notifyChunk(BODY, "", bodyMime);
                     throw error;
                 }
-                if (projected !== null) {
-                    await this.#writeProjectionIdentity(subscription, projected.projectionIdentity);
-                    await subscription.notifyChunk(BODY, projected.content, projected.mimetype);
-                    await subscription.close(
-                        { status: 200 },
-                        `HTTP ${response.status}; ${projected.content.length} readable chars from ${bodyMime}`,
-                    );
-                    return { shape: "passthrough", status: 102 };
+                const stored = await ctx.entries.write(pathname, { channels: {
+                    body: { content: "", bytes: projected.bytes, mimetype: bodyMime, state: "active" },
+                    header: { content: header, mimetype: "text/plain", state: "active" },
+                    ...(projected.readable === null ? {} : { readable: {
+                        content: projected.readable.content, mimetype: projected.readable.mimetype, state: "active" as const,
+                    } }),
+                } });
+                if (Results.isErrorStatus(stored.status)) {
+                    const result = this.#passthrough(stored);
+                    await subscription.close(result, result.problem?.detail);
+                    return result;
                 }
-                await subscription.notifyChunk(BODY, "", bodyMime);
-                const detail = `HTTP ${method} ${url} returned ${bodyMime}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`;
-                const result = this.#bad(
-                    415,
-                    "http",
-                    "binary-response-unsupported",
-                    detail,
-                    {
-                        target: url,
-                        method,
-                        mimetype: bodyMime,
-                        stage: "materialization",
-                        recovery: "Do not retry the request solely to retrieve this body; inspect #header or use a byte-capable client.",
-                        retryable: false,
-                    },
-                );
-                await subscription.close(result, detail);
-                return result;
+                await this.#writeProjectionIdentity(subscription, projected.projectionIdentity);
+                await subscription.close({ status: 200 }, `HTTP ${response.status}; ${projected.bytes.byteLength} bytes`);
+                return { shape: "passthrough", status: 102 };
             }
             // {§http-text-decoding} Fetch text is replacement-mode UTF-8;
             // Content-Type charset remains response evidence, not a second decoder.

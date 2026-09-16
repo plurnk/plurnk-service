@@ -362,19 +362,19 @@ is never a `NetworkAddress` component.
 ### §scheme-projection Projection capability
 
 Acquisition schemes delegate model-facing projection to the consumer's one
-configured mimetype family. They neither instantiate readers nor widen durable
-entry channels beyond Unicode text.
+configured mimetype family. They neither instantiate readers nor discard source
+bytes merely because no readable projection exists.
 
 | Surface                           | Contract                                                                                              |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `readable(content, mimetype)`     | Project an acquired Unicode representation.                                                           |
-| `readableBytes(chunks, mimetype)` | Project one async byte source under the mimetype family's bounded-input policy.                       |
+| `binary(chunks, mimetype)` | Return bounded source `bytes`, nullable `readable: ProjectedText`, and the configured `projectionIdentity`, even without a reader; consume one async byte source under {§mimetype-binary-input}. |
 | `identity(mimetype)`              | Return the opaque identity of configured projection behavior for cache and materialization freshness. |
 | `isBinary(mimetype)`              | Classify through the configured registry; installed handler declarations remain authoritative.        |
 | `parseIssues(content, mimetype)`  | Return a nonnegative parser-recovery count, or omit unavailable evidence, under {§mimetype-parse-issues}. |
 | `ProjectedText`                   | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.            |
 
-A returned object is present even when its `content` is `""`; only `null`
+A readable projection is present even when its `content` is `""`; only `null`
 denotes absence. Consumers must not infer projection presence from content
 length. Thrown readable, identity, and classification calls are execution
 failures whose causes propagate; they must never be converted to `null`.

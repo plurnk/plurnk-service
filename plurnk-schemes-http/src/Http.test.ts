@@ -2,9 +2,12 @@
 // in-memory SchemeCtx (mirroring the contract test pattern in plurnk-schemes'
 // own ctx.test.ts) plus a mock global.fetch — so we exercise the real
 // subscription lifecycle (open → notifyChunk → close) and the SEND verb
-// dispatch without a network or a database.
+// dispatch without a database. One loopback specimen checks native Fetch cancellation.
 
 import test, { after, before, beforeEach, mock } from "node:test";
+import { buffer } from "node:stream/consumers";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
@@ -70,7 +73,9 @@ const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps
             projectionIdentity: `test:${mimetype}`,
         } : null;
     },
-    async readableBytes() { return null; },
+    async binary(chunks, mimetype) {
+        return { bytes: await buffer(chunks), readable: null, projectionIdentity: `test:${mimetype}` };
+    },
     async identity(mimetype) { return `test:${mimetype}`; },
     async isBinary(mimetype) { return MimetypeClassifier.isBinary(mimetype); },
     ...overrides,
@@ -397,16 +402,16 @@ test("exact FIND preparation preserves a provider-only page's unavailable source
 test("exact FIND preparation persists a readable binary projection with source and projection evidence", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "application/pdf"; },
-        async readableBytes(chunks, mimetype) {
+        async binary(chunks, mimetype) {
             const bytes: number[] = [];
             for await (const chunk of chunks) bytes.push(...chunk);
             assert.deepEqual(bytes, [1, 2, 3]);
-            return {
+            return { bytes: Uint8Array.from(bytes), projectionIdentity: "pdf-reader-v2", readable: {
                 content: "projected PDF",
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
                 projectionIdentity: "pdf-reader-v2",
-            };
+            } };
         },
     });
     const { ctx, inspect } = makeCtx(null, { projection });
@@ -422,6 +427,11 @@ test("exact FIND preparation persists a readable binary projection with source a
     });
 
     assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "",
+        bytes: Uint8Array.of(1, 2, 3),
+        mimetype: "application/pdf",
+    });
+    assert.deepEqual(inspect().wrote?.entry.channels.readable, {
         content: "projected PDF",
         mimetype: "text/markdown",
     });
@@ -442,7 +452,7 @@ test("exact FIND preparation reports the binary input ceiling as a typed 413 wit
     });
     const projection = projectionCaps({
         async isBinary() { return true; },
-        async readableBytes() {
+        async binary() {
             throw new ProjectionInputLimitError({
                 mimetype: "application/pdf",
                 maximumBytes: 3,
@@ -953,16 +963,18 @@ test("READ: an unparseable Content-Type is an unknown binary representation", as
         result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/bad", "/bad")), ctx);
     });
 
-    assert.equal(result?.status, 415);
-    assert.equal(result?.problem?.mimetype, "application/octet-stream");
-    assert.equal(inspect().wrote, null);
+    assert.equal(result?.status, 200);
+    assert.deepEqual(inspect().wrote?.entry.channels.body?.bytes, Buffer.from("not trustworthy"));
+    assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/octet-stream");
+    assert.equal(inspect().wrote?.entry.channels.readable, undefined);
 });
 
-test("DONE: a binary response becomes a typed marker and explicit non-retryable 415", async () => {
+test("SEND: a binary response retains the complete bytes and response headers without requiring a reader", async () => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) {
             controller.enqueue(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
+            controller.close();
         },
         cancel() { cancelled = true; },
     });
@@ -976,35 +988,31 @@ test("DONE: a binary response becomes a typed marker and explicit non-retryable 
         result = await new Http().send(sendStmt(urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
     });
 
-    assert.equal(result?.status, 415);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/http/binary-response-unsupported");
-    assert.equal(result?.problem?.mimetype, "image/png");
-    assert.equal(result?.problem?.method, "POST");
-    assert.equal(result?.problem?.stage, "materialization");
-    assert.equal(result?.problem?.retryable, false);
-    assert.match(result?.problem?.recovery ?? "", /Do not retry/);
-    assert.equal(cancelled, true);
-    assert.deepEqual(
-        inspect().chunks.filter(({ channel }) => channel === "body"),
-        [{ channel: "body", chunk: "", mimetype: "image/png" }],
-    );
-    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.equal(result?.status, 102);
+    assert.equal(result?.problem, undefined);
+    assert.equal(cancelled, false);
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]), content: "", mimetype: "image/png", state: "active",
+    });
+    assert.equal(inspect().wrote?.entry.channels.readable, undefined);
+    assert.equal(inspect().closed?.result.status, 200);
+    assert.match(inspect().wrote?.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
     assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
 });
 
-test("READ: a readable binary response publishes only derived Unicode and projection evidence", async () => {
+test("READ: a readable binary response publishes its source bytes, readable projection and evidence", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "application/pdf"; },
-        async readableBytes(chunks, mimetype) {
+        async binary(chunks, mimetype) {
             const bytes: number[] = [];
             for await (const chunk of chunks) bytes.push(...chunk);
             assert.deepEqual(bytes, [37, 80, 68, 70]);
-            return {
+            return { bytes: Uint8Array.from(bytes), projectionIdentity: "pdf-reader-v3", readable: {
                 content: "# projected paper",
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
                 projectionIdentity: "pdf-reader-v3",
-            };
+            } };
         },
     });
     const { ctx, inspect } = makeCtx(null, { projection });
@@ -1020,6 +1028,11 @@ test("READ: a readable binary response publishes only derived Unicode and projec
 
     assert.equal(result?.status, 200);
     assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "",
+        bytes: Uint8Array.of(37, 80, 68, 70),
+        mimetype: "application/pdf",
+    });
+    assert.deepEqual(inspect().wrote?.entry.channels.readable, {
         content: "# projected paper",
         mimetype: "text/markdown",
     });
@@ -1037,7 +1050,7 @@ test("READ: a binary projection input ceiling leaves a typed marker and closes w
     });
     const projection = projectionCaps({
         async isBinary() { return true; },
-        async readableBytes() {
+        async binary() {
             throw new ProjectionInputLimitError({
                 mimetype: "application/pdf",
                 maximumBytes: 3,
@@ -1069,7 +1082,7 @@ test("READ: a binary projection input ceiling leaves a typed marker and closes w
     assert.equal(diagnostics.length, 0);
 });
 
-test("READ: an undeclared body is an application/octet-stream marker, not guessed text", async () => {
+test("READ: an undeclared body retains application/octet-stream bytes, not guessed text", async () => {
     const { ctx, inspect } = makeCtx();
     let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(async () => new Response(new Uint8Array([0x68, 0x69]), {
@@ -1079,9 +1092,10 @@ test("READ: an undeclared body is an application/octet-stream marker, not guesse
         result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/unknown", "/unknown")), ctx);
     });
 
-    assert.equal(result?.status, 415);
-    assert.equal(result?.problem?.mimetype, "application/octet-stream");
-    assert.equal(inspect().wrote, null);
+    assert.equal(result?.status, 200);
+    assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/octet-stream");
+    assert.deepEqual(inspect().wrote?.entry.channels.body?.bytes, Buffer.from([0x68, 0x69]));
+    assert.equal(inspect().wrote?.entry.channels.readable, undefined);
 });
 
 // ── server-sent events {§sse} ─────────────────────────────────────────────
@@ -1790,6 +1804,44 @@ test("KILL of a live acquisition cancels it in place, and the owner settles 499"
     assert.equal(inspect().deleted, null, "a cancelled acquisition forgets nothing it never stored");
 });
 
+test("{§http-binary-source} KILL cancels a binary GET after headers, before publishing any partial bytes", { timeout: 3000 }, async (t) => {
+    const reading = Promise.withResolvers<void>();
+    const outer = new AbortController();
+    const { ctx, inspect } = makeCtx(null, { signal: outer.signal, projection: projectionCaps({
+        async binary(chunks, mimetype) {
+            const input = (async function* () {
+                for await (const chunk of chunks) { reading.resolve(); yield chunk; }
+            })();
+            return { bytes: await buffer(input), readable: null, projectionIdentity: mimetype };
+        },
+    }) });
+    const http = new Http();
+    const server = createServer((_req, res) => {
+        res.writeHead(200, { "content-type": "application/octet-stream" });
+        res.write(Uint8Array.of(1, 2, 3));
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    t.after(() => { server.closeAllConnections(); return new Promise<void>((resolve) => server.close(() => resolve())); });
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const target = urlTarget(`http://127.0.0.1:${address.port}/slow.bin`, "/slow.bin");
+    const acquisition = prepareRepresentation(http, readStmt(target), ctx);
+    try {
+        await reading.promise;
+        assert.equal((await http.kill(killStmt(target), ctx)).status, 200);
+        const settled = await Promise.race([acquisition, new Promise<never>((_resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("GET body was not cancelled")), 500);
+            timer.unref();
+        })]);
+        assert.equal(settled.status, 499);
+        assert.equal(inspect().wrote, null);
+    } finally {
+        outer.abort();
+        await acquisition;
+    }
+});
+
 // ── acquisition target rewrite {§host-rewrite} ────────────────────────────
 test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
     const { ctx, inspect } = makeCtx();
@@ -1941,13 +1993,13 @@ test("exact FIND preparation reuses only a derived representation produced by th
                 return "pdf-reader-v2";
             },
             async isBinary() { return true; },
-            async readableBytes(_chunks, mimetype) {
-                return {
+            async binary(_chunks, mimetype) {
+                return { bytes: await buffer(_chunks), projectionIdentity: "pdf-reader-v2", readable: {
                     content: "current projection",
                     mimetype: "text/markdown",
                     sourceMimetype: mimetype,
                     projectionIdentity: "pdf-reader-v2",
-                };
+                } };
             },
         });
         const { ctx, inspect } = makeCtx(
@@ -1969,7 +2021,7 @@ test("exact FIND preparation reuses only a derived representation produced by th
             assert.equal(result.status, 200);
         });
         assert.equal(fetched, expectedFetch);
-        assert.equal(inspect().wrote?.entry.channels.body?.content, expectedFetch ? "current projection" : undefined);
+        assert.equal(inspect().wrote?.entry.channels.readable?.content, expectedFetch ? "current projection" : undefined);
     }
 });
 
@@ -2752,13 +2804,13 @@ test("TTL: a changed projection identity invalidates derived content and its ori
             return "pdf-reader-v2";
         },
         async isBinary() { return true; },
-        async readableBytes(_chunks, mimetype) {
-            return {
+        async binary(_chunks, mimetype) {
+            return { bytes: await buffer(_chunks), projectionIdentity: "pdf-reader-v2", readable: {
                 content: "new projection",
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
                 projectionIdentity: "pdf-reader-v2",
-            };
+            } };
         },
     });
     const { ctx, inspect } = makeCtx(
@@ -2788,7 +2840,8 @@ test("TTL: a changed projection identity invalidates derived content and its ori
 
     assert.equal(fetched, true);
     assert.equal(conditional, false, "a validator cannot certify output from a different projection");
-    assert.equal(inspect().storedEntry?.channels.body?.content, "new projection");
+    assert.equal(inspect().storedEntry?.channels.readable?.content, "new projection");
+    assert.deepEqual(inspect().wrote?.entry.channels.body?.bytes, Buffer.from([1]));
 });
 
 test("TTL: an exact static WebFetcher materialization is reusable", async () => {

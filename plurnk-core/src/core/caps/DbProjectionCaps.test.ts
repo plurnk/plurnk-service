@@ -6,18 +6,11 @@ import type { PlurnkSchemeContext } from "../scheme-types.ts";
 
 const context = (content: string | undefined): PlurnkSchemeContext => ({
     mimetypes: {
-        async projectReadable() {
+        async projectReadable({ hint }: { hint: string }) {
             return content === undefined ? null : {
                 content,
-                sourceMimetype: "text/html",
-                projectionIdentity: "html-projection-v1",
-            };
-        },
-        async projectReadableStream() {
-            return content === undefined ? null : {
-                content,
-                sourceMimetype: "application/pdf",
-                projectionIdentity: "pdf-projection-v1",
+                sourceMimetype: hint,
+                projectionIdentity: hint === "text/html" ? "html-projection-v1" : "pdf-projection-v1",
             };
         },
         async projectionIdentity(mimetype: string) {
@@ -48,19 +41,26 @@ test("readable preserves a present empty projection and reserves null for absenc
     );
 });
 
-test("readableBytes delegates one async byte source without widening the result", async () => {
+test("{§scheme-projection} binary retains the bounded source beside an optional readable projection", async () => {
     async function* bytes() {
         yield Uint8Array.of(1, 2, 3);
     }
     assert.deepEqual(
-        await new DbProjectionCaps(context("PDF text")).readableBytes(bytes(), "application/pdf"),
+        await new DbProjectionCaps(context("PDF text")).binary(bytes(), "application/pdf"),
         {
-            content: "PDF text",
-            mimetype: "text/markdown",
-            sourceMimetype: "application/pdf",
+            bytes: Uint8Array.of(1, 2, 3),
             projectionIdentity: "pdf-projection-v1",
+            readable: {
+                content: "PDF text",
+                mimetype: "text/markdown",
+                sourceMimetype: "application/pdf",
+                projectionIdentity: "pdf-projection-v1",
+            },
         },
     );
+    assert.deepEqual(await new DbProjectionCaps(context(undefined)).binary(bytes(), "application/octet-stream"), {
+        bytes: Uint8Array.of(1, 2, 3), readable: null, projectionIdentity: "application/octet-stream-identity",
+    });
 });
 
 test("projection identity delegates to the configured mimetype family", async () => {
@@ -74,6 +74,24 @@ test("binary classification delegates to installed handler declarations", async 
     const projection = new DbProjectionCaps(context(""));
     assert.equal(await projection.isBinary("text/x-binary"), true);
     assert.equal(await projection.isBinary("application/json"), false);
+});
+
+test("{§mimetype-binary-input} source acquisition enforces the ceiling even without a readable handler", async (t) => {
+    const maximum = process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
+    process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = "3";
+    t.after(() => { if (maximum === undefined) delete process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES; else process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = maximum; });
+    let closed = false;
+    async function* chunks() {
+        try { yield Uint8Array.of(1, 2, 3); yield Uint8Array.of(4); }
+        finally { closed = true; }
+    }
+    await assert.rejects(new DbProjectionCaps(context(undefined)).binary(chunks(), "application/octet-stream"), (error) => {
+        assert.ok(error instanceof MimetypeInputLimitError);
+        assert.equal(error.maximumBytes, 3);
+        assert.equal(error.observedBytes, 4);
+        return true;
+    });
+    assert.equal(closed, true);
 });
 
 test("parser-recovery inspection requests metadata without structural channels", async () => {
@@ -140,7 +158,7 @@ test("a typed mimetype input ceiling failure crosses the capability unchanged", 
     });
     const ctx = {
         mimetypes: {
-            async projectReadableStream() { throw cause; },
+            async projectReadable() { throw cause; },
         },
     } as unknown as PlurnkSchemeContext;
     async function* bytes() {
@@ -148,7 +166,7 @@ test("a typed mimetype input ceiling failure crosses the capability unchanged", 
     }
 
     await assert.rejects(
-        () => new DbProjectionCaps(ctx).readableBytes(bytes(), "application/pdf"),
+        () => new DbProjectionCaps(ctx).binary(bytes(), "application/pdf"),
         (error: unknown) => error === cause,
     );
 });

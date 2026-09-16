@@ -89,7 +89,7 @@ export default class MemorySchemeContext {
             notify: { streamEvent() {} },
             projection: {
                 async readable() { throw new Error("projection is outside the A2A specimen"); },
-                async readableBytes() { throw new Error("projection is outside the A2A specimen"); },
+                async binary() { throw new Error("projection is outside the A2A specimen"); },
                 async identity(mimetype) { return mimetype; },
                 async isBinary() { return false; },
                 async parseIssues() { return undefined; },

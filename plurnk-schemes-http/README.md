@@ -26,18 +26,17 @@ location, weighting, pagination, and status contract.
 
 | Channel  | Content                                                                    |
 | -------- | -------------------------------------------------------------------------- |
-| `body`   | Text, derived Unicode, typed binary marker, SSE data, or HTML-page Markdown |
+| `body`   | Original text or binary response; SSE data                                |
 | `header` | Origin, acquisition, materializer, projection, provider, and usage evidence |
-| `html`   | Original server-source HTML when the origin supplies it                    |
+| `readable` | Curated page Markdown or binary facts/text when a reader supplies them   |
 
 A fragmentless operation publishes only `body`; auxiliary channels remain
 durable and can be addressed explicitly. Remote HTTP status is stored in
 `header`; the PLURNK operation result reports the streaming lifecycle.
-Binary responses use an installed bounded readable projection when available;
-only derived Unicode becomes durable. Otherwise direct operations preserve a
-typed empty marker and return `415`, while exact query preparation prunes the
-unreadable result from automatic search ingestion. Input above the common
-projection ceiling returns `413`.
+Binary responses retain their bounded original bytes. Ordinary READ returns
+hex and, on a supporting model, attaches native media; `#readable` selects
+derived facts/text with the same native source. Unknown formats remain
+byte-readable. Input above the common binary ceiling returns `413`.
 
 ## Design
 

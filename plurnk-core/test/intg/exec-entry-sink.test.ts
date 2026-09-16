@@ -15,6 +15,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
 import { parseLogRecords } from "../LogRecords.ts";
+import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -411,6 +412,37 @@ test("search-prefetched https content is matcher-queryable in place — no origi
             pathname: "/turkeys",
         });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§http-binary-source} executor acquisition preserves binary source and native READ facts", async (t) => {
+    const pdf = Buffer.from(buildPdf({ title: "Executor acquisition" }));
+    t.mock.method(globalThis, "fetch", async () => new Response(pdf, { headers: {
+        "content-type": "application/pdf", "cache-control": "max-age=600",
+    } }));
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+        tag: "binary-prefetch", nullContent: true,
+        fetchWeb: (url) => url.endsWith("/dead") ? Promise.resolve(null) : new WebFetcher().fetch(url, { guarded: false }),
+    });
+    try {
+        const result = await engine.dispatch({ statement: execStmt(tag, "fetch"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.ok(result.status < 400);
+        await quiesceExecs(schemes);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const entry = await EntryCrud.readEntry({ authority: "example.org", pathname: "/live" }, ctx, "https");
+        assert.equal(entry.status, 200);
+        assert.deepEqual(Buffer.from(entry.entry!.channels.body.content, "base64"), pdf);
+        assert.equal(entry.entry!.channels.body.mimetype, "application/pdf");
+        assert.match(entry.entry!.channels.readable.content, /^PDF document, 1 page,/u);
+        const read = await engine.dispatch({
+            statement: parseOne("```READ (https://example.org/live#readable)```"),
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        const logged = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        const receipt = JSON.parse(logged!.rx);
+        assert.deepEqual(receipt.document, { mimetype: "application/pdf", pages: 1, bytes: pdf.byteLength });
+        assert.match(receipt.nativeContentHash, /^[a-f0-9]+$/u);
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 

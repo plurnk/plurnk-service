@@ -82,6 +82,21 @@ interface ReadProjectionOptions {
 // selection, binary admission, text coordinates, line-anchor projection, and
 // composition of the selected producer's durable result.
 export default class ReadProjector {
+    static #producerResult(
+        projected: AnchoredReadResult,
+        source: StoredEntryData["channels"][string] | undefined,
+        isStream = false,
+    ): AnchoredReadResult {
+        if (projected.status >= 400) return projected;
+        const producerResult = source?.producerResult;
+        // {§read-content-wins}/{§exec-stream} — completed output stays readable, including failed commands.
+        const contentDelivered = isStream && typeof projected.content === "string" && projected.content.length > 0;
+        const liveness = isStream ? { terminal: source?.state === "closed" || source?.state === "errored" } : {};
+        return producerResult === undefined || (producerResult.status >= 400 && contentDelivered)
+            ? { ...projected, ...liveness }
+            : Results.assertReadResult({ ...producerResult, ...projected, ...liveness, status: producerResult.status }) as AnchoredReadResult;
+    }
+
     static async *#chunks(source: ByteSource): AsyncIterable<Uint8Array> {
         const size = await source.size();
         if (size === null) return;
@@ -143,9 +158,11 @@ export default class ReadProjector {
         const sourceProjection = attributes?.sourceProjection as { mimetype?: string } | undefined;
         const mimetype = sourceProjection?.mimetype ?? opts.representation.channels[opts.manifest.defaultChannel]?.mimetype;
         const native = mimetype?.startsWith("image/") || mimetype?.startsWith("audio/") || mimetype === "application/pdf";
+        const selected = opts.statement.target?.fragment ?? opts.manifest.defaultChannel;
+        const mediaView = selected === opts.manifest.defaultChannel || selected === ByteView.CHANNEL || selected === "readable";
         let content: Uint8Array | null = null;
         let bytes = opts.bytes;
-        if (native && bytes !== undefined) {
+        if (native && mediaView && bytes !== undefined) {
             const size = await bytes.size();
             if (size !== null) {
                 const maximumBytes = binaryInputMaximum();
@@ -173,7 +190,7 @@ export default class ReadProjector {
         const defaultRepresentation = representation.channels[manifest.defaultChannel];
         const binary = mimetypes !== undefined && defaultRepresentation !== undefined
             && await MimetypeBinary.isBinaryMimetype(defaultRepresentation.mimetype, mimetypes);
-        const projection = binary && bytes !== undefined && (selected === manifest.defaultChannel || selected === ByteView.CHANNEL)
+        const projection = binary && bytes !== undefined && (selected === manifest.defaultChannel || selected === ByteView.CHANNEL || selected === "readable")
             ? await mimetypes!.projectReadableStream(ReadProjector.#chunks(bytes), defaultRepresentation.mimetype)
             : null;
         const attributes = projection === null ? representation.attributes
@@ -181,8 +198,13 @@ export default class ReadProjector {
         const image = imageOf(attributes);
         const document = documentOf(attributes);
         const audio = audioOf(attributes);
+        // {§channel-selection-visibility} — source and derived READs name the same discoverable channels.
+        const siblings = opts.weigh === undefined ? [] : Object.entries(representation.channels)
+            .filter(([name]) => name !== selected)
+            .map(([name, data]) => [`#${name}`, opts.weigh!(data.content)] as const);
         const withAttachmentFacts = (result: AnchoredReadResult): AnchoredReadResult => ({
             ...result,
+            ...(siblings.length === 0 ? {} : { channels: Object.fromEntries(siblings) }),
             ...(image === null ? {} : { image }),
             ...(document === null ? {} : { document }),
             ...(audio === null ? {} : { audio }),
@@ -214,14 +236,14 @@ export default class ReadProjector {
                 );
             }
             const sourceMimetype = representation.channels[manifest.defaultChannel]?.mimetype ?? "application/octet-stream";
-            return withAttachmentFacts(await ReadProjector.#projectBytes(
+            return ReadProjector.#producerResult(withAttachmentFacts(await ReadProjector.#projectBytes(
                 statement,
                 target,
                 bytes,
                 sourceMimetype,
                 ByteView.CHANNEL,
                 failure,
-            ));
+            )), defaultRepresentation);
         }
         const selectedRepresentation = Object.hasOwn(representation.channels, selected) ? representation.channels[selected] : undefined;
         if ((selected !== manifest.defaultChannel && !Object.hasOwn(manifest.channels, selected)) || selectedRepresentation === undefined) {
@@ -255,16 +277,16 @@ export default class ReadProjector {
         }
 
         if (await MimetypeBinary.isBinaryMimetype(selectedRepresentation.mimetype, mimetypes)) {
-            // {§read-bytes} — a binary channel with no readable projection reads as its bytes.
+            // {§read-bytes} — a binary channel reads as its bytes; readable text is a separate channel.
             if (bytes !== undefined) {
-                return withAttachmentFacts(await ReadProjector.#projectBytes(
+                return ReadProjector.#producerResult(withAttachmentFacts(await ReadProjector.#projectBytes(
                     statement,
                     target,
                     bytes,
                     selectedRepresentation.mimetype,
                     channel,
                     failure,
-                ));
+                )), selectedRepresentation, manifest.channels[selected] === "text/stream");
             }
             return failure(
                 "binary-read-unsupported",
@@ -395,35 +417,13 @@ export default class ReadProjector {
             );
         }
 
-        // {§channel-selection-visibility} — first contact carries the choice: a READ of a resource
-        // with other channels names them with their tokens, exactly as a FIND listing does, keyed
-        // by the `#channel` the model appends to the path.
-        const siblings = Object.entries(representation.channels)
-            .filter(([name]) => name !== selected)
-            .map(([name, data]) => [`#${name}`, opts.weigh!(data.content)] as const);
         const projected = withAttachmentFacts({
             ...resolved,
             channel,
-            ...(opts.weigh === undefined || siblings.length === 0 ? {} : { channels: Object.fromEntries(siblings) }),
             ...(resolved.mimetype === selectedRepresentation.mimetype ? {} : { sourceMimetype: selectedRepresentation.mimetype }),
             ...(matched === undefined ? {} : { matched }),
         });
-        const producerResult = selectedRepresentation.producerResult;
-        // {§read-content-wins} — a channel that delivered content reads as that content; the
-        // producer's failure projects onto a READ only when there is nothing to read.
-        const isStream = channel !== null && manifest.channels[channel] === "text/stream";
-        const contentDelivered = isStream && typeof projected.content === "string" && projected.content.length > 0;
-        // {§exec-stream} — a stream READ states whether the stream has concluded, so an empty page
-        // on a live stream is never mistaken for a finished command that printed nothing.
-        const liveness = isStream ? { terminal: selectedRepresentation.state === "closed" || selectedRepresentation.state === "errored" } : {};
-        const result = producerResult === undefined || (producerResult.status >= 400 && contentDelivered)
-            ? { ...projected, ...liveness }
-            : Results.assertReadResult({
-                ...producerResult,
-                ...projected,
-                ...liveness,
-                status: producerResult.status,
-            }) as EntryReadResult;
+        const result = ReadProjector.#producerResult(projected, selectedRepresentation, channel !== null && manifest.channels[channel] === "text/stream");
         if (
             result.status !== 200
             || typeof result.content !== "string"

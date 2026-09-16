@@ -352,8 +352,7 @@ export default class Mimetypes {
         if (handler === null || handler.content === BaseHandler.prototype.content) return null;
         // {§mimetype-projection-facts} — a handler that owns structured facts hands them over with the
         // text. A source the handler refuses (its header is not what its label says) has no readable
-        // projection: null, never a crash, so a mislabelled member is a marker and a mislabelled
-        // response stays 415.
+        // projection: null, never a crash. The caller may still preserve the source bytes.
         const withFacts = handler.facts !== BaseHandler.prototype.facts;
         let result: ProcessResult;
         try {
@@ -394,7 +393,7 @@ export default class Mimetypes {
         const handler = await this.getHandler(mimetype);
         if (handler === null || handler.content === BaseHandler.prototype.content) return null;
         return this.projectReadable({
-            content: await Mimetypes.#collectBinary(chunks, mimetype),
+            content: await Mimetypes.collectBinary(chunks, mimetype),
             hint: mimetype,
         });
     }
@@ -707,7 +706,7 @@ export default class Mimetypes {
         }
     }
 
-    static async #collectBinary(
+    static async collectBinary(
         chunks: AsyncIterable<Uint8Array>,
         mimetype: string,
     ): Promise<Uint8Array> {

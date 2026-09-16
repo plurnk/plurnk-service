@@ -153,7 +153,7 @@ export default class Slicer {
         const norm = Slicer.#normalize(marker, total);
         const extent = Slicer.#extent(marker, total, unit);
         if ("error" in norm) return Slicer.#rangeFailure<WindowResult>(norm.error, extent);
-        if (norm.kind !== "range") {
+        if (norm.kind !== "range" || norm.start > norm.end) {
             return { status: 200, start: null, end: null, range: Slicer.#projectedExtent(extent, null, null) };
         }
         return { status: 200, start: norm.start, end: norm.end, range: Slicer.#projectedExtent(extent, norm.start, norm.end) };

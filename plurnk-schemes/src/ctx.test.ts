@@ -7,6 +7,7 @@
 // assertions stop passing.
 
 import test from "node:test";
+import { buffer } from "node:stream/consumers";
 import { strict as assert } from "node:assert";
 import type {
     SchemeCtx,
@@ -139,13 +140,13 @@ const makeCtx = () => {
                 projectionIdentity: `${mimetype}-projection`,
             } : null;
         },
-        async readableBytes(_chunks, mimetype) {
-            return {
+        async binary(_chunks, mimetype) {
+            return { bytes: await buffer(_chunks), projectionIdentity: `${mimetype}-projection`, readable: {
                 content: "projected bytes",
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
                 projectionIdentity: `${mimetype}-projection`,
-            };
+            } };
         },
         async identity(mimetype) {
             return `${mimetype}-projection`;
