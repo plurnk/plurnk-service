@@ -254,7 +254,7 @@ export default class RunHandler {
             return;
         }
 
-        if (prompt === null) throw new Error("conversation AG-UI Run reached dispatch without a validated prompt");
+        if (prompt === null || currentUser === null) throw new Error("conversation AG-UI Run reached dispatch without a validated prompt");
 
         if (reattached) {
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
@@ -266,7 +266,7 @@ export default class RunHandler {
             }
         }
         const started = await this.#portal().run(boundRun, {
-            workspaceId, workerId, prompt,
+            workspaceId, workerId, prompt, source: RunHandler.#source(input, currentUser),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),
@@ -323,6 +323,15 @@ export default class RunHandler {
             );
             this.#portal().failThread(boundRun, runErrorEvents(problem));
         }
+    }
+
+    // {§agui-run-source} — the run's user message is the causal actor behind the loop's prompt
+    // ({§prompt-causal-source}), named under the authenticated principal the way the A2A adapter
+    // names its messages; `anonymous` until the authorization layer names principals.
+    static #source(input: RunAgentInput, message: UserMessage): string {
+        return `agui://anonymous/threads/${encodeURIComponent(input.threadId)}`
+            + `/runs/${encodeURIComponent(input.runId)}`
+            + `/messages/${encodeURIComponent(message.id)}`;
     }
 
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {

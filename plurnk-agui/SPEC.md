@@ -550,6 +550,14 @@ one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal 
 is rejected until the model-loop seam supports it deliberately. Proposal
 disposition remains Core policy; the module forwards it without reinterpretation.
 
+§agui-run-source The run's user message is the causal actor behind the loop's prompt
+({§prompt-causal-source}). The module supplies its canonical address as the loop's `source`:
+`agui://<principal>/threads/<threadId>/runs/<runId>/messages/<messageId>`, every segment
+URI-encoded, the principal `anonymous` until the authorization layer names one. The frontend's
+self-identification never enters the address ({§client-metadata}). The prompt row renders that
+source, so a model tells an operator's message from a worker's or a schedule's by address
+rather than by absence (#706).
+
 §agui-http-authorization When `PLURNK_AGUI_TOKEN` is non-empty, every
 non-preflight request must carry that exact value as an
 `authorization: Bearer <token>` header. Authorization precedes request-body
