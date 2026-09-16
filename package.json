@@ -42,6 +42,7 @@
         "plurnk-execs-sqlite",
         "plurnk-providers",
         "plurnk-a2a",
+        "plurnk-schedule",
         "plurnk-agui",
         "plurnk-core"
     ],

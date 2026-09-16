@@ -95,6 +95,7 @@
         "@plurnk/plurnk-agui": "1.18.0",
         "@plurnk/plurnk-contracts": "1.18.0",
         "@plurnk/plurnk-parser": "1.18.0",
+        "@plurnk/plurnk-schedule": "1.18.0",
         "@plurnk/plurnk-execs": "1.18.0",
         "@plurnk/plurnk-execs-common": "1.18.0",
         "@plurnk/plurnk-execs-jq": "1.18.0",

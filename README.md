@@ -85,6 +85,13 @@ explicit `PLURNK_HOOKS_EVENTS` selection; no shell command is interpreted.
 See [`@plurnk/plurnk-hooks`](./plurnk-hooks/README.md) for the event inventory
 and a copy-pasteable test hook.
 
+## Scheduled messages
+
+Workers schedule messages to one another on RFC 5545 recurrence rules through
+the `schedule` family, and read the time on demand instead of carrying a clock.
+The operator seeds service rules with `PLURNK_SCHEDULE_<ALIAS>` and sets the
+zone with `TZ`; see [`@plurnk/plurnk-schedule`](./plurnk-schedule/README.md).
+
 ## Run as a service
 
 `contrib/plurnk.service` is a systemd user unit: copy it to

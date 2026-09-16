@@ -1,0 +1,61 @@
+{
+    "name": "@plurnk/plurnk-schedule",
+    "version": "1.18.0",
+    "description": "Scheduled messages for Plurnk workers, on RFC 5545 recurrence rules",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-schedule"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        ".env.defaults",
+        "dist/**/*",
+        "docs/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "engines": {
+        "node": ">=26"
+    },
+    "scripts": {
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/*.test.ts",
+        "test:intg": "node --conditions=plurnk-dev --test test/intg/*.test.ts",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    },
+    "dependencies": {
+        "rrule-temporal": "2.2.5"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-contracts": "^1.18.0"
+    },
+    "keywords": [
+        "plurnk",
+        "schedule",
+        "rrule",
+        "recurrence"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-schedule#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "author": "@wikitopian",
+    "publishConfig": {
+        "access": "public"
+    }
+}
