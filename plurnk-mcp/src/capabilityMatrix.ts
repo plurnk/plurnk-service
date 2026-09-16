@@ -90,7 +90,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-management-actions}", "plurnk-mcp client 'client pins the current MCP revision and exercises tools and resources'"],
+        evidence: ["{§mcp-core-matrix}", "{§mcp-management-actions}", "plurnk-mcp client 'client pins the current MCP revision and exercises tools and resources'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "Owned by the host interaction that owns the argument; workspace.mcp.complete.",
     },
     {
@@ -210,7 +210,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-management-actions}", "{§oauth-lifetime}", "plurnk-mcp HttpTransport 'interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding'"],
+        evidence: ["{§mcp-management-actions}", "{§oauth-lifetime}", "plurnk-mcp HttpTransport 'interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "Human principals authorize workspace attachments; validated metadata, PKCE, issuer, resource indicators, refresh, bounded scope.",
     },
     {
