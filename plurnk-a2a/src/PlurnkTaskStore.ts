@@ -22,6 +22,7 @@ import {
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
 export interface PlurnkTaskBinding {
+    readonly workspaceId: number;
     readonly context: ApplicationWorkerProjection;
     readonly task: ApplicationWorkerProjection;
     readonly loop: ApplicationLoopProjection | null;
@@ -142,7 +143,8 @@ export default class PlurnkTaskStore implements TaskStore {
         // This exposure only mints DNS-label identities. Other opaque A2A IDs
         // cannot identify one of its Tasks; they are not malformed Core calls.
         if (!WORKER_NAME.test(taskId)) return null;
-        const workspaceId = await this.#workspace.id();
+        const workspaceId = await this.#workspace.existingId();
+        if (workspaceId === null) return null;
         const task = await this.#port.readWorker({
             workspaceId,
             identity: { name: taskId },
@@ -167,12 +169,14 @@ export default class PlurnkTaskStore implements TaskStore {
             ))
             .at(-1) ?? null;
         if (loop === null) return null;
-        return { context, task, loop };
+        return { workspaceId, context, task, loop };
     }
 
     async ownsContext(context: ApplicationWorkerProjection): Promise<boolean> {
         if (context.origin !== "model" || context.parentWorkerId !== null) return false;
-        const children = await this.#port.listWorkers(await this.#workspace.id(), {
+        const workspaceId = await this.#workspace.existingId();
+        if (workspaceId === null) return false;
+        const children = await this.#port.listWorkers(workspaceId, {
             origin: "model",
             parentWorkerId: context.id,
         });
@@ -207,7 +211,7 @@ export default class PlurnkTaskStore implements TaskStore {
         // never create a parallel Task lifecycle in this projection store.
         if (task.status?.state === TaskState.TASK_STATE_CANCELED) {
             await this.#port.cancelWorker({
-                workspaceId: await this.#workspace.id(),
+                workspaceId: binding.workspaceId,
                 workerId: binding.task.id,
                 reason: "A2A caller cancelled the Task",
             });
@@ -219,9 +223,10 @@ export default class PlurnkTaskStore implements TaskStore {
         context: ServerCallContext,
     ): Promise<import("@a2a-js/sdk").ListTasksResponse> {
         this.#assertTenant(context);
-        const workspaceId = await this.#workspace.id();
         const pageSize = params.pageSize ?? 50;
         const cursor = decodeCursor(params.pageToken);
+        const workspaceId = await this.#workspace.existingId();
+        if (workspaceId === null) return { tasks: [], nextPageToken: "", pageSize, totalSize: 0 };
 
         let taskWorkers: ApplicationWorkerProjection[];
         if (params.contextId.length > 0) {
@@ -274,7 +279,7 @@ export default class PlurnkTaskStore implements TaskStore {
     }
 
     async #project(binding: PlurnkTaskBinding): Promise<Task> {
-        const { context, task, loop } = binding;
+        const { workspaceId, context, task, loop } = binding;
         if (loop === null) {
             return {
                 id: task.name,
@@ -289,7 +294,6 @@ export default class PlurnkTaskStore implements TaskStore {
                 metadata: {},
             };
         }
-        const workspaceId = await this.#workspace.id();
         const [rows, interactions] = await Promise.all([
             this.#port.readLog({
                 workspaceId,

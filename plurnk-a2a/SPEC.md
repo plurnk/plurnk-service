@@ -102,8 +102,10 @@ and `text/markdown` output. Unsupported security claims are structurally absent
 rather than configurable. The official SDK serializes the card served at the
 standard well-known path.
 
-§a2a-lazy-workspace Listener startup and Agent Card discovery perform no
-workspace creation, attachment, hydration, model selection, or inference. The
+§a2a-lazy-workspace Listener startup, Agent Card discovery, Task observations,
+and rejected Task lookups perform no workspace creation, attachment, hydration,
+model selection, or inference. An absent workspace yields an empty Task list or
+the standard Task-not-found result, not implicit creation. The
 first admitted Task resolves the configured workspace name, adopting the one
 existing match or creating it with the configured project root. A configured
 non-null root must match an existing workspace exactly. The resolution is

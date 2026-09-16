@@ -265,7 +265,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     }
 });
 
-test("{§a2a-lazy-workspace}: listener discovery is passive and first task lazily creates its workspace", async () => {
+test("{§a2a-lazy-workspace}: discovery and Task observations are passive until first admitted work", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
         db,
@@ -305,6 +305,29 @@ test("{§a2a-lazy-workspace}: listener discovery is passive and first task lazil
             false,
             "public Agent Card discovery remains passive",
         );
+
+        const endpoint = (listener as A2aModule).agentCard().supportedInterfaces[0]!.url;
+        for (const [path, expectedStatus] of [["/tasks", 200], ["/tasks/missing-task", 404]] as const) {
+            const response = await fetch(`${endpoint}${path}`, { headers: { "a2a-version": "1.0" } });
+            const result = await response.json();
+            assert.equal(response.status, expectedStatus, JSON.stringify(result));
+            if (expectedStatus === 200) assert.equal(result.totalSize, 0);
+            else assert.equal(result.error.details[0].reason, "TASK_NOT_FOUND");
+            assert.equal((await daemon.listWorkspaces()).some(({ name }) => name === workspaceName), false,
+                `${path} does not create the exposure's workspace`);
+        }
+        const rejected = await fetch(`${endpoint}/message:send`, {
+            method: "POST",
+            headers: { "content-type": "application/a2a+json", "a2a-version": "1.0" },
+            body: JSON.stringify({ message: {
+                messageId: "unknown-task-answer", role: "ROLE_USER", taskId: "missing-task",
+                parts: [{ text: "An answer for a task which does not exist." }],
+            } }),
+        });
+        assert.equal(rejected.status, 404);
+        assert.equal((await rejected.json()).error.details[0].reason, "TASK_NOT_FOUND");
+        assert.equal((await daemon.listWorkspaces()).some(({ name }) => name === workspaceName), false,
+            "a rejected follow-up is not admitted work");
 
         const completed = await runTask(client, "create the workspace only for real work");
         assert.equal(payload(completed.events.at(-1)!).$case, "statusUpdate");

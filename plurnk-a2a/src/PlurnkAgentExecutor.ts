@@ -82,7 +82,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         if (message === undefined) return; // The SDK owns required envelope fields.
         const binding = message.taskId.length > 0 ? await this.#store.binding(message.taskId) : null;
         const pending = binding === null ? undefined
-            : (await this.#port.pendingClientInteractions(await this.#workspace.id()))
+            : (await this.#port.pendingClientInteractions(binding.workspaceId))
                 .find((interaction) => interaction.workerId === binding.task.id
                     && interaction.loopId === binding.loop?.id);
         if (pending !== undefined) this.#interactionPayload(message, pending);
@@ -154,9 +154,9 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     }
 
     async cancelTask(taskId: string, events: ExecutionEventBus): Promise<void> {
-        const workspaceId = await this.#workspace.id();
         const binding = await this.#store.binding(taskId);
         if (binding === null) throw new Error(`A2A Task '${taskId}' has no Plurnk worker.`);
+        const { workspaceId } = binding;
         const activeExecutorWillPublish = this.#activeTasks.has(taskId);
         const outcome = await this.#observe(binding.task.id, async () => {
             await this.#port.cancelWorker({
@@ -252,7 +252,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                 identity: { id: created.workerId },
             });
             if (task === null) throw new Error(`A2A Task '${request.taskId}' was not visible after creation.`);
-            resolved = { context, task, loop: null };
+            resolved = { workspaceId, context, task, loop: null };
         });
         if (resolved === null) throw new Error(`A2A Task '${request.taskId}' has no Plurnk binding.`);
         return resolved;

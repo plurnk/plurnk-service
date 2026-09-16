@@ -25,7 +25,21 @@ export default class WorkspaceBinding {
         return this.#resolution;
     }
 
+    existingId(): Promise<number | null> {
+        return this.#resolution ?? this.#find();
+    }
+
     async #resolve(): Promise<number> {
+        const existing = await this.#find();
+        if (existing !== null) return existing;
+        const created = await this.#port.createWorkspace({
+            name: this.#configuration.name,
+            projectRoot: this.#configuration.projectRoot,
+        });
+        return created.workspaceId;
+    }
+
+    async #find(): Promise<number | null> {
         const matches = (await this.#port.listWorkspaces())
             .filter(({ name }) => name === this.#configuration.name);
         if (matches.length > 1) {
@@ -45,10 +59,6 @@ export default class WorkspaceBinding {
             }
             return existing.id;
         }
-        const created = await this.#port.createWorkspace({
-            name: this.#configuration.name,
-            projectRoot: this.#configuration.projectRoot,
-        });
-        return created.workspaceId;
+        return null;
     }
 }
