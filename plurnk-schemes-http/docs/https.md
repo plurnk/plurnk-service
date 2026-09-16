@@ -9,7 +9,7 @@ Read and modify web resources through addressable HTTP(S) entries.
 
 Use a web URL as an addressable entry. Every exact READ acquires or refreshes a
 complete representation when needed, then core selects the channel and applies
-the requested text scope. An HTML page's `body` is the server source; its
+the requested text/byte scope. An HTML page's `body` is the server source; its
 readable Markdown (a materializer's or the local reader's) is `#readable`, and
 every READ names the page's other channels with their tokens.
 
@@ -36,9 +36,9 @@ Caller cancellation of an exact acquisition returns `499 cancelled`.
 | GET HTML                             | Original server HTML                                | Materializer Markdown or local HTML-reader projection in `#readable` |
 | GET `text/event-stream`              | Event `data` chunks after READ `102`                 | Initial response in `#header`                  |
 | Configured textual response          | Complete Fetch-decoded text under its declared type | Status and headers in `#header`                |
-| Origin HTTP `4xx`/`5xx`              | Preserve available origin or independently produced text | Exact status on each origin-backed channel |
-| Binary with a readable projection    | Derived Unicode under the projection output type    | Origin type and projection ID in `#header`     |
-| Binary without a readable projection | No fabricated text representation                   | Exact `415` Problem                            |
+| Origin HTTP `4xx`/`5xx`              | Preserve available origin text or bytes             | Exact status on each origin-backed channel    |
+| Binary with a readable projection    | Original bytes, shown as hex                        | Facts/text in `#readable`; evidence in `#header` |
+| Binary without a readable projection | Original bytes, shown as hex                        | Evidence in `#header`; no invented facts        |
 
 Generic public HTML uses the selected materializer as its `#readable` producer. A recoverable
 timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
