@@ -233,7 +233,6 @@ export default class AdmittedTurnExecutor {
                                 turnId,
                                 workspaceId,
                                 workerId,
-                                primaryWorkerId: bare.primaryWorkerId,
                                 loopSequence: bare.loopSequence,
                                 turnSequence: bare.turnSequence,
                                 signal: bare.signal,

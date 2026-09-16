@@ -8,7 +8,6 @@ import Meta, { TEACHING_CORPUS, type PluginAttributionContext } from "./index.ts
 const attributionContext: PluginAttributionContext = {
     workspaceId: "workspace-7",
     workerId: "worker-11",
-    primaryWorkerId: "worker-3",
     loop: 2,
     turn: 4,
     attempt: 1,

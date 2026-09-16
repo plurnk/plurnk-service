@@ -23,7 +23,7 @@ const invalid = response("````READ (worker:///unframed-prose");
 const valid = response("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
 const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
 
-test("each emission attempt composes opaque family hooks and records exactly what was forwarded", async () => {
+test("each emission attempt composes opaque family hooks and records exactly what it composed", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `attr-${crypto.randomUUID()}`);
@@ -49,25 +49,16 @@ test("each emission attempt composes opaque family hooks and records exactly wha
             contexts.push(context);
             return ["shared", `provider:${context.attempt}`];
         };
-        const forwarded: Array<readonly string[] | undefined> = [];
-        const generate = provider.generate.bind(provider);
-        provider.generate = (args) => {
-            forwarded.push((args as { attributions?: readonly string[] }).attributions);
-            return generate(args);
-        };
-
         const engine = new Engine({ db, schemes, mimetypes });
         engine.setExecutors(executors);
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const first = canonical("shared", "scheme:1", "executor:1", "mimetype:1", "provider:1");
         const second = canonical("shared", "scheme:2", "executor:2", "mimetype:2", "provider:2");
-        assert.deepEqual(forwarded, [first, second], "each call receives that attempt's canonical union");
         assert.deepEqual(contexts, [
             {
                 workspaceId: String(workspaceId),
                 workerId: workerIdentity?.provider_identity,
-                primaryWorkerId: workerIdentity?.provider_identity,
                 loop: 1,
                 turn: 2,
                 attempt: 1,
@@ -75,7 +66,6 @@ test("each emission attempt composes opaque family hooks and records exactly wha
             {
                 workspaceId: String(workspaceId),
                 workerId: workerIdentity?.provider_identity,
-                primaryWorkerId: workerIdentity?.provider_identity,
                 loop: 1,
                 turn: 2,
                 attempt: 2,
@@ -91,7 +81,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
                 { sequence: 1, attributions: first },
                 { sequence: 2, attributions: second },
             ],
-            "attempt evidence retains each exact forwarded set",
+            "attempt evidence retains each exact composed set",
         );
 
         const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
@@ -115,16 +105,8 @@ test("an empty folksonomy omits the provider field but persists the exact empty 
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100_000, responses: [valid] });
-        let forwarded: readonly string[] | undefined;
-        const generate = provider.generate.bind(provider);
-        provider.generate = (args) => {
-            forwarded = (args as { attributions?: readonly string[] }).attributions;
-            return generate(args);
-        };
-
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        assert.equal(forwarded, undefined);
         const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         assert.deepEqual((JSON.parse(row!.packet) as { attributions: string[] }).attributions, []);
         assert.deepEqual(await engine.loopAttributions(loopId), []);

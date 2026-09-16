@@ -1,5 +1,5 @@
 // The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of AiSdkProvider; every knob it reads is injected.
-import type { ProviderCallKind, ReasoningPolicy } from "./types.ts";
+import type { ReasoningPolicy } from "./types.ts";
 import type { JSONValue } from "ai";
 import { type Reasoning } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
@@ -80,13 +80,12 @@ export default class AiSdkRequestBody {
     readonly #grammarStyle: GrammarStyle;
     readonly #cacheAffinity: CacheAffinity | undefined;
     readonly #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
-    readonly #firstPartyMetadata: boolean;
     readonly #supportsSlotPinning: boolean;
     readonly #slotCount: number | null;
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, reasoningToggle, compatibleAdaptiveReasoning, compatibleOffReasoning, adaptiveReasoningProviderOptions, repeatPenalty, frequencyPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, firstPartyMetadata, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, reasoningToggle, compatibleAdaptiveReasoning, compatibleOffReasoning, adaptiveReasoningProviderOptions, repeatPenalty, frequencyPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         reasoning: Reasoning;
@@ -105,7 +104,6 @@ export default class AiSdkRequestBody {
         grammarStyle: GrammarStyle;
         cacheAffinity: CacheAffinity | undefined;
         reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
-        firstPartyMetadata: boolean;
         supportsSlotPinning: boolean;
         slotCount: number | null;
     }) {
@@ -127,7 +125,6 @@ export default class AiSdkRequestBody {
         this.#grammarStyle = grammarStyle;
         this.#cacheAffinity = cacheAffinity;
         this.#reasoningResponseProviderOptions = reasoningResponseProviderOptions;
-        this.#firstPartyMetadata = firstPartyMetadata;
         this.#supportsSlotPinning = supportsSlotPinning;
         this.#slotCount = slotCount;
     }
@@ -293,43 +290,6 @@ export default class AiSdkRequestBody {
         return { id_slot: slot };
     }
 
-
-    // First-party telemetry headers ({§provider-request-authority} {§provider-call-kind}): forwarded only when the spec
-    // opted in (the plurnk endpoint). The gate is here, not at the call site, so
-    // attributions/client/strikes can never reach a third-party backend even if
-    // the consumer passes them to the wrong provider. Empty values emit no header
-    // — EXCEPT strikes, where 0 is a real value (clean streak) distinct from
-    // absent (consumer didn't report); contract {§strikes-first-party-metadata}. Strikes
-    // ride HTTP headers only — the packet never carries them (the model must
-    // never see strike state; engine accounting is not a metric to game).
-    metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, primaryWorkerId: string | undefined, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined, callKind: ProviderCallKind | undefined): Record<string, string> {
-        if (!this.#firstPartyMetadata) return {};
-        const h: Record<string, string> = {};
-        if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
-        if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
-        if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
-        // Worker identity: the opaque workerId
-        // the consumer already supplies, forwarded so the endpoint can key
-        // per-worker affinity/telemetry — same gate as every first-party signal.
-        h["Plurnk-Worker-Id"] = workerId;
-        // Root worker of the lineage ({§worker-primary}): the no-parent ancestor of this turn's
-        // worker tree. The consumer classifies primary-vs-spawned by equality
-        // (primaryWorkerId == workerId ⇒ the primary/root worker). The provider
-        // EMITS what the consumer supplies and never invents a primary; the
-        // consumer's contract is to stamp it EVERY turn (including the primary's
-        // own, where it equals workerId). Absence is the consumer's violation for
-        // the endpoint to surface, not a provider default.
-        if (primaryWorkerId !== undefined && primaryWorkerId.length > 0) h["Plurnk-Worker-Primary"] = primaryWorkerId;
-        // Turn coordinate ({§lifecycle-terms}): workspace/loop/turn, the
-        // daemon-side sequence the endpoint can never scrape from the wire.
-        // Coordinates are 1-based — 0 is not a real value, so no strikes-style
-        // zero exception; absent/empty/0 emits no header.
-        if (workspaceId !== undefined && workspaceId.length > 0) h["Plurnk-Workspace-Id"] = workspaceId;
-        if (loop !== undefined && Number.isInteger(loop) && loop >= 1) h["Plurnk-Loop"] = String(loop);
-        if (turn !== undefined && Number.isInteger(turn) && turn >= 1) h["Plurnk-Turn"] = String(turn);
-        if (callKind !== undefined) h["Plurnk-Call-Kind"] = callKind;
-        return h;
-    }
 
 
     requestProviderOptions(

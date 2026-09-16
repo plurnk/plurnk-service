@@ -34,7 +34,6 @@ export default class BareBatchRunner {
         turnId,
         workspaceId,
         workerId,
-        primaryWorkerId,
         loopSequence,
         turnSequence,
         signal,
@@ -45,7 +44,6 @@ export default class BareBatchRunner {
         turnId: number;
         workspaceId: number;
         workerId: number;
-        primaryWorkerId: string;
         loopSequence: number;
         turnSequence: number;
         signal: AbortSignal | undefined;
@@ -61,7 +59,6 @@ export default class BareBatchRunner {
         } & ({ result: SchemeResult } | {
             prompt: string;
             modelCall: ModelCall;
-            attributions: string[];
             providerWorkerId: string;
         })> = [];
         for (const input of inputs) {
@@ -74,7 +71,6 @@ export default class BareBatchRunner {
             const attributionContext: PluginAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
                 workerId: providerWorkerId,
-                primaryWorkerId,
                 loop: loopSequence,
                 turn: turnSequence,
                 attempt: 1,
@@ -86,12 +82,12 @@ export default class BareBatchRunner {
                 attributions,
                 model: provider.model,
             });
-            prepared.push({ statement, prompt, modelCall, attributions, providerWorkerId });
+            prepared.push({ statement, prompt, modelCall, providerWorkerId });
         }
 
         const settlements = await Promise.allSettled(prepared.map(async (item) => {
             if ("result" in item) return { ...item, modelCallId: null };
-            const { statement, prompt, modelCall, attributions, providerWorkerId } = item;
+            const { statement, prompt, modelCall, providerWorkerId } = item;
             try {
                 signal?.throwIfAborted();
                 const response = await observed(
@@ -102,12 +98,8 @@ export default class BareBatchRunner {
                             const generated = await provider.generate({
                                 messages: [{ role: "user", content: prompt }],
                                 workerId: providerWorkerId,
-                                primaryWorkerId,
-                                signal,
-                                attributions: attributions.length > 0 ? attributions : undefined,
                                 workspaceId: String(workspaceId),
-                                loop: loopSequence,
-                                turn: turnSequence,
+                                signal,
                                 observeRequest: modelCall.observeRequest,
                                 callKind: "bare",
                             });

@@ -126,7 +126,6 @@ export type AiSdkProviderConfig = {
     // a fixed deployment choice and therefore wins on every request.
     serviceTier?: string;
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
-    firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
     eosText?: string;                          // server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
     // Slot affinity wiring is provider-internal, never consumer-facing.
@@ -292,7 +291,6 @@ export default class AiSdkProvider implements Provider {
     #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
     #serviceTier: string | undefined;
     #streaming: boolean;
-    #firstPartyMetadata: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -413,7 +411,6 @@ export default class AiSdkProvider implements Provider {
         }
         this.#serviceTier = config.serviceTier;
         this.#streaming = config.streaming ?? true;
-        this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
         this.#eosText = config.eosText;
         this.#hasApiKey = "Authorization" in this.#headers;
@@ -471,7 +468,7 @@ export default class AiSdkProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, reasoningToggle: this.#reasoningToggle, compatibleAdaptiveReasoning: this.#compatibleAdaptiveReasoning, compatibleOffReasoning: this.#compatibleOffReasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, frequencyPenalty: this.#frequencyPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, firstPartyMetadata: this.#firstPartyMetadata, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, reasoningToggle: this.#reasoningToggle, compatibleAdaptiveReasoning: this.#compatibleAdaptiveReasoning, compatibleOffReasoning: this.#compatibleOffReasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, frequencyPenalty: this.#frequencyPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -607,7 +604,7 @@ export default class AiSdkProvider implements Provider {
         });
     }
 
-    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxOutputTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, workerId, signal, grammar, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -665,13 +662,11 @@ export default class AiSdkProvider implements Provider {
                 : {}),
         };
 
-        // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#requestBody.metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn, callKind);
+        // Per-request headers = static auth/routing only.
         const headers = new Headers(this.#headers);
         if (this.#cacheAffinity?.target === "header") {
             headers.set(this.#cacheAffinity.name, workerId);
         }
-        for (const [name, value] of Object.entries(metaHeaders)) headers.set(name, value);
         const requestHeaders = Object.fromEntries(headers.entries());
         const accounting: ProviderRequestAccounting[] = [];
         const operationTimeout = this.#operationTimeoutMs > 0

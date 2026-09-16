@@ -14,15 +14,15 @@ const response = (content: string, reasoning: string | null = null) => ({
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
-for (const [name, first, detail, strikes] of [
-    ["inventory-only continuation", task("in_progress"), null, 0],
-    ["todo-only inventory", task("todo"), null, 0],
-    ["empty untimed wait", task("waiting"), "Nothing is in flight and no timed or polled wait is set. Continuing.", 0],
-    ["missing inventory", send("First message."), null, 0],
-    ["empty inventory", "```TASK\n[]\n```", "No tasks were supplied. Submit a nonempty TASK inventory.", 0],
-    ["blank inventory", "```TASK```", "No tasks were supplied. Submit a nonempty TASK inventory.", 0],
-    ["non-waiting timing", task("in_progress", " <60>"), "Wait timing was not applied because no waiting intent was selected.", 0],
-    ["plain task text", "```TASK\nConsider the next step.\n```", null, 0],
+for (const [name, first, detail] of [
+    ["inventory-only continuation", task("in_progress"), null],
+    ["todo-only inventory", task("todo"), null],
+    ["empty untimed wait", task("waiting"), "Nothing is in flight and no timed or polled wait is set. Continuing."],
+    ["missing inventory", send("First message."), null],
+    ["empty inventory", "```TASK\n[]\n```", "No tasks were supplied. Submit a nonempty TASK inventory."],
+    ["blank inventory", "```TASK```", "No tasks were supplied. Submit a nonempty TASK inventory."],
+    ["non-waiting timing", task("in_progress", " <60>"), "Wait timing was not applied because no waiting intent was selected."],
+    ["plain task text", "```TASK\nConsider the next step.\n```", null],
 ] as const) {
     test(`{§wait-obligation-matrix} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();
@@ -33,18 +33,13 @@ for (const [name, first, detail, strikes] of [
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(first), response(`${send("Answer.")}\n${task("completed")}`),
         ] });
-        const seenStrikes: Array<number | undefined> = [];
-        const generate = provider.generate.bind(provider);
-        t.mock.method(provider, "generate", (args: Parameters<Mock["generate"]>[0]) => {
-            seenStrikes.push(args.strikes);
-            return generate(args);
-        });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
         assert.equal(result.result.status, 200);
         assert.equal(result.result.content, "Answer.");
-        assert.deepEqual(seenStrikes, [0, strikes]);
+        const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
+        assert.equal(rail?.strike_streak, 0, "the concluding turn cleared the streak this inventory earned");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; status_rx: number }>({ loop_id: loopId });
         if (name === "missing inventory") {
             assert.equal(rows.filter(({ op, status_rx }) => op === "SEND" && status_rx === 200).length, 2,

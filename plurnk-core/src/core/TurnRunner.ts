@@ -214,7 +214,6 @@ export type BareBatchResult = {
 
 export type BareExecution = {
     readonly provider: Provider;
-    readonly primaryWorkerId: string;
     readonly loopSequence: number;
     readonly turnSequence: number;
     readonly signal: AbortSignal | undefined;
@@ -384,9 +383,7 @@ type ProviderAttempts = {
     readonly recoveryBudget: number;
     readonly recoveryBackoff: number;
     readonly signal: AbortSignal | undefined;
-    readonly client: string | null;
     readonly providerWorkerId: string;
-    readonly primaryWorkerId: string;
     // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
     // for, successes and failed calls alike, so the completion notice carries
     // the exact settled wire spend.
@@ -402,7 +399,6 @@ type ProviderEmission = {
     readonly railEvidence: GrammarEvidence | undefined;
     readonly emissionAttempts: number;
     readonly signal: AbortSignal | undefined;
-    readonly primaryWorkerId: string;
 };
 
 // {§notifications-reasoning-event} — the per-call observer a provider streams reasoning through.
@@ -453,10 +449,7 @@ export default class TurnRunner {
     readonly #interactions: ClientInteractions;
     readonly #warmWorkspace: WarmWorkspace;
     readonly #dispatch: TurnDispatch;
-    readonly #resolveWorkerProviderIdentity: (workerId: number) => Promise<{
-        workerId: string;
-        primaryWorkerId: string;
-    }>;
+    readonly #resolveWorkerProviderIdentity: (workerId: number) => Promise<{ workerId: string }>;
     // {§operator-grammar} — one read per path per daemon; the file is the operator's and static.
     #grammarCache = new Map<string, string>();
     readonly #materialization: TurnMaterialization;
@@ -504,10 +497,7 @@ export default class TurnRunner {
         interactions: ClientInteractions;
         warmWorkspace: WarmWorkspace;
         dispatch: TurnDispatch;
-        resolveWorkerProviderIdentity: (workerId: number) => Promise<{
-            workerId: string;
-            primaryWorkerId: string;
-        }>;
+        resolveWorkerProviderIdentity: (workerId: number) => Promise<{ workerId: string }>;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -577,9 +567,6 @@ export default class TurnRunner {
         process.stderr.write(`plurnk-engine: operator grammar: ${alias || "(bare)"} → ${path} (${text.length} chars)\n`);
         return text;
     }
-
-    // A lineage's no-parent root; a root worker resolves to itself. Fail hard
-    // when corruption leaves a worker without one. {§worker-primary}
 
     async #attemptAttributions(
         provider: Provider,
@@ -1203,9 +1190,7 @@ export default class TurnRunner {
         const recoveryBudget = readProviderRecovery();
         const recoveryBackoff = readProviderRecoveryBackoff();
         const providerSignal = this.#loopSignal(loopId) ?? signal;
-        // {§client-metadata}
-        const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const { workerId: providerWorkerId, primaryWorkerId } = await this.#resolveWorkerProviderIdentity(workerId);
+        const { workerId: providerWorkerId } = await this.#resolveWorkerProviderIdentity(workerId);
         return {
             wire,
             response: undefined,
@@ -1225,9 +1210,7 @@ export default class TurnRunner {
             recoveryBudget,
             recoveryBackoff,
             signal: providerSignal,
-            client,
             providerWorkerId,
-            primaryWorkerId,
             turnWireAccounting: [],
         };
     }
@@ -1278,7 +1261,6 @@ export default class TurnRunner {
             railEvidence: attempts.railEvidence,
             emissionAttempts: attempts.emissionAttempts,
             signal: attempts.signal,
-            primaryWorkerId: attempts.primaryWorkerId,
         };
         if (emission.split.packetAssistant.reasoning?.length) {
             await Turn.recordSource(this.#db, request.turnId, "reasoning", emission.split.packetAssistant.reasoning, { modelCallId: emission.modelCallId });
@@ -1302,7 +1284,6 @@ export default class TurnRunner {
         const attributionContext: PluginAttributionContext = Object.freeze({
             workspaceId: String(workspaceId),
             workerId: attempts.providerWorkerId,
-            primaryWorkerId: attempts.primaryWorkerId,
             loop: request.loopSeq,
             turn: request.seq,
             attempt: attempts.modelCallSequence,
@@ -1436,21 +1417,13 @@ export default class TurnRunner {
                     const generated = await provider.generate({
                         messages: attempts.wire.messages,
                         workerId: attempts.providerWorkerId,
-                        primaryWorkerId: attempts.primaryWorkerId,
+                        workspaceId: String(workspaceId),
                         signal: attempts.signal,
                         grammar: attempts.railGrammar,
-                        strikes: strikeStreak,
-                        attributions: attempts.attributions.length > 0
-                            ? attempts.attributions
-                            : undefined,
-                        client: attempts.client ?? undefined,
-                        workspaceId: String(workspaceId),
-                        loop: request.loopSeq,
-                        turn: request.seq,
                         observeRequest: reasoning.observeRequest,
                         observeReasoning: reasoning.observeReasoning,
                         callKind: "emission",
-                    }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                    }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution}
                     modelCall.assertAccounting(generated.accounting);
                     attempts.callInFlight = false;
                     recordCounter(PROVIDER_CALLS, {
@@ -1817,7 +1790,6 @@ export default class TurnRunner {
             emptyTurn: split.emptyTurn,
             bare: {
                 provider: childProvider,
-                primaryWorkerId: emission.primaryWorkerId,
                 loopSequence: request.loopSeq,
                 turnSequence: request.seq,
                 signal: emission.signal,

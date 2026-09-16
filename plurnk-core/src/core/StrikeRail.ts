@@ -88,7 +88,7 @@ export default class StrikeRail {
         return state;
     }
 
-    // {§strikes-first-party-metadata}: provider metadata, never a model-facing counter.
+    // {§rail-accounting-private}: the rail's own counter, never model-facing and never sent.
     async streak(loopId: number): Promise<number> {
         return (await this.#state(loopId)).strike_streak;
     }

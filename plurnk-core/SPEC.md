@@ -437,12 +437,9 @@ existing workspace worker in its own right.
 §worker-provider-identity **A worker owns a durable provider identity distinct
 from its database id.** Creation mints a globally unique, opaque 128-bit value;
 forks mint their own value. Core supplies it as the provider `workerId` for every
-emission and supplies the lineage root's value as `primaryWorkerId`
-({§provider-cache-identity}). Database ids remain the internal relational and
+emission ({§provider-cache-identity}). Database ids remain the internal relational and
 client coordinate. BARE calls use isolated per-call provider identities rather
 than either worker value.
-
-§worker-primary **The primary worker is the lineage root.** The PRIMARY worker of a turn's lineage is the no-parent root reached by walking `parent_worker_id` up; a no-parent worker is its own primary. Core supplies it on the first-party metadata channel alongside `Worker-Id` (same gate, computed per turn), stamped on EVERY turn including the primary's own (where it equals `Worker-Id`) — absent-with-a-Worker-Id is a contract violation, never a silent "assume primary." An unresolvable root (a corrupt/cyclic parent chain the `parent != id` CHECK forbids) fails hard. Providers emits it as `Plurnk-Worker-Primary`; a consumer routes primary-vs-spawned by equality (`Worker-Primary == Worker-Id` ⇒ the primary; `!=` ⇒ any-depth spawn, no depth math) and groups the worker tree by the shared root.
 
 §machine-processes-fork-shares-the-world **A fork copies history and named
 scratch while sharing the workspace.** It is a new worker in the
@@ -1204,9 +1201,7 @@ attempts are forensic evidence beneath their turn ({§emission-admission}) —
 only their exhaustion surfaces, as one frame-contract violation. The
 independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
 and cycle verdict are absent from model packets; only the concrete occurrences
-in the table are shown. The current streak may ride first-party provider
-metadata ({§strikes-first-party-metadata}), which does not make it
-model-facing.
+in the table are shown. The streak never leaves the daemon.
 
 §loop-rail-continuity Rail state belongs to the durable loop, not its execution
 segment. The strike streak and bounded cycle history survive driver cleanup and
@@ -1317,9 +1312,7 @@ Runtime hooks are synchronous and receive only the attempt coordinates. A hook
 failure is an internal plugin-contract failure; Core does not silently discard
 it or reinterpret a malformed tag list.
 
-§strikes-first-party-metadata The loop's **current strike streak** rides `generate({ strikes })` the same way — first-party outbound metadata (`Plurnk-Strikes` under the `firstPartyMetadata` gate): the hosted router's escalation signal (route-after-strike). The shape is a bare number — the streak at generate-time, the same figure the 500-threshold compares; a clean turn zeroes it, every loop starts at 0, and `0` is sent explicitly (clean ≠ unreported). It is NEVER model-facing ({§rail-accounting-private}) — headers only, the packet never carries it.
-
-§client-metadata **The workspace's `client` id rides the same wire.** A frontend self-identifies (e.g. `@plurnk/plurnk-tui/1.4.0`) at `workspace.create({ settings: { client } })`; the engine forwards it per turn on `generate({ client })`, which only the `plurnk` provider emits (as `Plurnk-Client`). Workspace-stable and self-reported — distinct from attribution's install-grounded tags — and omitted when unset.
+§client-metadata **The workspace records which frontend opened it.** A frontend self-identifies (e.g. `@plurnk/plurnk-tui/1.4.0`) at `workspace.create({ settings: { client } })` and the daemon stores it with the workspace. It is validated on write, never forwarded to a provider, and never model-facing. Workspace-stable and self-reported — distinct from attribution's install-grounded tags — and omitted when unset.
 
 ### §provider-instantiation Provider instantiation
 
@@ -4715,7 +4708,7 @@ turn.** It cannot execute operations or alter the audited history.
 | Scope     | One interview for each worker with model-bearing inference turns; workers without inference evidence are omitted.                                                |
 | Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. Quoted evidence is budgeted to the witness window ({§digest-requiem-evidence-budget}). |
 | Witness   | An explicitly supplied provider or the active configured provider; absence fails hard.                                                                          |
-| Identity  | The worker's durable provider identity ({§worker-provider-identity}) is sent as both `workerId` and `primaryWorkerId`, making the synthetic interview its own root without asserting a live worker topology. |
+| Identity  | The worker's durable provider identity ({§worker-provider-identity}) is sent as the `workerId`, without asserting a live worker topology. |
 | Attempts  | One call at `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`.         |
 | Artifacts | `requiem.md` carries testimony and exact nullable USD accounting. `requiem.json` is durably materialized before each call and preserves logical call state, messages, normalized responses, every physical request's state and accounting, and their shared aggregate projection. |
 

@@ -38,7 +38,7 @@ test("{§provider-input-modalities} the Mock declares modalities by option and r
     const seeing = new Mock({ contextWindow: 200000, responses: [], inputModalities: ["image", "pdf"] });
     assert.ok(seeing.inputModalities.has("image") && seeing.inputModalities.has("pdf") && !seeing.inputModalities.has("audio"));
     assert.equal(tokensOf(await seeing.countPromptTokens([parts])), Math.ceil("look at this".length / 2));
-    await assert.rejects(seeing.generate({ messages: [parts], maxOutputTokens: 16, workerId: "1", primaryWorkerId: "1", callKind: "bare" } as never));
+    await assert.rejects(seeing.generate({ messages: [parts], maxOutputTokens: 16, workerId: "1", callKind: "bare" } as never));
     assert.equal(seeing.received.length, 1, "the request was recorded before the empty queue refused it");
     const received = seeing.received[0]?.[0]?.content;
     assert.ok(Array.isArray(received) && received[1]?.type === "file" && received[1].mediaType === "image/png" && received[2]?.type === "file" && received[2].mediaType === "application/pdf");

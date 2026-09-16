@@ -424,10 +424,10 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
         assert.ok(bareIdentities.every((identity) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(identity)), "each BARE call receives an opaque UUID identity");
         assert.equal(new Set(bareIdentities).size, 2, "parallel BARE calls cannot acquire affinity with one another");
         assert.ok(bareIdentities.every((identity) => identity !== parentIdentity?.provider_identity), "BARE does not reuse the parent worker's affinity identity");
-        assert.ok(child.calls.every(({ primaryWorkerId, client, strikes }) =>
-            primaryWorkerId === parentIdentity?.provider_identity && client === undefined && strikes === undefined));
-        assert.ok(child.calls.every(({ attributions }) =>
-            JSON.stringify(attributions) === JSON.stringify(["provider:bare-witness"])));
+        const bareCalls = await db.test_model_calls.all<{ kind: string; attributions: string }>({ turn_id: result.turnId });
+        assert.ok(bareCalls.filter(({ kind }) => kind === "bare").every(({ attributions }) =>
+            JSON.stringify(JSON.parse(attributions)) === JSON.stringify(["provider:bare-witness"])),
+        "each BARE model call records the composed attribution set");
 
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;

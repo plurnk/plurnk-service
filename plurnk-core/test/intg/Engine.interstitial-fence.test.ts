@@ -86,17 +86,16 @@ test("{§empty-turn}: a prose-only response is an admitted turn with a turn_no_o
             { assistant: { content: "The findings give me precise integration points. Now I'll implement it.", reasoning: "thinking about it" } },
             { assistant: { content: PlurnkParser.frame("SEND", "Done.") + "\n" + task, reasoning: null } },
         ] });
-        const seen: Array<number | undefined> = [];
-        const generate = provider.generate.bind(provider);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({
-            provider: Object.assign(provider, { generate: (args: Parameters<Mock["generate"]>[0]) => { seen.push(args.strikes); return generate(args); } }),
+            provider,
             workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
             messages: [{ role: "user", content: "Do the thing." }],
         });
         assert.equal(result.result.status, 200);
         assert.equal(result.turnIds.length, 3, "initialization, the empty turn, the concluding turn: no private resample");
-        assert.deepEqual(seen, [0, 1], "the empty turn cost one strike, visible as provider metadata on the next request");
+        const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
+        assert.equal(rail?.strike_streak, 0, "the concluding turn cleared the streak the empty turn earned");
         const emptyTurn = result.turnIds[1]!;
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");

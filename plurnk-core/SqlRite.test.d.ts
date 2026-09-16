@@ -188,7 +188,6 @@ export class SqlRiteSync {
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
 	engine_loop_provider_requests: SqlRiteSyncPreparedStatements;
 	engine_loop_attributions: SqlRiteSyncPreparedStatements;
-	engine_worker_lineage_root: SqlRiteSyncPreparedStatements;
 	engine_worker_provider_identity: SqlRiteSyncPreparedStatements;
 	envelope_insert_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace: SqlRiteSyncPreparedStatements;
@@ -480,6 +479,7 @@ export class SqlRiteSync {
 	test_complete_turn_at: SqlRiteSyncPreparedStatements;
 	test_open_subscription_detached: SqlRiteSyncPreparedStatements;
 	test_close_subscription: SqlRiteSyncPreparedStatements;
+	test_strike_streak: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -738,7 +738,6 @@ export default class SqlRite {
 	engine_loop_usage: SqlRitePreparedStatements;
 	engine_loop_provider_requests: SqlRitePreparedStatements;
 	engine_loop_attributions: SqlRitePreparedStatements;
-	engine_worker_lineage_root: SqlRitePreparedStatements;
 	engine_worker_provider_identity: SqlRitePreparedStatements;
 	envelope_insert_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace: SqlRitePreparedStatements;
@@ -1030,6 +1029,7 @@ export default class SqlRite {
 	test_complete_turn_at: SqlRitePreparedStatements;
 	test_open_subscription_detached: SqlRitePreparedStatements;
 	test_close_subscription: SqlRitePreparedStatements;
+	test_strike_streak: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;

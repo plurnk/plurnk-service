@@ -474,8 +474,8 @@ export default class ClientInput {
                 );
             }
         }
-        // {§client-metadata} — workspace-stable frontend id (e.g. "@plurnk/plurnk-tui/1.4.0"), forwarded to the plurnk
-        // provider as Plurnk-Client metadata; ignored by every other provider. Self-identified.
+        // {§client-metadata} — workspace-stable frontend id (e.g. "@plurnk/plurnk-tui/1.4.0"), stored with the
+        // workspace and never forwarded to a provider. Self-identified.
         if (r.client !== undefined) {
             if (typeof r.client !== "string" || r.client.length === 0) {
                 ClientInput.#invalid(

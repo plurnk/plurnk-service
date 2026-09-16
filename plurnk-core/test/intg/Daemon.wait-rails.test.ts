@@ -31,7 +31,7 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
             t.mock.method(provider, "generate", (args: Parameters<Mock["generate"]>[0]) => {
-                seen.push(args.strikes);
+                seen.push((args as { strikes?: number }).strikes);
                 return generate(args);
             });
             await withDaemon(provider, async (db, daemon) => {
@@ -82,7 +82,7 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
                         }
                     }
                     assert.equal(await finished.promise, 500, "the third consecutive hard failure ends this same task");
-                    assert.deepEqual(seen, [0, 1, 2], "provider metadata retains the streak without exposing it in the packet");
+                    assert.deepEqual(seen, [undefined, undefined, undefined], "the streak never leaves the daemon: no provider call carries it");
                     const result = await new LoopLifecycle(db).result(loopId);
                     assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
                     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });

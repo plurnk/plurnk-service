@@ -37,7 +37,6 @@ export type PackageAttributions = ReadonlyMap<string, PluginAttribution>;
 export interface PluginAttributionContext {
     readonly workspaceId: string;
     readonly workerId: string;
-    readonly primaryWorkerId: string;
     readonly loop: number;
     readonly turn: number;
     readonly attempt: number;

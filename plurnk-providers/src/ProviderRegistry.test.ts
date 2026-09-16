@@ -73,7 +73,6 @@ test("instantiateProvider: a selected plugin composes its static and runtime att
     const context: PluginAttributionContext = {
         workspaceId: "workspace",
         workerId: "worker",
-        primaryWorkerId: "primary",
         loop: 3,
         turn: 2,
         attempt: 1,

@@ -98,12 +98,6 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
         response("```SEND\nChild answer: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         response("```SEND\nChild answer received: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
-    const strikes: Array<number | undefined> = [];
-    const generate = provider.generate.bind(provider);
-    t.mock.method(provider, "generate", (args: Parameters<Mock["generate"]>[0]) => {
-        strikes.push(args.strikes);
-        return generate(args);
-    });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
         const parentId = await daemon.ensureModelWorker(workspaceId);
@@ -119,7 +113,8 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 200);
             assert.equal((await lifecycle.result(parent.loopId))?.content, "Child answer received: 42.");
             assert.equal(provider.received.length, 4, "actual child completion resumes the same parent loop exactly once");
-            assert.deepEqual(strikes, [0, 0, 0, 0], "neither the join nor its wake consumes recovery allowance");
+            const parentRail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: parent.loopId });
+            assert.equal(parentRail?.strike_streak, 0, "neither the join nor its wake consumes recovery allowance");
             assert.match(JSON.stringify(provider.received.at(-1)), /Child answer: 42\./,
                 "the resumed parent packet contains the child's completed response");
             assert.equal(await new StrikeRail(db).streak(parent.loopId), 0);

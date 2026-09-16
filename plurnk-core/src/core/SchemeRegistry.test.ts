@@ -8,7 +8,6 @@ import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 const attributionContext: PluginAttributionContext = {
     workspaceId: "workspace",
     workerId: "worker",
-    primaryWorkerId: "primary",
     loop: 1,
     turn: 1,
     attempt: 1,

@@ -490,7 +490,7 @@ SELECT id, name, model_route_id, spawn_model_route_id, reasoning_policy FROM wor
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets
--- {§strikes-first-party-metadata} — every stored packet, to prove no section carries strike state.
+-- {§rail-accounting-private} — every stored packet, to prove no section carries strike state.
 SELECT packet FROM turn_packets WHERE packet IS NOT NULL;
 
 -- PREP: test_deep_hash
@@ -820,3 +820,7 @@ RETURNING id;
 UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), close_status = 200, close_result = '{"status":200}', channel_results = '{}'
 WHERE id = $id;
+
+-- PREP: test_strike_streak
+-- {§engine-rails} — the loop's persisted strike streak, the rail's own truth.
+SELECT strike_streak FROM loops WHERE id = $loop_id;

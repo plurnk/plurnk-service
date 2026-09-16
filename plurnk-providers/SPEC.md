@@ -147,9 +147,7 @@ Providers MUST NOT interpret either value.
 turn emission) or `bare` (the response is unconstrained answer text). The
 consumer states this semantic fact explicitly; providers MUST NOT infer it from
 message count, grammar presence, worker identity, or another incidental request
-shape. The first-party adapter transports a supplied value as
-`Plurnk-Call-Kind`; the metadata gate drops it for every third-party backend.
-The signal is request metadata and never enters model-facing messages. Generic
+shape. The signal never enters model-facing messages. Generic
 provider callers MAY omit it; Core supplies it for every model call.
 
 A successful return carries the model's raw content and reasoning, normalized
@@ -590,10 +588,6 @@ intent. It cannot override:
 Generic AI SDK calls accept only settings represented by the SDK's portable
 surface. Compatible endpoints may carry additional sampling keys after reserved
 keys are removed.
-
-First-party attribution, client, strike, workspace, loop, turn, and worker
-headers are sent only by the `plurnk` provider. They never leak to another
-backend.
 
 §openrouter-app-attribution **The cataloged OpenRouter route identifies the
 calling application through OpenRouter's current app-attribution headers.**

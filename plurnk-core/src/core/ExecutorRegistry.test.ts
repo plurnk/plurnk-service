@@ -11,7 +11,6 @@ import type { SchemeManifest } from "./scheme-types.ts";
 const attributionContext = (attempt: number): PluginAttributionContext => ({
     workspaceId: "workspace",
     workerId: "worker",
-    primaryWorkerId: "primary",
     loop: 1,
     turn: 1,
     attempt,

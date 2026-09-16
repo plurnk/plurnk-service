@@ -1,23 +1,20 @@
-// {§client-metadata} — the workspace's self-identified client id (the originating frontend, e.g. "@plurnk/plurnk-tui/1.4.0")
-// is forwarded per turn on generate({ client }); only the plurnk provider emits it (Plurnk-Client).
-// This proves the service half end-to-end: workspace.create persists it (validated), the engine reads
-// it per turn and passes it to the provider call — omitted entirely when unset. The attribution
-// sibling lives in attribution.test.ts.
+// {§client-metadata} — the workspace's self-identified client id (the originating frontend, e.g.
+// "@plurnk/plurnk-tui/1.4.0") is stored with the workspace and validated on write. It reaches no
+// provider: the retired first-party endpoint was its only consumer (#697). The attribution sibling
+// lives in attribution.test.ts.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, withDaemon, rpcCall, rpcProblem, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-// Run a loop against a provider whose generate() is shadowed to capture the `client` arg, with the
-// workspace created carrying settings.client = clientId (or no client setting when null).
+// Run a loop against a provider whose generate() is shadowed, with the workspace created carrying
+// settings.client, and report whether any `client` field reached the provider call.
 const captureClient = async (clientId: string | null): Promise<string | undefined> => {
     const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 5)] });
     let captured: string | undefined;
     let seen = false;
     const real = mock.generate.bind(mock);
-    // Mock's generate() param type omits `client` (narrower than the Provider interface); the engine
-    // passes it at runtime — read it through a cast, same as attribution.test.ts does for attributions.
     mock.generate = (req) => { captured = (req as { client?: string }).client; seen = true; return real(req); };
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -32,12 +29,8 @@ const captureClient = async (clientId: string | null): Promise<string | undefine
     return captured;
 };
 
-test("the workspace's client id reaches generate()", async () => {
-    assert.equal(await captureClient("@plurnk/plurnk-tui/1.4.0"), "@plurnk/plurnk-tui/1.4.0", "the workspace-stable client id reaches the provider wire");
-});
-
-test("no client setting → generate's client field is omitted (undefined), not empty", async () => {
-    assert.equal(await captureClient(null), undefined, "a workspace without a client id sends no client field");
+test("a stored client id never reaches the provider call", async () => {
+    assert.equal(await captureClient("@plurnk/plurnk-tui/1.4.0"), undefined, "the client id stays inside the daemon");
 });
 
 test("workspace.create refuses an empty client id", async () => {

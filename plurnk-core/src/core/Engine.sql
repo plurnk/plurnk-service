@@ -77,28 +77,8 @@ FROM (
 )
 ORDER BY attribution;
 
--- PREP: engine_worker_lineage_root
--- The no-parent root of a worker lineage; a root worker returns itself.
--- {§worker-primary}
-WITH RECURSIVE lineage(id, parent_worker_id) AS (
-    SELECT id, parent_worker_id FROM workers WHERE id = $worker_id
-    UNION ALL
-    SELECT w.id, w.parent_worker_id FROM workers w JOIN lineage l ON w.id = l.parent_worker_id
-)
-SELECT id FROM lineage WHERE parent_worker_id IS NULL;
-
 -- PREP: engine_worker_provider_identity
 -- Provider routing uses globally unique opaque identities, while all relational
 -- ownership and client coordinates retain the local integer worker id.
--- {§worker-provider-identity} {§worker-primary}
-WITH RECURSIVE lineage(id, parent_worker_id, provider_identity) AS (
-    SELECT id, parent_worker_id, provider_identity FROM workers WHERE id = $worker_id
-    UNION ALL
-    SELECT w.id, w.parent_worker_id, w.provider_identity
-    FROM workers w JOIN lineage l ON w.id = l.parent_worker_id
-)
-SELECT current.provider_identity AS worker_id,
-       root.provider_identity AS primary_worker_id
-FROM workers current
-JOIN lineage root ON root.parent_worker_id IS NULL
-WHERE current.id = $worker_id;
+-- {§worker-provider-identity}
+SELECT provider_identity AS worker_id FROM workers WHERE id = $worker_id;

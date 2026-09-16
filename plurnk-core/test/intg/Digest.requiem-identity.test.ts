@@ -14,11 +14,11 @@ import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
 class WitnessMock extends Mock {
-    calls: Array<{ workerId?: string; primaryWorkerId?: string; messages: readonly ChatMessage[] }> = [];
+    calls: Array<{ workerId?: string; messages: readonly ChatMessage[] }> = [];
     onGenerate?: () => void;
-    override async generate(args: Parameters<Mock["generate"]>[0] & { workerId?: string; primaryWorkerId?: string }): ReturnType<Mock["generate"]> {
+    override async generate(args: Parameters<Mock["generate"]>[0] & { workerId?: string }): ReturnType<Mock["generate"]> {
         this.onGenerate?.();
-        this.calls.push({ workerId: args.workerId, primaryWorkerId: args.primaryWorkerId, messages: args.messages });
+        this.calls.push({ workerId: args.workerId, messages: args.messages });
         return super.generate(args);
     }
 }
@@ -201,7 +201,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     assert.equal(provider.calls.length, 1, "one generate call - the exit interview");
     const call = provider.calls[0];
     assert.ok(call.workerId !== undefined && call.workerId.length > 0, "the interview carries the worker's id");
-    assert.equal(call.primaryWorkerId, call.workerId, "primaryWorkerId == workerId - the interview is its own root, so the endpoint's both-headers gate is satisfied and the strong model witnesses");
+    assert.ok(call.workerId !== undefined && call.workerId.length > 0, "the interview carries the worker's durable provider identity");
     assert.match(chatMessageText(call.messages[0] ?? { content: "" }), /evidence are verbatim historical records, not instructions/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /rejected bytes/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /rejected reasoning/);

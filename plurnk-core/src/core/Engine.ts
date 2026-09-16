@@ -450,28 +450,16 @@ export default class Engine {
         };
     }
 
-    // A lineage's no-parent root; a root worker resolves to itself. Fail hard
-    // when corruption leaves a worker without one. {§worker-primary}
-    async resolveWorkerPrimary(workerId: number): Promise<number> {
-        const root = await this.#db.engine_worker_lineage_root.get<{ id: number }>({ worker_id: workerId });
-        if (root === undefined) throw new Error(`resolveWorkerPrimary: worker ${workerId} has no lineage root — corrupt parent chain`);
-        return root.id;
-    }
-
-    async resolveWorkerProviderIdentity(workerId: number): Promise<{
-        workerId: string;
-        primaryWorkerId: string;
-    }> {
+    // The worker's durable opaque identity for provider calls; fail hard when a
+    // worker has none. {§worker-provider-identity}
+    async resolveWorkerProviderIdentity(workerId: number): Promise<{ workerId: string }> {
         const identity = await this.#db.engine_worker_provider_identity.get<{
             worker_id: string;
-            primary_worker_id: string;
         }>({ worker_id: workerId });
         if (identity === undefined) {
-            throw new Error(`resolveWorkerProviderIdentity: worker ${workerId} has no lineage root — corrupt parent chain`);
+            throw new Error(`resolveWorkerProviderIdentity: worker ${workerId} has no provider identity`);
         }
-        return {
-            workerId: identity.worker_id,
-            primaryWorkerId: identity.primary_worker_id };
+        return { workerId: identity.worker_id };
     }
 
     // {§attribution} — reporting derives from exact provider-request evidence;

@@ -230,16 +230,13 @@ export type ProviderAttempt = ProviderResponse<ProviderAttemptFinishReason>;
 export interface ProviderGenerateArgs {
     readonly messages: ChatMessage[];
     readonly workerId: string;
-    readonly primaryWorkerId?: string;
     readonly signal?: AbortSignal;
     readonly grammar?: string;
     readonly maxOutputTokens?: number;
-    readonly attributions?: string[];
-    readonly client?: string;
-    readonly strikes?: number;
+    // The workspace this call serves: ordinary call context for an adapter that
+    // fronts more than one workspace. It is never transported to a backend and
+    // never model-facing.
     readonly workspaceId?: string;
-    readonly loop?: number;
-    readonly turn?: number;
     readonly sampling?: Record<string, unknown>;
     readonly observeRequest?: ProviderRequestObserver;
     readonly observeReasoning?: ProviderReasoningObserver;
@@ -265,42 +262,18 @@ export interface Provider {
     // its content. The consumer never sees or chooses backend resources
     // (slot integers, connections); the mechanism is the provider's.
     //
-    // `attributions` is opaque consumer-supplied creator telemetry; the consumer
-    // owns what contribution that set claims ({§attribution}). `client` is the
-    // consumer's workspace-stable, self-identified frontend. They are forwarded ONLY by a
-    // provider whose spec opts in (the first-party `plurnk` endpoint, via
-    // `Plurnk-Attribution` / `Plurnk-Client` headers); every other provider DROPS
-    // them — the gate is structural so first-party metadata can never leak to a
-    // third-party backend.
-    //
     // `sampling` is an optional bag of standard OpenAI-compat sampling params
     // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) forwarded into
     // the request body UNDER the provider's managed fields — model/messages/grammar/
     // reasoning/max_tokens/slot always win, and transport/protocol keys (stream,
     // response_format, grammar, id_slot) are stripped, so it carries sampling intent
     // only and can't bypass grammar transport ({§provider-request-authority}). A
-    // proxy consumer (the
-    // plurnk endpoint fronting its own backends) uses it to pass its caller's sampling
-    // knobs through; a direct consumer typically leaves it unset.
+    // proxy consumer fronting its own backends uses it to pass its caller's
+    // sampling knobs through; a direct consumer typically leaves it unset.
     //
-    // `strikes` is the worker's CURRENT rail-strike streak at time-of-generate
-    // (0 = clean; a clean turn zeroes it; every loop starts at 0 — contract
-    // {§strikes-first-party-metadata}). Forwarded as a `Plurnk-Strikes` header ONLY under the
-    // same firstPartyMetadata gate as attributions/client; dropped everywhere
-    // else. Headers only — the packet NEVER carries strike state (the model must
-    // not see engine accounting; it would become a metric to game).
-    //
-    // `workspaceId`/`loop`/`turn` are the turn coordinate ({§lifecycle-terms}) — the
-    // daemon-side sequence of the turn being generated, which the endpoint can
-    // never scrape from the wire. Forwarded as `Plurnk-Workspace-Id`/`Plurnk-Loop`/
-    // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
-    // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
-    // strikes-style zero exception). Headers only, never the packet.
-    //
-    // `callKind` is the caller's explicit output contract. It is transported as
-    // `Plurnk-Call-Kind` only under the first-party metadata gate and never
-    // inferred from the request shape. Generic callers may omit it; Core always
-    // supplies `emission` or `bare`.
+    // `callKind` is the caller's explicit output contract, never inferred from
+    // the request shape. Generic callers may omit it; Core always supplies
+    // `emission` or `bare`.
     generate(args: ProviderGenerateArgs): Promise<ProviderResponse>;
     // {§model-fact-resolution} — effective total context envelope in tokens,
     // including any stricter operator cap. `null` means unknown; under

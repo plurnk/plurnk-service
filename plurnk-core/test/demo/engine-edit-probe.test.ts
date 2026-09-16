@@ -29,7 +29,7 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
         try {
             loop = await liveLoop(
                 s, 2,
-                { prompt: "In Engine.ts, insert a new line containing exactly `#pragma plurnk-once` immediately above the line that declares the `resolveWorkerPrimary` method.", maxTurns: 30 },
+                { prompt: "In Engine.ts, insert a new line containing exactly `#pragma plurnk-once` immediately above the line that declares the `resolveWorkerProviderIdentity` method.", maxTurns: 30 },
                 { signal: t.signal },
             );
         } finally {
@@ -40,14 +40,14 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
 
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
 
-        // (1) COORDINATE: the audit line lands immediately above resolveWorkerPrimary — the located target, not a fabricated spot.
-        const rwpIdx = editedLines.findIndex((l) => /\bresolveWorkerPrimary\s*\(/.test(l) && !l.trimStart().startsWith("//"));
-        assert.ok(rwpIdx > 0, "resolveWorkerPrimary declaration still present");
-        assert.match(editedLines[rwpIdx - 1], /#pragma plurnk-once/, "the marker sits immediately above resolveWorkerPrimary (coordinate landed on the located target)");
+        // (1) COORDINATE: the audit line lands immediately above resolveWorkerProviderIdentity — the located target, not a fabricated spot.
+        const rwpIdx = editedLines.findIndex((l) => /\bresolveWorkerProviderIdentity\s*\(/.test(l) && !l.trimStart().startsWith("//"));
+        assert.ok(rwpIdx > 0, "resolveWorkerProviderIdentity declaration still present");
+        assert.match(editedLines[rwpIdx - 1], /#pragma plurnk-once/, "the marker sits immediately above resolveWorkerProviderIdentity (coordinate landed on the located target)");
 
         // (2) NO run61-style corruption: exactly one class, key methods intact, no duplication.
         assert.equal(edited.split("export default class Engine").length - 1, 1, "exactly one class declaration (no duplicate/self-nested block)");
-        for (const marker of ["async runLoop", "async drainDerivations", "async resolveWorkerPrimary", "async loopUsage"]) {
+        for (const marker of ["async runLoop", "async drainDerivations", "async resolveWorkerProviderIdentity", "async loopUsage"]) {
             assert.ok(edited.includes(marker), `method survived the edit: ${marker}`);
         }
 

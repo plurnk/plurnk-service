@@ -10,7 +10,6 @@ import type { Discovery, HandlerInfo } from "./types.ts";
 const context = (attempt: number): PluginAttributionContext => ({
     workspaceId: "workspace",
     workerId: "worker",
-    primaryWorkerId: "primary",
     loop: 1,
     turn: 2,
     attempt,

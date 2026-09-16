@@ -308,7 +308,6 @@ export default class DigestRequiem {
                     const response = await provider.generate({
                         messages,
                         workerId: id,
-                        primaryWorkerId: id,
                         maxOutputTokens: outputTokens,
                         observeRequest,
                         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),

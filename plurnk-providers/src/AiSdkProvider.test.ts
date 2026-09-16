@@ -1857,81 +1857,6 @@ test("meta: passes backend fields through without reinterpreting monetary values
     assert.equal(res.meta?.system_fingerprint, "fp_abc");
 });
 
-// — first-party telemetry headers ({§provider-request-authority}) —
-
-const headerVal = (init: RequestInit, name: string): string | undefined =>
-    new Headers(init.headers).get(name) ?? undefined;
-
-test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0", "@foo/y@0.3.1"], client: "@plurnk/plurnk-tui/1.4.0" });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), '["@acme/x@1.2.0","@foo/y@0.3.1"]');
-    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "@plurnk/plurnk-tui/1.4.0");
-});
-
-test("Plurnk-Call-Kind carries the caller's emission or bare output contract under the first-party gate", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "emission", messages: [], callKind: "emission" });
-    await p.generate({ workerId: "bare", messages: [], callKind: "bare" });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Call-Kind"), "emission");
-    assert.equal(headerVal(calls[1].init, "Plurnk-Call-Kind"), "bare");
-});
-
-test("generate rejects an unknown call kind before provider I/O", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await assert.rejects(
-        p.generate({ workerId: "invalid", messages: [], callKind: "unknown" as never }),
-        /unsupported callKind "unknown"/,
-    );
-    assert.equal(calls.length, 0);
-});
-
-test("Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even when it equals workerId", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), "w-root"); // a descendant: Primary != Worker-Id
-    mock.restoreAll();
-
-    // the primary worker's own turn: Primary == Worker-Id, still stamped (never skipped on equality)
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "w-root", primaryWorkerId: "w-root", messages: [] });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), "w-root");
-    mock.restoreAll();
-
-    // absent when the consumer supplies none — the provider never invents a primary
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "w-root", messages: [] });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), undefined);
-});
-
-test("Plurnk-Worker-Primary is structurally dropped when firstPartyMetadata is off", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), undefined); // never reaches a third-party backend
-});
-
-test("firstPartyMetadata off (default): the headers are structurally dropped even when values are passed", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0"], client: "plurnk-cli/2.0.0", callKind: "bare" });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);   // never leaks to a non-first-party backend
-    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
-    assert.equal(headerVal(calls[0].init, "Plurnk-Call-Kind"), undefined);
-});
-
-test("firstPartyMetadata on but empty values: no header emitted", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], attributions: [], client: "" });
-    assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);
-    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
-});
-
 test("grammar transport: no grammar passed sends no grammar field, but the penalty rides", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -2624,40 +2549,6 @@ test("caller sampling cannot forge logprobs (reserved keys): the env flag is the
     assert.equal("top_logprobs" in body, false);
     mock.restoreAll();
 });
-
-// — turn coordinate headers ({§lifecycle-terms}): same gate as every first-party signal —
-
-test("workspaceId/loop/turn ride as Plurnk-Workspace-Id/Loop/Turn under the first-party gate", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], workspaceId: "s-9", loop: 3, turn: 41 });
-    const headers = new Headers(calls[0].init.headers);
-    assert.equal(headers.get("plurnk-workspace-id"), "s-9");
-    assert.equal(headers.get("plurnk-loop"), "3");
-    assert.equal(headers.get("plurnk-turn"), "41");
-});
-
-test("third-party providers structurally DROP the coordinate (gate off by default)", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], workspaceId: "s-9", loop: 3, turn: 41 });
-    const headers = new Headers(calls[0].init.headers);
-    assert.equal(headers.has("plurnk-workspace-id"), false);
-    assert.equal(headers.has("plurnk-loop"), false);
-    assert.equal(headers.has("plurnk-turn"), false);
-});
-
-test("coordinates are 1-based — 0/absent/empty emit no header", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], workspaceId: "", loop: 0, turn: 0 });
-    const headers = new Headers(calls[0].init.headers);
-    assert.equal(headers.has("plurnk-workspace-id"), false);
-    assert.equal(headers.has("plurnk-loop"), false);
-    assert.equal(headers.has("plurnk-turn"), false);
-    assert.equal(headers.has("plurnk-strikes"), false);
-});
-
 // -- {§provider-generation-envelope} --
 
 test("the adapter exposes independent model limits and the resolved generation envelope", () => {

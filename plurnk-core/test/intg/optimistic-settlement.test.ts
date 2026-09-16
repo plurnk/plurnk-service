@@ -101,10 +101,11 @@ class ControlledWorkerProvider implements Provider {
         return testProviderCapacity(messages, this.contextWindow, this.outputBudget);
     }
 
+    #parentIdentity: string | undefined;
+
     async generate({
         messages,
         workerId,
-        primaryWorkerId,
         signal,
         grammar,
         observeRequest,
@@ -115,7 +116,9 @@ class ControlledWorkerProvider implements Provider {
             provider: requestAccounting.provider,
             model: requestAccounting.model,
         });
-        if (workerId === primaryWorkerId) {
+        // The parent worker is whoever calls first; children spawn from its turn.
+        this.#parentIdentity ??= workerId;
+        if (workerId === this.#parentIdentity) {
             const index = this.#parentCalls++;
             const content = this.#parentTurns[index];
             if (content === undefined) throw new Error(`Unexpected parent provider call ${index + 1}.`);
