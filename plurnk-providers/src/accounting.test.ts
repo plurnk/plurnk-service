@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
     aggregateProviderAccounting,
-    plurnkCostNormalizer,
     providerCostNormalizer,
 } from "./accounting.ts";
 
@@ -46,16 +45,6 @@ test("DeepInfra's documented response estimate remains estimated", () => {
         amount: { amount: "0.0000504", currency: "USD" },
         source: "DeepInfra response usage.estimated_cost",
     });
-});
-
-test("first-party charged evidence is validated at its adapter boundary", () => {
-    const charged = {
-        kind: "charged",
-        amount: { amount: "0.01", currency: "USD" },
-        source: "plurnk endpoint",
-    } as const;
-    assert.deepEqual(plurnkCostNormalizer(evidence({ charge: charged })), charged);
-    assert.equal(plurnkCostNormalizer(evidence({})), undefined);
 });
 
 test("response cost normalization is an explicit adapter capability", () => {

@@ -2678,15 +2678,6 @@ test("the adapter exposes independent model limits and the resolved generation e
     assert.equal(unknown.outputBudget, null);
 });
 
-test("router-owned tuning: tuningFloors:false drops the temperature/penalty floors, caller sampling still rides", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0, tuningFloors: false });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.9 } });
-    const body = JSON.parse(calls[0].init.body as string);
-    assert.equal(body.temperature, 0.9);           // caller intent passes verbatim
-    assert.equal("frequency_penalty" in body, false); // the floor is suppressed; the router owns tuning
-});
-
 // -- {§provider-cache-affinity} / {§provider-cache-write-policy} --
 
 test("a compatible route's declared body affinity is managed by workerId", async () => {

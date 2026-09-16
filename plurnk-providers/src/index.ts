@@ -78,7 +78,6 @@ export {
 } from "./cost.ts";
 export {
     aggregateProviderAccounting,
-    plurnkCostNormalizer,
     providerCostNormalizer,
     validateProviderRequestAccounting,
 } from "./accounting.ts";

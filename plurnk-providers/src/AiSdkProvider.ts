@@ -199,10 +199,6 @@ export type AiSdkProviderConfig = {
     // the standard factory always supplies them. Resolved against contextWindow
     // at read time (getters), so a probe that lands after config assembly still
     // derives correctly.
-    // The plurnk.ai router owns tuning — false suppresses the
-    // client-side temperature/penalty FLOORS on this provider (caller `sampling`
-    // still passes through verbatim). Default true (floors ride).
-    tuningFloors?: boolean;
 };
 
 class ProviderRequestObserverError extends Error {
@@ -302,7 +298,6 @@ export default class AiSdkProvider implements Provider {
     #retryAttempts: number;
     #errorDetailLimit: number | undefined;
     #topLogprobs: number | null;
-    #tuningFloors: boolean;
     #rawBody: boolean;
     #servedModel: string | undefined;
     #requiresOutputBudget: boolean | undefined;
@@ -425,7 +420,6 @@ export default class AiSdkProvider implements Provider {
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
-        this.#tuningFloors = config.tuningFloors ?? true;
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
         this.#requiresOutputBudget = config.requiresOutputBudget;
@@ -655,9 +649,8 @@ export default class AiSdkProvider implements Provider {
         // paths and the name promises every request) < the caller's `sampling`
         // < the managed fields, which always win.
         const body: Record<string, unknown> = {
-            // Floors are suppressed on router-owned-tuning providers (plurnk) —
-            // the router's per-model tuning must not be overridden by client floors.
-            ...(this.#tuningFloors ? { ...(this.#temperature !== null ? { temperature: this.#temperature } : {}), ...this.#requestBody.repetitionPenaltyBody() } : {}),
+            ...(this.#temperature !== null ? { temperature: this.#temperature } : {}),
+            ...this.#requestBody.repetitionPenaltyBody(),
             ...this.#requestBody.samplingBody(sampling),
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
@@ -803,15 +796,13 @@ export default class AiSdkProvider implements Provider {
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
-                        temperature: this.#tuningFloors
-                            ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature ?? undefined)
-                            : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
+                        temperature: typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature ?? undefined,
                         topP: typeof sampling?.top_p === "number" ? sampling.top_p : undefined,
                         topK: typeof sampling?.top_k === "number" ? sampling.top_k : undefined,
                         presencePenalty: typeof sampling?.presence_penalty === "number" ? sampling.presence_penalty : undefined,
                         frequencyPenalty: typeof sampling?.frequency_penalty === "number"
                             ? sampling.frequency_penalty
-                            : this.#tuningFloors && this.#frequencyPenalty > 0 ? this.#frequencyPenalty : undefined,
+                            : this.#frequencyPenalty > 0 ? this.#frequencyPenalty : undefined,
                         stopSequences: typeof sampling?.stop === "string"
                             ? [sampling.stop]
                             : Array.isArray(sampling?.stop) && sampling.stop.every((value) => typeof value === "string")

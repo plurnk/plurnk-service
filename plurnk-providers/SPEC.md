@@ -347,7 +347,6 @@ The compatible transport is deliberately retained for:
 
 - `openai` local endpoints, including llama-server and vLLM;
 - `ollama`, after its native `/api/show` probe;
-- the first-party `plurnk` endpoint;
 - operator-declared `@ai-sdk/openai-compatible` providers.
 
 It carries PLURNK-only fields and raw wire evidence without reimplementing the
@@ -456,7 +455,7 @@ names; the built-in local `ollama` rail keeps its name (the catalog's
 1. A Models.dev provider and model, using its declared AI SDK package.
 2. An operator provider declaration:
    `PLURNK_PROVIDERS_PROVIDER_<NAME>_{NPM,BASE_URL,API_KEY_ENV}`.
-3. The local `openai`, `ollama`, or first-party `plurnk` adapter.
+3. The local `openai` or `ollama` adapter.
 4. A discovered AI SDK provider plugin.
 5. A precise unknown-provider error.
 

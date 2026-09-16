@@ -1,5 +1,4 @@
 import type {
-    ChargedCost,
     ProviderAccounting,
     ProviderCostNormalizer,
     ProviderRequestAccounting,
@@ -7,7 +6,6 @@ import type {
 } from "./types.ts";
 import {
     sumProviderCostsUsd,
-    validateChargedCost,
     validateProviderCost,
 } from "./cost.ts";
 import { validateProviderUsage } from "./usage.ts";
@@ -80,12 +78,6 @@ const deepInfraCost: ProviderCostNormalizer = ({ usage }) => {
         amount: { amount: decimalFromNumber(cost, "DeepInfra usage.estimated_cost"), currency: "USD" },
         source: "DeepInfra response usage.estimated_cost",
     };
-};
-
-// The first-party endpoint owns the direct charged-cost wire field.
-export const plurnkCostNormalizer: ProviderCostNormalizer = ({ charge }) => {
-    if (charge === undefined) return undefined;
-    return validateChargedCost(charge) as ChargedCost;
 };
 
 export const providerCostNormalizer = (

@@ -16,7 +16,6 @@ import {
     reasoningResponseStyleFromEnv,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
-import { plurnkCostNormalizer } from "./accounting.ts";
 import type { Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -210,17 +209,11 @@ export const compatibleProviderFromEnv = async (
         dryBase: parseOptionalFloat(env.PLURNK_PROVIDERS_DRY_BASE, "PLURNK_PROVIDERS_DRY_BASE", provider, 0) ?? undefined,
         dryAllowedLength: parseOptionalInt(env.PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH, "PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH", provider) ?? undefined,
         repeatLastN: parseOptionalInt(env.PLURNK_PROVIDERS_REPEAT_LAST_N, "PLURNK_PROVIDERS_REPEAT_LAST_N", provider) ?? undefined,
-        tuningFloors: provider !== "plurnk",
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", provider),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
         source: providerSource(provider),
         grammarStyle,
         ...dataCaptureFromEnv(env, provider),
-        firstPartyMetadata: provider === "plurnk",
-        normalizeCost: provider === "plurnk" ? plurnkCostNormalizer : undefined,
-        apiKeyRejectedMessage: provider === "plurnk"
-            ? "PLURNK_API_KEY was rejected by plurnk.ai (invalid or expired)."
-            : undefined,
         supportsSlotPinning: llamaServer,
         slotCount,
         eosText,

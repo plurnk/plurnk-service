@@ -14,7 +14,7 @@ const DONE = "```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\
 // The 2026-09-11 dogfood, verbatim in shape: every operation on the line after its fence.
 const MISFENCED = [
     "````\nsh <!-- brand presence -->\nprintf plurnk\n````",
-    "````\nREAD (https://plurnk.ai/) <!-- retry; 530 was marked retryable after 120s -->\n````",
+    "````\nREAD (https://example.invalid/) <!-- retry; 530 was marked retryable after 120s -->\n````",
     "````\nTASK\n[{\"content\": \"Research positioning\", \"status\": \"in_progress\"}]\n````",
 ].join("\n\n");
 
