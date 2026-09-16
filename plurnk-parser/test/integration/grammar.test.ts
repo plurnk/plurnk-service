@@ -72,7 +72,7 @@ test("protocol operations parse as executable fences", () => {
     }
 });
 
-test("{§send-directed-scope}: directed SEND preserves numeric timing without changing its body or disposition", () => {
+test("{§send-directed-scope}: directed SEND carries a numeric scope to its owner without changing its body or disposition", () => {
     for (const [scope, components] of [["<60>", [60]], ["<0,60>", [0, 60]]] as const) {
         const statement = oneStatement(section("SEND", ` (worker://reviewer) ${scope} <!-- recurring check -->`, "Check for updates."));
         assert.equal(statement.op, "SEND");

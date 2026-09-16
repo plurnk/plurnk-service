@@ -1,6 +1,5 @@
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
-import { taskTiming } from "../core/LoopLifecycle.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -132,9 +131,6 @@ export default class Worker extends CoreSchemeAdapterBase {
             status: number;
             terminal_result: string | null;
             terminated_by: string | null;
-            scheduled_at: number | null;
-            repeat_interval_ms: number | null;
-            recurrence_root_loop_id: number | null;
         }>({ workspace_id: core.workspaceId, name: authority });
         if (row === undefined) {
             return Results.failure(
@@ -153,7 +149,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                 "worker-unfinished",
                 425,
                 detail,
-                { loopId: row.id, ...taskTiming(row) },
+                { loopId: row.id },
                 {
                     worker: authority,
                     retryable: false,
@@ -354,17 +350,12 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const address = WorkerControlAddress.resolve(statement.target, "SEND");
         if (!address.ok) return address.result;
-        const marks = statement.lineMarker?.marks;
-        const [delay, interval] = marks ?? [];
-        const maxMinutes = Math.floor((8.64e15 - Date.now()) / 60_000);
-        if (marks !== undefined && (marks.length < 1 || marks.length > 2
-            || delay === undefined || !Number.isSafeInteger(delay) || delay < 0
-            || (interval !== undefined && (!Number.isSafeInteger(interval) || interval <= 0))
-            || delay + (interval ?? 0) > maxMinutes)) {
+        // {§send-directed-scope} — a worker takes no scope: later or recurring delivery is a schedule rule.
+        if (statement.lineMarker !== null) {
             return Results.failure(
-                "scheme:worker", "invalid-schedule", 400,
-                "Worker SEND timing is <delay[,interval]> in whole minutes: delay >= 0, interval > 0, within the supported date range.",
-                {}, { retryable: false },
+                "scheme:worker", "scope-unsupported", 400,
+                "A worker SEND takes no scope.",
+                {}, { recovery: "Remove the scope; to deliver later or on a cadence, add a rule with the schedule family.", retryable: false },
             );
         }
         const controlAuthority = address.authority;
@@ -389,17 +380,13 @@ export default class Worker extends CoreSchemeAdapterBase {
         // {§worker-delegation-inherits-policy} Only fresh loops inherit proposal
         // disposition; resumed loops retain their immutable policy.
         const freshLoopPolicy = await LoopPolicyReader.read(core.db, core.loopId);
-        const accepted = await core.injectWorker({
+        await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,
             sourceLoopId: core.loopId,
             prompt,
             freshLoopPolicy,
-            ...(delay === undefined ? {} : { schedule: {
-                delayMs: delay * 60_000,
-                ...(interval === undefined ? {} : { intervalMs: interval * 60_000 }),
-            } }),
         });
-        return { status: 200, ...(delay === undefined ? {} : accepted) };
+        return { status: 200 };
     }
 }

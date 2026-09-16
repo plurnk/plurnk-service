@@ -304,33 +304,13 @@ export default class PacketBuilder {
             path,
             detail: channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`).join("; "),
         }));
-        const childWorkers = (await this.#db.engine_child_workers_live.all<{
-            name: string; status: number; scheduled_tasks: string;
-        }>({ worker_id: workerId })).map((r) => {
-            const tasks = JSON.parse(r.scheduled_tasks) as Array<{
-                id: number; scheduled_at: number; repeat_interval_ms: number | null;
-            }>;
-            return {
-                status: r.status, path: `worker://${r.name}`,
-                // No clock in a packet (operator, 2026-09-13): a scheduled task is due in so many minutes.
-                ...(tasks.length === 0 ? {} : { detail: tasks.map((task) =>
-                    `task ${task.id}: due in ${Math.max(0, Math.round((task.scheduled_at - Date.now()) / 60_000))} min`
-                    + (task.repeat_interval_ms === null ? "" : `, every ${task.repeat_interval_ms / 60_000} min`)).join("; ") }),
-            };
-        });
+        const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
+            .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
         // streams and space ({§worker-read-scope}, #394). The parent rides the `## Worker` identity
         // block; a root worker states `"parent": null` rather than omitting it.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
         const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
-        const scheduledTasks = (await this.#db.engine_worker_scheduled_tasks.all<{
-            loop: number; status: number; scheduled_at: number; repeat_interval_ms: number | null;
-        }>({ worker_id: workerId })).map((task) => ({
-            loop: task.loop,
-            status: task.status === 100 ? "queued" : task.status === 102 ? "running" : "waiting",
-            ...(task.status !== 100 ? {} : { dueInMinutes: Math.max(0, Math.ceil((task.scheduled_at - Date.now()) / 60_000)) }),
-            ...(task.repeat_interval_ms === null ? {} : { intervalMinutes: task.repeat_interval_ms / 60_000 }),
-        }));
         // {§fs-namespace} — the log renders working directories relative to the model's `/`.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const renderedLog = PacketWire.renderLogWithAccounting(
@@ -361,7 +341,7 @@ export default class PacketBuilder {
             // the actor is, whose child it is, and the coordinate this packet's response becomes —
             // the one fact the sources cannot state about themselves (which `reasoning:///L/T` is
             // the model's own). It changes every turn, so it never precedes the log.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq, ...(scheduledTasks.length === 0 ? {} : { scheduledTasks }) }) },
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word, just above errors. Terse pointers (the path is the actionable address

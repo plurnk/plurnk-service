@@ -39,7 +39,7 @@ import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
-import LoopLifecycle, { taskTiming } from "../core/LoopLifecycle.ts";
+import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -206,7 +206,7 @@ export default class Daemon implements ApplicationPort {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, schedule, environment }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, environment }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -250,19 +250,18 @@ export default class Daemon implements ApplicationPort {
                         await this.#functionality.invoke("env", "add", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
                     }
                 }
-                const { action, loopId, scheduledAt, intervalMinutes, recurrenceId } = await this.inject({
+                const { action, loopId } = await this.inject({
                     workspaceId,
                     workerId,
                     prompt,
                     sourceLoopId,
-                    ...(schedule === undefined ? {} : { schedule }),
                     ...(source === undefined ? {} : { source }),
                     providerSpec,
                     reasoningPolicy,
                     childProviderSpec,
                     systemPrompt,
                     ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }) });
-                return { action, loopId, scheduledAt, intervalMinutes, recurrenceId };
+                return { action, loopId };
             },
             acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
             // {§skills-hotload} — filesystem installers operate out of band.
@@ -1100,9 +1099,6 @@ export default class Daemon implements ApplicationPort {
             terminatedAt: string | null;
             terminalResult: string | null;
             packetCount: number;
-            scheduled_at: number | null;
-            repeat_interval_ms: number | null;
-            recurrence_root_loop_id: number | null;
         }>({ worker_id: workerId });
         return rows.map((row) => ({
             id: row.id,
@@ -1113,7 +1109,6 @@ export default class Daemon implements ApplicationPort {
             promptSource: row.promptSource,
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
-            ...taskTiming(row),
             terminalResult: row.terminalResult === null
                 ? null
                 : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult) }));

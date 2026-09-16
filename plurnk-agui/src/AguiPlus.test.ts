@@ -173,9 +173,6 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         loopId: 7,
         packetCount: 4,
         activity: null,
-        scheduledAt: null,
-        intervalMinutes: null,
-        recurrenceId: null,
         children: 0,
     });
     assert.deepEqual(statusState(null, null), {
@@ -184,9 +181,6 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         loopId: null,
         packetCount: 0,
         activity: null,
-        scheduledAt: null,
-        intervalMinutes: null,
-        recurrenceId: null,
         children: 0,
     });
     // {§agui-status-children} — alive means still owing a result: queued, running, or parked.

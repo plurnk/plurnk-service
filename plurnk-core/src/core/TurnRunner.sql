@@ -6,7 +6,7 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- PREP: engine_loop_packet_count
 -- Exact model-request chronology for client status. Administrative turns and
 -- physical provider retries carry no packet and therefore do not contribute.
-SELECT id, scheduled_at, repeat_interval_ms, recurrence_root_loop_id,
+SELECT id,
        (SELECT COUNT(*) FROM turns WHERE loop_id = loops.id AND packet IS NOT NULL) AS count
 FROM loops WHERE id = $loop_id;
 

@@ -69,22 +69,9 @@ BARE: `WORK (specs/feature.md)` reads the file whole as the task,
 an inline body follows it after a blank line, and the child is auto-named.
 Use SEND to give an existing worker a follow-up task.
 
-Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
-as a new task, rather than interrupting an unfinished task:
-
-````SEND (worker://reviewer) <0,60>
-Check for new messages and report relevant findings.
-````
-
-`<60>` runs once after an hour; `<0,60>` starts immediately and repeats hourly.
-Delay is nonnegative; an interval is positive. Occurrences never overlap; missed
-ticks coalesce without a backlog. Each occurrence uses the original instruction
-and policy with fresh task limits. Success permits the next occurrence; an all-failed inventory or
-an engine failure ends the recurrence. KILL cancels current and future tasks.
-Queued future tasks remain live obligations: your `Worker.scheduledTasks` lists
-their loop numbers, status, minutes until due, and recurring intervals. A busy
-worker finishes its current loop before claiming a due task. Children’s scheduled
-work remains visible under `Delegation`.
+A SEND takes no scope. To deliver a message later or on a cadence, to a worker
+or to yourself, add a rule with the `schedule` family; it arrives as an
+ordinary message from `schedule://<alias>`.
 
 ## BARE inference
 

@@ -577,10 +577,12 @@ TASK, not last-wins competing inventories. Former lifecycle names are not aliase
 only to a waiting intent ({§park-202-only}); the dispatcher validates its bounds.
 Otherwise it is unused, with a factual warning rather than a changed outcome.
 
-§send-directed-scope A recipient SEND preserves an optional numeric scope after
-its target and metadata. The addressed owner assigns its semantics; worker
-actors use `<delay[,interval]>` ({§worker-scheduled-send}). A targetless message
-takes no scope. Scheduling does not change the message body or disposition.
+§send-directed-scope A recipient SEND carries an optional numeric scope after
+its target and metadata through to the addressed owner, which assigns its
+semantics or refuses it; worker actors refuse one (`scope-unsupported`, 400),
+because later and recurring delivery belong to the schedule family. A
+targetless message takes no scope. A scope never changes the message body or
+disposition.
 
 §kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
 anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
@@ -845,7 +847,7 @@ The operation column names the canonical AST operation after
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
 | ```` ```TASK ````     | `timeout[,poll]`                       | Waiting intent: bounded or indefinite wait and optional poll cadence ({§send-wait-scope}) |
-| Directed SEND         | Owner-defined numeric scope           | Worker actors schedule a task with `delay[,interval]` ({§send-directed-scope}) |
+| Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
@@ -1332,9 +1334,7 @@ in `@plurnk/plurnk-contracts` is that projection's one owner.
 §application-loop-observation Loop observation exposes the durable scheduler
 state of work loops (excluding maintenance-only administrative loops), exact terminal `OperationResult`, and exact count of packet-bearing
 Turns for one owned Worker. Packetless producer Turns and physical provider
-retries do not contribute to `packetCount`. Scheduled tasks expose `scheduledAt`
-(ISO date), optional `intervalMinutes`, and `recurrenceId` (the original task id).
-Packet notifications carry the same timing; ordinary tasks omit it. Exterior
+retries do not contribute to `packetCount`. Exterior
 adapters consume this projection instead of reconstructing lifecycle from
 events or persistence; events remain the live notification edge.
 

@@ -17,31 +17,22 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy, scheduled_at, repeat_interval_ms)
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy)
 VALUES ($worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id), 100,
-        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy,
-        $scheduled_at, $repeat_interval_ms)
-RETURNING id, scheduled_at, repeat_interval_ms;
+        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy)
+RETURNING id;
 
 -- PREP: drain_ready_loop
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 100
-  AND (scheduled_at IS NULL OR wait_revision > 0 OR scheduled_at <= $now)
 ORDER BY sequence LIMIT 1;
 
--- PREP: drain_scheduled_loops
-SELECT id, wait_revision, scheduled_at FROM loops
-WHERE worker_id = $worker_id AND status = 100 AND scheduled_at IS NOT NULL AND wait_revision = 0;
-
 -- PREP: drain_claim_next_loop
--- Claim the oldest eligible task. A WAIT wake keeps its already-selected slot.
+-- Claim the oldest queued loop.
 UPDATE loops
-SET status = 102,
-    scheduled_at = CASE WHEN repeat_interval_ms IS NULL OR wait_revision > 0 THEN scheduled_at
-        ELSE scheduled_at + MAX(0, CAST(($now - scheduled_at) / repeat_interval_ms AS INTEGER)) * repeat_interval_ms END
+SET status = 102
 WHERE id = (
     SELECT id FROM loops
     WHERE worker_id = $worker_id AND status = 100
-      AND (scheduled_at IS NULL OR wait_revision > 0 OR scheduled_at <= $now)
     ORDER BY sequence ASC
     LIMIT 1
 )

@@ -156,7 +156,6 @@ export class SqlRiteSync {
 	model_route_by_id: SqlRiteSyncPreparedStatements;
 	drain_enqueue_loop: SqlRiteSyncPreparedStatements;
 	drain_ready_loop: SqlRiteSyncPreparedStatements;
-	drain_scheduled_loops: SqlRiteSyncPreparedStatements;
 	drain_claim_next_loop: SqlRiteSyncPreparedStatements;
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
 	drain_current_loop_for_worker: SqlRiteSyncPreparedStatements;
@@ -254,7 +253,6 @@ export class SqlRiteSync {
 	native_content_read: SqlRiteSyncPreparedStatements;
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_parent_worker: SqlRiteSyncPreparedStatements;
-	engine_worker_scheduled_tasks: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_streams_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
@@ -420,7 +418,6 @@ export default class SqlRite {
 	model_route_by_id: SqlRitePreparedStatements;
 	drain_enqueue_loop: SqlRitePreparedStatements;
 	drain_ready_loop: SqlRitePreparedStatements;
-	drain_scheduled_loops: SqlRitePreparedStatements;
 	drain_claim_next_loop: SqlRitePreparedStatements;
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
 	drain_current_loop_for_worker: SqlRitePreparedStatements;
@@ -518,7 +515,6 @@ export default class SqlRite {
 	native_content_read: SqlRitePreparedStatements;
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_parent_worker: SqlRitePreparedStatements;
-	engine_worker_scheduled_tasks: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_streams_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;

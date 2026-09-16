@@ -226,42 +226,34 @@ test("{§module-shutdown-order}: stopping during ready-queue selection cannot st
     assert.equal(claims, 0, "accepted queued work remains unclaimed for restart");
 });
 
-for (const status of [100, 202] as const) {
-    test(`{§module-shutdown-order}: stopping during ${status} schedule selection cannot install a timer`, async (t) => {
-        const selecting = Promise.withResolvers<void>();
-        const release = Promise.withResolvers<void>();
-        const drains = supervisor(async () => "system", undefined, {
-            db: {
-                drain_scheduled_loops: { all: async () => {
-                    selecting.resolve();
-                    await release.promise;
-                    return status === 100 ? [{ id: 7, wait_revision: 1, scheduled_at: Date.now() + 60_000 }] : [];
-                } },
-            } as unknown as Db,
-            lifecycle: { parked: async () => status === 202 ? [{
-                id: 7, wait_revision: 1, wait_deadline_at: Date.now() + 60_000,
-                wait_poll_interval: 0, wait_poll_at: null,
-            }] : [] } as never,
-        });
-        drains.start();
-        const scheduled = drains.scheduleWakes(1, 2, "system");
-        await selecting.promise;
-        drains.beginStop("daemon_stopping");
-        const timers = t.mock.method(globalThis, "setTimeout");
-        release.resolve();
-        try {
-            await scheduled;
-            assert.equal(timers.mock.callCount(), 0, "the scheduler must not recreate timers after shutdown cleared them");
-        } finally { drains.beginStop("fixture_cleanup"); }
+test("{§module-shutdown-order}: stopping during wait selection cannot install a timer", async (t) => {
+    const selecting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const drains = supervisor(async () => "system", undefined, {
+        db: {} as unknown as Db,
+        lifecycle: { parked: async () => {
+            selecting.resolve();
+            await release.promise;
+            return [{ id: 7, wait_revision: 1, wait_deadline_at: Date.now() + 60_000, wait_poll_interval: 0, wait_poll_at: null }];
+        } } as never,
     });
-}
+    drains.start();
+    const scheduled = drains.scheduleWakes(1, 2, "system");
+    await selecting.promise;
+    drains.beginStop("daemon_stopping");
+    const timers = t.mock.method(globalThis, "setTimeout");
+    release.resolve();
+    try {
+        await scheduled;
+        assert.equal(timers.mock.callCount(), 0, "the scheduler must not recreate timers after shutdown cleared them");
+    } finally { drains.beginStop("fixture_cleanup"); }
+});
 
 test("{§module-shutdown-order}: stopping during poll persistence cannot install its selected timer", async (t) => {
     const persisting = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const drains = supervisor(async () => "system", undefined, {
         db: {
-            drain_scheduled_loops: { all: async () => [] },
             drain_worker_min_poll: { get: async () => ({ open_count: 1, poll_seconds: 60 }) },
         } as unknown as Db,
         lifecycle: {

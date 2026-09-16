@@ -20,9 +20,6 @@ export interface LoopRow {
     terminated_by: string | null;
     terminal_result: string | null;
     terminated_at: string | null;
-    scheduled_at: number | null;
-    repeat_interval_ms: number | null;
-    recurrence_root_loop_id: number | null;
 }
 export interface ErrorEvidence {
     name: string;

@@ -117,36 +117,6 @@ WHERE loops.sequence > json_extract(cutoff.value, '$.cancelled_through_sequence'
   AND loops.status = 499 AND loops.terminated_by = 'cancel'
 ORDER BY loops.id;
 
--- INIT: loops_schedule_successor
--- {§worker-scheduled-send}: settlement and successor admission are one mutation.
--- Claims coalesce elapsed cadence slots; neither prompts nor effects are replayed.
-DROP TRIGGER IF EXISTS loops_schedule_successor;
-CREATE TRIGGER loops_schedule_successor
-AFTER UPDATE OF status ON loops
-WHEN NEW.status = 200 AND OLD.status IN (100, 102, 202)
-  AND NEW.repeat_interval_ms IS NOT NULL
-BEGIN
-    INSERT INTO loops (
-        worker_id, sequence, status, prompt, prompt_source, policy,
-        model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
-        execution_budget_ms, scheduled_at, repeat_interval_ms, recurrence_root_loop_id
-    )
-    SELECT NEW.worker_id,
-           (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = NEW.worker_id),
-           100, seed.prompt, seed.prompt_source, seed.policy,
-           seed.model_route_id, seed.spawn_model_route_id, seed.reasoning_policy, seed.max_turns,
-           seed.execution_budget_ms,
-           NEW.scheduled_at + NEW.repeat_interval_ms, NEW.repeat_interval_ms, seed.id
-    FROM loops seed
-    WHERE seed.id = COALESCE(NEW.recurrence_root_loop_id, NEW.id);
-    -- {§message-arrival}: the occurrence's initial message is the seed's, republished fresh.
-    INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths)
-    SELECT last_insert_rowid(), 1, seed.prompt_source, seed.prompt, COALESCE(m.open_paths, '[]')
-    FROM loops seed
-    LEFT JOIN loop_messages m ON m.loop_id = seed.id AND m.ordinal = 1
-    WHERE seed.id = COALESCE(NEW.recurrence_root_loop_id, NEW.id);
-END;
-
 -- INIT: loops_stamp_terminated_at
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- workers pull the termination as a folded ambient delta — caught uniformly across every

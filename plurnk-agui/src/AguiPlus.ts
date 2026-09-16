@@ -147,9 +147,6 @@ export interface AguiStatusState {
     readonly loopId: number | null;
     readonly packetCount: number;
     readonly activity: AguiStatusActivity | null;
-    readonly scheduledAt: string | null;
-    readonly intervalMinutes: number | null;
-    readonly recurrenceId: number | null;
     // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
     readonly children: number;
 }
@@ -185,9 +182,6 @@ export const statusState = (
     loopId: loop?.id ?? null,
     packetCount: loop?.packetCount ?? 0,
     activity,
-    scheduledAt: loop?.scheduledAt ?? null,
-    intervalMinutes: loop?.intervalMinutes ?? null,
-    recurrenceId: loop?.recurrenceId ?? null,
     children,
 });
 export interface AguiBudgetState {

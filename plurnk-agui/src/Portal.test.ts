@@ -190,7 +190,7 @@ test("{§agui-conversation-sync}: synchronization observes an already-active loo
         workers: [worker(10)],
         loops: new Map([[10, [
             { ...loop(10, 77), sequence: 1, status: 102 },
-            { ...loop(10, 78), sequence: 2, status: 100, scheduledAt: "2099-01-01T00:00:00.000Z" },
+            { ...loop(10, 78), sequence: 2, status: 100 },
             { ...loop(10, 79), sequence: 3, status: 200, terminatedAt: "2026-09-15T00:00:00.000Z", terminalResult: { status: 200 } },
         ]]]),
     });

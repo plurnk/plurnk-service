@@ -804,61 +804,6 @@ newer terminal loop cannot mask older queued, running, or parked work. Name
 collision, workspace worker caps, child obligations, orientation, and recovery
 all use that one definition.
 
-### §worker-scheduled-send Scheduled worker tasks
-
-A numeric scope on `SEND (worker://name)` queues a new task with the authored
-body, even when the recipient has unfinished work. Unscoped SEND retains its
-ordinary arrival semantics. Timing is whole minutes, not text coordinates.
-
-| Directed SEND scope | First occurrence | Subsequent occurrences |
-|---|---|---|
-| `<D>`, `D ≥ 0` | Eligible after D minutes. | None. |
-| `<D,I>`, `D ≥ 0`, `I > 0` | Eligible after D minutes. | Fixed cadence of I minutes from the initial due time. |
-
-- Queued tasks carry a durable due time and the recipient's model selection,
-  sender's delegated policy, and original prompt source. They do not activate
-  provider inference or workspace Functionality before eligibility. Due tasks are
-  claimed in queue order; an earlier future task cannot block ready work.
-- A recurrence has at most one unfinished occurrence. A successful terminal
-  transition atomically queues its successor; all-failed inventory, engine failure, and
-  cancellation queue none. Continuing or waiting TASKs retain the same occurrence and limits.
-- At first claim, overdue ticks coalesce into the latest due cadence slot. There is
-  no catch-up backlog. Each occurrence has its own loop/turn/execution limits
-  and the original task's generation/capability snapshot; injected corrections
-  and response bodies are not recurrence instructions. Resuming a wait neither
-  rechecks the occurrence's initial delay nor changes its selected cadence slot.
-- Ownership is the existing durable recipient worker and lineage, never its
-  reclaimable name. Future queued work remains live for parent obligations,
-  cancellation, name collision, and model-policy protection. KILL cancels its
-  current and future work; later explicit SEND may authorize new work.
-- Restart retains queued and parked occurrences and their due times. Interrupted
-  active work follows the ordinary owner-loss failure rule, without replaying
-  uncertain effects or automatically rearming a failed recurrence.
-- Ordinary loop inspection exposes due time, recurrence identity, and interval.
-  SEND acknowledges the accepted task identity and timing. Parent orientation
-  includes queued future tasks; a completed occurrence is not a concluded
-  recurring assignment. The recipient's `Worker` packet block includes its own
-  live `scheduledTasks`: worker-local loop number, status, relative `dueInMinutes`
-  for queued work, and `intervalMinutes` for recurrence. Empty schedules omit
-  the field. Curating a SEND receipt cannot hide or cancel that obligation.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Queued: explicitly scheduled task
-    Queued --> Running: due claim; coalesce elapsed ticks
-    Running --> Parked: TASK waiting
-    Parked --> Queued: same occurrence wakes
-    Running --> Success: TASK terminal with at least one completed item
-    Success --> Queued: atomic successor for recurrence
-    Success --> [*]: one-shot
-    Running --> Failed: TASK all failed, or engine failure
-    Queued --> Cancelled: KILL
-    Parked --> Cancelled: KILL
-    Running --> Cancelled: KILL
-    Failed --> [*]
-    Cancelled --> [*]
-```
-
 ### §worker-wait-timing Durable waits and wake ownership
 
 With waiting intent, an explicit finite TASK deadline or positive poll interval is itself

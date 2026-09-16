@@ -5,7 +5,6 @@
 SELECT id, worker_id AS workerId, sequence, status, prompt,
        prompt_source AS promptSource, terminated_at AS terminatedAt,
        terminal_result AS terminalResult,
-       scheduled_at, repeat_interval_ms, recurrence_root_loop_id,
        (SELECT COUNT(*)
           FROM turns
          WHERE turns.loop_id = loops.id

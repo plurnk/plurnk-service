@@ -1,5 +1,4 @@
 import type { Db } from "./Db.ts";
-import type { ApplicationLoopProjection } from "@plurnk/plurnk-contracts";
 import Results, { type SchemeResult } from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 
@@ -7,26 +6,6 @@ interface CancelledLoop {
     loopId: number;
     workerId: number;
     result: SchemeResult;
-}
-
-export interface TaskSchedule {
-    delayMs: number;
-    intervalMs?: number;
-}
-
-export type TaskTiming = Pick<ApplicationLoopProjection, "scheduledAt" | "intervalMinutes" | "recurrenceId">;
-
-export function taskTiming(row: {
-    id: number; scheduled_at: number | null; repeat_interval_ms: number | null; recurrence_root_loop_id?: number | null;
-}): TaskTiming {
-    if (row.scheduled_at === null) return {};
-    return {
-        scheduledAt: new Date(row.scheduled_at).toISOString(),
-        ...(row.repeat_interval_ms === null ? {} : {
-            intervalMinutes: row.repeat_interval_ms / 60_000,
-            recurrenceId: row.recurrence_root_loop_id ?? row.id,
-        }),
-    };
 }
 
 export interface CancelledTree {

@@ -23,10 +23,6 @@ CREATE TABLE IF NOT EXISTS loops (
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
-    -- {§worker-scheduled-send}: the selected cadence slot, coalesced at claim.
-    scheduled_at INTEGER CHECK (scheduled_at IS NULL OR scheduled_at BETWEEN 0 AND 8640000000000000),
-    repeat_interval_ms INTEGER CHECK (repeat_interval_ms IS NULL OR repeat_interval_ms > 0),
-    recurrence_root_loop_id INTEGER REFERENCES loops(id),
     -- {§loop-execution-allowance}: initialized on first execution, charged with disposition.
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
@@ -52,10 +48,6 @@ CREATE TABLE IF NOT EXISTS loops (
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     CONSTRAINT loops_generation_policy_contract CHECK (
         (model_route_id IS NULL) = (reasoning_policy IS NULL)
-    ),
-    CONSTRAINT loops_schedule_contract CHECK (
-        (repeat_interval_ms IS NULL OR scheduled_at IS NOT NULL)
-        AND (recurrence_root_loop_id IS NULL OR repeat_interval_ms IS NOT NULL)
     ),
     CONSTRAINT loops_terminal_result_contract CHECK (
         CASE
@@ -107,12 +99,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_s
 CREATE INDEX IF NOT EXISTS loops_model_route_id         ON loops (model_route_id)         WHERE model_route_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS loops_spawn_model_route_id   ON loops (spawn_model_route_id)   WHERE spawn_model_route_id IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS loops_recurrence_root_loop_id ON loops (recurrence_root_loop_id) WHERE recurrence_root_loop_id IS NOT NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS loops_live_recurrence
-ON loops (COALESCE(recurrence_root_loop_id, id))
-WHERE repeat_interval_ms IS NOT NULL AND status IN (100, 102, 202);
 
 -- {§message-arrival}: the loop's inbox. Every message the loop contains, in arrival order, until
 -- the turn boundary that publishes it as an inbound SEND row in the loop's log; the initial

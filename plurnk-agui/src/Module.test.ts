@@ -493,9 +493,6 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
             loopId: 9,
             packetCount: 3,
-            scheduledAt: null,
-            intervalMinutes: null,
-            recurrenceId: null,
             children: 0,
             activity: {
                 kind: "derivation",

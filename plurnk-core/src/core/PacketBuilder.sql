@@ -10,10 +10,7 @@ SELECT r.name,
            WHEN SUM(CASE WHEN l.status = 102 THEN 1 ELSE 0 END) > 0 THEN 102
            WHEN SUM(CASE WHEN l.status = 202 THEN 1 ELSE 0 END) > 0 THEN 202
            ELSE 100
-       END AS status,
-       json_group_array(json_object('id', l.id, 'scheduled_at', l.scheduled_at,
-           'repeat_interval_ms', l.repeat_interval_ms, 'recurrence_root_loop_id', l.recurrence_root_loop_id))
-           FILTER (WHERE l.scheduled_at IS NOT NULL) AS scheduled_tasks
+       END AS status
 FROM workers r
 JOIN loops l ON l.worker_id = r.id AND l.status IN (100, 102, 202)
 WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202)
@@ -28,13 +25,6 @@ SELECT p.name,
        COALESCE((SELECT l.status FROM loops l WHERE l.worker_id = p.id ORDER BY l.id DESC LIMIT 1), 0) AS status
 FROM workers c JOIN workers p ON p.id = c.parent_worker_id
 WHERE c.id = $worker_id;
-
--- PREP: engine_worker_scheduled_tasks
--- {§worker-scheduled-send}: the worker's own queue survives curation of its SEND receipts.
-SELECT sequence AS loop, status, scheduled_at, repeat_interval_ms
-FROM loops
-WHERE worker_id = $worker_id AND scheduled_at IS NOT NULL AND status IN (100, 102, 202)
-ORDER BY sequence;
 
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its

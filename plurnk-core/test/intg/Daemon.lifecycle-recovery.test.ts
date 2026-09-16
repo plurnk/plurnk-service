@@ -30,8 +30,6 @@ const enqueueLoop = async (
         reasoning_policy: "adaptive",
         max_turns: 50,
         policy: JSON.stringify({ proposals: "review" }),
-        scheduled_at: null,
-        repeat_interval_ms: null,
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
     // {§message-arrival} — as the daemon's enqueue does: the assignment is ordinal 1 of the inbox.

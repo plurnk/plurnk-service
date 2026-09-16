@@ -81,15 +81,11 @@ export interface ApplicationLoopProjection {
     readonly promptSource: string | null;
     readonly terminatedAt: string | null;
     readonly terminalResult: OperationResult | null;
-    /** Scheduled tasks only; the selected due slot and optional recurring cadence. */
-    readonly scheduledAt?: string;
-    readonly intervalMinutes?: number;
-    readonly recurrenceId?: number;
     /** Exact count of durable packet-bearing turns; retries and administrative turns do not contribute. */
     readonly packetCount: number;
 }
 
-export interface ApplicationLoopPacket extends Pick<ApplicationLoopProjection, "scheduledAt" | "intervalMinutes" | "recurrenceId"> {
+export interface ApplicationLoopPacket {
     readonly workerId: number;
     readonly loopId: number;
     readonly packetCount: number;
