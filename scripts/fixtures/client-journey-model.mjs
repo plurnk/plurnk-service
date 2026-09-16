@@ -35,35 +35,6 @@ const journeys = Object.freeze({
             rejection: "The requested model is unavailable; select an available model.",
         }],
     },
-    nvim: {
-        marker: "Create a reviewed acceptance marker.",
-        programs: [
-            {
-                reasoning: "I will make one reviewed local change, then verify the settled result.",
-                content: "```sh\nprintf 'accepted\\n' > journey.txt\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"in_progress\"}]\n```",
-            },
-            {
-                reasoning: "The reviewed command succeeded, so I can conclude the requested journey.",
-                content: "```SEND\nThe reviewed multiline journey is complete.\n```\n```TASK\n[{\"content\":\"Create the requested acceptance marker through review.\",\"status\":\"completed\"}]\n```",
-            },
-            {
-                reasoning: "I will ask for the named fields and await the answer.",
-                content: [
-                    "```question (question)",
-                    JSON.stringify({ message: "Which branch details?", requestedSchema: {
-                        type: "object", properties: {
-                            branch: { type: "string" }, count: { type: "integer" }, notes: { type: "string" },
-                        }, required: ["count"],
-                    } }),
-                    "```", "```TASK", '[{"content":"Awaiting branch details.","status":"waiting"}]', "```",
-                ].join("\n"),
-            },
-            {
-                reasoning: "The question result has arrived in the continued loop.",
-                content: "```SEND\nThe named-field answer arrived.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
-            },
-        ],
-    },
 });
 
 const readJson = async (request) => {
@@ -143,10 +114,6 @@ export const startClientJourneyModel = async () => {
                 if (/@[0-9A-Za-z]{5} +\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u.test(text)) {
                     throw new Error("installed read-only skill advertised model EDIT anchors");
                 }
-            }
-            if (journey === "nvim" && index === 3
-                && (!text.includes("typed-through-nvim") || !/"count"\s*:\s*0\b/u.test(text))) {
-                throw new Error("the Neovim continuation did not carry the named-field answer");
             }
             requests.push({ journey, body });
             if (program === undefined) {

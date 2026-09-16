@@ -45,7 +45,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
 # worktree at the pushed sha is immutable for the whole run, so editing here while the
 # gate runs cannot change what it tests, and uncommitted work never rides a push green
 # or red. It sits beside this checkout because the conformance phase reads the sibling
-# clients as `../plurnk` and `../plurnk.nvim`. Installed dependencies are copied whole:
+# terminal client as `../plurnk`. Installed dependencies are copied whole:
 # the workspace links are relative (`node_modules/@plurnk/x -> ../../x`), so inside the
 # worktree they resolve to the worktree's own packages.
 repo=$(git rev-parse --show-toplevel) || exit 1

@@ -41,7 +41,7 @@ flowchart LR
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> agui["plurnk-agui<br/>client interface"]
-    agui --> clients["CLI / TUI / Neovim / web clients"]
+    agui --> clients["CLI / TUI / web clients"]
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
@@ -66,7 +66,7 @@ document does not restate their teaching.
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
 | A2A exterior client/agent                                  | `@plurnk/plurnk-a2a`                                         | [`plurnk-a2a/SPEC.md`](./plurnk-a2a/SPEC.md)                                                                   |
-| CLI, TUI, Neovim, and web presentation                    | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
+| CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
 
 Family packages define extension contracts. Installed adapters implement those
 contracts. Core composes them but does not absorb their domain logic. Shared

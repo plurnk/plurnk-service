@@ -1,10 +1,10 @@
 // {§agui-first-party-client-conformance} — pack the platform and terminal
 // client into an empty consumer, then exercise the installed one-shot CLI,
-// interactive TUI, and Neovim plugin against one daemon release. The shared
+// and interactive TUI against one daemon release. The shared
 // conformance corpus owns protocol semantics; this gate owns composed product
 // paths and host-native behavior.
 import { spawn, execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -16,14 +16,13 @@ import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
 const run = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");
 const terminalRoot = resolve(root, "../plurnk");
-const nvimRoot = resolve(root, "../plurnk.nvim");
 const terminalRequire = createRequire(join(terminalRoot, "package.json"));
 let spawnPty;
 try {
     ({ spawn: spawnPty } = terminalRequire("node-pty"));
 } catch (cause) {
     throw new Error(
-        `client conformance needs the installed terminal client checkout beside this repository: ${terminalRoot} (clone plurnk there and run npm ci); ${nvimRoot} is optional`,
+        `client conformance needs the installed terminal client checkout beside this repository: ${terminalRoot} (clone plurnk there and run npm ci)`,
         { cause },
     );
 }
@@ -43,8 +42,6 @@ const temp = await mkdtemp(join(tmpdir(), "plurnk-cross-client-"));
 const install = join(temp, "consumer");
 const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
-const project = join(temp, "project");
-const installedNvim = join(temp, "site", "pack", "plurnk", "start", "plurnk.nvim");
 const world = "cross-client-conformance";
 
 const freePort = () => new Promise((accept, reject) => {
@@ -179,8 +176,6 @@ try {
         mkdir(install, { recursive: true }),
         mkdir(terminalStage, { recursive: true }),
         mkdir(home, { recursive: true }),
-        mkdir(project, { recursive: true }),
-        mkdir(installedNvim, { recursive: true }),
     ]);
     await run("npm", ["init", "-y"], { cwd: install });
     const serviceSpecs = await pack(root, ["--workspaces"]);
@@ -204,19 +199,6 @@ try {
         cwd: install,
         maxBuffer: 128 * 1024 * 1024,
     });
-    for (const directory of ["lua", "doc", "conformance"]) {
-        await cp(join(nvimRoot, directory), join(installedNvim, directory), { recursive: true });
-    }
-    await writeFile(join(project, "README.md"), "# Cross-client installed journey\n");
-    await writeFile(join(project, "journey.txt"), "pending\n");
-    await run("git", ["init", "--quiet"], { cwd: project });
-    await run("git", ["add", "README.md", "journey.txt"], { cwd: project });
-    await run("git", [
-        "-c", "user.name=Plurnk Test",
-        "-c", "user.email=test@plurnk.invalid",
-        "commit", "--quiet", "-m", "test: seed cross-client journey",
-    ], { cwd: project });
-
     fixture = await startClientJourneyModel();
     const daemonEnv = {
         ...process.env,
@@ -362,30 +344,6 @@ try {
     }
     process.stdout.write("installed rejected-request journey GREEN: one attempt + exact cause + failed status after inspection\n");
 
-    const nvim = await run("nvim", [
-        "--headless", "-u", "NONE", "-l", join(nvimRoot, "tests/installed-journey.lua"),
-    ], {
-        cwd: project,
-        env: {
-            ...clientEnv,
-            PLURNK_NVIM_ROOT: installedNvim,
-            PATH: `${join(install, "node_modules", ".bin")}:${process.env.PATH ?? ""}`,
-        },
-        maxBuffer: 16 * 1024 * 1024,
-    });
-    const nvimOutput = `${nvim.stdout}\n${nvim.stderr}`;
-    assertIncludes(nvimOutput, "PASS installed Neovim default journey:", "installed Neovim journey");
-    if (nvimOutput.includes("vim.schedule callback:")) {
-        throw new Error(`installed Neovim raised an asynchronous callback failure\n${nvimOutput}`);
-    }
-    process.stdout.write("installed Neovim journey GREEN: mapping + multiline + review/resume + reasoning + PLAN + DONE\n");
-
-    const firstNvim = fixture.requests.find(({ journey }) => journey === "nvim")?.body;
-    const firstNvimMessages = JSON.stringify(firstNvim?.messages ?? []);
-    if (!firstNvimMessages.includes("Create a reviewed acceptance marker.")
-        || !firstNvimMessages.includes("The final response must confirm this multiline prompt.")) {
-        throw new Error("the installed provider did not receive Neovim's native multiline prompt");
-    }
     fixture.assertComplete();
 
     const { BridgeTransport } = await import(pathToFileURL(join(
@@ -400,24 +358,15 @@ try {
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
     const discovery = await terminal.rpc("discover");
-    for (const [name, clientRoot] of [["plurnk", terminalRoot], ["plurnk.nvim", nvimRoot]]) {
-        let raw;
-        try {
-            raw = await readFile(join(clientRoot, "conformance/agui-client.json"), "utf8");
-        } catch {
-            process.stdout.write(`sibling client SKIPPED (checkout absent): ${name} at ${clientRoot}\n`);
-            continue;
-        }
-        const manifest = JSON.parse(raw);
-        const problems = [
-            drift("actions", Object.keys(manifest.actions).toSorted(), Object.keys(discovery.actions).toSorted()),
-            drift("notifications", Object.keys(manifest.notifications).toSorted(), Object.keys(discovery.notifications).toSorted()),
-        ].filter((problem) => problem !== null);
-        if (problems.length > 0) {
-            throw new Error(`${name} conformance manifest drifted from live discovery — ${problems.join(" · ")}`);
-        }
-        process.stdout.write(`${name} conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions, ${Object.keys(discovery.notifications).length} notifications)\n`);
+    const manifest = JSON.parse(await readFile(join(terminalRoot, "conformance/agui-client.json"), "utf8"));
+    const problems = [
+        drift("actions", Object.keys(manifest.actions).toSorted(), Object.keys(discovery.actions).toSorted()),
+        drift("notifications", Object.keys(manifest.notifications).toSorted(), Object.keys(discovery.notifications).toSorted()),
+    ].filter((problem) => problem !== null);
+    if (problems.length > 0) {
+        throw new Error(`plurnk conformance manifest drifted from live discovery — ${problems.join(" · ")}`);
     }
+    process.stdout.write(`plurnk conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions, ${Object.keys(discovery.notifications).length} notifications)\n`);
 
     const overlay = {
         "PLURNK_MCP_CLIENT-ONLY": process.execPath,
@@ -441,48 +390,28 @@ try {
         }
     }
 
-    const lua = join(temp, "cross-client.lua");
-    const encodedCapabilities = JSON.stringify(durableCapabilities);
-    await writeFile(lua, `
-vim.opt.rtp:prepend(${JSON.stringify(installedNvim)})
-require("plurnk").setup({ host = "127.0.0.1", port = ${port} })
-local agui = require("plurnk.agui")
-local target = require("plurnk.bridge").target()
-local world = ${JSON.stringify(world)}
-local function rpc(method, params)
-  local segment
-  agui.rpc(target, { workspace = world, threadId = world }, method, params or {}, function(value) segment = value end)
-  if not vim.wait(10000, function() return segment ~= nil end, 25) then error(method .. " timed out") end
-  if segment.state ~= "complete" then error(method .. " failed: " .. vim.inspect(segment.problem)) end
-  return segment.result
-end
-local expected_capabilities = vim.json.decode(${JSON.stringify(encodedCapabilities)})
-assert(vim.deep_equal(rpc("workspace.capabilities.get").workspace, expected_capabilities))
-for _, definition in ipairs(rpc("workspace.mcp.list").definitions) do
-  assert(definition.alias ~= "client-only", "a terminal-discovered candidate leaked into the workspace's durable set")
-end
-rpc("workspace.members.add", { alias = "cross", definition = { glob = "cross/**" } })
-print("cross-client Neovim observation GREEN")
-pcall(function() require("plurnk.client").stop() end)
-vim.cmd("qa!")
-`);
-    const observation = await run("nvim", ["--headless", "-u", "NONE", "-l", lua], {
-        env: {
-            ...clientEnv,
-            PLURNK_NVIM_ROOT: installedNvim,
-            PATH: `${join(install, "node_modules", ".bin")}:${process.env.PATH ?? ""}`,
-        },
-        maxBuffer: 16 * 1024 * 1024,
-    });
-    assertIncludes(`${observation.stdout}\n${observation.stderr}`, "cross-client Neovim observation GREEN", "Neovim state observation");
-    // Both clients observe the same workspace definition independently of their Worker.
+    const observer = new BridgeTransport(
+        { bridgeUrl: `http://127.0.0.1:${port}` },
+        "independent-observer",
+        { workspace: world },
+    );
+    const observedCapabilities = await observer.rpc("workspace.capabilities.get");
+    if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
+        throw new Error("a second client connection did not observe the workspace's durable capabilities");
+    }
+    const observedMcp = await observer.rpc("workspace.mcp.list");
+    if (observedMcp.definitions.some((definition) => definition.alias === "client-only")) {
+        throw new Error("a terminal-discovered candidate leaked into another connection's durable set");
+    }
+    await observer.rpc("workspace.members.add", { alias: "cross", definition: { glob: "cross/**" } });
+    // Both connections observe the same workspace definition independently of their Worker.
     const membersOf = (listed) => (listed.definitions ?? [])
         .filter((definition) => definition.alias === "cross")
         .map(({ alias, origin, state, definition }) => ({ alias, origin, state, glob: definition?.glob }));
     const expectedMembers = [{ alias: "cross", origin: "workspace", state: "active", glob: "cross/**" }];
     const members = await terminal.rpc("workspace.members.list");
     if (JSON.stringify(membersOf(members)) !== JSON.stringify(expectedMembers)) {
-        throw new Error(`terminal did not observe Neovim's durable mutation: ${JSON.stringify(members)}`);
+        throw new Error(`terminal did not observe the other connection's durable mutation: ${JSON.stringify(members)}`);
     }
 
     await stop(daemon);
@@ -502,7 +431,7 @@ vim.cmd("qa!")
     if (afterRestartMcp.definitions.some((definition) => definition.alias === "client-only")) {
         throw new Error("a discovered client candidate survived daemon reconstruction as durable state");
     }
-    process.stdout.write("cross-client composition GREEN: one packed platform, three client surfaces, success and failure journeys, shared durable state\n");
+    process.stdout.write("client composition GREEN: one packed platform, CLI and TUI, success and failure journeys, shared durable state\n");
     passed = true;
 } catch (cause) {
     throw new Error(

@@ -282,7 +282,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "nvim", notificationScope: "conversation", emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "client", notificationScope: "conversation", emit: (events) => seen.push(...events) });
     const running = portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "fast" });
     await entered.promise;
 
@@ -528,7 +528,7 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
     const thread = portal.openThread({
         workspaceId: 3,
         workerId: 10,
-        threadId: "nvim",
+        threadId: "client",
         notificationScope: "conversation",
         emit: (events) => seen.push(...events),
     });
@@ -550,7 +550,7 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
     const resumed = portal.openThread({
         workspaceId: 3,
         workerId: 10,
-        threadId: "nvim",
+        threadId: "client",
         notificationScope: "conversation",
         resume,
         emit: (events) => seen.push(...events),
@@ -662,7 +662,7 @@ test("{§agui-proposal-resolve}: resume binds the persisted loop before releasin
     const thread = portal.openThread({
         workspaceId: 3,
         workerId: 10,
-        threadId: "nvim",
+        threadId: "client",
         notificationScope: "conversation",
         emit: (events) => seen.push(...events),
     });
@@ -702,7 +702,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         workspaceId: 3,
         workerId: 10,
         modelWorkerId: 10,
-        threadId: "nvim",
+        threadId: "client",
         notificationScope: "conversation",
         inputRunId: "run-a",
         emit: (events) => firstSeen.push(...events),
@@ -723,7 +723,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         workspaceId: 3,
         workerId: 10,
         modelWorkerId: 10,
-        threadId: "nvim",
+        threadId: "client",
         notificationScope: "conversation",
         inputRunId: "run-b",
         resume,
@@ -774,7 +774,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
         workspaceId: 3,
         workerId: 10,
         modelWorkerId: 20,
-        threadId: "nvim",
+        threadId: "client",
         inputRunId: "operation-a",
         notificationScope: "operation",
         emit: (events) => interruptedSeen.push(...events),
@@ -792,7 +792,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
         workspaceId: 3,
         workerId: 20,
         modelWorkerId: 20,
-        threadId: "nvim",
+        threadId: "client",
         inputRunId: "operation-b",
         notificationScope: "conversation",
         resume,
@@ -802,7 +802,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
         workspaceId: 3,
         workerId: 10,
         modelWorkerId: 20,
-        threadId: "nvim",
+        threadId: "client",
         inputRunId: "management",
         notificationScope: "result",
         emit: (events) => managementSeen.push(...events),
@@ -820,7 +820,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
             turn_id: 1,
         },
     });
-    portal.finishRun(3, 10, "nvim", [{
+    portal.finishRun(3, 10, "client", [{
         type: EventType.CUSTOM,
         name: "plurnk.action.result",
         value: { kind: "op.exec", ok: true, result: { status: 200 } },

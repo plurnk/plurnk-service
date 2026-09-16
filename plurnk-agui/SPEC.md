@@ -171,7 +171,7 @@ every other daemon surface.
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the complete client-facing row (curation metadata, durable tags, coordinate)
   alongside its core projection. TASK `tx.body` follows {§agui-plan-activity}; rich clients
-  (TUI/nvim) never receive the internal Plan extension. Generic clients ignore this metadata
+  never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
   daemon's provider, bound-Worker model, latest Loop, and exact packet-count truth, then
@@ -209,26 +209,28 @@ assistant speech, PLAN activity, and provider refusals. The optional real-model 
 evidence; it does not substitute for the deterministic gate. Wire shapes derive
 from the installed `@ag-ui/core` schemas ({§agui-run-authority}).
 
-The one-shot CLI, interactive terminal, and Neovim plugin consume one AG-UI+
-semantic contract. Each client verifies the contracts-owned conformance corpus
+The one-shot CLI and interactive terminal consume one AG-UI+
+semantic contract. Each surface verifies the contracts-owned conformance corpus
 through its production transport and separately verifies the presentation its
 host owns; decoration and layout are not cross-client protocol facts.
 
-| Shared semantic fact | One-shot CLI | Interactive terminal | Neovim | Intentional host-owned divergence |
-| -------------------- | ------------ | -------------------- | ------ | --------------------------------- |
-| lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | editor statusline and winbar | process, terminal, and editor lifecycle idioms |
-| PLAN and reasoning | structured record and trace | streaming waterfall blocks | buffer blocks and folds | host-native persistence and navigation |
-| operation receipts and turn disposition | stdout plus structured operation record | scrollback waterfall | worker waterfall buffer | Unix streams versus durable visual surfaces |
-| cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | editor review, selection, and input | each host owns human interaction |
-| Problems and Notices | RFC 9457 JSON or stderr | terminal rows | editor diagnostics | presentation only; exact semantics survive |
-| MCP, Skills, and A2A Functionality | state commands | slash commands | `:AI` commands | one `worker.{mcp,skills,agents}.*` action contract |
+| Shared semantic fact | One-shot CLI | Interactive terminal | Intentional host-owned divergence |
+| -------------------- | ------------ | -------------------- | --------------------------------- |
+| lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | process and terminal lifecycle idioms |
+| PLAN and reasoning | structured record and trace | streaming waterfall blocks | host-native persistence and navigation |
+| operation receipts and turn disposition | stdout plus structured operation record | scrollback waterfall | Unix streams versus visual surfaces |
+| cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | each host owns human interaction |
+| Problems and Notices | RFC 9457 JSON or stderr | terminal rows | presentation only; exact semantics survive |
+| MCP, Skills, and A2A Functionality | state commands | slash commands | one Functionality action contract |
 
-One installed-platform journey exercises all three public entry paths against
+One installed-platform journey exercises both public entry paths against
 the same packed daemon release. It asserts semantic outcomes rather than exact
 glyphs or pixels and names any permitted divergence by its owning host.
 Unexpected Problems fail a successful journey, including asynchronous startup
 failures. A deterministic rejected-provider journey asserts the exact cause,
 one provider request, and failed status after subsequent management reads.
+Independent terminal-client connections verify shared workspace state and its
+persistence across daemon restart.
 
 ## §agui-proposal-resolve Client-owned stop-the-world interactions
 

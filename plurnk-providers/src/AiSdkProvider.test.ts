@@ -1865,9 +1865,9 @@ const headerVal = (init: RequestInit, name: string): string | undefined =>
 test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0", "@foo/y@0.3.1"], client: "plurnk.nvim/1.4.0" });
+    await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0", "@foo/y@0.3.1"], client: "@plurnk/plurnk-tui/1.4.0" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), '["@acme/x@1.2.0","@foo/y@0.3.1"]');
-    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "plurnk.nvim/1.4.0");
+    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "@plurnk/plurnk-tui/1.4.0");
 });
 
 test("Plurnk-Call-Kind carries the caller's emission or bare output contract under the first-party gate", async () => {

@@ -159,7 +159,7 @@ export default class BuiltinActions {
                     const ack = await this.#seam().runLoop({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId), prompt: p.prompt });
                     return operationOutcome(ack);
                 }
-                // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
+                // The stop control (TUI /stop + Ctrl-C): abort the model
                 // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam().cancelDrain(
                     conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),

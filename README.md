@@ -15,7 +15,7 @@ execution state, and thin clients over a single daemon.
 
 ```mermaid
 flowchart LR
-    clients["CLI / TUI / Neovim / web"] <--> agui["AG-UI"]
+    clients["CLI / TUI / web"] <--> agui["AG-UI"]
     agui <--> core["plurnk-service<br/>engine + durable state"]
     core <--> providers["Model providers"]
     plugins["Scheme / executor / mimetype plugins"] --> core

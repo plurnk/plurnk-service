@@ -312,7 +312,7 @@ test("workspace stream notifications route to their producing worker's AG-UI Run
         return { workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" };
     };
     // runLoop does NOT finish here: both streams stay open so the injected stream event
-    // races them exactly as concurrent nvim management-action AG-UI Runs do against a resumed exec.
+    // races concurrent management-action AG-UI Runs against a resumed exec.
     seam.runLoop = async ({ workerId }) => {
         runCalls++;
         if (runCalls === 1) firstRun.resolve();

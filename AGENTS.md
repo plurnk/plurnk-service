@@ -7,7 +7,8 @@ PLURNK platform monorepo.
 This repository is an npm workspace containing the daemon
 (`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
 grammar authority, the AG-UI server module, and the plugins included in the default installation. The
-command-line client and editor integrations are separate repositories.
+terminal and optional web clients are separate repositories. The Neovim client
+is retired and is not part of development, conformance, or release gates.
 
 ## Operations quick reference
 
@@ -39,7 +40,7 @@ Where things are, for an agent that has to act before it has read everything:
   launching anything, and never reconstruct its invocation from memory.
 - **Landing**: topic branch, `npm run -s root:lint`, then `git push origin <branch>:main`.
   The pre-push drill is the gate (lint, unit, intg, client conformance against
-  `../plurnk` and `../plurnk.nvim`). It runs the pushed commit in a throwaway
+  `../plurnk`). It runs the pushed commit in a throwaway
   worktree beside this checkout (`plurnk-service.wt-gate-<pid>`, removed when the
   drill ends), so the working tree may stay dirty and be edited while it runs; intg
   scopes to the changed leaf workspaces and runs in full for a root-level, `plurnk-core`,
@@ -55,7 +56,7 @@ Where things are, for an agent that has to act before it has read everything:
   drill, then `release-gates` (one bounded `npm audit` that warns and continues when the
   advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding), then
   publishes the service and the client. Afterwards, signed tags: `v<service>` here,
-  `v<client>` in `../plurnk`, `v<nvim>` in `../plurnk.nvim` recording the exercised pair;
+  `v<client>` in `../plurnk`;
   then relock `../plurnk-bench` with `npm update @plurnk/plurnk-service --no-audit --no-fund`.
   Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
   advisory endpoint drops over-limit requests instead of answering 429, and retries and
@@ -149,12 +150,12 @@ aliases once in `$XDG_CONFIG_HOME/plurnk/.env` and select them per run; never
 redeclare one inline. The repo ships only the `rtxgemma` gate default, never a
 credential.
 
-The root drill (`npm test`) ends with a cross-client conformance phase: it
-boots the built service and compares each sibling client checkout's
-`conformance/agui-client.json` (`../plurnk`, `../plurnk.nvim`) against live
+The root drill (`npm test`) ends with a client conformance phase: it
+boots the built service and compares the terminal client's
+`conformance/agui-client.json` (`../plurnk`) against live
 `discover`, so an action rename, scope, or module-surface change fails this
-repository's push instead of silently breaking the clients. An absent sibling
-checkout is skipped with an explicit line, never silently green.
+repository's push instead of silently breaking the client. The installed CLI
+and TUI journeys require that sibling checkout and its dependencies.
 
 Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
 Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with

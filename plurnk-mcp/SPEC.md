@@ -564,7 +564,7 @@ Plurnk does not advertise or implement MCP Apps. An Apps host must sandbox
 render third-party HTML/JavaScript, enforce CSP and `_meta.ui` permissions,
 mediate a `postMessage` JSON-RPC `ui/` dialect, proxy app-initiated tool
 calls with consent, and own teardown. No Plurnk client can enforce that
-sandbox today (terminal and Neovim cannot), the daemon is not a second
+sandbox today (the terminal cannot), the daemon is not a second
 application platform, and AG-UI has no standard Apps projection — inventing
 a private event stream to carry Apps is rejected. Tool descriptions carrying
 `_meta.ui` metadata project into Plurnk without it: model-facing summaries
