@@ -17,6 +17,7 @@ exact `a2a://<agent>/messages/<id>` resource. Continue an interrupted Task by
 sending the requested input to its Task resource.
 
 Task resources default to a concise `#body` and retain the protocol snapshot in
-`#json`. Their Artifact addresses are listed in the body and materialize on
-READ. `KILL` of a live Task resource cancels the local obligation and
+`#json`. Their Artifacts and binary Parts are retained as linked resources;
+READ a link to inspect its content. Supplied URLs are not fetched on arrival.
+`KILL` of a live Task resource cancels the local obligation and
 requests remote cancellation.

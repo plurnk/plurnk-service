@@ -225,3 +225,20 @@ materialize independently; the adapter never flattens multiple Artifacts into
 one fabricated result. Projection wording is presentation rather than protocol
 identity: tests assert lifecycle state, content, media type, and addressability,
 not a prose template.
+
+§a2a-part-resources Received raw Parts are ordinary typed resources, not base64
+placeholders. Their parent Message or Artifact links to them in Part order;
+the exact protocol JSON remains independently readable.
+
+| Part | Ordinary resource projection |
+|---|---|
+| Text / structured data | Text / pretty JSON in the parent body. |
+| URL | The supplied URL; arrival does not fetch it or bypass its scheme's acquisition policy. |
+| Raw bytes | `<parent>/resources/<name>` with exact bytes and media type (or `application/octet-stream` if absent). Supplied names and stable eight-character fallback names use {§resource-publication-names}. |
+
+A received Task snapshot retains its Artifacts and Messages with their Part
+resources before publishing links or settling its subscription. Retained
+Message, Artifact, and Part READs need no active remote connection. READ alone
+controls native attachment delivery through {§packet-attachment-parts}; listing
+a resource does not inject its bytes into model context. Log curation does not
+delete the retained source.

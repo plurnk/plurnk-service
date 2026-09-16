@@ -58,6 +58,7 @@ interface StatementTx {
 }
 interface RxView {
     content?: unknown;
+    resource?: unknown;
     matched?: unknown;
     channels?: unknown;
     recipients?: unknown;
@@ -819,6 +820,11 @@ export default class PacketWire {
     // projection needs to know about the result.
     static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): RowResultFacts {
         const { meta, op, tx, terminalStream } = identity;
+        // {§operation-resource-receipt}: preserve the returned address, not a second authored target.
+        if (rx !== null && typeof rx === "object" && typeof rx.resource === "string"
+            && rx.resource.length > 0 && rx.resource !== meta.target && rx.resource !== meta.stream) {
+            meta.resource = rx.resource;
+        }
         // {§exec-stream}: a terminal stream observation is self-sufficient
         // even when its selected channel is empty. Preserve exact producer
         // facts; do not manufacture a prose completion summary.

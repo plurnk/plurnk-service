@@ -10,6 +10,28 @@ import { parseLogRecords } from "../LogRecords.ts";
 // tokenizer to make packet-weight drift reviewable.
 const tok = (s: string): number => Math.ceil(s.length / 4);
 
+test("{§operation-resource-receipt}: returned resource addresses remain distinct from authored targets without duplicate stream links", () => {
+    const target = { scheme: "a2a", hostname: "peer", pathname: "" };
+    const resource = "a2a://peer/messages/reply";
+    const row = {
+        coordinate: "1/2/3", op: "SEND", status: 200,
+        target, tx: { body: "Please inspect this." }, rx: { resource },
+    };
+    const projected = parseLogRecords(PacketWire.renderLog([row], tok))[0]!;
+    assert.equal(projected.resource, resource);
+    assert.equal(projected.target, "a2a://peer");
+    assert.equal(typeof projected.body, "string");
+    assert.match(String(projected.body), /Please inspect this\./u);
+    for (const absent of [undefined, "", "a2a://peer"]) {
+        assert.equal(parseLogRecords(PacketWire.renderLog([{ ...row, rx: { resource: absent } }], tok))[0]!.resource, undefined);
+    }
+    const stream = "sh:///abcdef12";
+    const execution = { ...row, op: "sh", target: null, attrs: { stream }, rx: { resource: stream } };
+    const command = parseLogRecords(PacketWire.renderLog([execution], tok))[0]!;
+    assert.equal(command.stream, stream);
+    assert.equal(command.resource, undefined);
+});
+
 test("{§log-readable-projection}: sparse READ rendering keeps source numbers and matching anchors after further trimming", () => {
     const read = {
         coordinate: "1/1/1", op: "READ", origin: "model", status: 200,

@@ -2124,6 +2124,7 @@ Coordinate-prefixed lines are the text currently in context; a metadata-only row
 
 Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
 
+- §operation-resource-receipt A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `target` and `stream`. It identifies returned material without replacing the authored target or injecting that material into context; ordinary READ acquires it.
 - §packet-attachment-parts A successful READ of an attachable resource carries projection facts with its
   result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
   `image: { mimetype, width, height, bytes }`, a PDF ({§mimetype-pdf-facts}) as

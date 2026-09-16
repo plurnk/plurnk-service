@@ -20,7 +20,7 @@ import {
     type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
 import A2aMessage from "./A2aMessage.ts";
-import A2aProjection from "./A2aProjection.ts";
+import A2aProjection, { type A2aEntryProjection, type A2aResource } from "./A2aProjection.ts";
 
 const documentation = await readFile(new URL("../docs/a2a.md", import.meta.url), "utf-8");
 const OWNER = "scheme:a2a";
@@ -88,6 +88,7 @@ export default class A2a implements SchemeHandler {
             return { status: 200 };
         }
         if (existing.entry !== null && A2aProjection.artifactIdentity(pathname) !== null) return { status: 200 };
+        if (existing.entry?.attributes?.kind === "part") return { status: 200 };
         if (pathname.startsWith("/messages/")) {
             return existing.entry === null
                 ? A2a.#problem("message-not-found", 404, `No retained A2A Message exists at a2a://${authority}${pathname}.`, {
@@ -117,18 +118,20 @@ export default class A2a implements SchemeHandler {
                         retryable: false,
                     });
                 }
-                return A2a.#prepared(await ctx.entries.write(
+                return A2a.#prepared(await A2a.#publish(
                     pathname,
-                    A2aProjection.artifactEntry(task, artifact),
+                    A2aProjection.artifactEntry(task, artifact, authority),
+                    ctx,
                 ));
             }
 
             const taskId = A2aProjection.taskIdentity(pathname);
             if (taskId !== null) {
                 const task = await client.getTask({ tenant: "", id: taskId }, { signal: ctx.signal });
-                return A2a.#prepared(await ctx.entries.write(
+                return A2a.#prepared(await A2a.#publish(
                     pathname,
                     A2aProjection.taskEntry(task, authority),
+                    ctx,
                 ));
             }
             return A2a.#problem("resource-not-found", 404, `No A2A resource exists at a2a://${authority}${pathname}.`, {
@@ -218,7 +221,7 @@ export default class A2a implements SchemeHandler {
                 });
             }
             const pathname = A2aProjection.messagePath(payload.value.messageId);
-            const written = await ctx.entries.write(pathname, A2aProjection.messageEntry(payload.value));
+            const written = await A2a.#publish(pathname, A2aProjection.messageEntry(payload.value, address.authority), ctx);
             if (Results.isErrorStatus(written.status)) return A2a.#passthrough(written);
             return {
                 shape: "passthrough",
@@ -280,7 +283,7 @@ export default class A2a implements SchemeHandler {
         const abort = () => local.abort(subscription.reason);
         if (subscription.aborted) abort();
         else subscription.addEventListener("abort", abort, { once: true });
-        void this.#pumpTask(address, client, stream, initial, subscription)
+        void this.#pumpTask(address, client, stream, initial, subscription, ctx)
             .finally(() => subscription.removeEventListener("abort", abort))
             .catch((cause: unknown) => {
                 console.error("A2A Task terminal cleanup failed", {
@@ -304,6 +307,7 @@ export default class A2a implements SchemeHandler {
         stream: AsyncGenerator<StreamResponse, void, undefined>,
         initial: Task,
         subscription: StreamSubscription,
+        ctx: SchemeCtx,
     ): Promise<void> {
         let result: SchemeResult;
         let summary: string;
@@ -319,6 +323,11 @@ export default class A2a implements SchemeHandler {
             } else {
                 const task = await client.getTask({ tenant: "", id: initial.id });
                 const content = A2aProjection.taskContent(task, address.authority);
+                const retained = await A2a.#publishResources(content.resources, ctx);
+                if (Results.isErrorStatus(retained.status)) {
+                    await subscription.close(retained, retained.problem?.detail);
+                    return;
+                }
                 await subscription.notifyChunk("body", content.body, "text/markdown");
                 await subscription.notifyChunk("json", content.json, "application/json");
                 result = A2a.#taskResult(task);
@@ -388,6 +397,19 @@ export default class A2a implements SchemeHandler {
 
     static #prepared(result: SchemeResult): RepresentationPreparationResult {
         return Results.isErrorStatus(result.status) ? result : { status: 200 };
+    }
+
+    static async #publish(pathname: string, projection: A2aEntryProjection, ctx: SchemeCtx): Promise<SchemeResult> {
+        const result = await A2a.#publishResources(projection.resources, ctx);
+        return Results.isErrorStatus(result.status) ? result : ctx.entries.write(pathname, projection.entry);
+    }
+
+    static async #publishResources(resources: readonly A2aResource[], ctx: SchemeCtx): Promise<SchemeResult> {
+        for (const { pathname, entry } of resources) {
+            const result = await ctx.entries.write(pathname, entry);
+            if (Results.isErrorStatus(result.status)) return result;
+        }
+        return { status: 200 };
     }
 
     static #taskResult(task: Task): SchemeResult {

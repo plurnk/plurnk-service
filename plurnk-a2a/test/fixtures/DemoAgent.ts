@@ -8,6 +8,7 @@ import {
     TaskState,
     type Artifact,
     type Message,
+    type Part,
     type Task,
 } from "@a2a-js/sdk";
 import {
@@ -73,20 +74,24 @@ const artifact = (name: string, value: string): Artifact => ({
 class DemoAgentExecutor implements AgentExecutor {
     readonly received: RequestContext[] = [];
     readonly #mode: DemoMode;
+    readonly #parts: Part[] | undefined;
     readonly #release = new Map<string, () => void>();
 
-    constructor(mode: DemoMode) {
+    constructor(mode: DemoMode, parts?: Part[]) {
         this.#mode = mode;
+        this.#parts = parts;
     }
 
     async execute(request: RequestContext, events: ExecutionEventBus): Promise<void> {
         this.received.push(request);
         const { contextId, taskId, userMessage } = request;
         if (this.#mode === "direct-message") {
-            events.publish(AgentEvent.message(agentMessage(
+            const message = agentMessage(
                 contextId,
                 `direct: ${extractText(request)}`,
-            )));
+            );
+            if (this.#parts !== undefined) message.parts = this.#parts;
+            events.publish(AgentEvent.message(message));
             return;
         }
 
@@ -156,6 +161,7 @@ class DemoAgentExecutor implements AgentExecutor {
             ]
             : [artifact("answer", `received: ${extractText(request)}`)];
         for (const produced of artifacts) {
+            if (this.#parts !== undefined) produced.parts = this.#parts;
             events.publish(AgentEvent.artifactUpdate({
                 taskId,
                 contextId,
@@ -217,10 +223,10 @@ const close = (server: Server): Promise<void> => new Promise((resolve, reject) =
     server.close((error) => error === undefined ? resolve() : reject(error));
 });
 
-export const startDemoAgent = async (mode: DemoMode = "complete"): Promise<DemoAgent> => {
+export const startDemoAgent = async (mode: DemoMode = "complete", parts?: Part[]): Promise<DemoAgent> => {
     const app = express();
     const server = createServer(app);
-    const executor = new DemoAgentExecutor(mode);
+    const executor = new DemoAgentExecutor(mode, parts);
     const card: AgentCard = {
         name: "Plurnk A2A protocol witness",
         description: "Independent deterministic A2A v1 test agent",
@@ -244,7 +250,7 @@ export const startDemoAgent = async (mode: DemoMode = "complete"): Promise<DemoA
         securitySchemes: {},
         securityRequirements: [],
         defaultInputModes: ["text/plain"],
-        defaultOutputModes: ["text/plain"],
+        defaultOutputModes: parts === undefined ? ["text/plain"] : [...new Set(parts.map((part) => part.mediaType))],
         skills: [{
             id: "echo",
             name: "Echo",

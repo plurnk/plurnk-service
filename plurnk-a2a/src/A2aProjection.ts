@@ -6,11 +6,22 @@ import {
     taskStateToJSON,
     type Part,
 } from "@a2a-js/sdk";
-import type { EntryData } from "@plurnk/plurnk-schemes";
+import { ResourceNames, type EntryData } from "@plurnk/plurnk-schemes";
+
+export interface A2aResource {
+    readonly pathname: string;
+    readonly entry: EntryData;
+}
+
+export interface A2aEntryProjection {
+    readonly entry: EntryData;
+    readonly resources: readonly A2aResource[];
+}
 
 export interface A2aTaskContent {
     readonly body: string;
     readonly json: string;
+    readonly resources: readonly A2aResource[];
 }
 
 const serialized = <T>(codec: { toJSON(value: T): unknown }, value: T): string =>
@@ -69,17 +80,20 @@ export default class A2aProjection {
         };
     }
 
-    static taskEntry(task: Task, authority: string): EntryData {
+    static taskEntry(task: Task, authority: string): A2aEntryProjection {
         const content = A2aProjection.taskContent(task, authority);
         return {
-            channels: {
-                body: { content: content.body, mimetype: "text/markdown" },
-                json: { content: content.json, mimetype: "application/json" },
-            },
-            attributes: {
-                kind: "task",
-                taskId: task.id,
-                contextId: task.contextId,
+            resources: content.resources,
+            entry: {
+                channels: {
+                    body: { content: content.body, mimetype: "text/markdown" },
+                    json: { content: content.json, mimetype: "application/json" },
+                },
+                attributes: {
+                    kind: "task",
+                    taskId: task.id,
+                    contextId: task.contextId,
+                },
             },
         };
     }
@@ -89,9 +103,26 @@ export default class A2aProjection {
             .replace(/^TASK_STATE_/, "")
             .toLowerCase()
             .replaceAll("_", "-");
-        const statusMessage = task.status?.message === undefined
-            ? []
-            : ["message:", A2aProjection.#parts(task.status.message.parts)];
+        const resources: A2aResource[] = [];
+        const messages = new Map(task.history.map((message) => [message.messageId, message]));
+        const currentMessage = task.status?.message;
+        if (currentMessage !== undefined) messages.set(currentMessage.messageId, currentMessage);
+        let statusMessage: string[] = [];
+        for (const message of messages.values()) {
+            const projected = A2aProjection.messageEntry(message, authority);
+            resources.push(...projected.resources, {
+                pathname: A2aProjection.messagePath(message.messageId),
+                entry: projected.entry,
+            });
+            if (message === currentMessage) statusMessage = ["message:", projected.entry.channels.body!.content];
+        }
+        for (const artifact of task.artifacts) {
+            const projected = A2aProjection.artifactEntry(task, artifact, authority);
+            resources.push(...projected.resources, {
+                pathname: A2aProjection.artifactPath(task.id, artifact.artifactId),
+                entry: projected.entry,
+            });
+        }
         const artifacts = task.artifacts.length === 0
             ? "none"
             : task.artifacts.map((artifact) => {
@@ -109,53 +140,62 @@ export default class A2aProjection {
                 "",
             ].join("\n"),
             json: serialized(Task, task),
+            resources,
         };
     }
 
-    static messageEntry(message: Message): EntryData {
+    static messageEntry(message: Message, authority: string): A2aEntryProjection {
+        const parts = A2aProjection.#parts(message.parts, authority, A2aProjection.messagePath(message.messageId));
         return {
-            channels: {
-                body: {
-                    content: [
-                        `messageId: ${message.messageId}`,
-                        `contextId: ${message.contextId}`,
-                        "",
-                        A2aProjection.#parts(message.parts),
-                    ].join("\n"),
-                    mimetype: "text/markdown",
+            resources: parts.resources,
+            entry: {
+                channels: {
+                    body: {
+                        content: [
+                            `messageId: ${message.messageId}`,
+                            `contextId: ${message.contextId}`,
+                            "",
+                            parts.body,
+                        ].join("\n"),
+                        mimetype: "text/markdown",
+                    },
+                    json: { content: serialized(Message, message), mimetype: "application/json" },
                 },
-                json: { content: serialized(Message, message), mimetype: "application/json" },
-            },
-            attributes: {
-                kind: "message",
-                messageId: message.messageId,
-                contextId: message.contextId,
+                attributes: {
+                    kind: "message",
+                    messageId: message.messageId,
+                    contextId: message.contextId,
+                },
             },
         };
     }
 
-    static artifactEntry(task: Task, artifact: Artifact): EntryData {
+    static artifactEntry(task: Task, artifact: Artifact, authority: string): A2aEntryProjection {
+        const parts = A2aProjection.#parts(artifact.parts, authority, A2aProjection.artifactPath(task.id, artifact.artifactId));
         return {
-            channels: {
-                body: {
-                    content: [
-                        `artifactId: ${artifact.artifactId}`,
-                        `taskId: ${task.id}`,
-                        `contextId: ${task.contextId}`,
-                        ...(artifact.name.length === 0 ? [] : [`name: ${artifact.name}`]),
-                        ...(artifact.description.length === 0 ? [] : [`description: ${artifact.description}`]),
-                        "",
-                        A2aProjection.#parts(artifact.parts),
-                    ].join("\n"),
-                    mimetype: "text/markdown",
+            resources: parts.resources,
+            entry: {
+                channels: {
+                    body: {
+                        content: [
+                            `artifactId: ${artifact.artifactId}`,
+                            `taskId: ${task.id}`,
+                            `contextId: ${task.contextId}`,
+                            ...(artifact.name.length === 0 ? [] : [`name: ${artifact.name}`]),
+                            ...(artifact.description.length === 0 ? [] : [`description: ${artifact.description}`]),
+                            "",
+                            parts.body,
+                        ].join("\n"),
+                        mimetype: "text/markdown",
+                    },
+                    json: { content: serialized(Artifact, artifact), mimetype: "application/json" },
                 },
-                json: { content: serialized(Artifact, artifact), mimetype: "application/json" },
-            },
-            attributes: {
-                kind: "artifact",
-                taskId: task.id,
-                contextId: task.contextId,
-                artifactId: artifact.artifactId,
+                attributes: {
+                    kind: "artifact",
+                    taskId: task.id,
+                    contextId: task.contextId,
+                    artifactId: artifact.artifactId,
+                },
             },
         };
     }
@@ -184,9 +224,13 @@ export default class A2aProjection {
         };
     }
 
-    static #parts(parts: readonly Part[]): string {
-        if (parts.length === 0) return "(no content)";
-        return parts.map((part, index) => {
+    static #parts(parts: readonly Part[], authority: string, parent: string): {
+        body: string;
+        resources: A2aResource[];
+    } {
+        const names = new ResourceNames();
+        const resources: A2aResource[] = [];
+        const body = parts.map((part, index) => {
             const heading = parts.length === 1 ? "" : `### Part ${index + 1}\n\n`;
             const content = part.content;
             if (content === undefined) return `${heading}(empty part)`;
@@ -195,7 +239,17 @@ export default class A2aProjection {
             if (content.$case === "data") {
                 return `${heading}\`\`\`json\n${JSON.stringify(content.value, null, 2)}\n\`\`\``;
             }
-            return `${heading}[${part.mediaType || "application/octet-stream"}; ${content.value.length} bytes; exact base64 in #json]`;
+            const pathname = `${parent}/resources/${names.allocate(part.filename, `${parent}/${index}`)}`;
+            const mimetype = part.mediaType || "application/octet-stream";
+            resources.push({
+                pathname,
+                entry: {
+                    channels: { body: { content: "", bytes: content.value, mimetype } },
+                    attributes: { kind: "part" },
+                },
+            });
+            return `${heading}<a2a://${authority}${pathname}> (${mimetype}; ${content.value.length} bytes)`;
         }).join("\n\n");
+        return { body: body || "(no content)", resources };
     }
 }
