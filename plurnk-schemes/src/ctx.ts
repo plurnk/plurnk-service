@@ -200,7 +200,7 @@ export interface ProjectionCaps {
 // cancellation, and settlement; owner-private continuation state stays in the
 // awaiting handler rather than crossing this boundary.
 export interface InteractionCaps {
-    request(request: ClientInteractionRequest): Promise<ClientInteractionResolution>;
+    request(request: ClientInteractionRequest, signal?: AbortSignal): Promise<ClientInteractionResolution>;
 }
 
 // ── subscriptions ────────────────────────────────────────────────────────

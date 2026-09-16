@@ -26,6 +26,7 @@ import { addAbortListener } from "node:events";
 
 export type ClientInteractionHandler = (
     request: ClientInteractionRequest,
+    signal?: AbortSignal,
 ) => Promise<ClientInteractionResolution>;
 
 type InputRequiredMethod = "tools/call" | "resources/read" | "prompts/get" | "tasks/update";
@@ -66,11 +67,23 @@ interface ResolveInputRequestsOptions {
     readonly interact?: ClientInteractionHandler;
     readonly arguments?: Readonly<Record<string, unknown>>;
     readonly signal?: AbortSignal;
+    readonly deadline: number;
 }
 
 export const INPUT_REQUIRED_MAX_ROUNDS = 10;
 const REQUEST_STATE_ONLY_PACING_MS = 250;
 const INPUT_REQUIRED_TOOL = "mcp_input_required";
+
+const timeoutError = (operation: string): SdkError => new SdkError(
+    SdkErrorCode.RequestTimeout,
+    `MCP '${operation}' exceeded its operation timeout.`,
+);
+
+export const remainingTimeout = (deadline: number, operation: string): number => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw timeoutError(operation);
+    return remaining;
+};
 
 const formatValidationIssues = (issues: readonly { message: string; path?: readonly unknown[] }[]): string =>
     issues.map((issue) => issue.path?.length
@@ -171,6 +184,7 @@ export const resolveInputRequests = async ({
     interact,
     arguments: args,
     signal,
+    deadline,
 }: ResolveInputRequestsOptions): Promise<Record<string, InputResponse>> => {
     signal?.throwIfAborted();
     const entries = supportedElicitations(server, operation, inputRequests);
@@ -181,13 +195,18 @@ export const resolveInputRequests = async ({
         );
     }
     const request = interactionRequest(server, operation, entries, args);
-    const resolution = interact(request);
-    if (signal === undefined) return resolvedInputResponses(request, await resolution);
+    const controller = new AbortController();
+    const inputSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
+    const timer = setTimeout(() => controller.abort(timeoutError(operation)), remainingTimeout(deadline, operation));
+    timer.unref();
     const cancelled = Promise.withResolvers<ClientInteractionResolution>();
-    const listener = addAbortListener(signal, () => cancelled.reject(signal.reason));
+    const listener = addAbortListener(inputSignal, () => cancelled.reject(inputSignal.reason));
     try {
-        return resolvedInputResponses(request, await Promise.race([resolution, cancelled.promise]));
+        const resolution = await Promise.race([interact(request, inputSignal), cancelled.promise]);
+        inputSignal.throwIfAborted();
+        return resolvedInputResponses(request, resolution);
     } finally {
+        clearTimeout(timer);
         listener[Symbol.dispose]();
     }
 };
@@ -244,7 +263,7 @@ export const runInputRequiredRequest = async <
     timeout,
     requestLeg,
 }: InputRequiredRequestOptions<T, P>): Promise<T> => {
-    const startedAt = Date.now();
+    const deadline = Date.now() + timeout;
     const options = {
         signal,
         timeout,
@@ -285,18 +304,11 @@ export const runInputRequiredRequest = async <
                 inputRequests,
                 interact,
                 signal,
+                deadline,
             });
             signal?.throwIfAborted();
         }
-        const elapsed = Date.now() - startedAt;
-        const remaining = timeout - elapsed;
-        if (remaining <= 0) {
-            throw new SdkError(
-                SdkErrorCode.RequestTimeout,
-                `MCP '${operation}' exceeded its ${timeout}ms operation timeout.`,
-                { maxTotalTimeout: timeout, totalElapsed: elapsed },
-            );
-        }
+        const remaining = remainingTimeout(deadline, operation);
         const retryParams = {
             ...originalParams,
             ...(inputResponses === undefined || Object.keys(inputResponses).length === 0

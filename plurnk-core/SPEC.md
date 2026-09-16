@@ -3119,6 +3119,8 @@ issues; the same request remains pending and answerable. Cancellation requires n
 payload. Owner abort deletes the row and rejects the
 waiter with that owner's cancellation reason. An executor's waiter follows its
 execution signal, including KILL and deadline, not just its enclosing loop.
+Scheme and executor interaction requests may supply a narrower signal; Core
+composes it with the existing owner signal before registering the same waiter.
 Reconnect discovery intersects durable rows with live waiters; restart
 removes ownerless rows without fabricating cancellation, payload, or replay.
 

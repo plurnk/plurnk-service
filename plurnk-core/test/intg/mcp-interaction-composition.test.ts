@@ -7,7 +7,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { makeMockResponse, waitForDb } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler, taskId, wireRequest } from "../../../plurnk-mcp/test/task-fixture.ts";
 
@@ -322,3 +322,63 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
     assert.equal(result.ok, true, JSON.stringify(disabled));
     assert.deepEqual(fixture.cancellations, [], "completed Tasks are not cancelled again at connection close");
 });
+
+for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
+    test(`{§mcp-host-composition}: ${source} input expires without a human answer and the worker recovers`, { timeout: 20_000 }, async (t) => {
+        let owner: Daemon | undefined;
+        t.after(() => owner?.stop());
+        const tool = source === "MRTR" || source === "Task";
+        const fixture = tool ? taskHandler() : undefined;
+        const served = fixture === undefined ? undefined : await serveMcpHttp(t, fixture.handler, fixture.route);
+        const operation = tool ? '```fixture (deferred-review)\n{"topic":"MCP"}\n```'
+            : source === "resource" ? "```READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>```"
+                : "```READ (fixture:///prompts/guarded?topic=MCP) <1,-1>```";
+        const { provider, post, start, reconnect, daemon } = await setup(t, operation, {
+            PLURNK_MCP_REQUEST_TIMEOUT: "1000",
+            ...(served === undefined ? {
+                PLURNK_MCP_FIXTURE: process.execPath,
+                PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixturePath("interaction-server.mjs")]),
+                PLURNK_MCP_FIXTURE_READ: '["batch","round-trip","url"]',
+            } : {
+                PLURNK_MCP_FIXTURE: served.url,
+                PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
+            }),
+        });
+        owner = daemon;
+        const events = await start();
+        const first = interaction(events, [tool ? "preflight" : source === "resource" ? "read" : "prompt"]);
+        const pending = source !== "Task" ? first : interaction(await post({ resume: [{
+            interruptId: first.id, status: "resolved", payload: {
+                preflight: { action: "accept", content: { proceed: true } },
+            },
+        }] }), ["profile", "authorize"]);
+        const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT")?.snapshot as {
+            plurnk: { workspace: { id: number } };
+        };
+        const workspaceId = snapshot.plurnk.workspace.id;
+        const [waiting] = await daemon.pendingClientInteractions(workspaceId);
+        assert.ok(waiting);
+        await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 0,
+            { timeoutMs: 3000 });
+        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: waiting.workerId }),
+            (loops) => loops.find(({ id }) => id === waiting.loopId)?.status === 200);
+        assert.equal(provider.received.length, 2, "expiry resumes the same worker with the operation failure");
+        const packet = provider.received[1]!.map(chatMessageText).join("\n");
+        assert.match(packet, /operation timeout/u);
+        assert.match(packet, tool ? /tool-call-failed/u : /resource-read-failed/u);
+        const late = await post({ resume: [{ interruptId: pending.id, status: "cancelled" }] });
+        assert.ok(late.some((event) => event.type === "RUN_ERROR"));
+        assert.match(JSON.stringify(late), /interrupt-not-pending/u);
+        const synced = await reconnect();
+        const terminal = synced.at(-1);
+        assert.ok(terminal);
+        assert.equal((terminal.outcome as { type?: string }).type, "success");
+        assert.equal(provider.received.length, 2, "late input and reconnect do not replay work");
+        if (fixture !== undefined && served !== undefined) {
+            assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), source === "Task" ? [taskId] : []);
+            assert.deepEqual(fixture.updates, [], "expired human input is not submitted to the server");
+            assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length,
+                source === "Task" ? 2 : 1);
+        }
+    });
+}

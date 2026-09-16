@@ -112,7 +112,7 @@ surface.
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
 | `setState` | Move a declared channel from `active` to terminal `closed` or `errored`.                                |
 | `emit`     | Publish a transient, nonterminal Notice.                                                                |
-| §executor-interaction-sink `interact` | Await one contracts-owned client interaction ({§client-interaction-wire}). Core owns identity, pending-state durability, client presentation, and cancellation; the executor owns the request and returned payload's meaning. |
+| §executor-interaction-sink `interact(request, signal?)` | Await one contracts-owned client interaction ({§client-interaction-wire}). An optional signal narrows, never replaces, the execution's cancellation scope. Core owns identity, pending-state durability, client presentation, and settlement; the executor owns the request and returned payload's meaning. |
 | `entry`    | Optionally request consumer-owned entry materialization and receive its canonical model-facing address. |
 
 The executor receives callbacks, never a database, subscription registry,

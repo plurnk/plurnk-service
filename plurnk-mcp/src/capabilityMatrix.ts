@@ -174,8 +174,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
-        note: "Opaque requestState echoed byte-for-byte; only the originating request retried with a fresh ID.",
+        evidence: ["{§mcp-core-matrix}", "{§mcp-input-deadline}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
+        note: "Opaque requestState echoed byte-for-byte; only the originating request retried with a fresh ID. Input waits retain the remaining operation budget; expiry retires the Core form and delivers the failure to the original worker.",
     },
     {
         id: "elicitation",

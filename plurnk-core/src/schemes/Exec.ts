@@ -1057,11 +1057,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                     registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,
                     entry: entrySink,
-                    interact: (request) => {
+                    interact: (request, interactionSignal) => {
                         if (ctx.requestInteraction === undefined) {
                             throw new Error("The execution's client interaction capability is unavailable.");
                         }
-                        return ctx.requestInteraction(request, signal);
+                        return ctx.requestInteraction(request, interactionSignal === undefined ? signal
+                            : AbortSignal.any([signal, interactionSignal]));
                     },
                     env: composed.env,  // SPEC {§exec} {§exec-env-scoped}
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {

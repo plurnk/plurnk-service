@@ -77,7 +77,7 @@ export interface ExecArgs {
     // Await a standard client-owned interaction. Core owns durable identity,
     // reconnect presentation, cancellation, and resolution; the executor owns
     // only its request and interpretation of the returned payload.
-    interact: (request: ClientInteractionRequest) => Promise<ClientInteractionResolution>;
+    interact: (request: ClientInteractionRequest, signal?: AbortSignal) => Promise<ClientInteractionResolution>;
     // Optional materialization request ({§executor-entry-sink}). The consumer
     // owns acquisition, storage, tags, announcement, and the returned canonical
     // model-facing address. `content === null` requests consumer-sourced bytes.

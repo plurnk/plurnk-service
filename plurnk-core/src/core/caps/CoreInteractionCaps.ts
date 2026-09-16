@@ -12,11 +12,13 @@ export default class CoreInteractionCaps implements InteractionCaps {
         this.#ctx = ctx;
     }
 
-    request(request: ClientInteractionRequest): Promise<ClientInteractionResolution> {
+    request(request: ClientInteractionRequest, signal?: AbortSignal): Promise<ClientInteractionResolution> {
         const interact = this.#ctx.requestInteraction;
         if (interact === undefined) {
             throw new Error("Client interaction capability is unavailable for this operation.");
         }
-        return interact(request);
+        const owner = this.#ctx.signal;
+        return interact(request, signal === undefined ? owner
+            : owner === undefined ? signal : AbortSignal.any([owner, signal]));
     }
 }

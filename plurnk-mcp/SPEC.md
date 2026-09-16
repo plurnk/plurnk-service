@@ -104,7 +104,7 @@ MCP adds no second scheduler or client-disconnect policy.
 | Graceful shutdown | Aborts and settles owned work before closing its protocol connection ({§mcp-connection-shutdown}). |
 | Restart after owner loss | No Task resume or automatic tool replay; core reconciles the interrupted operation and its durable evidence. |
 | Workspace reactivation | Reconstructs the attachment from its definition, not an old Task handle. Active Tasks retain workspace residency ({§module-workspace-residency}). |
-| Expiry | The owning operation deadline bounds polling; a non-converging task fails at the standard round bound and is cancelled. |
+| Expiry | The owning operation deadline also bounds client-input waits ({§mcp-input-deadline}); expiry cancels the Task before settling the failed operation. MRTR retains its separate round bound. |
 | Cancellation | Owner abort cancels the task before settling; the handle is then terminal. |
 | Already terminal | Terminal results and errors are consumed by the drive loop; a completed or failed task is never re-polled or re-resumed. |
 
@@ -513,6 +513,14 @@ interrupt durability and AG-UI presentation. Reattachment re-surfaces input
 only while its originating operation remains live. MRTR round
 limits, request timeout, cancellation, and Task terminal state are one
 operation lifecycle; none becomes a hidden retry loop.
+
+§mcp-input-deadline Client-input waits consume the remaining owning operation
+budget (`PLURNK_MCP_REQUEST_TIMEOUT`); each MRTR round or Task input set does not
+start a fresh budget. Expiry aborts the input's ordinary Core waiter, removes it
+from pending/reconnect discovery, and enters the same bounded protocol cleanup
+as other operation failures. A late response is no longer pending. No response
+or tool replay is fabricated; the failed operation remains available to the
+worker for recovery. SDK wire-leg timeouts retain ownership of transport waits.
 
 §mcp-tool-replay A tool call is effectful unless host policy proves otherwise.
 After dispatch, a transport failure cannot prove that the MCP server did not

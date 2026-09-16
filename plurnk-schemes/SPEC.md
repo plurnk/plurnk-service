@@ -516,11 +516,12 @@ its implementation.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.
-- §scheme-interactions `interactions` — `request(ClientInteractionRequest)`
+- §scheme-interactions `interactions` — `request(ClientInteractionRequest, signal?)`
   awaits the contracts-owned interaction and returns its
   `ClientInteractionResolution` ({§client-interaction-wire}). Core binds the
   current operation identity, persistence, client projection, and cancellation;
   the scheme retains no callback, interaction identity, or private lifecycle.
+  An optional signal narrows, never replaces, the operation's cancellation scope.
 - §scheme-subscriptions `subscriptions` — one streaming lifecycle:
 
 | Surface                           | Lifetime   | Contract                                                                                                   |

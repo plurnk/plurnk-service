@@ -1,8 +1,6 @@
 import {
     ProtocolError,
     ProtocolErrorCode,
-    SdkError,
-    SdkErrorCode,
     fromJsonSchema,
     specTypeSchemas,
     type CallToolRequest,
@@ -16,6 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import ExtensionChannel from "./extensionChannel.ts";
 import {
     resolveInputRequests,
+    remainingTimeout,
     runInputRequiredRequest,
     type ClientInteractionHandler,
 } from "./inputRequired.ts";
@@ -307,17 +306,6 @@ const taskAwareToolLeg = async (
     return parseCallToolResult(value);
 };
 
-const remainingTimeout = (deadline: number, operation: string): number => {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-        throw new SdkError(
-            SdkErrorCode.RequestTimeout,
-            `MCP '${operation}' exceeded its operation timeout.`,
-        );
-    }
-    return remaining;
-};
-
 const taskRequest = async (
     channel: ExtensionChannel,
     method: "tasks/get" | "tasks/update" | "tasks/cancel",
@@ -420,6 +408,7 @@ const driveTask = async (
                         interact: options.interact,
                         arguments: { taskId: task.taskId },
                         signal: options.signal,
+                        deadline,
                     });
                     options.signal?.throwIfAborted();
                     const update = asRecord(await taskRequest(

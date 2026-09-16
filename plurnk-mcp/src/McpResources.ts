@@ -248,7 +248,7 @@ export default class McpResources {
             name,
             Object.keys(args).length === 0 ? undefined : args,
             ctx.signal,
-            (interaction) => ctx.interactions.request(interaction),
+            (interaction, signal) => ctx.interactions.request(interaction, signal),
         );
         const names = new ResourceNames();
         const messages = [];
@@ -292,7 +292,7 @@ export default class McpResources {
         const result = await this.#connection.readResource(
             uri,
             ctx.signal,
-            (interaction) => ctx.interactions.request(interaction),
+            (interaction, signal) => ctx.interactions.request(interaction, signal),
         );
         const root = `${RESOURCE_PREFIX}${encoded}`;
         const names = new ResourceNames();
