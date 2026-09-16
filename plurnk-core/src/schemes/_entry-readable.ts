@@ -25,8 +25,7 @@ export default class EntryReadable {
     ): Promise<void> {
         if (channel !== defaultChannel || EntryReadable.isDerived(channel)) return;
         const { db, mimetypes, weigh } = ctx;
-        // Administrative writes (prompt frames, drains) carry no registry and write text that
-        // never projects; the sibling is a registry-backed fact, so without one nothing is derived.
+        // The readable sibling is registry-backed; a context without mimetypes cannot derive it.
         if (mimetypes === undefined) return;
         if (weigh === undefined) throw new Error("EntryReadable.sync: ctx.weigh is required for curation-weight accounting");
         const projected = content.length === 0 ? null : await mimetypes.projectReadable({ content, hint: mimetype });

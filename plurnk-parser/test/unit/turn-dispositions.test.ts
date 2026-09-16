@@ -33,7 +33,7 @@ test("{§interstitial-fence}: an unlabeled fence between operations is prose and
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
-test("TASK admits timing independent of intent but never a resource operand", () => {
+test("TASK scope syntax reaches runtime admission irrespective of inventory but never admits a resource operand", () => {
     const wait = PlurnkParser.parseStatements("```TASK <5,1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```");
     assert.deepEqual(wait.items.filter((item) => item.kind === "error"), []);
     const statement = wait.items[0];

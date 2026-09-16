@@ -68,11 +68,13 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             const op = lexer.getOpenOp();
             const constraint = op === "FIND"
                 ? "use numeric result positions, e.g. `<1,16>`"
-                : lexer.isExecFence() || op === "SEND" || op === "TASK"
+                : lexer.isExecFence()
                     ? "use minutes, e.g. `<5,1>`"
-                    : lexer.isTextCoordinateOp()
-                        ? "use numeric coordinates or `@hash` line anchors"
-                        : "this operation takes no scope";
+                    : op === "SEND"
+                        ? "use a numeric scope supported by the recipient"
+                        : lexer.isTextCoordinateOp()
+                            ? "use numeric coordinates or `@hash` line anchors"
+                            : "this operation takes no scope";
             return `invalid ${op} scope ${JSON.stringify(PlurnkErrorStrategy.#scopeExcerpt(lexer))}; ${constraint}`;
         }
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)

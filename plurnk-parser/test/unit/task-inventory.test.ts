@@ -29,9 +29,9 @@ test("{§task-inventory-intent} the native inventory determines one outcome irre
     }
 });
 
-test("{§turn-disposition} TASK is the only lifecycle operation and retains native inventory and timing", () => {
+test("{§turn-disposition} TASK is the only lifecycle operation and retains native inventory", () => {
     const body = inventory(["todo", "waiting", "in_progress", "completed", "failed"]);
-    const source = `${PlurnkParser.frame("SEND", "First finding.")}\n${PlurnkParser.frame("TASK <60,5>", JSON.stringify(body))}`;
+    const source = `${PlurnkParser.frame("SEND", "First finding.")}\n${PlurnkParser.frame("TASK", JSON.stringify(body))}`;
     const parsed = PlurnkParser.parse(source);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -39,7 +39,7 @@ test("{§turn-disposition} TASK is the only lifecycle operation and retains nati
     const task = statements.at(-1)!;
     assert.ok(TurnDisposition.is(task));
     assert.deepEqual(task.body, body);
-    assert.deepEqual(task.lineMarker, { marks: [60, 5] });
+    assert.equal(task.lineMarker, null);
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
     assert.deepEqual(PlurnkParser.parse(PlurnkParser.stringify(statements)).items.map((item) => item.kind), ["statement", "statement"]);
     for (const former of ["NEXT", "WAIT", "DONE", "FAIL"]) assert.equal(TurnDisposition.isOp(former), false);

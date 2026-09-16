@@ -39,7 +39,7 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
                 (loops) => loops.length === 2 && loops.every(({ status }) => status === 202),
             );
             const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "A new message." });
-            assert.equal(delivered.loopId, accepted[0]?.loopId, "return and wake the same oldest unfinished loop that owns the prompt");
+            assert.equal(delivered.loopId, accepted[0]?.loopId, "return and wake the same oldest unfinished loop that owns the message");
             const received = await waitForDb(
                 () => db.test_get_loop_status.get<{ status: number }>({ id: delivered.loopId }),
                 (row) => row?.status === 499,

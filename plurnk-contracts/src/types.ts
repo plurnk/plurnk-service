@@ -31,7 +31,7 @@ export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
 // An execution is written as its runtime's fence, so its operation IS the runtime tag: lowercase
 // by {§executor-runtime-declaration}, which is why it can never collide with an operation keyword.
-// The engine's own lowercase row ops (`prompt`, `extension`, `error`) are reserved runtime names.
+// The engine's own lowercase row ops (`extension`, `error`) are reserved runtime names.
 export type RuntimeTag = Lowercase<string>;
 export const RUNTIME_TAG = /^[a-z][a-z0-9+.-]*$/;
 export const INTERNAL_ROW_OPS: ReadonlySet<string> = new Set(["extension", "error"]);

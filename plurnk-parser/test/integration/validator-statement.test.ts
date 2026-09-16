@@ -191,7 +191,7 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: TASK accepts a wait scope", () => {
+test("PlurnkStatement: TASK preserves a numeric scope for runtime refusal", () => {
     const stmt = { ...baseFields("TASK"), body: [], lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));

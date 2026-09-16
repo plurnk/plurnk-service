@@ -1,6 +1,8 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
+import assert from "node:assert/strict";
+import { parseLogRecords } from "../../plurnk-core/test/LogRecords.ts";
 
 const MODEL = "plurnk-installed-journey";
 
@@ -17,7 +19,7 @@ const journeys = Object.freeze({
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.",
             content: [
-                "````READ (prompt://tui-worker/1/1)````",
+                "````READ (log:///1/2/1/SEND)````",
                 "````READ (worker:///_plurnk/plurnk/worker.md) <1,-1>````",
                 "````READ (worker:///_plurnk/plurnk/node.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
@@ -25,7 +27,7 @@ const journeys = Object.freeze({
                 "````TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n````",
             ].join("\n"),
         }, {
-            reasoning: "The prompt was retrieved through the terminal, so the journey can conclude.",
+            reasoning: "The message was retrieved from its log address, so the journey can conclude.",
             content: "```SEND\nThe installed interactive journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
         }],
     },
@@ -103,6 +105,13 @@ export const startClientJourneyModel = async () => {
             const program = definition.programs[index];
             const text = (body.messages ?? []).map((message) => typeof message.content === "string" ? message.content : "").join("\n");
             if (journey === "tui" && index === 1) {
+                const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1]?.trim() ?? "";
+                const messageRead = parseLogRecords(log).find((row) =>
+                    String(row.path).endsWith("/READ") && row.target === "log:///1/2/1/SEND");
+                assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
+                assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
+                assert.match(String(messageRead.body ?? ""), /^(?:@[0-9A-Za-z]{5} )?\s*1:Exercise the installed interactive terminal\./u,
+                    "the READ receipt contains the addressed message, not merely a final success claim");
                 for (const witness of [
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:````WORK \(worker:\/\/capital-checker\)/u,
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:````node <!--/u,

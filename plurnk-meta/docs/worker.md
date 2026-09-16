@@ -111,7 +111,7 @@ without live work it continues at once. To wake later with nothing in flight,
 add a rule with the `schedule` family targeting yourself.
 
 A wake ends that wait. Submit another waiting inventory to wait again. Waking
-retains the loop's prompts, turn allowance, and remaining execution time;
+retains the loop's messages, turn allowance, and remaining execution time;
 parked time does not consume execution time. A terminal inventory with at least one completed item claims success;
 a nonempty all-failed inventory concludes unsuccessfully.
 

@@ -549,7 +549,7 @@ one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal 
 is rejected until the model-loop seam supports it deliberately. Proposal
 disposition remains Core policy; the module forwards it without reinterpretation.
 
-§agui-run-source The run's user message is the causal actor behind the loop's prompt
+§agui-run-source The run's user message is the causal actor behind its inbound SEND
 ({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
 `agui://<principal>/threads/<threadId>/runs/<runId>/messages/<messageId>`, every segment
 URI-encoded, the principal `anonymous` until the authorization layer names one. The frontend's

@@ -33,7 +33,7 @@ test("a short message lands as one inbound SEND row", async () => {
     });
 });
 
-test("a jumbo prompt renders an adaptive addressable chunk and the section lists its complete entry", async () => {
+test("a jumbo message renders an adaptive chunk and Open Messages points to its complete log body", async () => {
     await withDaemon(mock(), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

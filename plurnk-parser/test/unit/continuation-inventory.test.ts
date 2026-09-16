@@ -44,9 +44,9 @@ test("{§op-shapes} former workflow labels are not native operations or aliases"
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§turn-disposition} TASK retains timing and SEND retains a message body", () => {
-    const wait = parse("TASK <60,10>", "[]");
-    assert.deepEqual("lineMarker" in wait ? wait.lineMarker : null, { marks: [60, 10] });
+test("{§turn-disposition} TASK retains inventory and SEND retains a message body", () => {
+    const wait = parse("TASK", "[]");
+    assert.equal("lineMarker" in wait ? wait.lineMarker : null, null);
     assert.equal(Validator.validatePlurnkStatement(wait).valid, true);
     assert.deepEqual(parse("SEND", "Delivered.").body, { raw: "Delivered.", json: null });
     assert.equal(Validator.validatePlurnkStatement({ ...wait, body: { raw: "[]", json: [] } }).valid, false);

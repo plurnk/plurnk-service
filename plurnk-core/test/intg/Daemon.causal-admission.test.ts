@@ -115,7 +115,7 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
                 .some(({ status }) => [100, 102, 202].includes(status)), false, "cancelled unread work was not promoted");
             assert.deepEqual(await db.recovery_orphan_message_sources.all({}), [], "boot cannot resurrect the cancelled arrival");
             assert.equal((await db.test_messages_by_worker.all({ worker_id: workerId })).length, 2,
-                "both original prompt frames remain available as evidence");
+                "both original messages remain available as evidence");
             await daemon.stop();
             const restarted = new Daemon({ db, provider });
             await restarted.start();

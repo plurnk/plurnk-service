@@ -1,15 +1,12 @@
-import { RUNTIME_TAG } from "@plurnk/plurnk-contracts";
+import { INTERNAL_ROW_OPS, RUNTIME_TAG } from "@plurnk/plurnk-contracts";
 
 const SHAPE = RUNTIME_TAG;
 const SHAPE_TEXT = "[a-z][a-z0-9+.-]*";
-// A runtime tag is also an execution's op on the wire, so the internal "exec" scheme and the
-// prompt row's op can never be runtime names.
+// A runtime tag is also an execution's op on the wire; internal row names cannot collide.
 const RESERVED = new Map([
     ["only", "PLURNK_EXECS_ONLY"],
     ["exec", "the execution scheme"],
-    ["prompt", "the prompt row"],
-    ["extension", "extension rows"],
-    ["error", "error rows"],
+    ...[...INTERNAL_ROW_OPS].map((op) => [op, `${op} rows`] as const),
 ]);
 
 // One admission rule for installed and module-owned executor identities

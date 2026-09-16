@@ -304,7 +304,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             assert.ok(frame, "the injected prompt was published as its own frame");
             assert.ok(contextRead, "the injected prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
-                "the context READ is observable in the same turn as its prompt frame");
+                "the context READ is observable in the same turn as its message arrival");
         } finally { ws.close(); }
     });
 });
@@ -377,7 +377,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
             assert.ok(frame, "the waking prompt was published as its own frame");
             assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
-                "the context READ is observable in the resumed turn that publishes its prompt frame");
+                "the context READ is observable in the resumed turn that publishes its message arrival");
         } finally {
             releaseBoundary.resolve();
             ws.close();
@@ -450,7 +450,7 @@ test("{§message-loop-containment}: an injection crossing the park transition is
     });
 });
 
-test("{§message-loop-containment}: every orphaned prompt frame is promoted in order", async () => {
+test("{§message-loop-containment}: every orphaned message is recovered in order", async () => {
     // Edge: next-turn prompts injected into a loop that then terminates before
     // reaching that turn would be silently lost. Forced deterministically: hold
     // loop 1 at a proposal (status=102, turn 1), inject two turn-2 frames, then

@@ -315,11 +315,11 @@ try {
     const tuiOutput = tui.output();
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
-    assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI PLAN");
-    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI DONE");
+    assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI TASK");
+    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI SEND");
     await tui.exit();
     tui = undefined;
-    process.stdout.write("installed interactive TUI journey GREEN: Functionality + reasoning + PLAN + DONE + status\n");
+    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message READ + reasoning + TASK + SEND + status\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-rejected",

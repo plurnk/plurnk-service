@@ -1,4 +1,4 @@
-// The durable writes a turn makes beside its packet: environment and stream deltas, filesystem fictions, the prompt log. Split out of TurnRunner.
+// The durable writes a turn makes beside its packet: environment and stream deltas, filesystem fictions, message arrivals. Split out of TurnRunner.
 import type { Db } from "./Db.ts";
 import { type FsDivergence } from "./git-membership.ts";
 import { type GitStatusSnapshot } from "./git-state.ts";

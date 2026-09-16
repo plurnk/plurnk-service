@@ -98,7 +98,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 102);
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
-        // Three log entries: one first-class prompt row and two model ops
+        // Three log entries: one inbound SEND and two model ops
         // (EDIT, SEND). Mock's pre-parsed seam supplied no Plurnk source, so
         // the producer-neutral batch must not fabricate a turnOps artifact.
         // The initialization operations belong to their preceding packetless turn.
@@ -286,7 +286,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "");  // empty prompt = no prompt row
+        const loopId = await insertLoop(db, workerId, 1, "");  // empty input = no message arrival
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [response([dispositionStmt("in_progress", "ok")])] });
         const result = await engine.runTurn({
@@ -428,7 +428,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overf
             assert.equal(t1.outcomes.length, 4, "3 actions plus the disposition dispatched");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
-            // Scope to scheme='worker' to exclude the engine's prompt entry.
+            // Count the created worker entries independently of other schemes.
             const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });

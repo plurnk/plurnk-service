@@ -120,9 +120,9 @@ test("{§tokenomics-prompt-projection-share} new shared-model samples cannot res
     });
     const persisted = (await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet;
     const before = await f.build(provider);
-    const promptRow = logEntries(before).find(({ path }) => String(path).endsWith("/SEND"));
-    assert.ok(promptRow && typeof promptRow.body === "string" && promptRow.body.length > 16 && promptRow.body.length < prompt.length);
-    assert.ok(promptRow.chunk, "the cached prompt is genuinely bounded, not a vacuous short fixture");
+    const arrival = logEntries(before).find(({ path }) => String(path).endsWith("/SEND"));
+    assert.ok(arrival && typeof arrival.body === "string" && arrival.body.length > 16 && arrival.body.length < prompt.length);
+    assert.ok(arrival.chunk, "the cached message is genuinely bounded, not a vacuous short fixture");
     await recordSamples(f);
     const after = await f.build(provider);
     assert.notEqual(budgetOf(before).logTokensMax, budgetOf(after).logTokensMax, "the ceiling uses new model evidence");

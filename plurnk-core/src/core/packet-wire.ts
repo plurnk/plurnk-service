@@ -973,7 +973,7 @@ export default class PacketWire {
 
     // The body the row shows: the canonical full body is shared with log READ, log FIND, and
     // search derivation. READ/FIND own selection bounds, TASK and admitted programs remain
-    // complete, and prompt rows share their packet allowance. Structured mutation receipts own
+    // complete, and exterior arrivals share their packet allowance. Structured mutation receipts own
     // their join bound; every remaining body uses the ordinary fixed preview.
     static #rowBody(
         identity: RowIdentity,

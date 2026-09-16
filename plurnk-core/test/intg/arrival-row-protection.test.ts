@@ -97,7 +97,7 @@ test("a scoped KILL is recorded in the DB but never renders ({§log-kill-meta-op
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // Seed a genuine non-prompt row (a worker:/// note), then scoped-KILL it so the success records.
+        // Seed a genuine non-arrival row (a worker:/// note), then scoped-KILL it so the success records.
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         const dbRow = await db.test_count_op.get<{ n: number }>({ op: "KILL" });

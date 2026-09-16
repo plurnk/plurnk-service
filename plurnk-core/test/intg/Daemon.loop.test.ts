@@ -376,7 +376,7 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             assert.ok(frame, "the initial message row exists");
             assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null)
                 .every((row) => row.turn_id === frame.turn_id),
-            "every selected path is read in the same turn that publishes the initial prompt frame");
+            "every selected path is read in the same turn that publishes the initial message");
         } finally { ws.close(); }
     });
 });

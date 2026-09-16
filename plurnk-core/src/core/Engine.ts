@@ -119,10 +119,10 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopSignals = new Map<number, AbortSignal>();
-    // {§message-loop-containment}: one worker's prompt-frame allocation and
-    // persistence is a serial critical section. A completed later frame can
+    // {§message-loop-containment}: one loop's message allocation and
+    // persistence is a serial critical section. A completed later write can
     // therefore never overtake or replace an earlier concurrent arrival.
-    #promptWriteLocks = new Map<number, Promise<unknown>>();
+    #messageWriteLocks = new Map<number, Promise<unknown>>();
     // One coalesced warm per workspace. Explicit membership changes may start it as soon
     // as content exists; the first model turn always joins it, so no operation observes
     // partial graph/FTS coverage. A request arriving mid-pass marks the workspace
@@ -623,7 +623,7 @@ export default class Engine {
 
     // Inject a prompt into the admitted non-terminal loop. Writes the
     // next inbox row; the next turn boundary publishes it
-    // as one actionless prompt row. Prompt-frame writes serialize per loop,
+    // as one inbound SEND row. Message writes serialize per loop,
     // so concurrent arrivals retain distinct ordered ordinals.
     //
     // The admission owner selects the exact loop before checking its policy.
@@ -638,12 +638,12 @@ export default class Engine {
     }
 
     #withPromptWriteLock<T>(loopId: number, write: () => Promise<T>): Promise<T> {
-        const previous = this.#promptWriteLocks.get(loopId) ?? Promise.resolve();
+        const previous = this.#messageWriteLocks.get(loopId) ?? Promise.resolve();
         const run = previous.then(write, write);
         const tail = run.catch(() => {});
-        this.#promptWriteLocks.set(loopId, tail);
+        this.#messageWriteLocks.set(loopId, tail);
         void tail.then(() => {
-            if (this.#promptWriteLocks.get(loopId) === tail) this.#promptWriteLocks.delete(loopId);
+            if (this.#messageWriteLocks.get(loopId) === tail) this.#messageWriteLocks.delete(loopId);
         });
         return run;
     }

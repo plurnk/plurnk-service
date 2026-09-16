@@ -37,9 +37,7 @@ CREATE TABLE IF NOT EXISTS entries (
     authority  TEXT    NOT NULL DEFAULT '',
     pathname   TEXT    NOT NULL,
     workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    -- Entry-private metadata. Prompt frames use `openPaths` to carry selected
-    -- workspace paths into the exact turn that publishes the frame
-    -- ({§methods-loop-run-open-paths}).
+    -- Scheme-owned entry metadata.
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
     default_channel TEXT NOT NULL DEFAULT 'body' CHECK (length(default_channel) > 0),
     output INTEGER NOT NULL DEFAULT 0 CHECK (output IN (0, 1)),

@@ -94,7 +94,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, 
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
 
--- {§db-fk-indexes} Foreign-key check paths (route replacement, recurrence-root cascade) stop scanning loops.
+-- {§db-fk-indexes} Model-route foreign-key checks stop scanning loops.
 CREATE INDEX IF NOT EXISTS loops_model_route_id         ON loops (model_route_id)         WHERE model_route_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS loops_spawn_model_route_id   ON loops (spawn_model_route_id)   WHERE spawn_model_route_id IS NOT NULL;

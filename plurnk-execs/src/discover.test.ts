@@ -232,6 +232,12 @@ test("discover: the dynamic hook accepts a default export and a sync return", as
 });
 
 test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical scheme names and reject reserved policy names", async () => {
+    const valid = await makeDynamicPkg(
+        "@plurnk/plurnk-execs-dynamic-fixture",
+        `export default () => [${JSON.stringify(runtime("prompt"))}];`,
+    );
+    assert.deepEqual([...(await Discover.scan({ packageDirs: [valid] })).registry.keys()], ["prompt"]);
+
     const invalid = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export default () => [{ name: "Alias_Tool" }];`,
@@ -332,11 +338,11 @@ test("discover: tag collision across packages is fail-hard", async () => {
 test("{§executor-runtime-declaration} #105: static runtime tags are canonical, path-safe scheme names", async () => {
     const valid = await makePkg({
         name: "@acme/acme-execs-tools",
-        plurnk: { kind: "exec", runtimes: [runtime("alias.tool"), runtime("tool-v2"), runtime("c++")] },
+        plurnk: { kind: "exec", runtimes: [runtime("alias.tool"), runtime("tool-v2"), runtime("c++"), runtime("prompt")] },
     });
     assert.deepEqual(
         [...(await Discover.scan({ packageDirs: [valid] })).registry.keys()],
-        ["alias.tool", "tool-v2", "c++"],
+        ["alias.tool", "tool-v2", "c++", "prompt"],
     );
 
     for (const name of ["Alias", "_private", "alias_tool", "../escape", "two words"]) {

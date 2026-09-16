@@ -74,12 +74,12 @@ test("protocol operations parse as executable fences", () => {
 
 test("{§send-directed-scope}: directed SEND carries a numeric scope to its owner without changing its body or disposition", () => {
     for (const [scope, components] of [["<60>", [60]], ["<0,60>", [0, 60]]] as const) {
-        const statement = oneStatement(section("SEND", ` (worker://reviewer) ${scope} <!-- recurring check -->`, "Check for updates."));
+        const statement = oneStatement(section("SEND", ` (sink://receiver) ${scope} <!-- recipient options -->`, "Check for updates."));
         assert.equal(statement.op, "SEND");
         if (statement.op !== "SEND") return;
         assert.equal(Object.hasOwn(statement, "status"), false);
         assert.deepEqual(statement.lineMarker?.marks, components);
-        assert.equal(statement.aside, "recurring check");
+        assert.equal(statement.aside, "recipient options");
         assert.deepEqual(statement.body, { raw: "Check for updates.", json: null });
     }
     assert.ok(errorsOf(section("SEND", " <0,60>", "No recipient.")).length > 0);
@@ -159,7 +159,7 @@ test("COPY and MOVE destinations use the target escape layer", () => {
 });
 
 test("a COPY destination path excludes the whitespace before its scope", () => {
-    const statement = oneStatement("```COPY (prompt://alice/1/1) (worker://alice/prompts.md) <-1>```");
+    const statement = oneStatement("```COPY (log:///1/2/1/SEND) (worker://alice/prompts.md) <-1>```");
     if (statement.op !== "COPY") assert.fail("expected COPY");
     assert.equal(statement.destination.target.raw, "worker://alice/prompts.md");
     assert.equal(statement.destination.target.kind === "url" ? statement.destination.target.hostname : null, "alice");
@@ -209,13 +209,14 @@ test("{§error-shape} malformed FIND scopes get one relevant correction and pres
     }
 });
 
-test("{§error-shape} invalid text and wait scopes do not borrow another operation's contract", () => {
+test("{§error-shape} scope diagnostics do not borrow another operation's contract", () => {
     for (const op of ["READ", "EDIT", "COPY", "MOVE", "KILL"] as const) {
         const error = firstError(section(op, " (a.md) <line number>"));
         assert.equal(error.message, `invalid ${op} scope "<line number>"; use numeric coordinates or \`@hash\` line anchors`);
     }
-    assert.equal(firstError(section("TASK", " <30s>")).message, "invalid TASK scope \"<30s>\"; use minutes, e.g. `<5,1>`");
-    for (const op of ["BARE", "WORK", "FORK"] as const) {
+    assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
+        "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
+    for (const op of ["BARE", "WORK", "FORK", "TASK"] as const) {
         assert.equal(firstError(section(op, " <result range>")).message,
             `invalid ${op} scope "<result range>"; this operation takes no scope`);
     }
@@ -268,7 +269,7 @@ test("{§bare-statement} BARE accepts a prompt resource, inline input, or both",
     if (metadata.op !== "BARE") assert.fail("expected BARE");
     assert.deepEqual(metadata.metadata, ['{"Accept": "text/plain"}']);
 
-    const body = "```BARE (prompt://alice/1/1)```";
+    const body = "```BARE (worker://alice/prompt.md)```";
     const fenced = PlurnkParser.parseStatements(section("TASK", "", body));
     assert.equal(fenced.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"), false);
     const send = fenced.items.find((item) => item.kind === "statement")?.statement;
@@ -785,7 +786,7 @@ test("a combined anchor and displayed line number reads as the anchor, with one 
     }
 });
 
-test("TASK wait scope and execution timeout/poll are retained", () => {
+test("scope syntax is retained for runtime admission, including unsupported TASK scopes", () => {
     const terminal = oneStatement(section("TASK", " <30>", "polling"));
     if (terminal.op !== "TASK") assert.fail("expected TASK");
     assert.deepEqual(terminal.lineMarker, { marks: [30] });

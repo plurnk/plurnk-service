@@ -66,7 +66,7 @@ actor, or second scheduler exists. Later Tasks fork the Context root and
 therefore receive the parent-visible prior Task evidence under Core's ordinary
 topology contract.
 
-Only a child Worker with a durable prompt source matching its exact A2A Context,
+Only a child Worker with a durable message source matching its exact A2A Context,
 Task, and Message identities projects as a Task. A root is reusable as an A2A
 Context only after this adapter created it in the running exposure or one such
 Task proves its durable ownership after restart. Ordinary model Workers in the
@@ -85,7 +85,7 @@ failures follow the SDK's failed-Task behavior.
 | Successful terminal result | `COMPLETED`; a non-empty final SEND is the `result` Artifact |
 | External cancellation / Loop `499` | `CANCELED` |
 | Other terminal failure | `FAILED` with the exact Problem detail as its status Message |
-| Prompt rows carrying the adapter's causal source | User Message text history, read from the receipt's content, not its JSON envelope |
+| Inbound SEND rows carrying the adapter's causal source | User Message text history, read from the submitted body (`tx.body.raw`) |
 
 The first exposure accepts only text Message Parts, advertises HTTP+JSON v1
 streaming without push notifications, tenants, extended cards, or security

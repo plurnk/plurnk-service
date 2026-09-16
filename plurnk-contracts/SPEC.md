@@ -419,8 +419,8 @@ adjacent slots and scope/metadata permutations within a selection without
 changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order.
 
-§plan-slotless TASK accepts no target or metadata. Its optional scope carries
-waiting timing; its inventory body begins below the header.
+§plan-slotless TASK accepts no target, scope, or metadata. Its inventory body
+begins below the header.
 
 §heading-inline-body Nonempty body text belongs below the fence header.
 The ingester tolerates body text after horizontal whitespace on the header,
@@ -501,8 +501,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | none; the matcher is the `pattern` option |
-| SEND | optional recipient | optional recipient timing | message |
-| TASK | none | optional timeout and poll for waiting intent | Plurnk Plan JSON array |
+| SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
+| TASK | none | none | Plurnk Plan JSON array |
 
 §operation-code-polymorphism Operation-result statuses and turn dispositions are
 distinct facts. TASK derives lifecycle intent from its inventory;
@@ -906,13 +906,13 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 TASK inventory intent maps to the existing HTTP-shaped lifecycle statuses
 ({§task-inventory-intent}). The runtime adjudicates that intent against actual
-results, obligations and timing:
+results and live obligations:
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
 | TASK omitted | 102 | Continue silently, without a receipt or strike for omission |
 | empty, continue, todo | 102 | Continue or recover; an explicit empty inventory is refused with a soft 409 receipt, no strike |
-| wait | 202 | Park when a live obligation or explicit timing exists |
+| wait | 202 | Park when a live obligation exists; otherwise continue |
 | complete | 200 | Conclude once execution results permit completion |
 | fail | 499 | End unsuccessfully and cancel unresolved descendant scope |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
@@ -939,11 +939,9 @@ disposition. The shape rules ARE structural:
   ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
   position. TASK omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
-- §park-202-only TASK wait intent applies `<T>` (wait up to T minutes),
-  `<T,P>` (adds a poll cadence, mirroring the execution slot), `<-1>`
-  (indefinite; the join's own liveness bounds it). See §7 for the scope
-  slot's shape. Other intents leave timing unapplied
-  with a factual warning; timing does not override the inventory's intent.
+- §park-202-only TASK wait intent joins live work: an open stream or a live
+  child. With none, it continues. TASK takes no scope ({§send-wait-scope});
+  a future message is scheduled through the schedule family.
 - §inventory-only-turn A TASK-only turn is valid for every inventory intent.
   Actionable work does not require an invented OP and does not imply parking.
   Ordinary repetition, strike and execution limits still apply.

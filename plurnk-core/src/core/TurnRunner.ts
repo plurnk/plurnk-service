@@ -833,7 +833,7 @@ export default class TurnRunner {
             },
             lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
         });
-        // {§message-arrival} — the prompt reaches the model as its `prompt` row in the first
+        // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         initializationStatements.push(task);
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
@@ -993,8 +993,8 @@ export default class TurnRunner {
         const notices = this.#notices.drain(loopId)
             .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
         // Build the model request packet ({§packet-stored-shape}). The log build
-        // queries log_entries scoped to the worker — the prompt entry just
-        // written (if turn 1) is part of that query result.
+        // queries log_entries scoped to the worker, including this turn's newly
+        // published message arrivals.
         const facts: PacketFacts = { turnId, seq, gitStatus, notices, transientOpenLogEntryId: container.transientOpenLogEntryId, promptProjection: "automatic" };
         let packet = await this.#buildPacket(args, facts);
         // {§context-output-admission} — output admission changes no operation
