@@ -806,26 +806,18 @@ all use that one definition.
 
 ### §worker-wait-timing Durable waits and wake ownership
 
-With waiting intent, an explicit finite TASK deadline or positive poll interval is itself
-a live obligation. A wake continues the same loop with the same prompts,
-generation policy, and cumulative turn ceiling; it never creates another assignment.
-
-| TASK scope with waiting intent, in minutes | Deadline | Observation |
-|---|---|---|
-| absent / `<-1>` | No clock deadline; join existing work. | Inherit open streams' polling policy; child completion is event-driven. |
-| `<T>`, `T ≥ 0` | Resume no later than T, even without a child or stream. | Inherit open streams' polling policy. |
-| `<T,P>`, `P > 0` | T as above, or unbounded for -1. | Resume after P, or earlier on deadline, completion, or a message. |
-| `<T,0>` | T as above. | Disable periodic observation for this wait; events and deadline still wake it. |
-
-Polling observes, never repeats operations. A wake ends this wait; a subsequent
-waiting TASK is a new wait with its own timing. Deadline expiry does not cancel a child
-or declare its execution failed. Ordinary terminal and cancellation rules
-remain authoritative.
+A waiting TASK takes no timing. With live work, an open stream or a live child
+worker, the loop parks durably and wakes on that work's settlement, on a
+message, or on the inherited observation cadence of its open streams
+({§exec-poll}); without live work it continues at once, told so. A wake
+continues the same loop with the same prompts, generation policy, and
+cumulative turn ceiling; it never creates another assignment. A wake later
+with nothing in flight is a schedule rule, delivered as a message.
 
 ```mermaid
 stateDiagram-v2
-    Running --> Parked: atomically persist wait identity and timing
-    Parked --> Queued: arrival / completion / due clock, guarded by wait identity
+    Running --> Parked: atomically persist the wait identity
+    Parked --> Queued: arrival / completion / inherited observation, guarded by wait identity
     Parked --> Terminal: cancellation
     Queued --> Running: same loop claimed by its worker's drain
 ```
@@ -2467,9 +2459,9 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | explicit empty inventory | Always | 409 receipt; continue, no strike (operator, 2026-09-12) | `No tasks were supplied. Submit a nonempty TASK inventory.` |
 | continue | Always | 102; no implicit join or idle strike | None |
 | todo | Always | 102; no strike | None |
-| wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
+| wait | Live obligation: an open stream or a live child worker | 202; durable park and wake of the same loop | None |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
-| wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
+| wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight. Continuing.` |
 | complete, fail | The loop holds messages it has not yet published ({§completion-defers-to-messages}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new message arrived during this turn. It is in this packet; a response and a TASK now complete.` |
 | complete | Live work: an open stream or a live child worker ({§completion-joins-live-work}) | 202; durable park and wake of the same loop; no strike | Join detail naming the work, read when the wake lands |
 | complete, fail | Same-turn failures, or settled results the next packet carries — this turn's receipts, a concluded stream, a terminated child ({§completion-defers-to-results}) | 102; no strike; the next packet carries them | Read-time deferral detail naming them |
@@ -2784,8 +2776,7 @@ loop is active** because ambient stream deltas already surface progress. An
 open stream without `P` uses exponential backoff
 (`PLURNK_SERVICE_EXEC_POLL_SEC` and `PLURNK_SERVICE_EXEC_POLL_TURNS`); explicit
 `<,P>` wins and `<,0>` disables polling for that stream. Open subscriptions
-aggregate into each wait's inherited observation policy as follows; an explicit
-TASK poll interval overrides this aggregation ({§worker-wait-timing}):
+aggregate into each wait's inherited observation policy as follows:
 
 | Open-stream policies                          | Worker timer                  |
 | --------------------------------------------- | ----------------------------- |

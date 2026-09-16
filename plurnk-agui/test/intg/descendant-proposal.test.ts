@@ -72,7 +72,7 @@ test("a child proposal traverses its controlling conversation without losing eit
         responses: [
             makeMockResponse(
                 "```WORK (worker://guesser1)\nCreate child.txt and conclude.\n```\n"
-                + "```TASK <-1>\n[{\"content\":\"Waiting for guesser1.\",\"status\":\"waiting\"}]\n```",
+                + "```TASK\n[{\"content\":\"Waiting for guesser1.\",\"status\":\"waiting\"}]\n```",
                 10,
             ),
             makeMockResponse(

@@ -1,4 +1,5 @@
 import test from "node:test";
+import Dispatcher from "../../src/core/Dispatcher.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopDriver from "../../src/core/LoopDriver.ts";
@@ -17,7 +18,7 @@ Do the delegated task.
 \`\`\`TASK
 [{"content":"Wait for the child.","status":"waiting"}]
 \`\`\``),
-            makeMockResponse("```TASK <60,0>\n[{\"content\":\"Child task is still running.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```TASK\n[{\"content\":\"Child task is still running.\",\"status\":\"waiting\"}]\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-late-${op}` });
@@ -133,7 +134,8 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
 
 for (const recipientState of ["idle", "parked"]) {
     test(`{§worker-lifecycle-no-resurrection}: cancelled SEND cannot deliver to a ${recipientState} recipient`, async (t) => {
-        const wait = makeMockResponse("```TASK <60,0>\n[{\"content\":\"Waiting for a message.\",\"status\":\"waiting\"}]\n```");
+        t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
+        const wait = makeMockResponse("```TASK\n[{\"content\":\"Waiting for a message.\",\"status\":\"waiting\"}]\n```");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(recipientState === "parked" ? [wait] : []),
             makeMockResponse("```SEND (worker://recipient)\nThis message must not escape cancellation.\n```\n```SEND\nSent.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),

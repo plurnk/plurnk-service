@@ -234,7 +234,7 @@ test("{§module-shutdown-order}: stopping during wait selection cannot install a
         lifecycle: { parked: async () => {
             selecting.resolve();
             await release.promise;
-            return [{ id: 7, wait_revision: 1, wait_deadline_at: Date.now() + 60_000, wait_poll_interval: 0, wait_poll_at: null }];
+            return [{ id: 7, wait_revision: 1, wait_poll_at: Date.now() + 60_000 }];
         } } as never,
     });
     drains.start();
@@ -258,7 +258,7 @@ test("{§module-shutdown-order}: stopping during poll persistence cannot install
         } as unknown as Db,
         lifecycle: {
             parked: async () => [{
-                id: 7, wait_revision: 1, wait_deadline_at: null, wait_poll_interval: null, wait_poll_at: null,
+                id: 7, wait_revision: 1, wait_poll_at: null,
             }],
             inheritPoll: async () => { persisting.resolve(); await release.promise; },
         } as never,

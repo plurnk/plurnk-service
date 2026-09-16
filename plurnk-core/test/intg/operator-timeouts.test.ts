@@ -74,9 +74,11 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
         const workspaceId = await insertWorkspace(db, "cumulative-execution");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Wait, then finish the same assignment.");
+        const childId = await insertWorker(db, workspaceId, workerId, "child");
+        await insertLoop(db, childId, 1, "Live child work the wait joins.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("```TASK <60>\n[{\"content\":\"Wait before continuing.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```TASK\n[{\"content\":\"Wait before continuing.\",\"status\":\"waiting\"}]\n```"),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {

@@ -68,14 +68,14 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("```WORK (worker://child)\ndelegate once\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://child)\ndelegate once\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\ntree complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```WORK (worker://grandchild)\ndelegate again\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://grandchild)\ndelegate again\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nleaf complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             makeMockResponse("```SEND\nchild complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
@@ -128,7 +128,7 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```WORK (worker://child)\nuse configured child\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://child)\nuse configured child\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nparent complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -209,7 +209,7 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```WORK (worker://child)\ndo it\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://child)\ndo it\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nchild complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             makeMockResponse("```SEND\nparent complete\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
@@ -247,7 +247,7 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("```FORK (worker://branch)\ncontinue with inherited history\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```FORK (worker://branch)\ncontinue with inherited history\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nobserved child failure\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });

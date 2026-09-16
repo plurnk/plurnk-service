@@ -287,14 +287,16 @@ test("proposal: onProposalPending listener fires with the right payload", async 
     } finally { await db.close(); }
 });
 
-test("{§proposal-202-pauses}: a timed waiting TASK parks without a proposal", async () => {
+test("{§proposal-202-pauses}: a waiting TASK over live work parks without a proposal", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
+        const childId = await insertWorker(db, ctx.workspaceId, ctx.workerId, "child");
+        await insertLoop(db, childId, 1, "live child work");
         const proposed: number[] = [];
         ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
 
-        const sendParked = parseDsl("```TASK <60,0>\n[{\"content\":\"awaiting your reply\",\"status\":\"waiting\"}]\n```").find((s) => s.op === "TASK");
+        const sendParked = parseDsl("```TASK\n[{\"content\":\"awaiting your reply\",\"status\":\"waiting\"}]\n```").find((s) => s.op === "TASK");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
@@ -305,7 +307,7 @@ test("{§proposal-202-pauses}: a timed waiting TASK parks without a proposal", a
         });
         const parkId = await parkDeferred.promise;
 
-        assert.equal(parkResult.status, 202, "the timed wait parks without blocking its dispatch");
+        assert.equal(parkResult.status, 202, "the wait parks without blocking its dispatch");
         // ...the entry is a resolved row, not a proposed one...
         const parkRow = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({ id: parkId });
         assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved row, not a proposed entry");

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import Dispatcher from "../../src/core/Dispatcher.ts";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -27,7 +28,7 @@ for (const priorStrike of [false, true]) {
         const childLoop = await insertLoop(db, childId, 1, "Compute the answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(priorStrike ? [response(`${invalidFind}
-\`\`\`TASK <60>
+\`\`\`TASK
 [{"content":"Await results.","status":"waiting"}]
 \`\`\``)] : []),
             response(collect),
@@ -92,8 +93,9 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
 });
 
 test("{§join-blocking-collect} the daemon wakes a collecting parent on actual child completion without consuming a strike", async (t) => {
+    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response("```TASK <60>\n[{\"content\":\"Await instructions.\",\"status\":\"waiting\"}]\n```"),
+        response("```TASK\n[{\"content\":\"Await instructions.\",\"status\":\"waiting\"}]\n```"),
         response(collect),
         response("```SEND\nChild answer: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         response("```SEND\nChild answer received: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),

@@ -65,38 +65,25 @@ export default class TurnDispositionHandler {
         const { workerId, loopId, turnId } = ctx;
         const intent = TurnDisposition.intent(statement.body);
         const status = TurnDisposition.status(statement);
-        const timingDetail = intent !== "wait" && statement.lineMarker !== null
-            ? "Wait timing was not applied because no waiting intent was selected." : null;
-        const withTimingDetail = (result: DispatchResult): DispatchResult => timingDetail === null
-            ? result : { ...result, detail: [result.detail, timingDetail].filter(Boolean).join(" ") };
-        if (intent === "missing") {
-            return withTimingDetail(this.#failure("task-inventory-missing", 409,
-                "No tasks were supplied. Submit a nonempty TASK inventory."));
+        // {§send-wait-scope} — TASK takes no scope: a wait joins live work, and a wake later with
+        // nothing in flight is a schedule rule.
+        if (statement.lineMarker !== null) {
+            return this.#failure("scope-unsupported", 400,
+                "TASK takes no scope. A waiting inventory joins live work; to wake later with nothing in flight, add a rule with the schedule family.");
         }
-        if (intent === "continue" || intent === "todo") return withTimingDetail({ status: 102 });
+        if (intent === "missing") {
+            return this.#failure("task-inventory-missing", 409,
+                "No tasks were supplied. Submit a nonempty TASK inventory.");
+        }
+        if (intent === "continue" || intent === "todo") return { status: 102 };
 
-        // {§worker-wait-timing}: explicit timing is an obligation in its own
-        // right; otherwise {§wait-obligation-matrix} decides an untimed join.
+        // {§wait-obligation-matrix} decides a join: live work parks the loop, nothing in flight continues.
         if (intent === "wait") {
-            const marks = statement.lineMarker?.marks;
-            const timeout = marks?.[0] ?? -1;
-            const poll = marks?.[1];
-            if ((marks?.length ?? 0) > 2 || timeout < -1 || (poll !== undefined && poll < 0)
-                || [timeout, poll].some((value) => value !== undefined
-                    && (!Number.isSafeInteger(value) || value * 60_000 + Date.now() > 8.64e15))) {
-                return this.#failure("wait-timing-invalid", 400,
-                    "TASK wait timing accepts <timeout[,poll]> in whole minutes: timeout is -1 or nonnegative; poll is nonnegative.");
-            }
-            const seconds = timeout < 0 ? -1 : timeout * 60;
-            const timing = {
-                ...(timeout < 0 ? {} : { timeoutMs: timeout * 60_000 }),
-                ...(poll === undefined ? {} : { pollMs: poll * 60_000 }),
-            };
-            if (timeout >= 0 || (poll ?? 0) > 0 || await this.#hasLiveWork(workerId)) {
-                if (!await this.#lifecycle.park(loopId, timing)) {
+            if (await this.#hasLiveWork(workerId)) {
+                if (!await this.#lifecycle.park(loopId)) {
                     return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when TASK attempted to wait.");
                 }
-                return { status: 202, attrs: { waiting: seconds, ...(poll === undefined ? {} : { polling: poll * 60 }) } };
+                return { status: 202, attrs: { waiting: -1 } };
             }
             // Retrievals, fast stream conclusions, and child conclusions are
             // all complete-but-unobserved. Their wake edge may already have
@@ -108,7 +95,7 @@ export default class TurnDispositionHandler {
             }
             const failCount = await this.#unobservedFailureCount(turnId);
             if (failCount > 0) return { status: 102 };
-            return { status: 102, detail: "Nothing is in flight and no timed or polled wait is set. Continuing." };
+            return { status: 102, detail: "Nothing is in flight. Continuing." };
         }
 
         // Both terminals cross the observation barrier ({§completion-defers-to-results}): a
@@ -120,7 +107,7 @@ export default class TurnDispositionHandler {
         // claim, consume, or be blocked by model work elsewhere in the same Worker.
         if ((status === 200 || status === 499) && ctx.origin === "model") {
             const deferred = await this.#barrier(ctx, status === 200 ? "Completion" : "Abandonment");
-            if (deferred !== null) return withTimingDetail(deferred);
+            if (deferred !== null) return deferred;
         }
         // [200] — terminate. A refused attempt is recorded faithfully (status_rx=409, never
         // erased); the loop stays a continue; the strike couples in runTurn. [499] abandons and
@@ -130,15 +117,15 @@ export default class TurnDispositionHandler {
                 loopId,
                 TerminalResult.success(null),
             );
-            return withTimingDetail(this.#statusResult(
+            return this.#statusResult(
                 finished !== null ? 200 : await this.#lifecycle.status(loopId),
                 "loop-already-terminal",
                 "The loop was already terminal when TASK attempted to conclude it.",
-            ));
+            );
         }
         if (status === 499) {
             const reason = ErrorDetail.preview(statement.body.filter(({ status: state }) => state === "failed").map(({ content }) => content).join("\n"));
-            const failure = withTimingDetail(this.#failure(
+            const failure = this.#failure(
                 "scope-abandoned",
                 499,
                 "All tasks in the final inventory failed.",
@@ -147,7 +134,7 @@ export default class TurnDispositionHandler {
                     ...(reason.length === 0 ? {} : { reason }),
                     retryable: false,
                 },
-            ));
+            );
             const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId,
                 turn_id: turnId,

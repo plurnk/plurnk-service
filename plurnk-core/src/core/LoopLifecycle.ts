@@ -16,8 +16,6 @@ export interface CancelledTree {
 export interface ParkedLoop {
     id: number;
     wait_revision: number;
-    wait_deadline_at: number | null;
-    wait_poll_interval: number | null;
     wait_poll_at: number | null;
 }
 
@@ -85,19 +83,10 @@ export default class LoopLifecycle {
         }
     }
 
-    async park(loopId: number, timing: { timeoutMs?: number; pollMs?: number } = {}): Promise<boolean> {
-        const now = Date.now();
-        for (const value of [timing.timeoutMs, timing.pollMs]) {
-            if (value !== undefined && (!Number.isSafeInteger(value) || value < 0 || now + value > 8.64e15)) {
-                throw new TypeError("wait durations must be nonnegative safe integer milliseconds within the supported date range");
-            }
-        }
+    async park(loopId: number): Promise<boolean> {
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,
             elapsed_ms: this.#stopExecution(loopId),
-            deadline_at: timing.timeoutMs === undefined ? null : now + timing.timeoutMs,
-            poll_interval: timing.pollMs ?? null,
-            poll_at: timing.pollMs === undefined || timing.pollMs === 0 ? null : now + timing.pollMs,
         })) !== undefined;
     }
 

@@ -28,7 +28,7 @@ test("{§plan-value} a waiting inventory remains nonterminal when nothing is in 
         assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["TASK"]);
         const wait = rows.find(({ op }) => op === "TASK")!;
         assert.equal(wait.status_rx, 102);
-        assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight and no timed or polled wait is set. Continuing.");
+        assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing.");
         assert.deepEqual(JSON.parse(wait.tx).body, inventory);
         const projection = LogBody.resolve({ op: "TASK", tx: JSON.parse(wait.tx), rx: JSON.parse(wait.rx) });
         assert.equal(projection.mimetype, "application/json");

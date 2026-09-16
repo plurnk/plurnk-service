@@ -87,53 +87,7 @@ test("boot restores a drain for accepted queued work", async () => {
     }
 });
 
-test("{§worker-wait-timing}: restart preserves a future wait and resumes that same loop when due", async (t) => {
-    const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("```SEND\nObservation complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
-    ProviderInstantiate.registerInstance(mock, providerSpec);
-    const first = new Daemon({ db, provider: mock });
-    const second = new Daemon({ db, provider: mock });
-    try {
-        const workspaceId = await insertWorkspace(db, "recovery-timed-wait");
-        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
-        const loopId = await enqueueLoop(db, workerId, "Observe after the wait, without starting a new task.");
-        await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
-        t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
-        const lifecycle = new LoopLifecycle(db);
-        await lifecycle.park(loopId, { timeoutMs: 60_000, pollMs: 0 });
-        const before = await lifecycle.parked(workerId);
-        await first.start();
-        assert.deepEqual(await lifecycle.parked(workerId), before);
-        assert.equal(mock.received.length, 0, "boot does not mistake a timer-only wait for idle work");
-        await first.stop();
-        await second.start();
-        assert.deepEqual(await lifecycle.parked(workerId), before, "requested timing survives another restart without renewal");
-        const completed = Promise.withResolvers<number>();
-        const finish = LoopLifecycle.prototype.finish;
-        t.mock.method(LoopLifecycle.prototype, "finish", async function (this: LoopLifecycle, ...args: Parameters<typeof finish>) {
-            const result = await finish.apply(this, args);
-            if (args[0] === loopId && result !== null) completed.resolve(result.status);
-            return result;
-        });
-        t.mock.timers.tick(59_999);
-        assert.equal(await lifecycle.status(loopId), 202);
-        assert.equal(mock.received.length, 0);
-        t.mock.timers.tick(1);
-        assert.equal(await completed.promise, 200);
-        assert.equal(mock.received.length, 1);
-        const loops = await db.test_loop_queue_by_worker.all<{ id: number; prompt: string }>({ worker_id: workerId });
-        assert.deepEqual(loops.filter(({ prompt }) => prompt === "Observe after the wait, without starting a new task.")
-            .map(({ id }) => id), [loopId],
-            "the accepted task retained its identity across both processes");
-    } finally {
-        t.mock.timers.reset();
-        await first.stop();
-        await second.stop();
-        await db.close();
-    }
-});
-
-test("{§loop-wake-identity}: restart settles an interrupted child and wakes a parent before its future deadline", async () => {
+test("{§loop-wake-identity}: restart settles an interrupted child and wakes the parent parked on it", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("```SEND\nThe child was interrupted.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -146,11 +100,11 @@ test("{§loop-wake-identity}: restart settles an interrupted child and wakes a p
         const childLoop = await enqueueLoop(db, child, "Interrupted work.");
         for (const id of [loopId, childLoop]) await db.engine_reclaim_queued_loop.run({ loop_id: id });
         const lifecycle = new LoopLifecycle(db);
-        await lifecycle.park(loopId, { timeoutMs: 3_600_000 });
+        await lifecycle.park(loopId);
         await daemon.start();
         await waitForDb(() => lifecycle.status(loopId), (status) => status === 200);
         assert.equal((await lifecycle.result(childLoop))?.status, 500);
-        assert.equal(mock.received.length, 1, "parent observes the durable completion without waiting an hour");
+        assert.equal(mock.received.length, 1, "parent observes the durable completion at boot");
         assert.equal((await lifecycle.parked(workerId)).length, 0);
     } finally {
         await daemon.stop();

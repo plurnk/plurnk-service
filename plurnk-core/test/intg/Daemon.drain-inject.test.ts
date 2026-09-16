@@ -319,7 +319,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\ndone with the parked work\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
@@ -395,7 +395,7 @@ test("{§message-loop-containment}: an injection crossing the park transition is
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\ndone with the injected prompt\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
         ],
     });
@@ -568,7 +568,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -608,7 +608,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
+            sendOnly("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"backgrounded\",\"status\":\"waiting\"}]\n```"),
             sendOnly("```SEND\nshould never run\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });

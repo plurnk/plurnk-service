@@ -122,19 +122,15 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
 WHERE closed_at IS NULL;
 
 -- PREP: recovery_resume_unblocked_parks
--- {§loop-wake-identity}: a persisted completion beats a future clock. Otherwise
--- only an untimed, now-empty join wakes here; clock ownership is restored below
+-- {§loop-wake-identity}: a persisted completion beats a future observation. Otherwise
+-- only a now-empty join wakes here; observation ownership is restored below
 -- through the same scheduler used after a live park.
 UPDATE loops
 SET status = 100,
-    wait_deadline_at = NULL,
-    wait_poll_interval = NULL,
     wait_poll_at = NULL
 WHERE status = 202
   AND (observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
-  OR (wait_deadline_at IS NULL
-  AND COALESCE(wait_poll_interval, 0) = 0
-  AND NOT EXISTS (
+  OR (NOT EXISTS (
       SELECT 1
       FROM subscriptions s
       WHERE s.worker_id = loops.worker_id AND s.closed_at IS NULL

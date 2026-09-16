@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import Dispatcher from "../../src/core/Dispatcher.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { makeMockResponse, withDaemon } from "./_rpc.ts";
 
-for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
+for (const wake of ["message", "same-drain", "restart"] as const) {
     test(`{§loop-execution-allowance}: ${wake} wake retains the task's remaining execution allowance`, async (t) => {
+        // The wait parks on live work the fixture holds; a restart wakes it through recovery.
+        t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
         const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
         process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "60000";
         t.after(() => {
@@ -15,7 +18,7 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
             else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
         });
         const provider = new Mock({ contextWindow: 65536, responses: [
-            makeMockResponse("```TASK <1,0>\n[{\"content\":\"Resume the same task later.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```TASK\n[{\"content\":\"Resume the same task later.\",\"status\":\"waiting\"}]\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             let activeDaemon = daemon;
@@ -71,10 +74,8 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
                         await daemon.stop();
                         activeDaemon = new Daemon({ db, provider });
                         await activeDaemon.start();
-                        assert.equal(await new LoopLifecycle(db).status(loopId), 202, "boot retains the future wait");
-                    }
-                    t.mock.timers.tick(wake === "message" ? 30_000 : 60_000);
-                    if (wake === "message") {
+                    } else {
+                        t.mock.timers.tick(30_000);
                         const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "Continue now." });
                         assert.equal(delivered.loopId, loopId);
                     }

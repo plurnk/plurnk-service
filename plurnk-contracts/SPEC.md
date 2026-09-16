@@ -573,9 +573,9 @@ SEND deliberately messages its recipient, or the user when targetless; it
 neither changes task status nor terminates a run. A program contains one final
 TASK, not last-wins competing inventories. Former lifecycle names are not aliases.
 
-§send-wait-scope TASK accepts `<timeout[,poll]>` in whole minutes. It applies
-only to a waiting intent ({§park-202-only}); the dispatcher validates its bounds.
-Otherwise it is unused, with a factual warning rather than a changed outcome.
+§send-wait-scope TASK takes no scope; the dispatcher refuses one
+(`scope-unsupported`, 400). A waiting inventory joins live work
+({§park-202-only}); a wake later with nothing in flight is a schedule rule.
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its
@@ -846,7 +846,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| ```` ```TASK ````     | `timeout[,poll]`                       | Waiting intent: bounded or indefinite wait and optional poll cadence ({§send-wait-scope}) |
+| ```` ```TASK ````     | None                                   | A scope is refused ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a

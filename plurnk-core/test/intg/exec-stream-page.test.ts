@@ -78,7 +78,7 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
         responses: [
             makeMockResponse("```sh\nseq 1 5; sleep 2\n```\n\n```TASK\n[{\"content\":\"let it run\",\"status\":\"in_progress\"}]\n```", 10),
             // the stream is still running when this packet is built: only the pointer shows it
-            makeMockResponse("```TASK <10>\n[{\"content\":\"wait for it\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```TASK\n[{\"content\":\"wait for it\",\"status\":\"waiting\"}]\n```", 10),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         ],
     });

@@ -15,40 +15,34 @@ UPDATE loops
 SET status = 202,
     execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
     wait_revision = wait_revision + 1,
-    wait_deadline_at = $deadline_at,
-    wait_poll_interval = $poll_interval,
-    wait_poll_at = $poll_at
+    wait_poll_at = NULL
 WHERE id = $loop_id AND status = 102
 RETURNING id;
 
 -- PREP: lifecycle_wake_loop
 UPDATE loops
 SET status = 100,
-    wait_deadline_at = NULL,
-    wait_poll_interval = NULL,
     wait_poll_at = NULL
 WHERE id = $loop_id AND status = 202
   AND ($revision IS NULL OR wait_revision = $revision)
-  AND ($due_at IS NULL OR wait_deadline_at <= $due_at OR wait_poll_at <= $due_at)
+  AND ($due_at IS NULL OR wait_poll_at <= $due_at)
   AND ($event_only = 0 OR observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id))
 RETURNING id;
 
 -- PREP: lifecycle_parked_loops
-SELECT id, wait_revision, wait_deadline_at, wait_poll_interval, wait_poll_at
+SELECT id, wait_revision, wait_poll_at
 FROM loops WHERE worker_id = $worker_id AND status = 202
 ORDER BY sequence;
 
 -- PREP: lifecycle_set_inherited_poll
 UPDATE loops SET wait_poll_at = $poll_at
 WHERE id = $loop_id AND status = 202 AND wait_revision = $revision
-  AND wait_poll_interval IS NULL AND wait_poll_at IS NULL;
+  AND wait_poll_at IS NULL;
 
 -- PREP: lifecycle_finish_loop
 UPDATE loops
 SET status = $status,
     execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
-    wait_deadline_at = NULL,
-    wait_poll_interval = NULL,
     wait_poll_at = NULL,
     terminal_result = CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
         THEN json_set($result,
@@ -142,8 +136,6 @@ WHEN NEW.cancellation IS NOT NULL
 BEGIN
     UPDATE loops
     SET status = 499,
-        wait_deadline_at = NULL,
-        wait_poll_interval = NULL,
         wait_poll_at = NULL,
         terminal_result = json_set(
             CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)

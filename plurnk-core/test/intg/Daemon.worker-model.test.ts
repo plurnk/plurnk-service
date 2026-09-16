@@ -428,7 +428,7 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
         contextWindow: 16_384,
         responses: [
             makeMockResponse("```SEND\nfirst done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-            makeMockResponse("```WORK (worker://kid)\ndelegate it\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://kid)\ndelegate it\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nsecond done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -482,7 +482,7 @@ test("{§worker-model-selection}: an absent spawn override inherits the worker's
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("```WORK (worker://kid)\ndelegate it\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://kid)\ndelegate it\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             makeMockResponse("```SEND\nkid done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
@@ -566,7 +566,7 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         contextWindow: 16_384,
         responses: [
             makeMockResponse("```SEND\nbefore restart\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-            makeMockResponse("```WORK (worker://kid)\ndelegate\n```\n\n```TASK <-1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WORK (worker://kid)\ndelegate\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nafter restart\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });
@@ -728,7 +728,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"done\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"done\",\"status\":\"waiting\"}]\n```"),
             makeMockResponse("```SEND\nresumed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
     });

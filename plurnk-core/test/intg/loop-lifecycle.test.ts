@@ -130,7 +130,7 @@ test("202 remains a parked lifecycle state and cannot be stored as a terminal re
     }
 });
 
-test("{§worker-wait-timing}: due times are durable and stale wait generations cannot resume another wait", async (t) => {
+test("{§loop-wake-identity}: inherited observation times are durable and stale wait generations cannot resume another wait", async (t) => {
     t.mock.method(Date, "now", () => 10_000);
     const db = await openMigrated();
     try {
@@ -138,22 +138,20 @@ test("{§worker-wait-timing}: due times are durable and stale wait generations c
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "original task");
         const lifecycle = new LoopLifecycle(db);
-        assert.equal(await lifecycle.park(loopId, { timeoutMs: 300, pollMs: 100 }), true);
-        const [wait] = await new LoopLifecycle(db).parked(workerId);
-        assert.deepEqual(wait, {
-            id: loopId, wait_revision: 1, wait_deadline_at: 10_300,
-            wait_poll_interval: 100, wait_poll_at: 10_100,
-        });
+        assert.equal(await lifecycle.park(loopId), true);
+        assert.deepEqual((await new LoopLifecycle(db).parked(workerId))[0], { id: loopId, wait_revision: 1, wait_poll_at: null }, "a fresh wait inherits its observation");
+        await lifecycle.inheritPoll(loopId, 1, 10_100);
+        assert.deepEqual((await lifecycle.parked(workerId))[0], { id: loopId, wait_revision: 1, wait_poll_at: 10_100 });
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_099 }), false);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_100 }), true);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_300 }), false, "duplicate wake is inert");
         const claimed = await db.drain_claim_next_loop.get<{ id: number; prompt: string }>({ worker_id: workerId });
         assert.equal(claimed?.id, loopId);
         assert.equal(claimed?.prompt, "original task", "a wake is not another prompt or task");
-        assert.equal(await lifecycle.park(loopId, { timeoutMs: 500, pollMs: 0 }), true);
+        assert.equal(await lifecycle.park(loopId), true);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 99_999 }), false, "an old timer cannot wake a new wait");
-        assert.equal((await lifecycle.parked(workerId))[0]?.wait_poll_at, null, "zero disables polling");
-        await lifecycle.cancelTree(workerId, "cancel timed work", true);
+        assert.equal((await lifecycle.parked(workerId))[0]?.wait_poll_at, null, "a new wait starts without an observation time");
+        await lifecycle.cancelTree(workerId, "cancel waiting work", true);
         assert.equal(await lifecycle.wake(loopId, { revision: 2, dueAt: 99_999 }), false, "cancellation wins over every late timer");
         assert.equal(await lifecycle.status(loopId), 499);
     } finally { await db.close(); }
@@ -169,11 +167,11 @@ test("{§loop-wake-identity}: multiple parked loops retain independent event obs
         const child = await insertWorker(db, workspaceId, parent, "child");
         const childLoop = await insertLoop(db, child, 1);
         const lifecycle = new LoopLifecycle(db);
-        await lifecycle.park(first, { timeoutMs: 60_000 });
+        await lifecycle.park(first);
         assert.equal(await lifecycle.wake(first, { eventOnly: true }), false);
         await lifecycle.finish(childLoop, { status: 200, content: "child finished" });
         // Completion lands while second is active, before its parked transition.
-        await lifecycle.park(second, { timeoutMs: 60_000 });
+        await lifecycle.park(second);
         assert.equal(await lifecycle.wake(first, { eventOnly: true }), true);
         assert.equal(await lifecycle.wake(second, { eventOnly: true }), true, "the first loop cannot consume the second's wake");
         assert.equal(await lifecycle.wake(first, { eventOnly: true }), false);
@@ -181,7 +179,7 @@ test("{§loop-wake-identity}: multiple parked loops retain independent event obs
         await db.engine_reclaim_queued_loop.run({ loop_id: first });
         const next = await Turn.open(db, { loopId: first, producer: "model", kind: "inference" });
         await Turn.complete(db, next.id, 202);
-        await lifecycle.park(first, { timeoutMs: 120_000 });
+        await lifecycle.park(first);
         assert.equal(await lifecycle.wake(first, { eventOnly: true }), false,
             "a delayed duplicate completion cannot wake a later program that already observed it");
     } finally { await db.close(); }
@@ -203,7 +201,7 @@ for (const disposition of ["park", "finish", "cancel", "exception"] as const) {
             assert.equal(await lifecycle.startExecution(loopId, 60000, () => { expired = true; }), true);
             clock += 40000;
             t.mock.timers.tick(40000);
-            if (disposition === "park") await lifecycle.park(loopId, { timeoutMs: 60000 });
+            if (disposition === "park") await lifecycle.park(loopId);
             else if (disposition === "finish") await lifecycle.finish(loopId, { status: 200 });
             else if (disposition === "cancel") await lifecycle.cancelTree(workerId, "cancel task", true);
             else await lifecycle.endExecution(loopId);
@@ -239,7 +237,7 @@ test("{§loop-execution-allowance}: execution time is monotonic and invalid tran
         clock += 40000;
         t.mock.timers.tick(40000);
         assert.equal(expired, false);
-        await lifecycle.park(id, { timeoutMs: 60000 });
+        await lifecycle.park(id);
         assert.deepEqual(await db.test_get_loop_execution.get({ id }), {
             execution_budget_ms: 60000, execution_elapsed_ms: 40000,
         }, "a wall-clock correction cannot refund execution");

@@ -24,13 +24,15 @@ test("{§loop-rail-continuity}: a resumed task retains its strike streak across 
     const workspaceId = await insertWorkspace(db, "wait-streak-continuity");
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "Read the answer and conclude.");
+    const childId = await insertWorker(db, workspaceId, workerId, "child");
+    await insertLoop(db, childId, 1, "Live child work the wait joins.");
     await seedEntryWithChannel(db, {
         workspaceId, scheme: "worker", pathname: "/answer", channel: "body",
         content: "42", mimetype: "text/plain", state: "static",
     });
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(invalidFind, "in_progress"),
-        response(invalidFind, "waiting", " <60>"),
+        response(invalidFind, "waiting"),
         response(invalidFind, "in_progress"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({

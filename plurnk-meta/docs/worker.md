@@ -104,20 +104,15 @@ Find the capital of France from a primary source
 [{"content":"Await capital-checker's answer.","status":"waiting"}]
 ````
 
-TASK with waiting intent accepts `<timeout,poll>` in whole minutes. It continues the same loop;
-neither a deadline nor a poll repeats a message or command.
-
-| Scope | Wake condition |
-| --- | --- |
-| Omitted / `<-1>` | Existing work completes or a message arrives; inherit open streams' polling. |
-| `<60>` | Also wake after at most 60 minutes, even without other work. |
-| `<-1,60>` | Also wake after 60 minutes to observe; no wait deadline. |
-| `<60,0>` | Deadline or an event; no periodic stream observation. |
+TASK takes no scope. A waiting inventory continues the same loop: with live
+work, a child or an open stream, the loop parks and wakes when that work
+settles, when a message arrives, or on an open stream's observation cadence;
+without live work it continues at once. To wake later with nothing in flight,
+add a rule with the `schedule` family targeting yourself.
 
 A wake ends that wait. Submit another waiting inventory to wait again. Waking
 retains the loop's prompts, turn allowance, and remaining execution time;
-parked time does not consume execution time. An untimed wait without live work
-continues. A terminal inventory with at least one completed item claims success;
+parked time does not consume execution time. A terminal inventory with at least one completed item claims success;
 a nonempty all-failed inventory concludes unsuccessfully.
 
 Each child task's conclusion reaches its parent as a message from

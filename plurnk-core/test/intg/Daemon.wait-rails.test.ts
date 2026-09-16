@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Dispatcher from "../../src/core/Dispatcher.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
@@ -12,20 +13,22 @@ const response = (dsl: string) => ({
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
-for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
+for (const wake of ["message", "same-drain", "restart"] as const) {
     for (const last of ["TASK", "TASK"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
+            // The waits park on live work the fixture holds; a restart wakes them through recovery.
+            t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
             const provider = new Mock({ contextWindow: 100000, responses: [
                 response(`${invalidFind}
-\`\`\`TASK <1,0>
+\`\`\`TASK
 [{"content":"Await results.","status":"waiting"}]
 \`\`\``),
                 response(`${invalidFind}
-\`\`\`TASK <1,0>
+\`\`\`TASK
 [{"content":"Await results.","status":"waiting"}]
 \`\`\``),
                 response(`${invalidFind}
-\`\`\`${last}${last === "TASK" ? " <1,0>" : ""}\`\`\``),
+\`\`\`${last}\`\`\``),
                 response("```SEND\nMust not reach a fourth model call.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
             ] });
             const seen: Array<number | undefined> = [];
@@ -72,12 +75,8 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
                                 await activeDaemon.stop();
                                 activeDaemon = new Daemon({ db, provider });
                                 await activeDaemon.start();
-                                assert.equal(await new LoopLifecycle(db).status(loopId), 202);
-                            }
-                            if (wake === "message") {
-                                assert.equal((await activeDaemon.runLoop({ workspaceId, workerId, prompt: "Continue." })).loopId, loopId);
                             } else {
-                                t.mock.timers.tick(60_000);
+                                assert.equal((await activeDaemon.runLoop({ workspaceId, workerId, prompt: "Continue." })).loopId, loopId);
                             }
                         }
                     }
@@ -99,8 +98,9 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
 }
 
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
+    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```TASK <1,0>\n[{\"content\":\"Await results.\",\"status\":\"waiting\"}]\n```")),
+        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```TASK\n[{\"content\":\"Await results.\",\"status\":\"waiting\"}]\n```")),
         response("```SEND\nObservation complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {

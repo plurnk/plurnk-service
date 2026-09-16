@@ -129,7 +129,7 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```sh\nsleep 30\n```\n\n```TASK <-1>\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```", 10),
+            makeMockResponse("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"park\",\"status\":\"waiting\"}]\n```", 10),
             makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
         ],
     });

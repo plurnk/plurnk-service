@@ -17,11 +17,11 @@ const response = (content: string, reasoning: string | null = null) => ({
 for (const [name, first, detail] of [
     ["inventory-only continuation", task("in_progress"), null],
     ["todo-only inventory", task("todo"), null],
-    ["empty untimed wait", task("waiting"), "Nothing is in flight and no timed or polled wait is set. Continuing."],
+    ["empty wait", task("waiting"), "Nothing is in flight. Continuing."],
     ["missing inventory", send("First message."), null],
     ["empty inventory", "```TASK\n[]\n```", "No tasks were supplied. Submit a nonempty TASK inventory."],
     ["blank inventory", "```TASK```", "No tasks were supplied. Submit a nonempty TASK inventory."],
-    ["non-waiting timing", task("in_progress", " <60>"), "Wait timing was not applied because no waiting intent was selected."],
+    ["scoped inventory", task("in_progress", " <60>"), "TASK takes no scope. A waiting inventory joins live work; to wake later with nothing in flight, add a rule with the schedule family."],
     ["plain task text", "```TASK\nConsider the next step.\n```", null],
 ] as const) {
     test(`{§wait-obligation-matrix} ${name} continues without losing its operations`, async (t) => {
@@ -178,8 +178,10 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     const workspaceId = await insertWorkspace(db, "response-cancellation");
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "Wait after the update.");
+    const childId = await insertWorker(db, workspaceId, workerId, "child");
+    await insertLoop(db, childId, 1, "Live child work the wait joins.");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(`${send("Update delivered.")}\n${task("waiting", " <60>")}`),
+        response(`${send("Update delivered.")}\n${task("waiting")}`),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2,
@@ -187,11 +189,12 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     assert.equal(result.result.status, 202);
     const lifecycle = new LoopLifecycle(db);
     const cancelled = await lifecycle.cancelTree(workerId, "operator request", true);
-    assert.equal(cancelled.loops.length, 1);
-    assert.equal(cancelled.loops[0].result.status, 499);
-    assert.equal(cancelled.loops[0].result.content, "Update delivered.");
+    const own = cancelled.loops.find(({ loopId: id }) => id === loopId);
+    assert.ok(own, "the parent's own loop is among the cancelled");
+    assert.equal(own.result.status, 499);
+    assert.equal(own.result.content, "Update delivered.");
     assert.equal((await lifecycle.result(loopId))?.content, "Update delivered.");
-    assert.equal(cancelled.loops[0].result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
+    assert.equal(own.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
 });
 
 test("{§completion-joins-live-work} mixed terminal outcomes join a live child, never cancel it", async (t) => {

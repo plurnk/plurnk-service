@@ -3,6 +3,7 @@
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
 
 import test from "node:test";
+import Dispatcher from "../../src/core/Dispatcher.ts";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -22,7 +23,7 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
     // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a child worker, then hibernate awaiting it.
-        makeMockResponse("```WORK (worker://worker)\ncompute the thing and finish\n```\n\n```TASK <-1>\n[{\"content\":\"spawned worker; waiting on it\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```WORK (worker://worker)\ncompute the thing and finish\n```\n\n```TASK\n[{\"content\":\"spawned worker; waiting on it\",\"status\":\"waiting\"}]\n```", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
         makeMockResponse("```SEND\nworker done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
@@ -52,7 +53,7 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
     // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```WORK (worker://doomed)\ntry the risky thing\n```\n\n```TASK <-1>\n[{\"content\":\"waiting on doomed\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```WORK (worker://doomed)\ntry the risky thing\n```\n\n```TASK\n[{\"content\":\"waiting on doomed\",\"status\":\"waiting\"}]\n```", 10),
         makeMockResponse("```SEND\ndoomed gave up\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", 10),
         makeMockResponse("```SEND\ndoomed is done (failed); concluding\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
     ] });
@@ -66,15 +67,16 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     });
 });
 
-test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent while another task stays parked", async () => {
+test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent while another task stays parked", async (t) => {
+    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```TASK <60,0>\n[{\"content\":\"First task waits.\",\"status\":\"waiting\"}]\n```"),
-        makeMockResponse("```TASK <60,0>\n[{\"content\":\"Second task waits.\",\"status\":\"waiting\"}]\n```"),
-        makeMockResponse("```TASK <60,0>\n[{\"content\":\"Parent awaits results.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```TASK\n[{\"content\":\"First task waits.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```TASK\n[{\"content\":\"Second task waits.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```TASK\n[{\"content\":\"Parent awaits results.\",\"status\":\"waiting\"}]\n```"),
         makeMockResponse("```SEND\nFirst task result: 42.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-        makeMockResponse("```TASK <60,0>\n[{\"content\":\"First result observed; second task remains.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```TASK\n[{\"content\":\"First result observed; second task remains.\",\"status\":\"waiting\"}]\n```"),
     ] });
     try {
         await withDaemon(provider, async (db, daemon) => {
@@ -118,10 +120,11 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
     }
 });
 
-test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its waiting parent without a live child drain", async () => {
+test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its waiting parent without a live child drain", async (t) => {
+    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```TASK <60,0>\n[{\"content\":\"Child waits.\",\"status\":\"waiting\"}]\n```"),
-        makeMockResponse("```TASK <60,0>\n[{\"content\":\"Parent awaits child.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```TASK\n[{\"content\":\"Child waits.\",\"status\":\"waiting\"}]\n```"),
+        makeMockResponse("```TASK\n[{\"content\":\"Parent awaits child.\",\"status\":\"waiting\"}]\n```"),
         makeMockResponse("```SEND\nChild cancellation observed.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
@@ -259,8 +262,8 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
     // 8192 edge; grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake recursion, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```WORK (worker://child)\ndo subwork\n```\n\n```TASK <-1>\n[{\"content\":\"awaiting child\",\"status\":\"waiting\"}]\n```", 10),       // parent t1
-        makeMockResponse("```WORK (worker://grandchild)\ndo leaf work\n```\n\n```TASK <-1>\n[{\"content\":\"awaiting grandchild\",\"status\":\"waiting\"}]\n```", 10), // child t1
+        makeMockResponse("```WORK (worker://child)\ndo subwork\n```\n\n```TASK\n[{\"content\":\"awaiting child\",\"status\":\"waiting\"}]\n```", 10),       // parent t1
+        makeMockResponse("```WORK (worker://grandchild)\ndo leaf work\n```\n\n```TASK\n[{\"content\":\"awaiting grandchild\",\"status\":\"waiting\"}]\n```", 10), // child t1
         makeMockResponse("```SEND\nleaf done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),                                                   // grandchild
         makeMockResponse("```SEND\nchild done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),                                                  // child t2 (woken)
         makeMockResponse("```SEND\nall done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),                                                    // parent t2 (woken)
@@ -279,9 +282,9 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     // 16384: the parent's woken turn carries the whole child history; generous headroom over the
     // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```WORK (worker://w1)\nfirst job\n```\n\n```TASK <-1>\n[{\"content\":\"awaiting w1\",\"status\":\"waiting\"}]\n```", 10), // parent t1
+        makeMockResponse("```WORK (worker://w1)\nfirst job\n```\n\n```TASK\n[{\"content\":\"awaiting w1\",\"status\":\"waiting\"}]\n```", 10), // parent t1
         makeMockResponse("```SEND\nw1 done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),                                       // w1
-        makeMockResponse("```WORK (worker://w2)\nsecond job\n```\n\n```TASK <-1>\n[{\"content\":\"awaiting w2\",\"status\":\"waiting\"}]\n```", 10),// parent t2 (woken by w1)
+        makeMockResponse("```WORK (worker://w2)\nsecond job\n```\n\n```TASK\n[{\"content\":\"awaiting w2\",\"status\":\"waiting\"}]\n```", 10),// parent t2 (woken by w1)
         makeMockResponse("```SEND\nw2 done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),                                       // w2
         makeMockResponse("```SEND\nboth done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),                                     // parent t3 (woken by w2)
     ] });
@@ -384,7 +387,7 @@ test("spawn and fork carry the delegating loop's policy — an accepting parent'
     // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
-        makeMockResponse("```WORK (worker://worker)\nedit something and finish\n```\n\n```FORK (worker://mirror)\nedit something and finish\n```\n\n```TASK <-1>\n[{\"content\":\"delegated; waiting\",\"status\":\"waiting\"}]\n```", 10),
+        makeMockResponse("```WORK (worker://worker)\nedit something and finish\n```\n\n```FORK (worker://mirror)\nedit something and finish\n```\n\n```TASK\n[{\"content\":\"delegated; waiting\",\"status\":\"waiting\"}]\n```", 10),
         // Worker turn 1: a SIDE-EFFECTING op (proposes unless auto), then conclude.
         makeMockResponse("```EDIT (worker:///from-worker)\npayload\n```\n\n```SEND\nworker done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
         // Fork turn 1: same shape.

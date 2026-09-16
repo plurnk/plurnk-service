@@ -404,8 +404,8 @@ export default class DrainSupervisor {
                             currentLoopId = null;
                             continue;
                         }
-                        // {§worker-wait-timing}: the wait now belongs to its
-                        // durable clock or completion obligations, not this drain.
+                        // {§loop-wake-identity}: the wait now belongs to its completion
+                        // obligations and inherited observation, not this drain.
                         currentLoopId = null;
                         continue;
                     }
@@ -804,17 +804,14 @@ export default class DrainSupervisor {
                 if (timer.workerId === workerId && !waits.some(({ id }) => id === loopId)) this.#clearLoopTimer(loopId);
             }
             for (const wait of waits) {
-                if (wait.wait_poll_interval === null && wait.wait_poll_at === null) {
+                if (wait.wait_poll_at === null) {
                     const interval = await this.#inheritedPollMs(workerId, wait.id);
                     if (!this.#acceptingWork) return;
-                    if (interval !== null) {
-                        wait.wait_poll_at = Date.now() + interval;
-                        await this.#lifecycle.inheritPoll(wait.id, wait.wait_revision, wait.wait_poll_at);
-                    }
+                    if (interval === null) continue;
+                    wait.wait_poll_at = Date.now() + interval;
+                    await this.#lifecycle.inheritPoll(wait.id, wait.wait_revision, wait.wait_poll_at);
                 }
-                const dueAt = Math.min(wait.wait_deadline_at ?? Infinity, wait.wait_poll_at ?? Infinity);
-                if (!Number.isFinite(dueAt)) continue;
-                this.#armTimer(workspaceId, workerId, systemPrompt, wait.id, wait.wait_revision, dueAt);
+                this.#armTimer(workspaceId, workerId, systemPrompt, wait.id, wait.wait_revision, wait.wait_poll_at);
             }
         });
     }

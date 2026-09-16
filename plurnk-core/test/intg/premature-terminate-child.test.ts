@@ -148,7 +148,7 @@ test("{§completion-defers-to-results}: READ + completed inventory in the same t
     } finally { await db.close(); }
 });
 
-test("a direct actionable TASK ignores wait timing with factual feedback", async () => {
+test("{§send-wait-scope} a direct TASK with a scope is refused without touching the loop", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
@@ -163,15 +163,15 @@ test("a direct actionable TASK ignores wait timing with factual feedback", async
         });
         assert.equal(result.status, 102);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 102, "timing never overrides the actionable inventory");
+        assert.equal(loopStatus, 102, "a refused scope never touches the loop");
         const row = await db.test_disposition_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         assert.equal(row.length, 1);
-        assert.equal(row[0].status_rx, 102);
-        assert.equal(JSON.parse(row[0].rx).detail, "Wait timing was not applied because no waiting intent was selected.");
+        assert.equal(row[0].status_rx, 400);
+        assert.match(JSON.parse(row[0].rx).problem.type, /\/scope-unsupported$/u);
     } finally { await db.close(); }
 });
 
-test("model actionable TASK with timing retains valid work and reports unapplied timing", async () => {
+test("{§send-wait-scope} a scoped TASK is refused while its valid sibling executes", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `next-scope-${crypto.randomUUID()}`);
@@ -179,7 +179,7 @@ test("model actionable TASK with timing retains valid work and reports unapplied
         const loopId = await insertLoop(db, workerId, 1, "read the note");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "```READ (worker:///note.txt)```\n```TASK <-1>\n[{\"content\":\"standing by\",\"status\":\"in_progress\"}]\n```";
+        const content = "```READ (worker:///note.txt)```\n```TASK <60>\n[{\"content\":\"standing by\",\"status\":\"in_progress\"}]\n```";
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
             workspaceId, workerId, loopId,
@@ -190,8 +190,8 @@ test("model actionable TASK with timing retains valid work and reports unapplied
         assert.equal(rows.find(({ op }) => op === "READ")?.status_rx, 200, "the valid sibling executes");
         assert.equal(rows.some(({ op }) => op === "error"), false);
         const task = rows.find(({ op }) => op === "TASK");
-        assert.equal(task?.status_rx, 102);
-        assert.equal(JSON.parse(task!.rx).detail, "Wait timing was not applied because no waiting intent was selected.");
+        assert.equal(task?.status_rx, 400);
+        assert.match(JSON.parse(task!.rx).problem.type, /\/scope-unsupported$/u);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.equal(attempts[0]?.accepted, 1);
         const diagnostics = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string }>;

@@ -41,7 +41,7 @@ const mockResponse = (dsl: string) => {
 
 test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async () => {
     const mock = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("```sh\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command's outcome.\",\"status\":\"waiting\"}]\n```"),
+        mockResponse("```sh\nsleep 30\n```\n```TASK\n[{\"content\":\"Wait for the command's outcome.\",\"status\":\"waiting\"}]\n```"),
         mockResponse("```SEND\nThe command was cancelled.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(mock, async (db, daemon) => {
@@ -89,7 +89,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
         finally { settled.resolve(); }
     });
     const provider = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("```sh\nsleep 30\n```\n```TASK <60,0>\n[{\"content\":\"Wait for the command.\",\"status\":\"waiting\"}]\n```"),
+        mockResponse("```sh\nsleep 30\n```\n```TASK\n[{\"content\":\"Wait for the command.\",\"status\":\"waiting\"}]\n```"),
         mockResponse("```SEND\nA cancelled task must not reach this turn.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
     ] });
     await withDaemon(provider, async (db, daemon, addr) => {
@@ -503,7 +503,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n```\n\n```TASK <-1>\n[{\"content\":\"fire and forget\",\"status\":\"waiting\"}]\n```"),
+            mockResponse("```sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n```\n\n```TASK\n[{\"content\":\"fire and forget\",\"status\":\"waiting\"}]\n```"),
             // Wake-opened loop just terminates so the test completes:
             mockResponse("```SEND\nsaw the wake\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
         ],
