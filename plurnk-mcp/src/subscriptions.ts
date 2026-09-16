@@ -3,6 +3,7 @@ import {
     type McpSubscription,
     type SubscriptionFilter,
 } from "@modelcontextprotocol/client";
+import { addAbortListener } from "node:events";
 
 const RETRY_FLOOR_MS = 250;
 const RETRY_CEILING_MS = 5_000;
@@ -74,17 +75,16 @@ export default class Subscriptions {
         }
     }
 
-    async selectTask(taskId: string): Promise<() => Promise<void>> {
+    selectTask(taskId: string): () => void {
         if (this.#closed) throw new Error("MCP subscriptions are closed.");
-        if (this.#options.tasks !== true) return async () => undefined;
+        if (this.#options.tasks !== true) return () => undefined;
         const count = this.#tasks.get(taskId) ?? 0;
         this.#tasks.set(taskId, count + 1);
         if (count === 0) {
-            this.#clearRetry();
-            await this.#enqueueReplacement();
+            this.#refresh();
         }
         let released = false;
-        return async (): Promise<void> => {
+        return (): void => {
             if (released || this.#closed) return;
             released = true;
             const current = this.#tasks.get(taskId);
@@ -94,9 +94,13 @@ export default class Subscriptions {
                 return;
             }
             this.#tasks.delete(taskId);
-            this.#clearRetry();
-            await this.#enqueueReplacement();
+            this.#refresh();
         };
+    }
+
+    #refresh(): void {
+        this.#clearRetry();
+        void this.#enqueueReplacement().catch((cause: unknown) => this.#report(cause));
     }
 
     #filter(): CurrentSubscriptionFilter {
@@ -108,13 +112,23 @@ export default class Subscriptions {
         );
     }
 
-    async selectResource(uri: string): Promise<void> {
+    async selectResource(uri: string, signal?: AbortSignal): Promise<void> {
+        signal?.throwIfAborted();
         if (this.#closed) throw new Error("MCP subscriptions are closed.");
         if (this.#client.getDiscoverResult()?.capabilities.resources?.subscribe !== true) return;
         if (this.#resources.has(uri)) return;
         this.#resources.add(uri);
         this.#clearRetry();
-        await this.#enqueueReplacement();
+        const pending = this.#enqueueReplacement();
+        if (signal === undefined) return pending;
+        const cancelled = Promise.withResolvers<void>();
+        const listener = addAbortListener(signal, () => cancelled.reject(signal.reason));
+        try {
+            await Promise.race([pending, cancelled.promise]);
+            signal.throwIfAborted();
+        } finally {
+            listener[Symbol.dispose]();
+        }
     }
 
     #enqueueReplacement(): Promise<void> {

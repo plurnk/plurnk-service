@@ -201,3 +201,57 @@ test("a remotely ended unified subscription is re-established with a fresh reque
         await connection.close();
     }
 });
+
+test("{§mcp-subscription-ownership} cancelling one resource READ does not cancel another caller's subscription setup", { timeout: 10_000 }, async (t) => {
+    const handler = createMcpHandler(() => {
+        const server = new McpServer({ name: "shared-subscription", version: "1" }, {
+            capabilities: { resources: { subscribe: true } },
+        });
+        for (const name of ["alpha", "beta"]) server.registerResource(name, `fixture://${name}`, {}, async (uri) => ({
+            contents: [{ uri: uri.href, text: `${name} result` }],
+        }));
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+    const listening = Promise.withResolvers<() => void>();
+    const served = await serveMcpHttp(t, handler, async (request) => {
+        const message = await request.clone().json() as {
+            id: string; method: string; params?: { notifications?: SubscriptionFilter };
+        };
+        const filter = message.params?.notifications;
+        if (message.method !== "subscriptions/listen" || filter?.resourceSubscriptions?.length !== 1) return null;
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+            request.signal.addEventListener("abort", () => controller.close(), { once: true });
+            listening.resolve(() => controller.enqueue(new TextEncoder().encode(
+                `event: message\ndata: ${JSON.stringify({
+                    jsonrpc: "2.0", method: "notifications/subscriptions/acknowledged",
+                    params: { notifications: filter, _meta: { [SUBSCRIPTION_ID_META_KEY]: message.id } },
+                })}\n\n`,
+            )));
+        } }), { headers: { "Content-Type": "text/event-stream" } });
+    });
+    const connection = new ServerConnection({ name: "shared", transport: "http", url: served.url }, env);
+    const owner = new AbortController();
+    let settled = false;
+    try {
+        await connection.connect();
+        const first = connection.readResource("fixture://alpha", owner.signal).then(
+            () => { settled = true; return null; },
+            (cause: unknown) => { settled = true; return cause; },
+        );
+        const acknowledge = await listening.promise;
+        const other = connection.readResource("fixture://beta");
+        owner.abort(new Error("first read cancelled"));
+        await waitFor(() => settled);
+        assert.match(String(await first), /first read cancelled/u);
+        assert.equal(connection.activeRequests, 1, "the second READ is still independently active");
+        acknowledge();
+        const result = await other;
+        assert.deepEqual(result.contents, [{ uri: "fixture://beta", text: "beta result" }]);
+        assert.deepEqual(listenFilters(served.requests).at(-1)?.resourceSubscriptions, ["fixture://alpha", "fixture://beta"]);
+        assert.equal(served.requests.filter((request) => methodOf(request) === "resources/read").length, 1,
+            "the cancelled READ is never dispatched after shared setup finishes");
+    } finally {
+        owner.abort(new Error("first read cancelled"));
+        await connection.close();
+    }
+});

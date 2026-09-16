@@ -238,12 +238,18 @@ test("cancelling an owning operation awaits tasks/cancel before it settles", asy
             return message.method === "subscriptions/listen"
                 && notifications?.taskIds?.includes(taskId) === true;
         }));
+        const selected = served.requests.map(wireRequest).find((message) => message.method === "subscriptions/listen"
+            && (message.params?.notifications as { taskIds?: string[] } | undefined)?.taskIds?.includes(taskId));
+        assert.ok(selected);
         controller.abort(new Error("operator cancelled Task"));
         await assert.rejects(running, /operator cancelled Task/);
         assert.equal(fixture.cancellations.length, 1);
         assert.equal(fixture.cancellations[0]?.taskId, taskId);
-        const methods = served.requests.map((request) => wireRequest(request).method);
-        assert.ok(methods.indexOf("tasks/cancel") < methods.lastIndexOf("notifications/cancelled"));
+        await waitFor(() => served.requests.map(wireRequest).some((message) => message.method === "notifications/cancelled"
+            && message.params?.requestId === selected.id));
+        const messages = served.requests.map(wireRequest);
+        assert.ok(messages.findIndex(({ method }) => method === "tasks/cancel") < messages.findIndex((message) =>
+            message.method === "notifications/cancelled" && message.params?.requestId === selected.id));
     } finally {
         await connection.close();
     }
@@ -321,6 +327,45 @@ test("{§mcp-connection-shutdown} closing during Task subscription acknowledgeme
     await rejected;
     assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
     assert.equal(connection.activeRequests, 0);
+});
+
+test("{§tasks-lifetime} a stalled notification acknowledgement cannot block Task polling or owner cancellation", { timeout: 10_000 }, async (t) => {
+    const fixture = taskHandler("cancel");
+    const listening = Promise.withResolvers<void>();
+    const served = await serveMcpHttp(t, fixture.handler, async (request) => {
+        const message = await request.clone().json() as {
+            method?: string; params?: { notifications?: { taskIds?: string[] } };
+        };
+        if (message.method === "subscriptions/listen" && message.params?.notifications?.taskIds?.includes(taskId)) {
+            return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+                request.signal.addEventListener("abort", () => controller.close(), { once: true });
+                listening.resolve();
+            } }), { headers: { "Content-Type": "text/event-stream" } });
+        }
+        return fixture.route(request);
+    });
+    const connection = new ServerConnection({ name: "pending-listen", transport: "http", url: served.url }, {
+        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    });
+    const owner = new AbortController();
+    let settled = false;
+    try {
+        const tool = (await connection.catalog()).tools[0]!;
+        const rejected = assert.rejects(connection.callTool(tool.name, { topic: "MCP" }, owner.signal,
+            undefined, undefined, tool), /owner stopped/u).then(() => { settled = true; });
+        await listening.promise;
+        await waitFor(() => served.requests.some((request) => wireRequest(request).method === "tasks/get"));
+        owner.abort(new Error("owner stopped"));
+        await waitFor(() => settled);
+        await rejected;
+        assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+        assert.equal(connection.activeRequests, 0);
+        assert.ok((await connection.catalog()).tools.some(({ name }) => name === tool.name),
+            "cancelling a Task does not close its shared connection");
+    } finally {
+        owner.abort(new Error("owner stopped"));
+        await connection.close();
+    }
 });
 
 test("{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it", async () => {

@@ -90,6 +90,15 @@ interaction per observed input set. A completed Task is validated as the
 originating tool result; a failed Task preserves its JSON-RPC error.
 Handle ownership and the restart journey are bounded in {§tasks-lifetime}.
 
+§mcp-subscription-ownership Notification filters belong to the shared connection,
+not an individual operation. Acquiring or releasing Task interest schedules a
+filter update without blocking Task polling, settlement, or cancellation; the
+ordinary `tasks/get` path remains available before acknowledgement and during
+watch recovery. A resource READ may await cache-watch setup, but owner
+cancellation ends only that caller's wait. It neither cancels another caller's
+setup nor closes the connection. Filter acknowledgement, overlap replacement,
+retry, and teardown retain one connection-level owner.
+
 ## §tasks-lifetime Tasks lifetime
 
 Task handles belong to the connection and operation that created them. They

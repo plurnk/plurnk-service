@@ -811,7 +811,7 @@ export default class ServerConnection {
         interact?: ClientInteractionHandler,
     ): Promise<ReadResourceResult> {
         return this.#request(async ({ client, subscriptions }, signal) => {
-            await subscriptions.selectResource(uri);
+            await subscriptions.selectResource(uri, signal);
             return runInputRequiredRequest<ReadResourceResult>({
                 server: this.#definition.name,
                 operation: "resources/read",
