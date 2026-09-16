@@ -79,6 +79,7 @@ const elicitationResponseSchema = (request: ElicitRequest): Record<string, unkno
     const params = request.params;
     if (params.mode === "url") {
         return {
+            description: `${params.message}\n${params.url}`,
             type: "object",
             required: ["action"],
             additionalProperties: false,
@@ -88,6 +89,7 @@ const elicitationResponseSchema = (request: ElicitRequest): Record<string, unkno
         };
     }
     return {
+        description: params.message,
         oneOf: [
             {
                 type: "object",

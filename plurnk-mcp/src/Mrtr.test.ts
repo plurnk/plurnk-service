@@ -51,6 +51,9 @@ test("one input_required round becomes one atomic client interaction", async () 
                 && Object.keys(requests[0]!.responseSchema.properties as object).toSorted(),
             ["approval", "profile"],
         );
+        const fields = requests[0]!.responseSchema.properties as Record<string, { description: string }>;
+        assert.equal(fields.profile!.description, "Who is making this request?");
+        assert.equal(fields.approval!.description, "Continue the batch operation?");
         assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /Ada/);
     } finally {
         await connection.close();
@@ -116,6 +119,8 @@ test("form and URL responses are validated before retrying the origin", async ()
             undefined,
             undefined,
             async (request) => {
+                const fields = request.responseSchema.properties as Record<string, { description: string }>;
+                assert.equal(fields.authorize!.description, "Authorize the fixture in a browser.\nhttps://example.test/authorize");
                 assert.equal(
                     (request.arguments.requests as Record<string, { params?: { mode?: string } }>)
                         .authorize?.params?.mode,

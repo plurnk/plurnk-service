@@ -487,7 +487,7 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | `tools/call` progress | Writes ordinary transient progress on the owning execution stream; it creates no log sibling or polling vocabulary. |
 | Operation cancellation | The owning execution's abort signal closes the HTTP request stream or sends the stdio cancellation notification. |
 | `input_required` | Batches all embedded requests from one result into one atomic client interaction. Opaque `requestState` remains private to the connection and only the originating request is reissued after a complete response. |
-| Elicitation form / URL | Validates the response against the requested form or URL action contract. Client cancellation becomes the standard `cancel` action; unsupported families or modes fail before any interaction or retry. |
+| Elicitation form / URL | Validates the response against the requested form or URL action contract. Each response-schema property's `description` carries its request message and, for URL mode, the browser URL; a generic schema renderer can present the decision without decoding MCP arguments. Client cancellation becomes the standard `cancel` action; unsupported families or modes fail before any interaction or retry. |
 | Task handle | Keeps the original execution stream active, follows `tasks/get` and selected Task notifications, and settles that same stream with the terminal result or error. |
 | Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
 | Task cancellation | The owning execution's cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |

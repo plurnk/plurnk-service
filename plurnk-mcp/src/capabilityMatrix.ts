@@ -186,8 +186,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
-        note: "Modes form and url advertised; routed through Plurnk's client-owned interaction lifecycle. Programmatic AG-UI composition is covered; nested terminal-client forms remain incomplete: https://repo.possumtech.com/plurnk/plurnk/issues/77.",
+        evidence: ["{§mcp-core-matrix}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk/test/tui/mcp-elicitation.test.ts"],
+        note: "Modes form and url advertised; routed through Plurnk's client-owned interaction lifecycle. Built terminal coverage exercises batch accept/decline, cancellation, invalid-response correction, URL presentation, and successive MRTR rounds against a real SDK server.",
     },
     {
         id: "authorization-bearer",
