@@ -4,6 +4,26 @@ PLURNK is a runtime for software-development agents. It combines a
 model-facing operation language, addressable project context, persistent
 execution state, and thin clients over a single daemon.
 
+## Quick start
+
+```sh
+npx @plurnk/plurnk-service start   # the daemon
+npx @plurnk/plurnk                 # the terminal client, from inside your project
+```
+
+The daemon starts without a model and says so, naming the configuration file it
+created on first run. Choose a profile there, or set `PLURNK_MODEL` and your
+provider's key in the environment; `plurnk-service config defaults` prints every
+installed option.
+
+![A plurnk session: a question about a project, the operations the model ran to answer it, and the answer](docs/media/session.gif)
+
+An unedited recording of the published client and daemon against a three-file
+project, answering in seventeen seconds on a local model: Qwen3.8-27B at Q3_K_S,
+served by llama.cpp on one 16 GB consumer GPU. Beneath the prompt are the
+operations the model ran, the task inventory it kept, and a footer carrying
+turns, elapsed time and tokens. Any provider route works the same way.
+
 ## Design
 
 - Models act through one small compositional language rather than a collection
