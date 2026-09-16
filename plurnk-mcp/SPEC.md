@@ -90,21 +90,20 @@ interaction per observed input set. A completed Task is validated as the
 originating tool result; a failed Task preserves its JSON-RPC error.
 Handle ownership and the restart journey are bounded in {§tasks-lifetime}.
 
-## §tasks-lifetime Tasks lifetime and re-run
+## §tasks-lifetime Tasks lifetime
 
-Task handles are owned in-process by the connection and operation that created
-them; Plurnk deliberately declines durable task-handle recovery. A durable
-handle would need a persisted scheduler and a home for a result whose owning
-operation does not outlive the daemon; the ordinary Plurnk journey is that a
-restart re-runs the operation, which drives a fresh task. The server's own
-persistence of task state is respected only within one connection lifetime;
-nothing task-shaped is written to SQLite and no MCP sidecar lifecycle exists.
+Task handles belong to the connection and operation that created them. They
+are process-local, never persisted or automatically replayed. Ordinary host
+lifecycle owns interruption and recovery ({§worker-lifecycle-restart-recovery});
+MCP adds no second scheduler or client-disconnect policy.
 
 | Boundary | Behaviour |
 |---|---|
-| Client disconnect | The daemon-owned operation and its task keep running; the client reattaches to the operation, not the task. |
-| Daemon restart | The connection and every in-flight task handle die with it; the tool call fails like any interrupted operation, the loop re-runs, and the tool call creates a fresh task. |
-| Workspace reactivation | The attachment reconstructs from its durable definition; in-flight tasks on the replaced connection are abandoned, not resumed. |
+| Client interrupt / reattach | The live operation retains its pending input across the intentional Run boundary; synchronization re-presents it ({§agui-conversation-sync}). |
+| Client hangup | Inherits the owning client's cancellation or observer-detachment semantics; MCP does not change them. |
+| Graceful shutdown | Aborts and settles owned work before closing its protocol connection ({§mcp-connection-shutdown}). |
+| Restart after owner loss | No Task resume or automatic tool replay; core reconciles the interrupted operation and its durable evidence. |
+| Workspace reactivation | Reconstructs the attachment from its definition, not an old Task handle. Active Tasks retain workspace residency ({§module-workspace-residency}). |
 | Expiry | The owning operation deadline bounds polling; a non-converging task fails at the standard round bound and is cancelled. |
 | Cancellation | Owner abort cancels the task before settling; the handle is then terminal. |
 | Already terminal | Terminal results and errors are consumed by the drive loop; a completed or failed task is never re-polled or re-resumed. |
@@ -480,13 +479,15 @@ commit leaves the durable definition, connection, Registry, docs, and resource
 authority unchanged. Materialization and registration inspect the complete
 owning operation result; a non-success preserves its original Problem.
 
-Shutdown first prevents new serialized work, cancels infrastructure watches,
-and closes every acquired connection—including a candidate still negotiating.
-That cancellation reaches pending OAuth, active requests, and Tasks. It then
-waits active mutations to settle, discards process-local snapshots, and reports
-every close failure. Whole-connection shutdown retires subscription work before
-closing its transport; it does not first issue a redundant per-listen
-cancellation.
+§mcp-connection-shutdown Shutdown prevents new work and aborts each connection's
+active requests, including client-input waits. Their protocol cleanup settles
+before the extension channel or connected transport closes, so a created Task
+can receive `tasks/cancel`. Concurrent closers await the same settlement.
+Candidates still negotiating and standalone OAuth transports close immediately.
+Infrastructure watches retire without a redundant per-listen cancellation;
+active mutations settle, process-local snapshots are discarded, and close
+failures are reported. Core's shutdown deadline remains the outer bound
+({§crash-only-stop}).
 
 ## §mcp-host-composition Protocol-to-Plurnk composition
 
@@ -508,8 +509,8 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
 
 The general executor interaction contract, not this package, owns client
-interrupt durability and AG-UI presentation. A disconnect re-surfaces its
-pending client-owned interaction exactly as proposal review does. MRTR round
+interrupt durability and AG-UI presentation. Reattachment re-surfaces input
+only while its originating operation remains live. MRTR round
 limits, request timeout, cancellation, and Task terminal state are one
 operation lifecycle; none becomes a hidden retry loop.
 

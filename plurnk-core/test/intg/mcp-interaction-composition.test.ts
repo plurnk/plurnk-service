@@ -236,3 +236,89 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI be
         .map(({ id }) => id);
     assert.equal(new Set(operationIds).size, operationIds.length, "each protocol request has a fresh correlation ID");
 });
+
+for (const stage of ["MRTR", "Task"] as const) {
+    for (const boundary of ["owner cancellation", "daemon shutdown"] as const) {
+        test(`{§mcp-host-composition}: ${boundary} settles pending ${stage} input and its remote work`, { timeout: 20_000 }, async (t) => {
+            let owner: Daemon | undefined;
+            t.after(() => owner?.stop());
+            const fixture = taskHandler();
+            const served = await serveMcpHttp(t, fixture.handler, fixture.route);
+            const { provider, post, start, daemon } = await setup(t, '```fixture (deferred-review)\n{"topic":"MCP"}\n```', {
+                PLURNK_MCP_FIXTURE: served.url,
+                PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
+            });
+            owner = daemon;
+            const events = await start();
+            const first = interaction(events, ["preflight"]);
+            const pending = stage === "MRTR" ? first : interaction(await post({ resume: [{
+                interruptId: first.id, status: "resolved", payload: {
+                    preflight: { action: "accept", content: { proceed: true } },
+                },
+            }] }), ["profile", "authorize"]);
+            const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT")?.snapshot as {
+                plurnk: { workspace: { id: number } };
+            };
+            const workspaceId = snapshot.plurnk.workspace.id;
+            const [waiting] = await daemon.pendingClientInteractions(workspaceId);
+            assert.ok(waiting);
+            assert.equal(`int:${waiting.interactionId}`, pending.id);
+            const workerId = waiting.workerId;
+            if (boundary === "owner cancellation") {
+                await daemon.cancelWorker({ workspaceId, workerId, reason: "MCP operation cancelled" });
+            } else {
+                await daemon.stop();
+            }
+            assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
+            const loops = await daemon.listWorkerLoops({ workspaceId, workerId });
+            assert.equal(loops.find(({ id }) => id === waiting.loopId)?.status, 499);
+            assert.equal(provider.received.length, 1, "cancellation never resumes inference");
+            assert.equal(fixture.updates.length, 0, "cancelled input is never submitted as a Task answer");
+            assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), stage === "Task" ? [taskId] : [],
+                "only a created remote Task is cancelled, before the owning operation settles");
+            assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length,
+                stage === "Task" ? 2 : 1, "the interrupted operation is not replayed");
+            if (boundary === "owner cancellation") {
+                const late = await post({ resume: [{ interruptId: pending.id, status: "cancelled" }] });
+                assert.ok(late.some((event) => event.type === "RUN_ERROR"));
+                assert.match(JSON.stringify(late), /interrupt-not-pending/u);
+            }
+        });
+    }
+}
+
+test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its pending Task input", { timeout: 20_000 }, async (t) => {
+    let owner: Daemon | undefined;
+    t.after(() => owner?.stop());
+    const fixture = taskHandler();
+    const served = await serveMcpHttp(t, fixture.handler, fixture.route);
+    const { provider, post, start, reconnect, daemon } = await setup(t, '```fixture (deferred-review)\n{"topic":"MCP"}\n```', {
+        PLURNK_MCP_FIXTURE: served.url,
+        PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
+    });
+    owner = daemon;
+    const first = interaction(await start(), ["preflight"]);
+    const pending = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
+        preflight: { action: "accept", content: { proceed: true } },
+    } }] }), ["profile", "authorize"]);
+    const mutate = (kind: string) => post({ forwardedProps: { plurnk: {
+        workspace: "mcp-interaction-composition", projectRoot: null, action: { kind, alias: "fixture" },
+    } } });
+    const rejected = await mutate("workspace.mcp.disable");
+    const outcome = rejected.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value as {
+        ok: boolean; problem?: { status: number; type: string };
+    };
+    assert.equal(outcome.ok, false, JSON.stringify(rejected));
+    assert.equal(outcome.problem?.status, 409);
+    assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
+    assert.deepEqual(interaction(await reconnect(), ["profile", "authorize"]), pending);
+    completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
+        profile: { action: "accept", content: { name: "Ada" } },
+        authorize: { action: "accept" },
+    } }] }), provider, /Ada reviewed MCP/u);
+    assert.deepEqual(fixture.cancellations, [], "the failed mutation neither cancels nor replaces the original Task");
+    const disabled = await mutate("workspace.mcp.disable");
+    const result = disabled.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value as { ok: boolean };
+    assert.equal(result.ok, true, JSON.stringify(disabled));
+    assert.deepEqual(fixture.cancellations, [], "completed Tasks are not cancelled again at connection close");
+});

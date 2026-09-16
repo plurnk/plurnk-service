@@ -383,11 +383,12 @@ const driveTask = async (
 ): Promise<CallToolResult> => {
     const inbox = new TaskInbox(task.taskId);
     const stopWatching = options.channel.onTaskNotification((value) => inbox.push(value));
-    const release = await options.subscriptions.selectTask(task.taskId);
+    let release: (() => Promise<void>) | undefined;
     const answered = new Set<string>();
     let state: Task | DetailedTask = task;
     let terminal = false;
     try {
+        release = await options.subscriptions.selectTask(task.taskId);
         while (true) {
             options.signal?.throwIfAborted();
             if (state.status === "completed" && "result" in state) {
@@ -418,6 +419,7 @@ const driveTask = async (
                         inputRequests: fresh,
                         interact: options.interact,
                         arguments: { taskId: task.taskId },
+                        signal: options.signal,
                     });
                     options.signal?.throwIfAborted();
                     const update = asRecord(await taskRequest(
@@ -470,7 +472,7 @@ const driveTask = async (
         throw cause;
     } finally {
         stopWatching();
-        await release();
+        await release?.();
     }
 };
 

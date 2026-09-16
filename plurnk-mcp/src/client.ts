@@ -556,7 +556,9 @@ export default class ServerConnection {
         readonly standaloneTransport: boolean;
     } | undefined;
     #openingTransport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
-    #activeRequests = 0;
+    readonly #requests = new Set<Promise<void>>();
+    readonly #abort = new AbortController();
+    #closure: Promise<void> | undefined;
     #closed = false;
 
     constructor(
@@ -575,7 +577,7 @@ export default class ServerConnection {
     }
 
     get activeRequests(): number {
-        return this.#activeRequests;
+        return this.#requests.size;
     }
 
     get authorizationUrl(): string | null {
@@ -643,24 +645,26 @@ export default class ServerConnection {
     }
 
     async #request<T>(
-        run: (
-            client: CatalogClient,
-            subscriptions: Subscriptions,
-            extensions: ExtensionChannel | null,
-        ) => Promise<T>,
+        run: (opened: OpenClient, signal: AbortSignal) => Promise<T>,
+        owner?: AbortSignal,
     ): Promise<T> {
-        this.#activeRequests += 1;
+        const settled = Promise.withResolvers<void>();
+        this.#requests.add(settled.promise);
+        const signal = owner === undefined ? this.#abort.signal : AbortSignal.any([owner, this.#abort.signal]);
         try {
+            signal.throwIfAborted();
             const opened = await this.#open();
+            signal.throwIfAborted();
             try {
-                return await run(opened.client, opened.subscriptions, opened.extensions);
+                return await run(opened, signal);
             } catch (cause) {
                 const authorization = this.#takeAuthorization(opened, cause);
                 if (authorization !== null) throw authorization;
                 throw cause;
             }
         } finally {
-            this.#activeRequests -= 1;
+            this.#requests.delete(settled.promise);
+            settled.resolve();
         }
     }
 
@@ -684,15 +688,15 @@ export default class ServerConnection {
     }
 
     async tools(signal?: AbortSignal): Promise<Tool[]> {
-        return this.#request(async (client) => {
+        return this.#request(async ({ client }, signal) => {
             if (serverCapabilities(client)?.tools === undefined) return [];
             const { tools } = await client.listTools(undefined, this.#requestOptions(signal));
             return tools;
-        });
+        }, signal);
     }
 
     async catalog(signal?: AbortSignal): Promise<ServerCatalog> {
-        return this.#request(async (client) => {
+        return this.#request(async ({ client }, signal) => {
             // {§mcp-authority} — the discover result is the modern identity and
             // capability source; a legacy server's initialize result supplies the
             // same facts at its negotiated revision.
@@ -723,14 +727,14 @@ export default class ServerConnection {
                 prompts,
                 unsupportedLists: client.unsupportedLists,
             };
-        });
+        }, signal);
     }
 
     async resources(signal?: AbortSignal): Promise<{
         resources: ServerCatalog["resources"];
         resourceTemplates: ServerCatalog["resourceTemplates"];
     }> {
-        return this.#request(async (client) => {
+        return this.#request(async ({ client }, signal) => {
             if (serverCapabilities(client)?.resources === undefined) {
                 return { resources: [], resourceTemplates: [] };
             }
@@ -741,14 +745,14 @@ export default class ServerConnection {
                     .then((result) => result.resourceTemplates),
             ]);
             return { resources, resourceTemplates };
-        });
+        }, signal);
     }
 
     async prompts(signal?: AbortSignal): Promise<ServerCatalog["prompts"]> {
-        return this.#request(async (client) => {
+        return this.#request(async ({ client }, signal) => {
             if (serverCapabilities(client)?.prompts === undefined) return [];
             return (await client.listPrompts(undefined, this.#requestOptions(signal))).prompts;
-        });
+        }, signal);
     }
 
     async callTool(
@@ -759,7 +763,7 @@ export default class ServerConnection {
         interact?: ClientInteractionHandler,
         toolDefinition?: Tool,
     ): Promise<CallToolResult> {
-        return this.#request(async (client, subscriptions, extensions) => {
+        return this.#request(async ({ client, subscriptions, extensions }, signal) => {
             const timeout = requestTimeoutMs(this.#environ);
             if (serverSupportsTasks(serverCapabilities(client))) {
                 const tool = toolDefinition ?? (await client.listTools(
@@ -798,7 +802,7 @@ export default class ServerConnection {
                     },
                 ) as Promise<CallToolResult | InputRequiredResult>,
             });
-        });
+        }, signal);
     }
 
     async readResource(
@@ -806,7 +810,7 @@ export default class ServerConnection {
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
     ): Promise<ReadResourceResult> {
-        return this.#request(async (client, subscriptions) => {
+        return this.#request(async ({ client, subscriptions }, signal) => {
             await subscriptions.selectResource(uri);
             return runInputRequiredRequest<ReadResourceResult>({
                 server: this.#definition.name,
@@ -820,7 +824,7 @@ export default class ServerConnection {
                     retry ? { ...options, cacheMode: "refresh" } : options,
                 ) as Promise<ReadResourceResult | InputRequiredResult>,
             });
-        });
+        }, signal);
     }
 
     async getPrompt(
@@ -829,7 +833,7 @@ export default class ServerConnection {
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
     ): Promise<GetPromptResult> {
-        return this.#request(async (client) => runInputRequiredRequest<GetPromptResult>({
+        return this.#request(async ({ client }, signal) => runInputRequiredRequest<GetPromptResult>({
             server: this.#definition.name,
             operation: "prompts/get",
             originalParams: { name, ...(args === undefined ? {} : { arguments: args }) },
@@ -840,17 +844,17 @@ export default class ServerConnection {
                 params as GetPromptRequest["params"],
                 options,
             ) as Promise<GetPromptResult | InputRequiredResult>,
-        }));
+        }), signal);
     }
 
     async complete(
         params: CompleteRequest["params"],
         signal?: AbortSignal,
     ): Promise<CompleteResult> {
-        return this.#request(async (client) => client.complete(
+        return this.#request(async ({ client }, signal) => client.complete(
             params,
             this.#requestOptions(signal),
-        ));
+        ), signal);
     }
 
     #requestOptions(
@@ -871,9 +875,14 @@ export default class ServerConnection {
         };
     }
 
-    async close(): Promise<void> {
-        if (this.#closed) return;
+    close(): Promise<void> {
+        this.#closure ??= this.#close();
+        return this.#closure;
+    }
+
+    async #close(): Promise<void> {
         this.#closed = true;
+        this.#abort.abort(new Error(`MCP server '${this.#definition.name}' connection is closed.`));
         const client = this.#client;
         this.#client = undefined;
         const openingTransport = this.#openingTransport;
@@ -885,23 +894,10 @@ export default class ServerConnection {
         if (client !== undefined) {
             closures.push(client.then(
                 async ({ client: connected, extensions, subscriptions }) => {
-                    const failures: unknown[] = [];
+                    // {§mcp-connection-shutdown} — active Task cleanup still needs the transport.
+                    await Promise.all([...this.#requests, subscriptions.retire()]);
                     extensions?.close();
-                    // A full connection close terminates its listen request. Retiring first
-                    // avoids a redundant cancellation racing the SDK's removed listen ID.
-                    const settled = await Promise.allSettled([
-                        subscriptions.retire(),
-                        connected.close(),
-                    ]);
-                    failures.push(...settled.flatMap((result) =>
-                        result.status === "rejected" ? [result.reason] : []));
-                    if (failures.length === 1) throw failures[0];
-                    if (failures.length > 1) {
-                        throw new AggregateError(
-                            failures,
-                            `MCP server '${this.#definition.name}' connection shutdown failed.`,
-                        );
-                    }
+                    await connected.close();
                 },
                 () => undefined,
             ));

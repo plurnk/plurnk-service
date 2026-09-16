@@ -22,6 +22,7 @@ import type {
     ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
+import { addAbortListener } from "node:events";
 
 export type ClientInteractionHandler = (
     request: ClientInteractionRequest,
@@ -64,6 +65,7 @@ interface ResolveInputRequestsOptions {
     readonly inputRequests: Readonly<Record<string, unknown>>;
     readonly interact?: ClientInteractionHandler;
     readonly arguments?: Readonly<Record<string, unknown>>;
+    readonly signal?: AbortSignal;
 }
 
 export const INPUT_REQUIRED_MAX_ROUNDS = 10;
@@ -168,7 +170,9 @@ export const resolveInputRequests = async ({
     inputRequests,
     interact,
     arguments: args,
+    signal,
 }: ResolveInputRequestsOptions): Promise<Record<string, InputResponse>> => {
+    signal?.throwIfAborted();
     const entries = supportedElicitations(server, operation, inputRequests);
     if (entries.length === 0) return {};
     if (interact === undefined) {
@@ -177,7 +181,15 @@ export const resolveInputRequests = async ({
         );
     }
     const request = interactionRequest(server, operation, entries, args);
-    return resolvedInputResponses(request, await interact(request));
+    const resolution = interact(request);
+    if (signal === undefined) return resolvedInputResponses(request, await resolution);
+    const cancelled = Promise.withResolvers<ClientInteractionResolution>();
+    const listener = addAbortListener(signal, () => cancelled.reject(signal.reason));
+    try {
+        return resolvedInputResponses(request, await Promise.race([resolution, cancelled.promise]));
+    } finally {
+        listener[Symbol.dispose]();
+    }
 };
 
 const cancelledInputResponses = (
@@ -272,6 +284,7 @@ export const runInputRequiredRequest = async <
                 operation,
                 inputRequests,
                 interact,
+                signal,
             });
             signal?.throwIfAborted();
         }

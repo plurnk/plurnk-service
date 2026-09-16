@@ -249,6 +249,80 @@ test("cancelling an owning operation awaits tasks/cancel before it settles", asy
     }
 });
 
+test("{§mcp-connection-shutdown} concurrent close waits for Task cancellation while input is pending", { timeout: 5_000 }, async (t) => {
+    const fixture = taskHandler();
+    const cancelling = Promise.withResolvers<void>();
+    const cancelled = Promise.withResolvers<void>();
+    const input = Promise.withResolvers<void>();
+    const served = await serveMcpHttp(t, fixture.handler, async (request) => {
+        const message = await request.clone().json() as { method?: string };
+        const response = await fixture.route(request);
+        if (message.method === "tasks/cancel") {
+            cancelling.resolve();
+            await cancelled.promise;
+        }
+        return response;
+    });
+    const connection = new ServerConnection({ name: "closing", transport: "http", url: served.url }, env);
+    t.after(async () => { cancelled.resolve(); await connection.close(); });
+    const tool = (await connection.catalog()).tools[0]!;
+    const running = connection.callTool(tool.name, { topic: "MCP" }, undefined, undefined, async (request) => {
+        if (request.arguments.operation === "tools/call") return {
+            status: "resolved", payload: { preflight: { action: "accept", content: { proceed: true } } },
+        };
+        input.resolve();
+        return new Promise(() => {});
+    }, tool);
+    const rejected = assert.rejects(running, /connection is closed/u);
+    await input.promise;
+    const closing = connection.close();
+    assert.equal(connection.close(), closing, "every closer observes the same settlement");
+    let closed = false;
+    void closing.then(() => { closed = true; });
+    await cancelling.promise;
+    assert.equal(closed, false, "the transport remains available until protocol cleanup completes");
+    assert.equal(connection.activeRequests, 1);
+    cancelled.resolve();
+    await closing;
+    await rejected;
+    assert.equal(connection.activeRequests, 0);
+    assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+    assert.equal(fixture.updates.length, 0);
+    await assert.rejects(() => connection.callTool(tool.name, { topic: "late" }), /connection is closed/u);
+});
+
+test("{§mcp-connection-shutdown} closing during Task subscription acknowledgement still cancels the Task", { timeout: 5_000 }, async (t) => {
+    const fixture = taskHandler("cancel");
+    const listening = Promise.withResolvers<void>();
+    const served = await serveMcpHttp(t, fixture.handler, async (request) => {
+        const message = await request.clone().json() as {
+            method?: string; params?: { notifications?: { taskIds?: string[] } };
+        };
+        if (message.method === "subscriptions/listen" && message.params?.notifications?.taskIds?.includes(taskId)) {
+            const body = new ReadableStream<Uint8Array>({ start(controller) {
+                request.signal.addEventListener("abort", () => controller.close(), { once: true });
+                listening.resolve();
+            } });
+            return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+        }
+        return fixture.route(request);
+    });
+    const connection = new ServerConnection({ name: "closing-listen", transport: "http", url: served.url }, {
+        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    });
+    t.after(() => connection.close());
+    const tool = (await connection.catalog()).tools[0]!;
+    const rejected = assert.rejects(
+        connection.callTool(tool.name, { topic: "MCP" }, undefined, undefined, undefined, tool),
+        /connection is closed/u,
+    );
+    await listening.promise;
+    await connection.close();
+    await rejected;
+    assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+    assert.equal(connection.activeRequests, 0);
+});
+
 test("{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it", async () => {
     const paused = new ServerConnection({
         name: "tasks-stdio",

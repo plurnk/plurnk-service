@@ -22,6 +22,24 @@ const floor = {
     PLURNK_MCP_REQUEST_TIMEOUT: "30000",
 };
 
+test("{§mcp-connection-shutdown} closing a connection interrupts unfinished negotiation", { timeout: 5_000 }, async (t) => {
+    const negotiating = Promise.withResolvers<void>();
+    const served = await serveMcpHttp(t, handler(), async (request) => {
+        const message = await request.clone().json() as { method?: string };
+        if (message.method !== "server/discover") return null;
+        negotiating.resolve();
+        await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve(), { once: true }));
+        return new Response(null, { status: 503 });
+    });
+    const connection = new ServerConnection({ name: "opening", transport: "http", url: served.url }, floor);
+    t.after(() => connection.close());
+    const rejected = assert.rejects(() => connection.catalog(), /connection failed/u);
+    await negotiating.promise;
+    await connection.close();
+    await rejected;
+    assert.equal(connection.activeRequests, 0);
+});
+
 const handler = (): McpHttpHandler => createMcpHandler(() => {
     const server = new McpServer({ name: "http-fixture", version: "1.0.0" });
     server.registerTool(

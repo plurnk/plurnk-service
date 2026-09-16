@@ -150,8 +150,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp HttpTransport 'HTTP progress and stream cancellation settle the same request'"],
-        note: "Driven from the owning Plurnk abort signal; settles the same operation.",
+        evidence: ["{§mcp-core-matrix}", "{§mcp-connection-shutdown}", "plurnk-mcp HttpTransport 'HTTP progress and stream cancellation settle the same request'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
+        note: "Driven from the owning operation or connection. Real daemon tests cover cancellation and shutdown during MRTR and Task input; connection close awaits protocol cleanup.",
     },
     {
         id: "result-content",
@@ -197,9 +197,9 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         advertised: "never",
         interactive: false,
         disposition: "supported",
-        composed: false,
-        evidence: ["{§mcp-configuration}", "plurnk-mcp HttpTransport 'HTTP bearer credentials expand only while preparing a connection'"],
-        note: "Private-service/legacy transport credential; one complete environment reference.",
+        composed: true,
+        evidence: ["{§mcp-configuration}", "plurnk-mcp HttpTransport 'HTTP bearer credentials expand only while preparing a connection'", "plurnk-core/test/intg/mcp-cache-composition.test.ts"],
+        note: "One symbolic environment reference; real daemon composition proves workspace credential isolation and explicit restart rotation without persisting resolved secrets.",
     },
     {
         id: "authorization-oauth",

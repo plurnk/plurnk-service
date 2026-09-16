@@ -208,6 +208,7 @@ export default class Subscriptions {
         if (this.#closed) return this.#work;
         this.#closed = true;
         this.#clearRetry();
+        this.#listenAbort?.abort(new Error("MCP subscriptions are closed."));
         this.#listenAbort = undefined;
         this.#current = undefined;
         return this.#work;
