@@ -70,9 +70,12 @@ Only a child Worker with a durable prompt source matching its exact A2A Context,
 Task, and Message identities projects as a Task. A root is reusable as an A2A
 Context only after this adapter created it in the running exposure or one such
 Task proves its durable ownership after restart. Ordinary model Workers in the
-same workspace are neither discoverable nor adoptable through A2A. A request
-rejected before Worker admission may yield the official SDK's ephemeral failed
-Task response, but it creates no durable Task state.
+same workspace are neither discoverable nor adoptable through A2A. Foreign
+Task identities that cannot name a local Worker are unknown Tasks, not Core
+validation failures. Unsupported Message content and invalid answers to a
+pending interaction are rejected before execution with the standard protocol
+error; they do not create Workers or alter an existing Task. Other executor
+failures follow the SDK's failed-Task behavior.
 
 | Durable Plurnk state | A2A projection |
 |---|---|
@@ -82,7 +85,7 @@ Task response, but it creates no durable Task state.
 | Successful terminal result | `COMPLETED`; a non-empty final SEND is the `result` Artifact |
 | External cancellation / Loop `499` | `CANCELED` |
 | Other terminal failure | `FAILED` with the exact Problem detail as its status Message |
-| Prompt rows carrying the adapter's causal source | User Message history |
+| Prompt rows carrying the adapter's causal source | User Message text history, read from the receipt's content, not its JSON envelope |
 
 The first exposure accepts only text Message Parts, advertises HTTP+JSON v1
 streaming without push notifications, tenants, extended cards, or security
@@ -105,6 +108,19 @@ first admitted Task resolves the configured workspace name, adopting the one
 existing match or creating it with the configured project root. A configured
 non-null root must match an existing workspace exactly. The resolution is
 shared across concurrent requests and a failed resolution remains retryable.
+
+### §a2a-task-listing Task listing
+
+`ListTasks` follows the [A2A listing contract](https://a2a-protocol.org/latest/specification/#314-list-tasks),
+not the Worker directory's creation order.
+
+| Concern | Projection |
+|---|---|
+| Ordering | Status timestamp descending; equal or absent timestamps use Task ID ascending. Absent timestamps sort last. |
+| Pagination | Opaque cursor after the last returned timestamp/ID, not an offset. Newer Tasks do not shift subsequent pages. This is a live listing, not a frozen snapshot. |
+| Filtering | Context, state, and inclusive status timestamp bound apply before paging; `totalSize` counts the filtered Tasks. |
+| Content | Artifacts are omitted unless requested; the SDK applies the requested history limit. |
+| Invalid cursor | Standard `RequestMalformedError`; never silently restart at the first page. |
 
 ## §a2a-agents-functionality Outbound agents as workspace Functionality
 

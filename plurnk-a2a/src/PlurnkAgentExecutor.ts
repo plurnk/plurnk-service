@@ -78,6 +78,17 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         this.#store = store;
     }
 
+    async validateMessage(message: Message | undefined): Promise<void> {
+        if (message === undefined) return; // The SDK owns required envelope fields.
+        const binding = message.taskId.length > 0 ? await this.#store.binding(message.taskId) : null;
+        const pending = binding === null ? undefined
+            : (await this.#port.pendingClientInteractions(await this.#workspace.id()))
+                .find((interaction) => interaction.workerId === binding.task.id
+                    && interaction.loopId === binding.loop?.id);
+        if (pending !== undefined) this.#interactionPayload(message, pending);
+        else textOf(message);
+    }
+
     async execute(request: RequestContext, events: ExecutionEventBus): Promise<void> {
         this.#activeTasks.add(request.taskId);
         try {

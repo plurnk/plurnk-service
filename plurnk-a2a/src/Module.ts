@@ -4,7 +4,6 @@ import {
     AGENT_CARD_PATH,
     type AgentCard,
 } from "@a2a-js/sdk";
-import { DefaultRequestHandler } from "@a2a-js/sdk/server";
 import {
     UserBuilder,
     agentCardHandler,
@@ -13,6 +12,7 @@ import {
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import express from "express";
 import PlurnkAgentExecutor from "./PlurnkAgentExecutor.ts";
+import PlurnkRequestHandler from "./PlurnkRequestHandler.ts";
 import PlurnkTaskStore from "./PlurnkTaskStore.ts";
 import WorkspaceBinding, { type A2aWorkspaceConfiguration } from "./WorkspaceBinding.ts";
 
@@ -80,7 +80,7 @@ export default class Module {
         const workspace = new WorkspaceBinding(application, options.workspace);
         const store = new PlurnkTaskStore(application, workspace);
         const executor = new PlurnkAgentExecutor(application, workspace, store);
-        const handler = new DefaultRequestHandler(this.#card, store, executor);
+        const handler = new PlurnkRequestHandler(this.#card, store, executor);
         const app = express();
         app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: handler }));
         app.use(this.#endpointPath, restHandler({

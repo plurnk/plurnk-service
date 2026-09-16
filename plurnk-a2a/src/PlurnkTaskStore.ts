@@ -10,13 +10,14 @@ import {
     type TaskStore,
 } from "@a2a-js/sdk/server";
 import { RequestMalformedError } from "@a2a-js/sdk/errors";
-import type {
-    ApplicationLoopProjection,
-    ApplicationPort,
-    ApplicationWorkerProjection,
-    ClientInteractionProjection,
-    LogEntryWire,
-    OperationResult,
+import {
+    WORKER_NAME,
+    type ApplicationLoopProjection,
+    type ApplicationPort,
+    type ApplicationWorkerProjection,
+    type ClientInteractionProjection,
+    type LogEntryWire,
+    type OperationResult,
 } from "@plurnk/plurnk-contracts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
@@ -37,6 +38,42 @@ interface LogRow extends LogEntryWire {
 
 const nonempty = (value: unknown): value is string =>
     typeof value === "string" && value.length > 0;
+
+const promptContent = (row: LogRow): string => {
+    const result = row.rx;
+    if (typeof result !== "object" || result === null || !("content" in result)
+        || typeof result.content !== "string") {
+        throw new Error(`A2A prompt log ${String(row.id)} has no content projection.`);
+    }
+    return result.content;
+};
+
+type TaskCursor = readonly [timestamp: number, id: string];
+
+const taskCursor = (task: Task): TaskCursor => [
+    task.status?.timestamp === undefined ? 0 : Date.parse(task.status.timestamp),
+    task.id,
+];
+
+const compareCursor = (left: TaskCursor, right: TaskCursor): number =>
+    right[0] - left[0] || (left[1] < right[1] ? -1 : left[1] > right[1] ? 1 : 0);
+
+const decodeCursor = (token: string): TaskCursor | null => {
+    if (token.length === 0) return null;
+    try {
+        const bytes = Buffer.from(token, "base64url");
+        const value: unknown = JSON.parse(bytes.toString("utf8"));
+        if (bytes.toString("base64url") !== token
+            || !Array.isArray(value) || value.length !== 2
+            || !Number.isSafeInteger(value[0]) || value[0] < 0
+            || !nonempty(value[1])) {
+            throw new TypeError("Invalid Task cursor.");
+        }
+        return [value[0] as number, value[1]];
+    } catch (cause) {
+        throw new RequestMalformedError({ message: "pageToken is not a valid Task cursor.", cause });
+    }
+};
 
 const message = (
     messageId: string,
@@ -102,6 +139,9 @@ export default class PlurnkTaskStore implements TaskStore {
     }
 
     async binding(taskId: string): Promise<PlurnkTaskBinding | null> {
+        // This exposure only mints DNS-label identities. Other opaque A2A IDs
+        // cannot identify one of its Tasks; they are not malformed Core calls.
+        if (!WORKER_NAME.test(taskId)) return null;
         const workspaceId = await this.#workspace.id();
         const task = await this.#port.readWorker({
             workspaceId,
@@ -181,13 +221,13 @@ export default class PlurnkTaskStore implements TaskStore {
         this.#assertTenant(context);
         const workspaceId = await this.#workspace.id();
         const pageSize = params.pageSize ?? 50;
-        const offset = params.pageToken.length === 0 ? 0 : Number(params.pageToken);
-        if (!Number.isSafeInteger(offset) || offset < 0) {
-            throw new RequestMalformedError("pageToken must be an empty string or a non-negative integer offset.");
-        }
+        const cursor = decodeCursor(params.pageToken);
 
         let taskWorkers: ApplicationWorkerProjection[];
         if (params.contextId.length > 0) {
+            if (!WORKER_NAME.test(params.contextId)) {
+                return { tasks: [], nextPageToken: "", pageSize, totalSize: 0 };
+            }
             const contextWorker = await this.#port.readWorker({
                 workspaceId,
                 identity: { name: params.contextId },
@@ -216,12 +256,18 @@ export default class PlurnkTaskStore implements TaskStore {
             .filter((task) => params.statusTimestampAfter === undefined
                 || (task.status?.timestamp !== undefined
                     && Date.parse(task.status.timestamp) >= Date.parse(params.statusTimestampAfter)))
+            .toSorted((left, right) => compareCursor(taskCursor(left), taskCursor(right)))
             .map((task) => params.includeArtifacts === true ? task : { ...task, artifacts: [] });
-        const tasks = projected.slice(offset, offset + pageSize);
-        const next = offset + tasks.length;
+        const remaining = cursor === null
+            ? projected
+            : projected.filter((task) => compareCursor(taskCursor(task), cursor) > 0);
+        const tasks = remaining.slice(0, pageSize);
+        const last = tasks.at(-1);
         return {
             tasks,
-            nextPageToken: next < projected.length ? String(next) : "",
+            nextPageToken: last !== undefined && remaining.length > tasks.length
+                ? Buffer.from(JSON.stringify(taskCursor(last))).toString("base64url")
+                : "",
             pageSize,
             totalSize: projected.length,
         };
@@ -263,15 +309,17 @@ export default class PlurnkTaskStore implements TaskStore {
             pending,
         );
         const history = rows
-            .filter((row) => row.loop_id === loop.id && row.op === "prompt" && nonempty(row.rx))
+            .filter((row) => row.loop_id === loop.id && row.op === "prompt"
+                && typeof row.source === "string"
+                && PlurnkTaskStore.#ownsSource(row.source, context.name, task.name))
             .toSorted((left, right) => Number(left.id) - Number(right.id))
             .map((row) => message(
                 messageIdFromSource(row.source, `plurnk-log-${String(row.id)}`),
                 context.name,
                 task.name,
                 Role.ROLE_USER,
-                row.rx as string,
-                nonempty(row.mimetype_rx) ? row.mimetype_rx : "text/markdown",
+                promptContent(row),
+                "text/markdown",
             ));
         return {
             id: task.name,
