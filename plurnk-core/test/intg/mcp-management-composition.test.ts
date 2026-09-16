@@ -31,7 +31,9 @@ const setup = async (t: TestContext, responses: ReturnType<typeof makeMockRespon
     await daemon.start();
     assert.ok(agui);
     const url = `http://127.0.0.1:${agui.address().port}/`;
-    const post = async (workspace: string, action?: Record<string, unknown>, prompt?: string): Promise<Event[]> => {
+    const post = async (
+        workspace: string, action?: Record<string, unknown>, prompt?: string, onEvent?: (event: Event) => void,
+    ): Promise<Event[]> => {
         const response = await fetch(url, {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -41,10 +43,24 @@ const setup = async (t: TestContext, responses: ReturnType<typeof makeMockRespon
             }),
             signal: AbortSignal.timeout(10000),
         });
-        const body = await response.text();
-        assert.equal(response.status, 200, body);
-        return body.split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as Event);
+        assert.equal(response.status, 200);
+        assert.ok(response.body);
+        const events: Event[] = [];
+        const decoder = new TextDecoder();
+        let pending = "";
+        for await (const chunk of response.body) {
+            pending += decoder.decode(chunk, { stream: true });
+            const frames = pending.split("\n\n");
+            pending = frames.pop()!;
+            for (const frame of frames) {
+                if (!frame.startsWith("data: ")) continue;
+                const event = JSON.parse(frame.slice(6)) as Event;
+                events.push(event);
+                onEvent?.(event);
+            }
+        }
+        assert.equal(pending.trim(), "", "the AG-UI response ends on a complete frame");
+        return events;
     };
     const action = async (workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<ActionResult> => {
         const events = await post(workspace, { kind, ...params });
@@ -174,4 +190,168 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
     const packet = provider.received[1]!.map(chatMessageText).join("\n");
     assert.match(packet, /Authorized response: management proof/);
     assert.doesNotMatch(packet, /fixture-access|fixture-code|code_verifier/);
+});
+
+const applicationServer = async (t: TestContext, rejectGrant = false) => {
+    let origin = "";
+    let grants = 0;
+    let calls = 0;
+    let expired = false;
+    const served = await serveMcpHttp(t, createMcpHandler(() => {
+        const server = new McpServer({ name: "application", version: "1.0.0" });
+        server.registerTool("echo", { inputSchema: z.object({ message: z.string() }) }, async ({ message }) => {
+            calls++;
+            return { content: [{ type: "text", text: `Application response: ${message}` }] };
+        });
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }), async (request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/mcp") {
+            const authorization = request.headers.get("authorization");
+            if (authorization === `Bearer fixture-app-access-${grants}` && !(expired && grants === 1)) return null;
+            return new Response(null, { status: 401, headers: {
+                "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+            } });
+        }
+        if (path === "/.well-known/oauth-protected-resource/mcp") return Response.json({
+            resource: `${origin}/mcp`, authorization_servers: [origin], scopes_supported: ["mcp:read"],
+        });
+        if (path === "/.well-known/oauth-authorization-server") return Response.json({
+            issuer: origin, authorization_endpoint: `${origin}/authorize`, token_endpoint: `${origin}/token`,
+            grant_types_supported: ["client_credentials"], token_endpoint_auth_methods_supported: ["client_secret_basic"],
+            response_types_supported: [], scopes_supported: ["mcp:read"],
+        });
+        if (path === "/token") {
+            grants++;
+            assert.equal(request.headers.get("authorization"), `Basic ${Buffer.from("fixture-app:fixture-app-secret").toString("base64")}`);
+            const params = new URLSearchParams(await request.text());
+            assert.equal(params.get("grant_type"), "client_credentials");
+            assert.equal(params.get("resource"), served.url);
+            assert.equal(params.get("scope"), "mcp:read");
+            assert.equal(params.has("client_secret"), false, "the SDK uses the adopted client_secret_basic arm");
+            if (rejectGrant) return Response.json({
+                error: "invalid_client", error_description: "rejected fixture-app-secret; fixture-provider-detail",
+            }, { status: 401 });
+            return Response.json({ access_token: `fixture-app-access-${grants}`, token_type: "Bearer", expires_in: 3600, scope: "mcp:read" });
+        }
+        return new Response(null, { status: 404 });
+    });
+    origin = new URL(served.url).origin;
+    return {
+        ...served, issuer: origin,
+        expire: () => { expired = true; },
+        grants: () => grants, calls: () => calls,
+    };
+};
+
+test("{§oauth-client-credentials}: AG-UI application credentials and SDK refresh deliver an authorized result to the model", { timeout: 20000 }, async (t) => {
+    const served = await applicationServer(t);
+    const { action, post, provider } = await setup(t, [
+        makeMockResponse('````fixture (echo)\n{"message":"application proof"}\n````\n\n````TASK\n[{"content":"Observe the result.","status":"waiting"}]\n````'),
+        makeMockResponse('````SEND\nObserved the application result.\n````\n\n````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````'),
+    ]);
+    const workspace = "application-authorization";
+    const configured = await action(workspace, "workspace.env.add", { alias: "MCP_APP_SECRET", definition: { value: "fixture-app-secret" } });
+    assert.equal(configured.ok, true, JSON.stringify(configured));
+    const definition = { name: "fixture", transport: "http", url: served.url, read: ["echo"],
+        authorization: { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" } };
+    const added = await action(workspace, "workspace.mcp.add", { alias: "fixture", definition });
+    assert.equal(added.ok, true, JSON.stringify(added));
+    assert.equal((added.result?.definition as { state: string } | undefined)?.state, "active");
+    assert.equal(served.grants(), 1);
+    served.expire();
+    const events = await post(workspace, undefined, "Call the application echo and report its result.");
+    assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+    assert.equal(served.grants(), 2, "the same attachment re-acquires after its access token is rejected");
+    assert.equal(served.calls(), 1, "the server executes the tool once, after authorization succeeds");
+    assert.equal(provider.received.length, 2);
+    const packet = provider.received[1]!.map(chatMessageText).join("\n");
+    assert.match(packet, /Application response: application proof/);
+    assert.doesNotMatch(packet, /fixture-app-secret|fixture-app-access-/);
+    const listed = await action(workspace, "workspace.mcp.list");
+    assert.equal(listed.ok, true, JSON.stringify(listed));
+    const definitions = listed.result?.definitions as { definition: unknown }[] | undefined;
+    assert.ok(definitions);
+    assert.deepEqual(definitions[0]?.definition, definition,
+        "management retains the symbolic reference rather than the resolved credential");
+    assert.doesNotMatch(JSON.stringify([added, events, listed]), /fixture-app-secret|fixture-app-access-/);
+    const request = served.requests.findLast(({ body }) => (body as { method?: string })?.method === "tools/call");
+    assert.ok(request);
+    const { params } = request.body as { params: { _meta: Record<string, { extensions: Record<string, unknown> }> } };
+    assert.deepEqual(params._meta["io.modelcontextprotocol/clientCapabilities"]?.extensions["io.modelcontextprotocol/oauth-client-credentials"], {});
+});
+
+for (const mode of ["rejected grant", "wrong issuer"] as const) {
+    test(`{§oauth-client-credentials}: AG-UI ${mode} fails atomically without publishing or echoing credentials`, { timeout: 20000 }, async (t) => {
+        const served = await applicationServer(t, mode === "rejected grant");
+        const { action, provider } = await setup(t);
+        const workspace = "rejected-application";
+        const configured = await action(workspace, "workspace.env.add", { alias: "MCP_APP_SECRET", definition: { value: "fixture-app-secret" } });
+        assert.equal(configured.ok, true, JSON.stringify(configured));
+        const added = await action(workspace, "workspace.mcp.add", { alias: "fixture", definition: {
+            name: "fixture", transport: "http", url: served.url,
+            authorization: { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}",
+                issuer: mode === "wrong issuer" ? "https://other-issuer.invalid" : served.issuer, scope: "mcp:read" },
+        } });
+        assert.equal(added.ok, false);
+        assert.equal(added.problem?.status, 502);
+        assert.equal(added.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-client-credentials-failed");
+        assert.doesNotMatch(JSON.stringify(added), /fixture-app-secret|fixture-provider-detail|fixture-app-access-/);
+        if (mode === "wrong issuer") assert.equal(served.grants(), 0, "issuer mismatch withholds the credential from the token endpoint");
+        else assert.equal(served.grants(), 2, "the SDK's one invalid-client retry is bounded; the host adds no retry loop");
+        const listed = await action(workspace, "workspace.mcp.list");
+        assert.equal(listed.ok, true, JSON.stringify(listed));
+        assert.deepEqual(listed.result?.definitions, [], "failed preparation publishes no attachment");
+        assert.equal(served.calls(), 0);
+        assert.equal(provider.received.length, 0);
+    });
+}
+
+test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-UI while the owning tool remains pending", { timeout: 20000 }, async (t) => {
+    const finish = Promise.withResolvers<void>();
+    t.after(() => finish.resolve());
+    const served = await serveMcpHttp(t, createMcpHandler(() => {
+        const server = new McpServer({ name: "progress", version: "1.0.0" });
+        server.registerTool("observe", { inputSchema: z.object({}) }, async (_args, ctx) => {
+            const progressToken = ctx.mcpReq._meta?.progressToken;
+            assert.notEqual(progressToken, undefined);
+            await ctx.mcpReq.notify({ method: "notifications/progress", params: {
+                progressToken: progressToken!, progress: 1, total: 2, message: "Observed first half.",
+            } });
+            await finish.promise;
+            return { content: [{ type: "text", text: "Complete observation result." }] };
+        });
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
+    const { action, post, provider } = await setup(t, [
+        makeMockResponse('````fixture (observe)\n{}\n````\n\n````TASK\n[{"content":"Observe the result.","status":"waiting"}]\n````'),
+        makeMockResponse('````SEND\nThe observation completed.\n````\n\n````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````'),
+    ]);
+    const added = await action("live-progress", "workspace.mcp.add", { alias: "fixture", definition: {
+        name: "fixture", transport: "http", url: served.url, read: ["observe"],
+    } });
+    assert.equal(added.ok, true, JSON.stringify(added));
+    const received = Promise.withResolvers<Event>();
+    const running = post("live-progress", undefined, "Observe the tool result.", (event) => {
+        if (event.type === "CUSTOM" && event.name === "plurnk.notice"
+            && (event.value as { kind?: string })?.kind === "mcp_progress") received.resolve(event);
+    });
+    try {
+        const first = await Promise.race([received.promise, running.then(() => {
+            throw new Error("The run ended without delivering live MCP progress.");
+        })]);
+        assert.deepEqual(first.value, { source: "exec:fixture", kind: "mcp_progress", level: "info",
+            message: "Observed first half.", tool: "observe", progress: 1, total: 2 });
+        assert.equal(provider.received.length, 1, "progress is observation, not a signal to resume inference");
+        finish.resolve();
+        const events = await running;
+        assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+        assert.equal(provider.received.length, 2);
+        assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /Complete observation result/);
+        assert.equal(events.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.notice"
+            && (event.value as { kind?: string })?.kind === "mcp_progress").length, 1);
+    } finally {
+        finish.resolve();
+        await running;
+    }
 });

@@ -40,7 +40,7 @@ test("{§mcp-capability-matrix} advertisement is reserved for supported rows and
     }
 });
 
-test("{§mcp-capability-matrix} supported rows cite accountable evidence and interactive rows own composed coverage", () => {
+test("{§mcp-capability-matrix} supported rows cite accountable evidence and advertised rows own composed coverage", () => {
     for (const row of CAPABILITY_MATRIX) {
         if (row.disposition === "supported" || row.disposition === "partial") {
             assert.ok(
@@ -52,12 +52,14 @@ test("{§mcp-capability-matrix} supported rows cite accountable evidence and int
                 `row '${row.id}' cites no resolving specification tag`,
             );
         }
-        if (row.interactive && row.advertised !== "never") {
+        if (row.advertised !== "never") {
             assert.equal(
                 row.composed,
                 true,
-                `interactive advertised row '${row.id}' lacks composed coverage`,
+                `advertised row '${row.id}' lacks composed coverage`,
             );
+        }
+        if (row.interactive && row.advertised !== "never") {
             assert.ok(
                 row.evidence.some((citation) => citation.includes("AguiPlus") || citation.includes("plurnk-agui")),
                 `interactive advertised row '${row.id}' lacks AG-UI layer evidence`,

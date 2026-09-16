@@ -148,7 +148,7 @@ The static wire advertisement is derived from the matrix by construction
 row says `always`, and a `conditional` extension is added only by its owning
 connection logic ({§oauth-client-credentials}). The matrix unit tests enforce
 unique identities, no excluded row advertising, supported rows citing evidence,
-composed coverage for interactive advertised rows, and exact reconciliation
+composed coverage for every advertised row, and exact reconciliation
 between the matrix and the derived advertisement. Official required
 conformance stays a separate named gate, never folded into a matrix row.
 
