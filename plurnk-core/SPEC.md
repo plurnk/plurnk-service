@@ -2019,7 +2019,8 @@ READ is the one fan-out core performs ({§read-fan-out}).
   **lives in a DB entry** as its bytes base64 in the channel's TEXT content; the same READ, byte range,
   and COPY/MOVE recover them through a byte source synthesized from that content, so a File member and a
   `worker://` entry hold and yield a binary identically. An empty binary channel represents
-  zero bytes, not an unsupported format; its producer outcome remains authoritative.
+  zero bytes, not an unsupported format; whole COPY/MOVE preserves it. Failed acquisition
+  is not an empty success: its producer outcome remains authoritative for READ and transfer.
   This supersedes the older blanket refusal (#140)
   for both the file and the entry case. Native image/PDF/audio attachment facts come from the configured
   mimetype handler over original bytes, whether supplied by a file or stored channel

@@ -691,45 +691,39 @@ test("a divergent whole-channel destination conflicts and leaves the MOVE source
     }
 });
 
-test("COPY and MOVE reject a binary marker without fabricating a byte-transfer channel (#140)", async () => {
+test("{§binary-parity} COPY and MOVE preserve zero-byte channels; a nonempty source scope remains invalid", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
-        await seed("/source", {
-            channels: {
-                blob: { content: "", mimetype: "application/octet-stream" },
-            },
-        });
+        await seed("/source", { channels: { blob: { content: "", mimetype: "application/octet-stream" } } });
+        const copied = await dispatch(copyStmt(urlPath("multi", "/source", "blob"), urlPath("multi", "/copied", "blob")));
+        assert.equal(copied.status, 201, JSON.stringify(copied));
+        assert.equal((await read("/copied")).entry?.channels.blob?.content, "");
+        assert.equal((await read("/copied")).entry?.channels.blob?.mimetype, "application/octet-stream");
+        const sliced = await dispatch(copyStmt(urlPath("multi", "/source", "blob"), urlPath("multi", "/other", "blob"), { marks: [1] }));
+        assert.equal(sliced.status, 416);
+        assert.equal(sliced.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/range-not-satisfiable");
+        assert.equal((await read("/other")).status, 404);
+        const moved = await dispatch(moveStmt(urlPath("multi", "/source", "blob"), urlPath("multi", "/moved", "blob"), { marks: [1, -1] }));
+        assert.equal(moved.status, 201, JSON.stringify(moved));
+        assert.equal((await read("/moved")).entry?.channels.blob?.content, "");
+        assert.equal((await read("/moved")).entry?.channels.blob?.mimetype, "application/octet-stream");
+        assert.equal((await read("/source")).entry?.channels.blob, undefined);
+    } finally { await db.close(); }
+});
 
-        const copied = await dispatch(copyStmt(
-            urlPath("multi", "/source", "blob"),
-            urlPath("multi", "/destination", "blob"),
-        ));
-        assert.equal(copied.status, 415);
-        assert.equal(
-            copied.problem?.type,
-            "https://problems.plurnk.xyz/engine/dispatcher/binary-source-unsupported",
-        );
-        assert.equal((await read("/destination")).status, 404);
-
-        const sliced = await dispatch(copyStmt(
-            urlPath("multi", "/source", "blob"),
-            urlPath("multi", "/other", "blob"),
-            { marks: [1] },
-        ));
-        assert.equal(sliced.status, 415);
-
-        const moved = await dispatch(moveStmt(
-            urlPath("multi", "/source", "blob"),
-            urlPath("multi", "/destination", "blob"),
-        ));
-        assert.equal(moved.status, 415);
-        assert.equal(
-            moved.problem?.type,
-            "https://problems.plurnk.xyz/engine/dispatcher/binary-source-unsupported",
-        );
-        assert.equal((await read("/destination")).status, 404);
-        assert.equal((await read("/source")).entry?.channels.blob?.mimetype, "application/octet-stream");
-    } finally {
-        await db.close();
-    }
+test("{§binary-parity} failed binary acquisition cannot masquerade as a transferable empty resource", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        const problem = { type: "https://problems.plurnk.xyz/test/acquisition-failed", title: "Acquisition failed", status: 502, detail: "No complete source was received." };
+        await seed("/source", { channels: { blob: {
+            content: "", mimetype: "application/octet-stream", state: "errored", producerResult: { status: 502, problem },
+        } } });
+        for (const operation of [copyStmt, moveStmt]) {
+            const result = await dispatch(operation(urlPath("multi", "/source", "blob"), urlPath("multi", "/destination", "blob")));
+            assert.equal(result.status, 502);
+            assert.equal(result.problem?.type, problem.type);
+            assert.equal((await read("/destination")).status, 404);
+            assert.equal((await read("/source")).entry?.channels.blob?.state, "errored");
+        }
+    } finally { await db.close(); }
 });

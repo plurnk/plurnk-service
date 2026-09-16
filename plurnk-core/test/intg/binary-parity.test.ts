@@ -67,6 +67,15 @@ test("{§binary-parity} COPY of a whole binary file reproduces its bytes exactly
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("{§binary-parity} an empty binary file can be copied and moved as a whole resource", async () => {
+    const { root } = await runCopy({ "empty.png": Buffer.alloc(0) }, "```COPY (empty.png) (copied.png)```\n```MOVE (empty.png) <1,-1> (moved.png)```");
+    try {
+        assert.equal((await readFile(join(root, "copied.png"))).byteLength, 0);
+        assert.equal((await readFile(join(root, "moved.png"))).byteLength, 0);
+        assert.equal(await gone(join(root, "empty.png")), true);
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("{§fs-write-surface} the four empty-destination scopes create identical binary files", async () => {
     const scopes = ["0", "1", "-1", "1,-1"];
     const { root } = await runCopy(

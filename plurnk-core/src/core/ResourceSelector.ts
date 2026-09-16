@@ -185,6 +185,9 @@ export default class ResourceSelector {
         }
         const resolvedMarker = this.resolveResourceLineMarker(selection, selected.content, operation, identity);
         if ("result" in resolvedMarker) return resolvedMarker.result;
+        if (selected.producerResult !== undefined && selected.producerResult.status >= 400) {
+            return Results.assert(selected.producerResult) as DispatchResult;
+        }
         let content = selected.content;
         let startLine = 1;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
@@ -206,16 +209,17 @@ export default class ResourceSelector {
                 );
             }
             const size = await byteSource.size();
-            if (size === null || size === 0) {
+            if (size === null) {
                 return MutationEffects.failure(
                     "entry-not-found", 404, `No bytes exist at ${target}.`,
                     {}, { target, retryable: false },
                 );
             }
             const marks = resolvedMarker.selection.lineMarker?.marks ?? [];
+            const whole = marks.length === 0 || (marks.length === 2 && marks[0] === 1 && marks[1] === -1);
             const start = marks.length >= 1 ? marks[0]! : 1;
             const end = marks.length >= 2 ? (marks[1] === -1 ? size : marks[1]!) : (marks.length === 1 ? marks[0]! : size);
-            if (!(start >= 1 && end >= start && end <= size)) {
+            if (!whole && !(start >= 1 && end >= start && end <= size)) {
                 return MutationEffects.failure(
                     "range-not-satisfiable", 416, `Byte range <${start},${end}> is outside the available 1..${size}.`,
                     {}, { channel: selection.channel, unit: "byte", available: size, retryable: false },
@@ -237,9 +241,6 @@ export default class ResourceSelector {
             content = sliced.text ?? "";
             startLine = sliced.startLine ?? 1;
             scopeNormalizations = sliced.scopeNormalizations;
-        }
-        if (selected.producerResult !== undefined && selected.producerResult.status >= 400) {
-            return Results.assert(selected.producerResult) as DispatchResult;
         }
         const retained = visibleLines?.[selection.channel];
         if (selection.matcher !== null) {
