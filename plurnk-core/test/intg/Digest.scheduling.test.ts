@@ -18,7 +18,7 @@ test("{§digest-forensic-fidelity}: scheduled timing remains inspectable without
         const loop = await db.drain_enqueue_loop.get<{ id: number }>({
             worker_id: workerId, prompt: "Heartbeat", prompt_source: null,
             model_route_id: null, spawn_model_route_id: null, reasoning_policy: null,
-            max_turns: 2, policy: "{}", open_paths: "[]", scheduled_at: due, repeat_interval_ms: 3_600_000,
+            max_turns: 2, policy: "{}", scheduled_at: due, repeat_interval_ms: 3_600_000,
         });
         assert.ok(loop);
         loopId = loop.id;

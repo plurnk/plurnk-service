@@ -17,9 +17,9 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy, open_paths, scheduled_at, repeat_interval_ms)
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy, scheduled_at, repeat_interval_ms)
 VALUES ($worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id), 100,
-        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy, $open_paths,
+        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy,
         $scheduled_at, $repeat_interval_ms)
 RETURNING id, scheduled_at, repeat_interval_ms;
 
@@ -68,7 +68,7 @@ WHERE l.id = $loop_id;
 
 -- PREP: drain_next_turn_seq_for_loop
 -- Next turn sequence for the given loop. Used by Engine.inject to compute
--- the turn on which its next prompt frame will be published.
+-- the turn on which its next message will be published.
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: drain_get_worker_workspace
@@ -77,131 +77,86 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- context paired with that worker's owner identity).
 SELECT workspace_id FROM workers WHERE id = $worker_id;
 
--- PREP: drain_next_prompt_ordinal_for_loop
--- {§prompt-loop-containment} — derive the next per-loop frame ordinal from the
--- greatest persisted delivery ordinal. The initial frame reserves ordinal 1 even
--- before turn 1 materializes it, so an injection starts at 2.
-SELECT COALESCE(MAX(json_extract(e.attributes, '$.ordinal')), 1) + 1 AS next
-FROM entries e JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-WHERE scheme = 'prompt' AND w.id = $worker_id
-  AND substr(pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len);
+-- PREP: drain_enqueue_message
+-- {§message-arrival}: append one message to the loop's inbox in arrival order. Ordinal 1 is the
+-- loop's initial message; a later arrival takes the next ordinal.
+INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths)
+VALUES ($loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
+        $source, $body, $open_paths)
+RETURNING id, ordinal;
+-- PREP: drain_unpublished_messages_for_loop
+-- {§message-loop-containment}: the messages the loop contains but has not yet published, oldest
+-- first; the next turn boundary publishes each as an inbound SEND row exactly once.
+SELECT id, ordinal, source, body, open_paths
+FROM loop_messages
+WHERE loop_id = $loop_id AND log_entry_id IS NULL
+ORDER BY ordinal ASC;
 
--- PREP: drain_undelivered_prompts_for_loop
--- {§prompt-loop-containment} - the prompts the loop contains but has not yet delivered: no
--- actionless prompt row exists for the frame in this loop. Oldest first; the next turn
--- boundary publishes each, so every arrival reaches the model exactly once.
-SELECT c.content, e.pathname, e.attributes
-FROM entries e
-JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-JOIN entry_channels c ON c.entry_id = e.id
-WHERE e.scheme = 'prompt'
-  AND w.id = $worker_id
-  AND substr(e.pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len)
-  AND c.name = 'body'
-  AND NOT EXISTS (
-      SELECT 1 FROM log_entries le
-      WHERE le.loop_id = $loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
-        AND le.scheme = 'prompt' AND le.pathname = e.pathname
-  )
-ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
+-- PREP: drain_unpublished_arrivals_for_loop
+-- {§completion-defers-to-messages}: the messages that arrived after the loop began and are not
+-- yet published. Ordinal 1 is the loop's assignment, published by the first turn boundary before
+-- any model TASK can exist, so it never defers a completion.
+SELECT id, ordinal
+FROM loop_messages
+WHERE loop_id = $loop_id AND ordinal > 1 AND log_entry_id IS NULL
+ORDER BY ordinal ASC;
 
--- PREP: drain_get_all_prompt_bodies_for_loop
--- Sources the Active Prompts section: EVERY prompt entry the
--- current loop holds, OLDEST first — typically one, but an active loop admits injected
--- prompts (multiple prompt://<worker>/<loop>/<id> entries), all shown in order. Same pattern as
--- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
--- each pointer with the frame's causal source ({§prompt-causal-source}).
-SELECT c.content, e.pathname, json_extract(e.attributes, '$.source') AS source
-FROM entries e
-JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-JOIN entry_channels c ON c.entry_id = e.id
-WHERE e.scheme = 'prompt'
-  AND w.id = $worker_id
-  AND substr(e.pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len)
-  AND c.name = 'body'
-ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
+-- PREP: drain_publish_message
+-- The inbox row's one publication: the inbound SEND row it became.
+UPDATE loop_messages SET log_entry_id = $log_entry_id
+WHERE id = $id AND log_entry_id IS NULL
+RETURNING id;
 
--- PREP: drain_orphaned_prompts_for_loop
--- A loop can terminate before consuming a next-turn prompt injected into it
--- (a wake-on-completion, or a runLoop-while-active prompt that landed on a turn the
--- loop never reached). Engine.inject writes prompt://<worker>/<loop>/<id>;
--- a prompt without a publication row has not been delivered.
--- Return the complete orphan set oldest-first with the ended loop posture so
--- one recovery loop can preserve frame cardinality and ordering.
--- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
--- built JS-side (per the SqlRite LIKE-binding note above).
-SELECT c.content AS body, l.policy AS policy, l.model_route_id AS model_route_id,
+-- PREP: drain_orphaned_messages_for_loop
+-- A loop can conclude before publishing a message injected into it (a wake-on-completion, or a
+-- runLoop-while-active arrival that landed on a turn the loop never reached). Return the complete
+-- unpublished set oldest-first with the ended loop's posture so one recovery loop preserves
+-- cardinality and order ({§message-loop-containment}). Ordinal 1 is the loop's own assignment:
+-- its fate is the loop's, never replayed into fresh work.
+SELECT m.body AS body, m.source AS source, m.open_paths AS open_paths,
+       l.policy AS policy, l.model_route_id AS model_route_id,
        l.spawn_model_route_id AS spawn_model_route_id,
        l.reasoning_policy AS reasoning_policy,
-       l.max_turns AS max_turns,
-       json_extract(e.attributes, '$.openPaths') AS open_paths,
-       json_extract(e.attributes, '$.source') AS prompt_source
-FROM entries e
-JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-JOIN entry_channels c ON c.entry_id = e.id
-JOIN loops l ON l.id = $loop_id
-WHERE e.scheme = 'prompt'
+       l.max_turns AS max_turns
+FROM loop_messages m
+JOIN loops l ON l.id = m.loop_id
+WHERE m.loop_id = $loop_id
+  AND m.ordinal > 1
+  AND m.log_entry_id IS NULL
   AND l.status IN (200, 413, 429, 499, 500, 504, 508)
   AND l.terminated_by IS NOT 'cancel'
   AND l.sequence > (SELECT cancelled_through_sequence FROM workers WHERE id = l.worker_id)
-  AND w.id = $worker_id
-  AND substr(e.pathname, 1, $prefix_len) = substr($pattern, 1, $prefix_len)
-  AND c.name = 'body'
-  AND NOT EXISTS (
-      SELECT 1 FROM log_entries le
-      WHERE le.loop_id = $loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
-        AND le.scheme = 'prompt' AND le.pathname = e.pathname
-  )
-ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
-
+ORDER BY m.ordinal ASC;
 -- PREP: drain_enqueue_orphan_recovery_loop
--- {§prompt-loop-containment}: recovery identity is the concluded source loop.
+-- {§message-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
     worker_id, sequence, status, prompt, prompt_source, policy, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
-    open_paths, orphan_source_loop_id
+    orphan_source_loop_id
 )
 VALUES (
     $worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id),
     100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
-    $open_paths, $orphan_source_loop_id
+    $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE
 SET orphan_source_loop_id = excluded.orphan_source_loop_id
 RETURNING id, sequence, status;
 
--- PREP: drain_rehome_orphaned_prompt_frames
--- Move, rather than copy, the source loop's undelivered entry identities into
--- the recovery loop. The materialized rank freezes the complete source set for
--- this one atomic statement while pathnames change underneath it.
+-- PREP: drain_rehome_orphaned_messages
+-- Move, rather than copy, the source loop's unpublished messages into the recovery loop,
+-- renumbered from 1 so the first becomes the recovery loop's headline. The materialized rank
+-- freezes the complete source set for this one atomic statement.
 WITH orphaned(id, ordinal) AS MATERIALIZED (
-    SELECT e.id,
-           ROW_NUMBER() OVER (
-               ORDER BY json_extract(e.attributes, '$.ordinal') ASC
-           )
-    FROM entries e
-JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-    WHERE e.scheme = 'prompt'
-      AND w.id = $worker_id
-      AND e.pathname LIKE $source_pattern
-      AND EXISTS (
-          SELECT 1 FROM entry_channels c
-          WHERE c.entry_id = e.id AND c.name = 'body'
-      )
-      AND NOT EXISTS (
-          SELECT 1 FROM log_entries le
-          WHERE le.loop_id = $source_loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
-            AND le.scheme = 'prompt' AND le.pathname = e.pathname
-      )
+    SELECT id, ROW_NUMBER() OVER (ORDER BY ordinal ASC)
+    FROM loop_messages
+    WHERE loop_id = $source_loop_id AND ordinal > 1 AND log_entry_id IS NULL
 )
-UPDATE entries
-SET pathname = $target_prefix || substr(pathname, $source_prefix_len + 1),
-    attributes = json_set(attributes, '$.ordinal', (
-    SELECT ordinal FROM orphaned WHERE orphaned.id = entries.id
-))
+UPDATE loop_messages
+SET loop_id = $target_loop_id,
+    ordinal = (SELECT ordinal FROM orphaned WHERE orphaned.id = loop_messages.id)
 WHERE id IN (SELECT id FROM orphaned)
-RETURNING id, pathname;
-
+RETURNING id, ordinal;
 -- PREP: drain_find_slept_loop
 -- Existence/arrival selection only; completion wakes use all eligible waits.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence ASC LIMIT 1;

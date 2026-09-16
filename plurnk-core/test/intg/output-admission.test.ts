@@ -254,7 +254,7 @@ for (const origin of ["plugin", "_plurnk"] as const) test(`{§context-output-sel
 });
 
 test("{§packet-markdown}: structured section content directly follows its heading; Git is a NOTE", () => {
-    for (const header of ["Errors", "Context Curation", "Active Prompts"]) {
+    for (const header of ["Errors", "Context Curation", "Open Messages"]) {
         assert.equal(PacketWire.renderSection({ header, content: "[]" }), `## ${header}\n[]`);
     }
     const git = PacketWire.renderGit({ branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 });

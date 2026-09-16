@@ -151,3 +151,21 @@ UPDATE log_entry_projections
 SET output_admission_turn_id = $turn_id, output_withheld = $withheld
 WHERE log_entry_id IN (SELECT value FROM json_each($ids))
   AND active = 1 AND output_admission_turn_id IS NULL;
+
+-- PREP: engine_open_messages
+-- {§message-arrival}: the loop's messages not yet answered — every inbound SEND row (origin
+-- `_plurnk`, `attrs.kind = 'message'`, a causal `source` when another actor caused it) with no
+-- later untargeted model reply in the same loop. Oldest first, addressed by log coordinate.
+SELECT le.id, l.sequence AS loop_seq, t.sequence AS turn_seq, le.sequence AS seq, le.source
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = le.loop_id
+WHERE le.loop_id = $loop_id AND le.op = 'SEND' AND le.origin = '_plurnk'
+  AND json_extract(le.attrs, '$.kind') = 'message'
+  AND NOT EXISTS (
+      SELECT 1 FROM log_entries r
+      WHERE r.loop_id = le.loop_id AND r.op = 'SEND' AND r.origin = 'model'
+        AND r.scheme IS NULL AND r.pathname IS NULL
+        AND r.status_rx BETWEEN 200 AND 299 AND r.id > le.id
+  )
+ORDER BY le.id ASC;

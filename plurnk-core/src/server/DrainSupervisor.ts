@@ -15,7 +15,6 @@ import Results, { OperationFailureError, type SchemeResult } from "../core/resul
 import { observed } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
-import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 
 interface DrainLoopResult {
@@ -99,7 +98,7 @@ type InjectPrompt = (
     source?: string,
 ) => Promise<{ loopId: number; turnSeq: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
-type ReconcilePrompts = (workerId: number, endedLoopId: number) => Promise<void>;
+type ReconcileMessages = (workerId: number, endedLoopId: number) => Promise<void>;
 type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
 
 // Owns the worker-local queue consumer and every process-local edge that may
@@ -110,7 +109,7 @@ export default class DrainSupervisor {
     readonly #lifecycle: LoopLifecycle;
     readonly #injectPrompt: InjectPrompt;
     readonly #assertInjectionCompatibility: AssertInjectionCompatibility;
-    readonly #reconcilePrompts: ReconcilePrompts;
+    readonly #reconcileMessages: ReconcileMessages;
     readonly #runLoop: RunLoop;
     readonly #loopUsage: (loopId: number) => Promise<LoopUsage>;
     readonly #loopAttributions: (loopId: number) => Promise<string[]>;
@@ -142,7 +141,7 @@ export default class DrainSupervisor {
         lifecycle,
         injectPrompt,
         assertInjectionCompatibility,
-        reconcilePrompts,
+        reconcileMessages,
         runLoop,
         loopUsage,
         loopAttributions,
@@ -156,7 +155,7 @@ export default class DrainSupervisor {
         lifecycle: LoopLifecycle;
         injectPrompt: InjectPrompt;
         assertInjectionCompatibility: AssertInjectionCompatibility;
-        reconcilePrompts: ReconcilePrompts;
+        reconcileMessages: ReconcileMessages;
         runLoop: RunLoop;
         loopUsage: (loopId: number) => Promise<LoopUsage>;
         loopAttributions: (loopId: number) => Promise<string[]>;
@@ -170,7 +169,7 @@ export default class DrainSupervisor {
         this.#lifecycle = lifecycle;
         this.#injectPrompt = injectPrompt;
         this.#assertInjectionCompatibility = assertInjectionCompatibility;
-        this.#reconcilePrompts = reconcilePrompts;
+        this.#reconcileMessages = reconcileMessages;
         this.#runLoop = runLoop;
         this.#loopUsage = loopUsage;
         this.#loopAttributions = loopAttributions;
@@ -309,11 +308,16 @@ export default class DrainSupervisor {
             reasoning_policy: args.reasoningPolicy,
             max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             policy: JSON.stringify({ ...DEFAULT_LOOP_POLICY, ...args.policy }),
-            open_paths: JSON.stringify(args.openPaths ?? []),
             scheduled_at: args.schedule === undefined ? null : now + args.schedule.delayMs,
             repeat_interval_ms: args.schedule?.intervalMs ?? null,
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
+        // {§message-arrival}: the loop's initial message is ordinal 1 of its inbox; the loop row's
+        // `prompt` is its headline for listings.
+        const seeded = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
+            loop_id: loopRow.id, source: args.source ?? null, body: args.prompt, open_paths: JSON.stringify(args.openPaths ?? []),
+        });
+        if (seeded === undefined) throw new Error("enqueueFreshLoop: message enqueue returned no row");
         return { loopId: loopRow.id, ...taskTiming(loopRow) };
     }
 
@@ -398,22 +402,16 @@ export default class DrainSupervisor {
                         // through handleWakeWorker re-queues it; if it holds a polled stream, a poll timer
                         // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
                         await this.scheduleWakes(workspaceId, workerId, systemPrompt);
-                        // Serialize the park boundary against active prompt injection.
+                        // Serialize the park boundary against message injection.
                         // Whichever side arrives first owns a wake edge: injection wakes
-                        // an already-parked loop, while this check wakes a prompt written
+                        // an already-parked loop, while this check wakes a message written
                         // just before runLoop finished parking.
-                        const promptWaiting = await this.#withDrainLock(workerId, async () => {
-                            const prefix = promptLoopPrefix(loopRow.sequence);
-                            const undelivered = await this.#db.drain_undelivered_prompts_for_loop.get<{ pathname: string }>({
-                                worker_id: workerId,
-                                pattern: `${prefix}%`,
-                                prefix_len: prefix.length,
-                                loop_id: loopRow.id,
-                            });
-                            if (undelivered === undefined) return false;
+                        const messageWaiting = await this.#withDrainLock(workerId, async () => {
+                            const unpublished = await this.#db.drain_unpublished_messages_for_loop.get<{ id: number }>({ loop_id: loopRow.id });
+                            if (unpublished === undefined) return false;
                             return this.#wakeLoop(workerId, loopRow.id);
                         });
-                        if (promptWaiting) {
+                        if (messageWaiting) {
                             currentLoopId = null;
                             continue;
                         }
@@ -457,10 +455,10 @@ export default class DrainSupervisor {
                         firstSettled = true;
                         resolveFirst(loopResult);
                     }
-                    // A next-turn prompt this loop ended before consuming (a
-                    // wake conclusion or a runLoop-while-active prompt) is promoted to
-                    // a fresh queued loop so it's never silently dropped.
-                    await this.reconcileOrphanedPrompts(workerId, loopRow.id);
+                    // A message this loop ended before publishing (a wake conclusion or a
+                    // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
+                    // never silently dropped ({§message-loop-containment}).
+                    await this.reconcileOrphanedMessages(workerId, loopRow.id);
                     currentLoopId = null;
                 }
             } catch (err) {
@@ -664,13 +662,13 @@ export default class DrainSupervisor {
         return started;
     }
 
-    // Prompt promotion shares the worker lock with enqueue and drain teardown,
-    // while Daemon retains the durable prompt-policy implementation.
-    async reconcileOrphanedPrompts(workerId: number, endedLoopId: number): Promise<void> {
+    // Message promotion shares the worker lock with enqueue and drain teardown,
+    // while Daemon retains the durable message-policy implementation.
+    async reconcileOrphanedMessages(workerId: number, endedLoopId: number): Promise<void> {
         const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
-        if (row === undefined) throw new Error(`prompt promotion worker ${workerId} does not exist`);
+        if (row === undefined) throw new Error(`message promotion worker ${workerId} does not exist`);
         return this.#withAdmissionLock(row.workspace_id, () =>
-            this.#withDrainLock(workerId, () => this.#reconcilePrompts(workerId, endedLoopId)));
+            this.#withDrainLock(workerId, () => this.#reconcileMessages(workerId, endedLoopId)));
     }
 
     #workerSignal(workerId: number): AbortController {

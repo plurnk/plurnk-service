@@ -1,4 +1,3 @@
-import WorkerName from "../../src/core/WorkerName.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -31,11 +30,13 @@ const enqueueLoop = async (
         reasoning_policy: "adaptive",
         max_turns: 50,
         policy: JSON.stringify({ proposals: "review" }),
-        open_paths: "[]",
         scheduled_at: null,
         repeat_interval_ms: null,
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
+    // {§message-arrival} — as the daemon's enqueue does: the assignment is ordinal 1 of the inbox.
+    const seeded = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]" });
+    if (seeded === undefined) throw new Error("recovery fixture failed to seed the loop's message");
     return row.id;
 };
 
@@ -265,7 +266,7 @@ test("boot closes an open operation turn even when its loop already parked", asy
     }
 });
 
-test("{§prompt-loop-containment}: boot completes one partially staged orphan recovery without replay", async () => {
+test("{§message-loop-containment}: boot completes one partially staged orphan recovery without replay", async () => {
     const db = await openMigrated();
     const firstProvider = new Mock({
         contextWindow: 16384,
@@ -284,19 +285,8 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             terminal_result: JSON.stringify({ status: 200 }),
         });
 
-        for (const [ordinal, content] of ["first orphan", "second orphan"].entries()) {
-            const entryId = await seedEntryWithChannel(db, {
-                workspaceId,
-                authority: await WorkerName.forId(db, workerId),
-                scheme: "prompt",
-                pathname: `/1/${["a1b2c3d4", "e5f6a7b8"][ordinal]}`,
-                content,
-                mimetype: "text/markdown",
-            });
-            await db.test_set_entry_attributes.run({
-                entry_id: entryId,
-                attributes: JSON.stringify({ ordinal: ordinal + 2, openPaths: [], source: `worker://sender-${ordinal + 1}` }),
-            });
+        for (const [index, content] of ["first orphan", "second orphan"].entries()) {
+            await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]" });
         }
 
         const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
@@ -310,8 +300,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             spawn_model_route_id: null,
             reasoning_policy: "adaptive",
             max_turns: 50,
-            open_paths: "[]",
-            orphan_source_loop_id: sourceLoopId,
+                orphan_source_loop_id: sourceLoopId,
         });
         assert.ok(recovery !== undefined);
         assert.equal(recovery.sequence, 2);
@@ -322,20 +311,22 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             (status) => status === 200,
         ), 200);
         const frames = (await db.test_log_entries_by_loop.all<{
-            op: string; pathname: string; rx: string; source: string | null;
-        }>({ loop_id: recovery.id })).filter((row) => row.op === "prompt");
+            op: string; origin: string; tx: string; source: string | null;
+        }>({ loop_id: recovery.id })).filter((row) => row.op === "SEND" && row.origin === "_plurnk");
         assert.deepEqual(
             frames.map((row) => ({
-                pathname: row.pathname,
-                content: (JSON.parse(row.rx) as { content: string }).content,
+                content: (JSON.parse(row.tx) as { body: { raw: string } }).body.raw,
                 source: row.source,
             })),
             [
-                { pathname: "/2/a1b2c3d4", content: "first orphan", source: "worker://sender-1" },
-                { pathname: "/2/e5f6a7b8", content: "second orphan", source: "worker://sender-2" },
+                { content: "first orphan", source: "worker://sender-1" },
+                { content: "second orphan", source: "worker://sender-2" },
             ],
             "boot completed the existing queued recovery before its drain claimed it",
         );
+        const inbox = (await db.test_messages_by_loop.all({ loop_id: recovery.id })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+        assert.deepEqual(inbox.map(({ ordinal, body }) => ({ ordinal, body })), [{ ordinal: 1, body: "first orphan" }, { ordinal: 2, body: "second orphan" }], "the orphans moved into the recovery loop's inbox, renumbered");
+        assert.ok(inbox.every(({ log_entry_id }) => log_entry_id !== null), "the recovery loop published them once");
         await firstDaemon.stop();
 
         const secondProvider = new Mock({
@@ -366,10 +357,7 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
         const workspaceId = await insertWorkspace(db, "cancelled-prompt-recovery");
         const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, "Original task.");
-        await seedEntryWithChannel(db, {
-            workspaceId, authority: await WorkerName.forId(db, workerId), scheme: "prompt", pathname: "/1/2",
-            content: "A follow-up admitted before cancellation.", mimetype: "text/markdown",
-        });
+        await db.drain_enqueue_message.get({ loop_id: loopId, source: null, body: "A follow-up admitted before cancellation.", open_paths: "[]" });
         const lifecycle = new LoopLifecycle(db);
         await lifecycle.cancelTree(workerId, "Cancel the whole assignment.", true);
         await daemon.start();
@@ -377,11 +365,10 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
         assert.equal((await db.test_loop_queue_by_worker.all({ worker_id: workerId })).length, 1,
             "boot must not promote a cancelled prompt into fresh work");
         assert.equal(mock.received.length, 0);
-        const entries = await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string }>({
-            worker_id: workerId, pattern: "/1/%", prefix_len: 3,
-        });
-        assert.deepEqual(entries.map(({ content }) => content), ["A follow-up admitted before cancellation."],
+        const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+        assert.deepEqual(inbox.filter(({ ordinal }) => ordinal > 1).map(({ body }) => body), ["A follow-up admitted before cancellation."],
             "cancellation preserves the message as evidence without executing it");
+        assert.ok(inbox.every(({ log_entry_id }) => log_entry_id === null), "nothing was published");
     } finally {
         await daemon.stop();
         await db.close();

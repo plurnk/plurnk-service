@@ -68,8 +68,8 @@ for (const { name, operation, maxStrikes } of [
         assert.deepEqual(deferral.attrs, { pending: ["receipts"] });
         assert.match(deferral.detail ?? "", /^Completion deferred until .+ reached a packet\. It is in this packet\. If your final response has already been sent and these results require no further work or response revision, submit only TASK\.$/);
         assert.ok(JSON.stringify(provider.received[1]).includes(deferral.detail!), "the model receives the conditional TASK-only guidance beside the results");
-        const messages = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string }>({ loop_id: loopId });
-        assert.deepEqual(messages.filter(({ op }) => op === "SEND").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
+        const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
+        assert.deepEqual(messages.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
             [[200, "The answer is 42."]], "TASK-only completion preserves the answer without delivering a second SEND");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200);
         const finalTurnId = result.turnIds.at(-1);
@@ -89,8 +89,8 @@ test("{§loop-response-messages}: deferred completion permits a revised answer a
     assert.equal(result.result.content, "Correction: the answer is 42.");
     assert.equal(provider.received.length, 2);
     assert.ok(JSON.stringify(provider.received[1]).includes("If your final response has already been sent and these results require no further work or response revision, submit only TASK."));
-    const messages = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string }>({ loop_id: loopId });
-    assert.deepEqual(messages.filter(({ op }) => op === "SEND").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
+    const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
+    assert.deepEqual(messages.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
         [[200, "The answer is 41."], [200, "Correction: the answer is 42."]],
         "a necessary correction is still delivered; TASK-only is conditional, not enforced");
 });

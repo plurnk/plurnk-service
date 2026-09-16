@@ -145,7 +145,7 @@ BEGIN
     FROM entries e
     WHERE e.workspace_id = NEW.workspace_id
       AND e.authority = (SELECT name FROM workers WHERE id = NEW.parent_worker_id)
-      AND e.scheme IN ('worker', 'prompt')
+      AND e.scheme = 'worker'
       AND NOT EXISTS (SELECT 1 FROM entry_channels c WHERE c.entry_id = e.id AND c.state = 'active')
     ORDER BY e.id;
 
@@ -157,6 +157,6 @@ BEGIN
                    AND ne.pathname = oe.pathname AND ne.authority = NEW.name
     WHERE oe.workspace_id = NEW.workspace_id
       AND oe.authority = (SELECT name FROM workers WHERE id = NEW.parent_worker_id)
-      AND oe.scheme IN ('worker', 'prompt')
+      AND oe.scheme = 'worker'
       AND NOT EXISTS (SELECT 1 FROM entry_channels a WHERE a.entry_id = oe.id AND a.state = 'active');
 END;

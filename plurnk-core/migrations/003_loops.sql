@@ -12,8 +12,9 @@ CREATE TABLE IF NOT EXISTS loops (
     sequence INTEGER NOT NULL             CHECK (sequence >= 1),
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
-    -- {§prompt-causal-source}: canonical actor address for the initial prompt;
-    -- NULL means the owning worker itself.
+    -- {§message-causal-source}: canonical actor address for the initial message;
+    -- NULL means the owning worker itself. Denormalized headline of the loop's
+    -- first message ({§message-arrival}); the inbox row below is the one published.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
     policy   TEXT    NOT NULL DEFAULT '{"proposals":"review"}' CHECK (json_valid(policy)),
     -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
@@ -39,11 +40,8 @@ CREATE TABLE IF NOT EXISTS loops (
     wait_deadline_at INTEGER,
     wait_poll_interval INTEGER CHECK (wait_poll_interval IS NULL OR wait_poll_interval >= 0),
     wait_poll_at INTEGER,
-    -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
-    -- held here until turn 1 materializes that frame (string[] JSON).
-    open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
-    -- {§prompt-loop-containment}: one queued recovery loop may carry the
-    -- complete orphan frame set of one concluded source loop.
+    -- {§message-loop-containment}: one queued recovery loop may carry the
+    -- complete unpublished message set of one concluded source loop.
     orphan_source_loop_id INTEGER,
     -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly).
@@ -115,6 +113,26 @@ CREATE INDEX IF NOT EXISTS loops_recurrence_root_loop_id ON loops (recurrence_ro
 CREATE UNIQUE INDEX IF NOT EXISTS loops_live_recurrence
 ON loops (COALESCE(recurrence_root_loop_id, id))
 WHERE repeat_interval_ms IS NOT NULL AND status IN (100, 102, 202);
+
+-- {§message-arrival}: the loop's inbox. Every message the loop contains, in arrival order, until
+-- the turn boundary that publishes it as an inbound SEND row in the loop's log; the initial
+-- message is ordinal 1 and doubles as the loop's `prompt` headline. `log_entry_id` is NULL until
+-- publication; a concluded loop's unpublished rows move to its recovery loop
+-- ({§message-loop-containment}).
+CREATE TABLE IF NOT EXISTS loop_messages (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    loop_id      INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
+    ordinal      INTEGER NOT NULL CHECK (ordinal >= 1),
+    -- {§message-causal-source}: NULL means the owning worker itself.
+    source       TEXT CHECK (source IS NULL OR length(source) > 0),
+    body         TEXT NOT NULL CHECK (length(body) > 0),
+    -- {§methods-loop-run-open-paths}: the message's selected paths (string[] JSON), read at publication.
+    open_paths   TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
+    -- The inbound SEND row this message became (log_entries, chapter 006); NULL until published.
+    log_entry_id INTEGER,
+    UNIQUE (loop_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS loop_messages_unpublished ON loop_messages (loop_id) WHERE log_entry_id IS NULL;
 
 -- turns
 -- finish_reason / model: accepted provider-call metadata from the provider

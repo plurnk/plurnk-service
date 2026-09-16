@@ -129,15 +129,21 @@ BEGIN
     INSERT INTO loops (
         worker_id, sequence, status, prompt, prompt_source, policy,
         model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
-        execution_budget_ms, open_paths, scheduled_at, repeat_interval_ms, recurrence_root_loop_id
+        execution_budget_ms, scheduled_at, repeat_interval_ms, recurrence_root_loop_id
     )
     SELECT NEW.worker_id,
            (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = NEW.worker_id),
            100, seed.prompt, seed.prompt_source, seed.policy,
            seed.model_route_id, seed.spawn_model_route_id, seed.reasoning_policy, seed.max_turns,
-           seed.execution_budget_ms, seed.open_paths,
+           seed.execution_budget_ms,
            NEW.scheduled_at + NEW.repeat_interval_ms, NEW.repeat_interval_ms, seed.id
     FROM loops seed
+    WHERE seed.id = COALESCE(NEW.recurrence_root_loop_id, NEW.id);
+    -- {§message-arrival}: the occurrence's initial message is the seed's, republished fresh.
+    INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths)
+    SELECT last_insert_rowid(), 1, seed.prompt_source, seed.prompt, COALESCE(m.open_paths, '[]')
+    FROM loops seed
+    LEFT JOIN loop_messages m ON m.loop_id = seed.id AND m.ordinal = 1
     WHERE seed.id = COALESCE(NEW.recurrence_root_loop_id, NEW.id);
 END;
 

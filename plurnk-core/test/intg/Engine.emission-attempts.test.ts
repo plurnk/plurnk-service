@@ -407,11 +407,12 @@ test("{§turn-shape} a valid operation without TASK is admitted once without an 
 
         const rows = await db.test_log_entries_by_turn.all<{
             op: string | null;
+            origin: string;
             tx: string;
             status_rx: number;
         }>({ turn_id: result.turnId });
         assert.deepEqual(
-            rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op),
+            rows.filter(({ op, origin }) => op !== null && !(op === "SEND" && origin === "_plurnk")).map(({ op }) => op),
             ["EDIT"],
             "only the authored operation is recorded",
         );

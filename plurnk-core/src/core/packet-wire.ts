@@ -653,6 +653,20 @@ export default class PacketWire {
         };
     }
 
+    // {§message-arrival} — an inbound SEND row: harness-published, the sender's statement as its
+    // sent side. {§message-causal-source}: a `source` names the actor; absence is the owner.
+    static isArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown }): boolean {
+        if (e.op !== "SEND" || e.origin !== "_plurnk") return false;
+        const attrs = typeof e.attrs === "string" ? JSON.parse(e.attrs) as unknown : e.attrs;
+        return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
+    }
+
+    // {§message-projection} — a peer worker's message takes the ordinary bounds; every other
+    // arrival, the loop's own assignment included, shares the allowance.
+    static isExteriorArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown; readonly source?: unknown }): boolean {
+        return PacketWire.isArrival(e) && !(typeof e.source === "string" && e.source.startsWith("worker://"));
+    }
+
     static #promptProjectionWeights(
         entries: readonly LogEntryView[],
         bodies: readonly ReturnType<typeof LogBody.resolve>[],
@@ -665,7 +679,9 @@ export default class PacketWire {
             throw new RangeError(`promptProjectionWeight must be a non-negative safe integer, got ${JSON.stringify(budget)}`);
         }
         const costs = entries.flatMap((entry, index) => {
-            if (entry.op !== "prompt" || bodies[index]!.content.length === 0) return [];
+            // {§message-projection} — an arrival from outside the workspace shares the allowance;
+            // a peer worker's message takes the ordinary bounds.
+            if (!PacketWire.isExteriorArrival(entry) || bodies[index]!.content.length === 0) return [];
             const body = bodies[index]!;
             const visible = visibility[index]!;
             const width = body.startLine === null || visible.totalLines === 0
@@ -748,10 +764,10 @@ export default class PacketWire {
         const renderedLeaf = LogEntryProjection.leaf(e);
         const path = PacketWire.#entryPath(coordinate, renderedLeaf);
         // Absence = "model" — the worker's own authorship is the default,
-        // exactly as `source` absence means the owning worker (#338). A prompt row is always
-        // harness-published ({§prompt-causal-source}), so its origin says nothing and the row
-        // carries only the causal `source` when another actor supplied one (#706).
-        if (typeof e.origin === "string" && e.origin !== "model" && op !== "prompt") meta.origin = e.origin;
+        // exactly as `source` absence means the owning worker (#338). An arrival is an inbound
+        // SEND row the harness published ({§message-causal-source}): its origin says nothing, so
+        // the row carries only the causal `source` when another actor supplied one (#706).
+        if (typeof e.origin === "string" && e.origin !== "model" && !PacketWire.isArrival(e)) meta.origin = e.origin;
         // {§env-delta-attribution}: render the causal worker address or
         // subsystem token when present; absence means the owning worker.
         if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;

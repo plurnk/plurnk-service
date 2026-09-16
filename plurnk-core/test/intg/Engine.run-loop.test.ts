@@ -62,8 +62,9 @@ test("Engine.runLoop: three-turn loop terminating on completed TASK inventory", 
         assert.equal(result.hitMaxTurns, false);
 
         const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
-        // Three known entries and the addressed prompt; no manifest entry exists and turn 0 archives nothing.
-        assert.equal(entryCount, 4, "the entries counted before, plus the prompt entry");
+        // Three known entries; the message lives in the loop's inbox and its log row, never as an
+        // entry ({§message-arrival}); no manifest entry exists and turn 0 archives nothing.
+        assert.equal(entryCount, 3, "the entries counted before; a message is not an entry");
 
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200);

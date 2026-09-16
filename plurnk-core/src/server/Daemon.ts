@@ -41,7 +41,6 @@ import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle, { taskTiming } from "../core/LoopLifecycle.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
-import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
@@ -309,7 +308,7 @@ export default class Daemon implements ApplicationPort {
                     turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
                 );
             },
-            reconcilePrompts: (workerId, endedLoopId) => this.#reconcileOrphanedPrompts(workerId, endedLoopId),
+            reconcileMessages: (workerId, endedLoopId) => this.#reconcileOrphanedMessages(workerId, endedLoopId),
             runLoop: async ({
                 workspaceId,
                 workerId,
@@ -1490,7 +1489,7 @@ export default class Daemon implements ApplicationPort {
         await this.#db.recovery_fail_orphan_subscriptions.run({});
         await this.#db.recovery_resume_unblocked_parks.run({});
 
-        const orphanSources = await this.#db.recovery_orphan_prompt_sources.all<{
+        const orphanSources = await this.#db.recovery_orphan_message_sources.all<{
             loop_id: number;
             worker_id: number;
             origin: string;
@@ -1502,7 +1501,7 @@ export default class Daemon implements ApplicationPort {
             );
         }
         for (const source of orphanSources) {
-            await this.#drains.reconcileOrphanedPrompts(source.worker_id, source.loop_id);
+            await this.#drains.reconcileOrphanedMessages(source.worker_id, source.loop_id);
         }
 
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -1729,22 +1728,19 @@ export default class Daemon implements ApplicationPort {
         return this.#drains.inject(args);
     }
 
-    // Durable prompt promotion remains daemon policy; DrainSupervisor invokes
+    // Durable message promotion remains daemon policy; DrainSupervisor invokes
     // it under the same worker lock as enqueue and drain teardown.
-    async #reconcileOrphanedPrompts(workerId: number, endedLoopId: number): Promise<void> {
-        const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
-        const prefix = promptLoopPrefix(endedSeq);
-        const frames = await this.#db.drain_orphaned_prompts_for_loop.all<{
+    async #reconcileOrphanedMessages(workerId: number, endedLoopId: number): Promise<void> {
+        const messages = await this.#db.drain_orphaned_messages_for_loop.all<{
             body: string;
+            source: string | null;
             policy: string;
             model_route_id: number | null;
             spawn_model_route_id: number | null;
             reasoning_policy: ReasoningPolicy | null;
             max_turns: number;
-            open_paths: string | null;
-            prompt_source: string | null;
-        }>({ loop_id: endedLoopId, worker_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
-        const first = frames[0];
+        }>({ loop_id: endedLoopId });
+        const first = messages[0];
         if (first === undefined) return;
         const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
             id: number;
@@ -1753,24 +1749,20 @@ export default class Daemon implements ApplicationPort {
         }>({
             worker_id: workerId,
             prompt: first.body,
-            prompt_source: first.prompt_source,
+            prompt_source: first.source,
             policy: first.policy,
             model_route_id: first.model_route_id,
             spawn_model_route_id: first.spawn_model_route_id,
             reasoning_policy: first.reasoning_policy,
             max_turns: first.max_turns,
-            open_paths: first.open_paths ?? "[]",
             orphan_source_loop_id: endedLoopId });
-        if (recovery === undefined) throw new Error("reconcileOrphanedPrompts: enqueue returned no row");
+        if (recovery === undefined) throw new Error("reconcileOrphanedMessages: enqueue returned no row");
         if (recovery.status !== 100) return;
-        const moved = await this.#db.drain_rehome_orphaned_prompt_frames.all<{ id: number; pathname: string }>({
-            worker_id: workerId,
+        const moved = await this.#db.drain_rehome_orphaned_messages.all<{ id: number; ordinal: number }>({
             source_loop_id: endedLoopId,
-            source_pattern: `${prefix}%`,
-            source_prefix_len: prefix.length,
-            target_prefix: promptLoopPrefix(recovery.sequence) });
-        if (moved.length !== frames.length) {
-            throw new Error(`reconcileOrphanedPrompts: expected to re-home ${frames.length} frames, moved ${moved.length}`);
+            target_loop_id: recovery.id });
+        if (moved.length !== messages.length) {
+            throw new Error(`reconcileOrphanedMessages: expected to re-home ${messages.length} messages, moved ${moved.length}`);
         }
     }
 

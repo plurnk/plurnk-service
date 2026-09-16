@@ -544,13 +544,13 @@ test("the newest-first workspace log replays user prompts, TASK and SEND chronol
         { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "emissionAttempt" } },
         { id: 2, op: "SEND", status_rx: 200, origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 1, op: "TASK", origin: "model", coordinate: "1/1/1/TASK", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
-        { id: 0, op: "prompt", origin: "_plurnk", coordinate: "1/1/0/prompt", rx: { content: "What is the answer?", mimetype: "text/markdown" } },
+        { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, coordinate: "1/1/0/SEND", tx: { body: { raw: "What is the answer?" } } },
     ], { id: "current-user", role: "user", content: "Continue." });
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
-        { id: "1/1/0/prompt", role: "user", content: "What is the answer?" },
+        { id: "1/1/0/SEND", role: "user", content: "What is the answer?" },
         { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
         { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42." },
         { id: "th/plan", role: "activity", activityType: "PLAN", content: acpPlan("finish") },

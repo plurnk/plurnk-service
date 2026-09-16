@@ -1,6 +1,6 @@
-// A prompt is one first-class, owner-keyed log row. It is initially visible like any
-// newly delivered body, while the separate Active Prompts section retains its
-// durable prompt:// entry address.
+// An arrival is one inbound SEND row. It is initially visible like any
+// newly delivered body, while the separate Open Messages section retains its
+// log coordinate.
 
 import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
@@ -8,10 +8,10 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string; folded: string; turn_id: number };
+type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
 const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
 
-test("the first-class prompt row and a normal same-turn op are both born open", async () => {
+test("the arrival row and a normal same-turn op are both born open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -19,9 +19,9 @@ test("the first-class prompt row and a normal same-turn op are both born open", 
             const resp = await runLoopToTerminal(ws, 2, { prompt: "hello there" });
             const { loopId } = resp as { loopId: number };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.scheme === "prompt");
-            assert.ok(prompt !== undefined, "the prompt is logged once as a first-class row");
-            assert.equal(prompt!.folded, "[]", "new prompt delivery is visible");
+            const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
+            assert.ok(prompt !== undefined, "the message is logged once as an inbound SEND row");
+            assert.equal(prompt!.folded, "[]", "new message delivery is visible");
             const send = rows.find((r) => r.op === "TASK" && r.turn_id === prompt!.turn_id);
             assert.ok(send !== undefined, "the model's own op shares the turn");
             assert.equal(send!.folded, "[]", "a normal op in the same turn stays visible");

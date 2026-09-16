@@ -12,8 +12,6 @@ import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegis
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
-import { promptLoopPrefix } from "./plurnk-uri.ts";
-import PromptFrames from "./PromptFrames.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -121,7 +119,7 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopSignals = new Map<number, AbortSignal>();
-    // {§prompt-loop-containment}: one worker's prompt-frame allocation and
+    // {§message-loop-containment}: one worker's prompt-frame allocation and
     // persistence is a serial critical section. A completed later frame can
     // therefore never overtake or replace an earlier concurrent arrival.
     #promptWriteLocks = new Map<number, Promise<unknown>>();
@@ -624,7 +622,7 @@ export default class Engine {
     }
 
     // Inject a prompt into the admitted non-terminal loop. Writes the
-    // next prompt://<worker>/<loop>/<id> entry; the next turn publishes it
+    // next inbox row; the next turn boundary publishes it
     // as one actionless prompt row. Prompt-frame writes serialize per loop,
     // so concurrent arrivals retain distinct ordered ordinals.
     //
@@ -655,30 +653,13 @@ export default class Engine {
     > {
         const loopRow = await this.#db.drain_injection_target.get<{ worker_id: number; sequence: number }>({ loop_id: loopId });
         if (loopRow === undefined) return null;
-        const workerId = loopRow.worker_id;
         const turnRow = await this.#db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
-        const workspaceRow = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
-        if (workspaceRow === undefined) throw new Error(`Engine.injectIntoLoop: worker ${workerId} not found`);
-        // {§prompt-loop-containment}: opaque path identity and durable arrival order are separate.
-        const prefix = promptLoopPrefix(loopRow.sequence);
-        const ordinalRow = await this.#db.drain_next_prompt_ordinal_for_loop.get<{ next: number }>({
-            worker_id: workerId,
-            pattern: `${prefix}%`,
-            prefix_len: prefix.length });
-        const ctx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
-            turnId: 0,                   // no turn open at inject time; entries don't pin turnId
-            writer: "_plurnk",
-            signal: this.#loopSignals.get(loopId),
-            streamEventNotify: this.#streamEventNotify,
-            wakeWorkerNotify: this.#wakeWorkerNotify,
-            weigh: this.#weighContent,
-            pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, workerId, loopId, notice) };
-        await PromptFrames.write(ctx, {
-            loopSequence: loopRow.sequence, ordinal: ordinalRow?.next ?? 2,
-            content: prompt, openPaths, source,
+        // {§message-loop-containment}: the inbox keeps arrival order; the next turn boundary publishes.
+        const appended = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
+            loop_id: loopId, source: source ?? null, body: prompt, open_paths: JSON.stringify(openPaths),
         });
+        if (appended === undefined) throw new Error(`Engine.injectIntoLoop: loop ${loopId} accepted no message`);
         return { loopId, turnSeq };
     }
 

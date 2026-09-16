@@ -3,7 +3,6 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { type EditStatement, type LineMarker, type PlurnkStatement, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
-import WorkerName from "../../src/core/WorkerName.ts";
 import Engine from "../../src/core/Engine.ts";
 import type { ReasoningEventNotify, ReasoningEventPayload } from "../../src/core/ReasoningEvent.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
@@ -280,9 +279,9 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
 });
 
 test("Engine.runTurn: packet stores system + user content from messages when the loop prompt is empty", async () => {
-    // The prompt section sources first from the loop's durable prompt
-    // entry; it falls back to messages.user when no entry exists. Test the
-    // fallback explicitly by using a loop with an empty prompt.
+    // The messages section lists the loop's open arrivals; it falls back to
+    // messages.user when the loop has none. Test the fallback explicitly by
+    // using a loop with an empty prompt.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -303,7 +302,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         const packet = JSON.parse(row.packet) as { assistant: unknown };
         const definition = packetSection(packet, "definition");
         assert.equal(definition, "system prompt body");
-        assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
+        assert.equal(packetSection(packet, "messages"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
 });
@@ -325,9 +324,9 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", async () => {
+test("Engine.runTurn: multi-op turn - the arrival row precedes model ops", async () => {
     // The packetless initialization is durable turn 1. The first model turn is
-    // turn 2 and starts its own operation sequence with the prompt row.
+    // turn 2 and starts its own operation sequence with the arrival row.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -348,7 +347,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "prompt" },
+                { idx: 1, op: "SEND" },
                 { idx: 2, op: "EDIT" },
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
@@ -368,8 +367,8 @@ test("Engine.runTurn: a trusted TASK-less program continues with only its author
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes, [{ op: "EDIT", status: 201, problemType: null }]);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["EDIT"]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ op, origin }) => op !== null && !(op === "SEND" && origin === "_plurnk")).map(({ op }) => op), ["EDIT"]);
         const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/x", name: "body" });
         assert.equal(channel?.content, "y");
     } finally { await db.close(); }
@@ -840,8 +839,8 @@ test("Engine.runTurn: a trusted batch with competing dispositions fails before d
 
 // {§packet-stored-shape} {§body-projection} — chronological log-section rows.
 
-test("Engine.runTurn: the first turn's log section contains the prompt entry", async () => {
-    // {§prompt-entry}: the prompt is published before the model packet is built.
+test("Engine.runTurn: the first turn's log section contains the arrival row", async () => {
+    // {§message-arrival}: the message is published before the model packet is built.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -851,18 +850,18 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // Prompt delivery and initialization's READ share a source, not an operation identity.
-        const frame = await db.engine_get_loop_prompt.get<{ prompt_pathname: string }>({ loop_id: loopId });
-        assert.match(frame!.prompt_pathname, /^\/1\/[a-f0-9]{8}$/u);
-        const promptTarget = `prompt://${await WorkerName.forId(db, workerId)}${frame!.prompt_pathname}`;
-        const prompt = log.find((e) => e.target === promptTarget && String(e.path).endsWith("/prompt"));
-        assert.ok(prompt, "first-class prompt row uses the durable source identity");
-        // {§prompt-causal-source} — a prompt row is always harness-published, so the rendered row omits
+        // The arrival is the model turn's first row: an inbound SEND with no target.
+        const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; log_entry_id: number | null }>;
+        assert.deepEqual(inbox.map(({ ordinal }) => ordinal), [1], "the loop's one message");
+        assert.ok(inbox[0]!.log_entry_id !== null, "the inbox row was stamped with the row it became");
+        const prompt = log.find((e) => String(e.path).endsWith("/SEND"));
+        assert.ok(prompt, "the arrival row is in the log");
+        // {§message-causal-source} — an arrival is always harness-published, so the rendered row omits
         // the constant origin and carries only a causal source when another actor supplied one (#706).
-        assert.equal(prompt.origin, undefined, "the rendered prompt row carries no constant origin");
-        assert.equal(prompt.source, undefined, "the owner caused this frame: no source");
-        assert.equal(prompt.target, promptTarget);
-        assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation delimiter");
+        assert.equal(prompt.origin, undefined, "the rendered arrival row carries no constant origin");
+        assert.equal(prompt.source, undefined, "the owner caused this message: no source");
+        assert.equal("target" in prompt, false, "an arrival has no target");
+        assert.match(String(prompt.path), /\/SEND$/, "the path owns the SEND delimiter");
     } finally { await db.close(); }
 });
 
@@ -880,11 +879,11 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
-        // EDIT and a SEND). Found by identity (op + target), robust to the
-        // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
-        // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => typeof e.target === "string" && e.target.startsWith("prompt://") && String(e.path).endsWith("/prompt")), "prompt row logged");
+        // Turn 2 packet sees the arrival row + the prior turn's two model ops (an
+        // EDIT and a SEND). Found by identity (an untargeted SEND without a reply receipt),
+        // robust to the turn-0 initialization ({§worker-initialization-entry}) and a
+        // catalog-preview foist that shift coordinates between the arrival and the model's ops.
+        assert.ok(log.find((e) => String(e.path).endsWith("/SEND") && !("target" in e) && !("recipients" in e)), "arrival row logged");
         const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);

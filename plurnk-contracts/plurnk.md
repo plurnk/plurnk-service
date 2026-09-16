@@ -31,7 +31,7 @@
 
 ## Workflow Management
 
-    ````TASK <!-- status of tasks necessary to resolve Active Prompts -->
+    ````TASK <!-- status of tasks necessary to resolve the open messages -->
     [{"content": string, "status": "todo" | "waiting" | "in_progress" | "completed" | "failed"}]
     ````
 
@@ -90,8 +90,8 @@
     With a running node script, SEND passes this message to stdin.
     ````
 
-    ````SEND <!-- SEND without a (path) responds to Active Prompts -->
-    YOU SHOULD format responses to the Active Prompts in Markdown, using Mermaid diagrams, tables, lists, or prose.
+    ````SEND <!-- SEND without a (path) answers the open messages -->
+    YOU SHOULD format answers to the open messages in Markdown, using Mermaid diagrams, tables, lists, or prose.
     ````
 
 ## Delegation

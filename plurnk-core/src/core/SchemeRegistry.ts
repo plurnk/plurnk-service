@@ -1,6 +1,5 @@
 import Log from "../schemes/Log.ts";
 import Exec, { type WebFetch } from "../schemes/Exec.ts";
-import Prompt from "../schemes/Prompt.ts";
 import TurnSource from "../schemes/TurnSource.ts";
 import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
@@ -73,9 +72,8 @@ export default class SchemeRegistry {
         // {§scheme} — "exec" is internal machinery, not an addressable scheme: executions route here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
-        // is worker:// (commons/~/name/plurnk), and task frames are prompt://.
+        // is worker:// (commons/~/name/plurnk).
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb));
-        this.#registerBuiltIn("prompt", new Prompt());
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
         this.#registerBuiltIn("file", new File());

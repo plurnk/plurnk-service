@@ -1,12 +1,11 @@
 // {§send-looks-like-operation} — an explicit SEND whose first line is an operation heading is a
 // mis-fenced operation, refused at dispatch so nothing is silently delivered as a reply; a heading
 // outside any fence is prose with the parser's advisory ({§bare-heading-advisory}).
-// {§send-response-receipt} — a delivered reply names the prompts it answered.
+// {§send-response-receipt} — a delivered reply names the open messages it answered.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
-import { promptLoopPrefix } from "../../src/core/plurnk-uri.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const DONE = "```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
@@ -64,7 +63,7 @@ test("{§send-looks-like-operation}: prose that merely starts with an operation 
     });
 });
 
-test("{§send-response-receipt}: a delivered reply names the Active Prompts it answered", async () => {
+test("{§send-response-receipt}: a delivered reply names the open messages it answered", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
     ] });
@@ -79,13 +78,11 @@ test("{§send-response-receipt}: a delivered reply names the Active Prompts it a
             const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
             assert.equal(send?.status_rx, 200);
             const { recipients } = JSON.parse(send!.rx) as { recipients: string[] };
-            const workerId = modelWorkerId!;
-            const worker = await db.worker_get.get<{ name: string }>({ id: workerId });
-            const prefix = promptLoopPrefix(1);
-            const prompts = await db.drain_get_all_prompt_bodies_for_loop.all<{ pathname: string }>({ worker_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
-            assert.equal(prompts.length, 1, "one prompt in the loop");
-            assert.deepEqual(recipients, prompts.map((p) => `prompt://${worker!.name}${p.pathname}`), "the receipt names the prompt address the packet listed");
-            assert.match(recipients[0]!, /^prompt:\/\/[a-z0-9-]+\/1\/[a-f0-9]{8}$/u);
+            assert.ok(modelWorkerId !== undefined);
+            const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
+            assert.equal(arrivals.length, 1, "one message in the loop");
+            assert.equal(recipients.length, 1, "the receipt names the one open message");
+            assert.match(recipients[0]!, /^log:\/\/\/1\/\d+\/1\/SEND$/u, "the receipt names the arrival row's log coordinate, as the packet listed it");
         } finally { ws.close(); }
     });
 });

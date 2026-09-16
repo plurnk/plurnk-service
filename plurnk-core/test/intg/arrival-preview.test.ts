@@ -1,6 +1,6 @@
-// Prompt frames are first-class actionless log rows. Their initially visible
-// projection receives a stable share of the packet budget, and the Active User
-// Prompts section retains each prompt:// address for direct retrieval.
+// Arrival rows are inbound SEND rows the harness publishes. Their initially visible
+// projection receives a stable share of the packet budget, and the Open Messages
+// section points at each open row by its log coordinate for direct retrieval.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,9 +14,9 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 40)] });
 
-type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
+type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; tx: string | null; rx: string | null; status_rx: number };
 
-test("a short prompt lands as one first-class prompt row", async () => {
+test("a short message lands as one inbound SEND row", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -24,13 +24,11 @@ test("a short prompt lands as one first-class prompt row", async () => {
             const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
             const { loopId } = resp as { loopId: number };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/[a-f0-9]{8}$/.test(r.pathname ?? "") && r.scheme === "prompt");
-            assert.ok(prompt, "the first-class prompt row exists");
-            assert.equal(prompt!.lineMarker, null, "prompt delivery is not a synthetic scoped retrieval");
-            assert.match(prompt!.rx ?? "", /three/, "the complete durable body belongs to the prompt row");
-            assert.equal(rows.filter((r) => r.op === "prompt").length, 1, "initialization does not duplicate prompt delivery");
-            const inspection = rows.filter((r) => r.scheme === "prompt" && r.op === "READ");
-            assert.equal(inspection.length, 0, "initialization never READs the prompt: the row is its one publication");
+            const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
+            assert.ok(prompt, "the arrival row exists");
+            assert.equal(prompt!.lineMarker, null, "message delivery is not a synthetic scoped retrieval");
+            assert.match(prompt!.tx ?? "", /three/, "the complete durable body belongs to the arrival row's sent side");
+            assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "_plurnk").length, 1, "initialization does not duplicate message delivery");
         } finally { ws.close(); }
     });
 });
@@ -44,12 +42,12 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/[a-f0-9]{8}$/.test(r.pathname ?? "") && r.scheme === "prompt");
-            assert.ok(prompt, "the first-class prompt row exists");
+            const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
+            assert.ok(prompt, "the arrival row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
             const logSection = (packet.sections ?? []).find((sec) => sec.name === "log");
-            const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
+            const promptSection = (packet.sections ?? []).find((sec) => sec.name === "messages");
             assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt projection reaches the model");
             assert.match(logSection?.content ?? "", /prompt line 17/, "prompt initialization is not clipped by the ordinary sixteen-line preview");
             assert.doesNotMatch(logSection?.content ?? "", /prompt line 4000:/, "content beyond the adaptive projection remains outside the packet");
@@ -57,7 +55,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             assert.ok(chunk, "the projection states its displayed and complete extents");
             assert.ok(Number(chunk[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "the dynamic prompt projection exceeds the unrelated ordinary preview bound");
             const projectedPrompt = logEntries(packet).find((entry) =>
-                typeof entry.path === "string" && entry.path.endsWith("/prompt"));
+                typeof entry.path === "string" && entry.path.endsWith("/SEND"));
             assert.equal(projectedPrompt?.chunk, `showing <1,${chunk[1]}> of <1,4000>`, "the independent packet parser retains the following member");
             const budgetSection = (packet.sections ?? []).find((sec) => sec.name === "budget")?.content ?? "";
             const ceiling = Number(/"logTokensMax":\s*(\d+)/.exec(budgetSection)?.[1]);
@@ -66,8 +64,8 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const projectedBody = String(projectedPrompt?.body ?? "").trimEnd().split("\n").map((line) => line.replace(/^\s*\d+:/u, "")).join("\n");
             assert.ok(contentWeight(projectedBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
             const bodyTarget = typeof projectedPrompt?.path === "string" ? projectedPrompt.path : undefined;
-            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/prompt$/,
-                "the prompt body is addressed in the first packet-bearing turn");
+            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/SEND$/,
+                "the message body is addressed in the first packet-bearing turn");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(worker, "the model worker exists");
             const [workspace] = await daemon.listWorkspaces();
@@ -78,10 +76,10 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             );
             assert.equal(recovered.status, 200);
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");
-            assert.ok(promptSection, "the prompts section exists");
-            assert.equal(promptSection!.slot, "user", "the prompt paths list closes the user-slot status clump");
-            assert.equal(promptSection!.header, "Active Prompts");
-            assert.match(promptSection!.content, /^\[\{"path":"prompt:\/\/[^/]+\/1\/[a-f0-9]{8}"\}\]$/, "a pointer with the literal prompt address and no source: the owner caused the frame");
+            assert.ok(promptSection, "the messages section exists");
+            assert.equal(promptSection!.slot, "user", "the open-message pointers close the user-slot status clump");
+            assert.equal(promptSection!.header, "Open Messages");
+            assert.match(promptSection!.content, /^\[\{"path":"log:\/\/\/1\/\d+\/1\/SEND"\}\]$/, "a pointer with the row's log coordinate and no source: the owner caused the message");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

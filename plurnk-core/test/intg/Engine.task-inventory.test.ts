@@ -40,9 +40,9 @@ for (const [name, first, detail] of [
         assert.equal(result.result.content, "Answer.");
         const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
         assert.equal(rail?.strike_streak, 0, "the concluding turn cleared the streak this inventory earned");
-        const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; status_rx: number }>({ loop_id: loopId });
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; status_rx: number }>({ loop_id: loopId });
         if (name === "missing inventory") {
-            assert.equal(rows.filter(({ op, status_rx }) => op === "SEND" && status_rx === 200).length, 2,
+            assert.equal(rows.filter(({ op, origin, status_rx }) => op === "SEND" && origin === "model" && status_rx === 200).length, 2,
                 "the earlier message stays a delivered log row outside the response");
         }
         if (detail !== null) {
@@ -129,8 +129,8 @@ test("{§loop-response-messages} the response is the last message; earlier messa
     assert.equal(result.result.status, 200);
     assert.equal(result.result.content, "The codename is phoenix.", "the corrected answer is the response");
     assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "The codename is phoenix.");
-    const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; tx: string }>({ loop_id: loopId });
-    assert.deepEqual(rows.filter(({ op }) => op === "SEND").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
+    assert.deepEqual(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
         [[200, "The codename is Bumblebee."], [200, "The codename is phoenix."]],
         "both messages were delivered and both stay log rows");
     assert.equal(provider.received.length, 2);

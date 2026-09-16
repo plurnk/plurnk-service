@@ -26,7 +26,7 @@ advantage over conventional tool calling.
 
 ## Internal resource addressing
 
-Agent-visible state uses URI schemes such as `worker://`, `prompt://`, and
+Agent-visible state uses URI schemes such as `worker://` and
 `log://`. The URI authority identifies the relevant worker namespace where the
 scheme supports one.
 

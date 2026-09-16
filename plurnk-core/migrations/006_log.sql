@@ -124,9 +124,10 @@ SELECT loop_id, content FROM (
     WHERE le.op = 'SEND' AND le.state = 'resolved' AND le.status_rx BETWEEN 200 AND 299
       AND le.source IS NULL AND le.inherited_history = 0
       AND json_valid(le.tx)
-      -- {§send-prompt-acceptance}: a SEND to one of this loop's own prompts is the response too;
-      -- the dispatcher admits only own-loop prompt addresses, so the scheme alone identifies them.
-      AND (json_type(le.tx, '$.target') = 'null' OR json_extract(le.tx, '$.target.scheme') = 'prompt')
+      -- {§loop-response-messages}: the model's own untargeted SEND; an arrival is an inbound SEND
+      -- row the harness published ({§message-arrival}) and never the response.
+      AND le.origin = 'model'
+      AND json_type(le.tx, '$.target') = 'null'
       AND json_type(le.tx, '$.body.raw') = 'text'
       AND length(json_extract(le.tx, '$.body.raw')) > 0
 )

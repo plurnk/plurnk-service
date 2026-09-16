@@ -200,7 +200,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const plan = JSON.parse(initializationRows.find(({ op }) => op === "TASK")!.tx) as { body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
-                        content: "Address the prompt.",
+                        content: "Address the message.",
                         status: "in_progress",
                     },
                 ]);
@@ -319,7 +319,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^````FIND[^\n]*\n[\s\S]*\n````TASK\n\[{"content":"Address the prompt\.","status":"in_progress"}\]\n````$/,
+                    /^````FIND[^\n]*\n[\s\S]*\n````TASK\n\[{"content":"Address the message\.","status":"in_progress"}\]\n````$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

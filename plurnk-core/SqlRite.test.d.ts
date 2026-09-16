@@ -172,12 +172,13 @@ export class SqlRiteSync {
 	drain_message_source: SqlRiteSyncPreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
-	drain_next_prompt_ordinal_for_loop: SqlRiteSyncPreparedStatements;
-	drain_undelivered_prompts_for_loop: SqlRiteSyncPreparedStatements;
-	drain_get_all_prompt_bodies_for_loop: SqlRiteSyncPreparedStatements;
-	drain_orphaned_prompts_for_loop: SqlRiteSyncPreparedStatements;
+	drain_enqueue_message: SqlRiteSyncPreparedStatements;
+	drain_unpublished_messages_for_loop: SqlRiteSyncPreparedStatements;
+	drain_unpublished_arrivals_for_loop: SqlRiteSyncPreparedStatements;
+	drain_publish_message: SqlRiteSyncPreparedStatements;
+	drain_orphaned_messages_for_loop: SqlRiteSyncPreparedStatements;
 	drain_enqueue_orphan_recovery_loop: SqlRiteSyncPreparedStatements;
-	drain_rehome_orphaned_prompt_frames: SqlRiteSyncPreparedStatements;
+	drain_rehome_orphaned_messages: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
 	drain_loop_generation_policy: SqlRiteSyncPreparedStatements;
 	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
@@ -219,7 +220,7 @@ export class SqlRiteSync {
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
 	recovery_resume_unblocked_parks: SqlRiteSyncPreparedStatements;
-	recovery_orphan_prompt_sources: SqlRiteSyncPreparedStatements;
+	recovery_orphan_message_sources: SqlRiteSyncPreparedStatements;
 	recovery_queued_workers: SqlRiteSyncPreparedStatements;
 	recovery_parked_workers: SqlRiteSyncPreparedStatements;
 	log_read_by_coordinate: SqlRiteSyncPreparedStatements;
@@ -267,6 +268,7 @@ export class SqlRiteSync {
 	engine_render_errors: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_admit_log_outputs: SqlRiteSyncPreparedStatements;
+	engine_open_messages: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
 	retention_retire_packets: SqlRiteSyncPreparedStatements;
@@ -292,7 +294,6 @@ export class SqlRiteSync {
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
 	engine_mark_publication_terminal: SqlRiteSyncPreparedStatements;
 	engine_insert_stream_delta: SqlRiteSyncPreparedStatements;
-	engine_get_loop_prompt: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_packet_count: SqlRiteSyncPreparedStatements;
 	engine_open_turn_attempt: SqlRiteSyncPreparedStatements;
@@ -335,7 +336,8 @@ export class SqlRiteSync {
 	test_get_loop_status: SqlRiteSyncPreparedStatements;
 	test_get_loop_execution: SqlRiteSyncPreparedStatements;
 	test_get_loop_posture: SqlRiteSyncPreparedStatements;
-	test_prompt_paths_by_worker: SqlRiteSyncPreparedStatements;
+	test_messages_by_loop: SqlRiteSyncPreparedStatements;
+	test_messages_by_worker: SqlRiteSyncPreparedStatements;
 	test_get_turn: SqlRiteSyncPreparedStatements;
 	test_turn_attempts: SqlRiteSyncPreparedStatements;
 	test_model_calls: SqlRiteSyncPreparedStatements;
@@ -444,7 +446,7 @@ export class SqlRiteSync {
 	test_disposition_rows_for_worker: SqlRiteSyncPreparedStatements;
 	test_workers_by_workspace: SqlRiteSyncPreparedStatements;
 	test_first_turn_for_loop: SqlRiteSyncPreparedStatements;
-	test_prompt_folded: SqlRiteSyncPreparedStatements;
+	test_arrival_folded: SqlRiteSyncPreparedStatements;
 	test_turn_id_by_seq: SqlRiteSyncPreparedStatements;
 	test_count_op: SqlRiteSyncPreparedStatements;
 	test_set_workspace_root: SqlRiteSyncPreparedStatements;
@@ -722,12 +724,13 @@ export default class SqlRite {
 	drain_message_source: SqlRitePreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;
-	drain_next_prompt_ordinal_for_loop: SqlRitePreparedStatements;
-	drain_undelivered_prompts_for_loop: SqlRitePreparedStatements;
-	drain_get_all_prompt_bodies_for_loop: SqlRitePreparedStatements;
-	drain_orphaned_prompts_for_loop: SqlRitePreparedStatements;
+	drain_enqueue_message: SqlRitePreparedStatements;
+	drain_unpublished_messages_for_loop: SqlRitePreparedStatements;
+	drain_unpublished_arrivals_for_loop: SqlRitePreparedStatements;
+	drain_publish_message: SqlRitePreparedStatements;
+	drain_orphaned_messages_for_loop: SqlRitePreparedStatements;
 	drain_enqueue_orphan_recovery_loop: SqlRitePreparedStatements;
-	drain_rehome_orphaned_prompt_frames: SqlRitePreparedStatements;
+	drain_rehome_orphaned_messages: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
 	drain_loop_generation_policy: SqlRitePreparedStatements;
 	drain_worker_min_poll: SqlRitePreparedStatements;
@@ -769,7 +772,7 @@ export default class SqlRite {
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;
 	recovery_resume_unblocked_parks: SqlRitePreparedStatements;
-	recovery_orphan_prompt_sources: SqlRitePreparedStatements;
+	recovery_orphan_message_sources: SqlRitePreparedStatements;
 	recovery_queued_workers: SqlRitePreparedStatements;
 	recovery_parked_workers: SqlRitePreparedStatements;
 	log_read_by_coordinate: SqlRitePreparedStatements;
@@ -817,6 +820,7 @@ export default class SqlRite {
 	engine_render_errors: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_admit_log_outputs: SqlRitePreparedStatements;
+	engine_open_messages: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
 	retention_retire_packets: SqlRitePreparedStatements;
@@ -842,7 +846,6 @@ export default class SqlRite {
 	engine_worker_stream_channels: SqlRitePreparedStatements;
 	engine_mark_publication_terminal: SqlRitePreparedStatements;
 	engine_insert_stream_delta: SqlRitePreparedStatements;
-	engine_get_loop_prompt: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_packet_count: SqlRitePreparedStatements;
 	engine_open_turn_attempt: SqlRitePreparedStatements;
@@ -885,7 +888,8 @@ export default class SqlRite {
 	test_get_loop_status: SqlRitePreparedStatements;
 	test_get_loop_execution: SqlRitePreparedStatements;
 	test_get_loop_posture: SqlRitePreparedStatements;
-	test_prompt_paths_by_worker: SqlRitePreparedStatements;
+	test_messages_by_loop: SqlRitePreparedStatements;
+	test_messages_by_worker: SqlRitePreparedStatements;
 	test_get_turn: SqlRitePreparedStatements;
 	test_turn_attempts: SqlRitePreparedStatements;
 	test_model_calls: SqlRitePreparedStatements;
@@ -994,7 +998,7 @@ export default class SqlRite {
 	test_disposition_rows_for_worker: SqlRitePreparedStatements;
 	test_workers_by_workspace: SqlRitePreparedStatements;
 	test_first_turn_for_loop: SqlRitePreparedStatements;
-	test_prompt_folded: SqlRitePreparedStatements;
+	test_arrival_folded: SqlRitePreparedStatements;
 	test_turn_id_by_seq: SqlRitePreparedStatements;
 	test_count_op: SqlRitePreparedStatements;
 	test_set_workspace_root: SqlRitePreparedStatements;

@@ -37,7 +37,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
     });
 });
 
-test("{§prompt-causal-source}: a trusted adapter source survives prompt publication", async () => {
+test("{§message-causal-source}: a trusted adapter source survives message publication", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)],
@@ -68,8 +68,8 @@ test("{§prompt-causal-source}: a trusted adapter source survives prompt publica
                 workspaceId: workspace.workspaceId,
                 workerId,
                 loopId: accepted.loopId,
-            })).find((entry) => entry.op === "prompt");
-            assert.equal(prompt?.origin, "_plurnk", "the harness remains the prompt-row producer");
+            })).find((entry) => entry.op === "SEND" && entry.origin === "_plurnk");
+            assert.equal(prompt?.origin, "_plurnk", "the harness remains the arrival-row producer");
             assert.equal(prompt?.source, "a2a://session42", "the external actor remains its causal source");
         } finally {
             unsubscribe();
@@ -179,7 +179,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
             const initialization = captured
                 .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number } }).entry)
-                .filter((entry) => entry.origin === "_plurnk" && entry.op !== "prompt");
+                .filter((entry) => entry.origin === "_plurnk" && entry.op !== "SEND");
             assert.equal(
                 captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),
                 false,
@@ -191,12 +191,12 @@ test("loop.run streams log/entry notifications during execution", async () => {
             assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
-                return entry.op === "prompt" || entry.origin === "model";
+                return (entry.op === "SEND" && entry.origin === "_plurnk") || entry.origin === "model";
             });
             // {§send-premature-terminate} — the EDIT receipt forces a second turn.
-            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["prompt", "EDIT", "SEND", "TASK", "SEND", "TASK"], "each message and inventory streams independently of initialization");
+            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "TASK", "SEND", "TASK"], "each message and inventory streams independently of initialization");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
-            assert.equal(prompt.entry.op, "prompt");
+            assert.equal(prompt.entry.op, "SEND");
             assert.equal(prompt.entry.origin, "_plurnk");
             const first = authored[1] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
@@ -372,8 +372,8 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             const rows = await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: result.loopId });
-            const frame = rows.find((row) => row.op === "prompt" && /^\/1\/[a-f0-9]{8}$/u.test(row.pathname));
-            assert.ok(frame, "the initial prompt frame exists");
+            const frame = rows.find((row) => row.op === "SEND" && row.origin === "_plurnk");
+            assert.ok(frame, "the initial message row exists");
             assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null)
                 .every((row) => row.turn_id === frame.turn_id),
             "every selected path is read in the same turn that publishes the initial prompt frame");

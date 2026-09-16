@@ -38,10 +38,10 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
                 { op: header === "SEND" ? "SEND" : "EDIT", status: header === "SEND" ? 200 : 201 },
                 { op: "TASK", status: header === "SEND" ? 200 : 102 },
             ]);
-            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; rx: string }>({ turn_id: result.turnId });
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; rx: string }>({ turn_id: result.turnId });
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, source);
-            const emitted = JSON.parse(rows.find(({ op }) => op === (header === "SEND" ? "SEND" : "EDIT"))!.tx);
+            const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "SEND" ? "SEND" : "EDIT"))!.tx);
             assert.equal(header === "SEND" ? emitted.body.raw : emitted.body, body);
             assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "TASK")!.tx).body, inventory);
             const saved = (pathname: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname, scheme: "worker", name: "body" });

@@ -362,7 +362,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches the orienting READ/FIND surveys, the reasoning and program READs in {§reasoning-initial-read}, and the final TASK (in {§op-execution-order}). The prompt is not READ here: its `prompt` row in the first model turn is the one publication of every prompt ({§prompt-entry}), so the body never appears twice. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The program archives nothing: the prompt entry ({§prompt-entry}) is the durable, addressable copy of every prompt, so no scratch archive of it is written. The three namespace surveys carry asides that name what each space is — `project root member files`, `shared worker Extended Context`, `private worker Extended Context` — and, because the program echo shows them verbatim, those asides are the model's map of its spaces. TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches the orienting READ/FIND surveys, the reasoning and program READs in {§reasoning-initial-read}, and the final TASK (in {§op-execution-order}). The prompt is not READ here: its `prompt` row in the first model turn is the one publication of every prompt ({§message-arrival}), so the body never appears twice. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The program archives nothing: the prompt entry ({§message-arrival}) is the durable, addressable copy of every prompt, so no scratch archive of it is written. The three namespace surveys carry asides that name what each space is — `project root member files`, `shared worker Extended Context`, `private worker Extended Context` — and, because the program echo shows them verbatim, those asides are the model's map of its spaces. TASK hands off with one {§plan-value} entry: `{"content":"Address the prompt.","status":"in_progress"}`. The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
 ### §machine-processes Workspace and worker state
 
@@ -940,7 +940,7 @@ atomically; no drain may claim partially configured work.
 
 | Message at the receiving task's end | Disposition |
 |---|---|
-| Delivered to an unfinished loop | Append one ordered prompt frame; waking does not repeat earlier frames. |
+| Delivered to an unfinished loop | Append one ordered message to the loop's inbox; waking does not repeat earlier messages. |
 | Admitted but not observed before ordinary completion | Preserve through the existing orphan-message admission path. |
 | Cancelled as part of the worker scope | Preserve the frame as evidence; never promote it into executable work, including after restart. |
 | Explicit new arrival after cancellation | Admit under ordinary current worker policy; never revive a terminal loop. |
@@ -1407,7 +1407,6 @@ meaning of an authored URI authority before any entry capability is exposed:
 | Project files | Filesystem namespace | Workspace policy | Shared live |
 | `worker:///...` | Empty, shared scratch | Any workspace actor | Shared live |
 | `worker://alice/...` | Named scratch | Any workspace actor | Snapshot source namespace into new name |
-| `prompt://alice/...` | Named prompt evidence | Intrinsic scheme contract; model-read-only | Snapshot source history into new name |
 | `ops:///...`, `reasoning:///...` | Current worker's turn coordinates | Immutable for every actor | Snapshot sources at identical local coordinates |
 | `skill://recipe/...` | Installed skill name | Skill resource contract | Shared installation |
 | HTTP, WebSocket, executor/MCP, A2A resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
@@ -1497,8 +1496,7 @@ publication leaves the prior entry unchanged. Omitted attributes preserve the
 existing bag. Reads observe metadata and channels in one snapshot. There is no
 cross-scheme SQL transaction. Core's create-only publication claims the same
 identity atomically: an existing identity returns 409 without changing its
-metadata or channels. Generated prompt IDs retry that collision; they never
-upsert another prompt's contents ({§prompt-address}).
+metadata or channels.
 
 ### §op-methods Op methods
 
@@ -2061,7 +2059,7 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 
 The real initialization turn records a short `_plurnk`-authored rationale before
 executing its program. That program READs its own reasoning and its own persisted
-ops before TASK; the Active Prompt arrives as its `prompt` row ({§prompt-entry}),
+ops before TASK; the initial message arrives as its inbound `SEND` row ({§message-arrival}),
 never as a second READ. The rationale identifies its harness origin and carries
 exactly one `Note:` line — `Note: Prior reasoning can be searched with the pattern
 filters.` (operator's words, 2026-09-13) — and the reasoning READ is the pattern
@@ -2527,7 +2525,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | wait | Finite timeout, positive poll, or live obligation | 202; durable park and wake of the same loop | Wait timing metadata |
 | wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
 | wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight and no timed or polled wait is set. Continuing.` |
-| complete, fail | The loop holds prompt frames it has not yet published ({§completion-defers-to-prompts}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new prompt arrived during this turn. It is in this packet; a response and a TASK now complete.` |
+| complete, fail | The loop holds messages it has not yet published ({§completion-defers-to-messages}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new message arrived during this turn. It is in this packet; a response and a TASK now complete.` |
 | complete | Live work: an open stream or a live child worker ({§completion-joins-live-work}) | 202; durable park and wake of the same loop; no strike | Join detail naming the work, read when the wake lands |
 | complete, fail | Same-turn failures, or settled results the next packet carries — this turn's receipts, a concluded stream, a terminated child ({§completion-defers-to-results}) | 102; no strike; the next packet carries them | Read-time deferral detail naming them |
 | complete | No blocking obligation, or administrative producer | 200 | None |
@@ -2535,7 +2533,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 
 A timing scope on a non-waiting inventory is ignored with `Wait timing was not applied because no waiting intent was selected.` It does not override the inventory. Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
-§loop-response-messages **The response is the last message.** The loop's response is the complete authored body of its last successful targetless SEND, or SEND to one of this loop's own prompts ({§send-prompt-acceptance}), in turn and operation order. Earlier messages reach the client as they are delivered and stay log rows; they are not part of the response, so a corrected answer or a repeated one after a refused completion delivers once. Other directed SEND, TASK, asides, interstitial text, inherited rows and ambient observations never count. The projection reads immutable executed operation evidence, not the curated log projection: KILL cannot retract a delivered message, and a later failure, cancellation or refused completion keeps the last message. A task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content. A parent receives its child's response as the child's conclusion (operator, 2026-09-11).
+§loop-response-messages **The response is the last message.** The loop's response is the complete authored body of its last successful targetless SEND, in turn and operation order. Earlier messages reach the client as they are delivered and stay log rows; they are not part of the response, so a corrected answer or a repeated one after a refused completion delivers once. Other directed SEND, TASK, asides, interstitial text, inherited rows and ambient observations never count. The projection reads immutable executed operation evidence, not the curated log projection: KILL cannot retract a delivered message, and a later failure, cancellation or refused completion keeps the last message. A task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content. A parent receives its child's response as the child's conclusion (operator, 2026-09-11).
 
 §loop-terminal-authorship **Terminal authorship is explicit when external.**
 
@@ -2553,25 +2551,16 @@ accounting and model-visible failure evidence remain separately owned by
 
 - §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
   addresses a worker (```` ```SEND (worker://<name>) ````), an outbound agent (`a2a://`),
-  or a scheme that implements SEND (an `https://` POST). A SEND to a scheme the model may not write (the prompt, the
+  or a scheme that implements SEND (an `https://` POST). A SEND to a scheme the model may not write (the
   log) is refused 400 `send-target-not-a-recipient`, never the unrelated writer
   rule. The detail states only that the addressed scheme is not a recipient;
   neutral recovery distinguishes targetless replies from directed SEND without
   guessing which one was intended. A scheme that does not implement SEND
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
-- §send-prompt-acceptance **One tolerated exception: this loop's own prompt.** The packet
-  lists `prompt://<worker>/<loop>/<id>` addresses under Active Prompts, and a model that
-  addresses one of them means what an untargeted SEND means. The engine accepts a model
-  SEND to a prompt of the current worker and loop as exactly that response: it dispatches
-  as the untargeted case, the row keeps the address the model wrote, and the body counts as
-  the loop's response under {§loop-response-messages}. Nothing is taught about the form and it
-  creates no per-prompt result structure; a prompt of another loop or another worker stays
-  `400 send-target-not-a-recipient`. An undocumented acceptance in the same spirit as KILL
-  in the completion turn, not a recipient.
 - §send-response-receipt **A reply's receipt names its recipients.** A delivered untargeted
-  SEND (and a SEND accepted under {§send-prompt-acceptance}) carries `recipients`: the loop's
-  Active Prompts, oldest first, exactly as the packet lists them. The row shows where the text
-  went, so a model that meant a worker, a stream, or an operation sees the user received it.
+  SEND carries `recipients`: the loop's open messages, oldest first, by the log coordinates the
+  packet lists them under ({§message-arrival}). The row shows where the text went, so a model
+  that meant a worker, a stream, or an operation sees the sender received it.
 - §empty-turn **A response with no operation is a turn, not a retry.** When the parser finds
   no operation and no other hard error (prose, bare headings outside fences, an empty
   response), the emission is admitted as an empty turn (operator, 2026-09-12): its text and
@@ -2658,8 +2647,8 @@ accounting and model-visible failure evidence remain separately owned by
   counts the failures. These deferrals and the live-work join receipt share the
   conditional guidance: `If your final response has already been sent and these
   results require no further work or response revision, submit only TASK.` This
-  avoids repeating a delivered response, not delivering one; newly arrived prompts
-  retain their distinct feedback under {§completion-defers-to-prompts}. Their
+  avoids repeating a delivered response, not delivering one; newly arrived messages
+  retain their distinct feedback under {§completion-defers-to-messages}. Their
   `attrs` carry the pending kinds or the failure count. The rail's streak never
   enters the decision: a deferral is admissible at any streak, and a loop that
   keeps issuing operations before each claim pays one packet per claim, never a
@@ -3444,7 +3433,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before frame admission is exhausted. Bounded interior operation errors are admitted without spending this budget. Exhaustion contributes one frame-contract strike under {§invalid-emission-attempts}. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in automatic text previews and markerless READs ({§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Independent Unicode code-point bound on the same previews, with CRLF treated as one indivisible separator ({§body-projection}). |
-| `PLURNK_SERVICE_PROMPT_PROJECTION`                          | `25%` | Aggregate curation-weight share of the provider-derived input capacity available to automatic prompt-body projection ({§prompt-projection}); alias-scoped overrides are supported. |
+| `PLURNK_SERVICE_PROMPT_PROJECTION`                          | `25%` | Aggregate curation-weight share of the provider-derived input capacity available to the automatic projection of arrivals from outside the workspace ({§message-projection}); alias-scoped overrides are supported. |
 | `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing line anchor ({§line-anchors}). |
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`                 | `2` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
@@ -3939,19 +3928,19 @@ the loop before changing configuration. A newly enqueued loop instead persists
 the requested configuration normally.
 
 §methods-loop-run-open-paths **Workspace paths are core-owned context reads.**
-`openPaths` belongs to the prompt frame submitted by the client. The client
+`openPaths` belongs to the message submitted by the client. The client
 sends paths, never duplicated file bytes; core dispatches one ordinary
 `plurnk`-origin READ per path from inside the owning workspace, and successes
 and failures surface through the normal operation-result contract.
 
-| `runLoop` disposition | Prompt-frame and path behavior                                                                    |
-|-----------------------|---------------------------------------------------------------------------------------------------|
-| New loop              | Persist with the initial frame; publish the frame and READ its paths on turn 1.                    |
-| Active loop           | Persist with the injected frame; publish the frame and READ its paths together on the next turn.  |
-| Parked loop           | Persist with the waking frame; publish the frame and READ its paths together on the resumed turn. |
+| `runLoop` disposition | Message and path behavior                                                                            |
+|-----------------------|------------------------------------------------------------------------------------------------------|
+| New loop              | Persist with the initial message; publish it and READ its paths on turn 1.                          |
+| Active loop           | Persist with the injected message; publish it and READ its paths together on the next turn.        |
+| Parked loop           | Persist with the waking message; publish it and READ its paths together on the resumed turn.       |
 
-If an undelivered frame is promoted into subsequent work under
-{§prompt-loop-containment}, its selected paths travel with it.
+If an unpublished message is promoted into subsequent work under
+{§message-loop-containment}, its selected paths travel with it.
 
 §methods-rebind **Binding belongs to the client-interface module.** Core's
 workspace lifecycle calls return exactly the workspace and selected client actor
@@ -4462,7 +4451,7 @@ their boundaries ({§log-wire-format}).
 | `notices`       | user   | Terse observation bullets                                                                     | {§notice-drain-on-read}         |
 | `git`           | user   | Working-tree state in a NOTE blockquote                                                       | {§packet-cache-monotone}        |
 | `budget`        | user   | JSON curation usage and ceiling; pressure guidance when needed                                | {§tokenomics-neutral-telemetry} |
-| `prompt`        | user   | JSON `prompt://<worker>/<loop>/<N>` pointers                                                  | {§prompt-entry}                 |
+| `messages`      | user   | JSON pointers to the loop's open inbound `SEND` rows, path and source                          | {§message-arrival}              |
 | `recap`         | user   | Optional authored operational recap                                                           | {§recap}                        |
 
 §packet-stored-shape **A model packet preserves the rendered request and, only
@@ -4575,7 +4564,7 @@ reasoning continuation. Readable reasoning remains independent.
 |---|---|
 | any `READ` or `FIND` | complete selected operation result |
 | `TASK` | complete canonical Plurnk Plan JSON {§plan-value} |
-| actionless lowercase `prompt` | budgeted head under {§prompt-projection} |
+| inbound `SEND` from outside the workspace | budgeted head under {§message-projection} |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | metadata only; no coordinate lines; `logTokens` includes any selected native part |
@@ -4586,26 +4575,25 @@ remain exact. Automatic stream delivery uses that markerless selector too;
 its range or region describes the selected content and the complete stream
 remains addressable. This selection is not a second rendering-time cut.
 
-READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. TASK inventory is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Rejected-emission artifacts, SEND/WORK/FORK bodies, execution commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
+READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. TASK inventory is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Arrivals from outside the workspace follow their separate adaptive projection contract ({§message-projection}). Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Rejected-emission artifacts, SEND/WORK/FORK bodies, execution commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
-§prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt://<worker>/<loop>/<id>` as an explicitly addressed text/markdown entry — written before any turn of its loop executes — then published to its first model turn as one actionless lowercase `prompt` log row; that row, not the entry, records publication. No synthetic EDIT or READ operation is invented. The row is born visible and obeys {§body-projection}. The **Active Prompts** section closes the user-slot status clump as a pointer list in Delegation's shape, `{"path":"prompt://<worker>/<loop>/<id>"}` with a `source` beside the path when another actor caused the frame ({§prompt-causal-source}), so every frame remains directly READable after its log row's body is suppressed or its active projection is retired, and the model reads who caused each frame beside its address (#706).
+§message-arrival **A message is an inbound SEND row.** Every arrival at a worker — a client's run, a directed worker SEND, an exterior adapter's message — enters the recipient loop's inbox (`loop_messages`, in arrival order, its selected paths beside it) and is published at the loop's next turn boundary as one `SEND` log row the harness writes (`origin="_plurnk"`): the sender's statement is the row's sent side, `attrs.kind = "message"` marks it apart from the engine's other harness-published SEND rows (a child's crossed activity and conclusion narration, {§env-delta-child-termination}), the row is born visible, obeys {§body-projection}, and is the durable record of the message; no entry is stored beside it and no synthetic operation is invented. Inbound and outbound share the op: a `SEND` row with a `source` arrived, a `SEND` row without one is the worker's own. The **Open Messages** section closes the user-slot status clump as a pointer list in Delegation's shape, `{"path":"log:///<loop>/<turn>/<seq>/SEND"}` with a `source` beside the path when another actor caused the message ({§message-causal-source}), listing the loop's messages not yet answered: a message is open until a later untargeted reply in the same loop, whose receipt names it ({§send-response-receipt}). A curated row stays READable by its coordinate ({§log-readable-projection}), so nothing is stored twice (#706).
 
-§prompt-causal-source **Prompt authorship and delivery are distinct facts.** The harness publishes every prompt row with `origin="_plurnk"`; the row's existing `source` carries the canonical address of a different causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter may supply its own canonical actor address through {§methods-loop-run}. An absent source means the owning worker itself. Attribution persists with the prompt frame through active delivery, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The wire renders the prompt row's `source` and omits its `origin`, which is constant for every prompt row; the Active Prompts pointer carries the same source ({§prompt-entry}). The AG-UI bridge supplies `agui://…` for a client's message ({§agui-run-source}).
+§message-causal-source **Message authorship and delivery are distinct facts.** The harness publishes every arrival row; the row's `source` carries the canonical address of the causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter supplies its own canonical actor address through {§methods-loop-run}: the AG-UI bridge names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://`. An absent source means the owning worker itself. Attribution persists with the message through the inbox, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The wire renders the row's `source` and omits its `origin`, which is constant for every arrival; the Open Messages pointer carries the same source ({§message-arrival}).
 
-§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for visible prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all visible prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` metadata. The canonical `prompt://<worker>/` entry remains complete and READ/FIND-addressable; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. When provider input capacity is unknown the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
+§message-projection **Message storage is unbounded by model context; automatic materialization is not.** Core persists every accepted message completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for the visible bodies of arrivals other than a peer worker's — every `source` that is not a `worker://` address, the loop's own assignment included. Complete bodies render when their aggregate weight fits. Otherwise all such visible rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` metadata. The row remains complete and READable by coordinate; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. A peer worker's message takes the ordinary bounds. When provider input capacity is unknown the percentage is underivable, so arrival rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a message because it exceeds a context window.
 
-§prompt-address The frame uses its literal Worker name: `prompt://alice/<loop>/<id>`, where `id` is an opaque eight-character hexadecimal identifier. Any workspace actor can read or search it. Identity is not arrival order or a turn number. The entry separately persists its delivery `ordinal`; the initial prompt reserves ordinal 1 before materialization. Repeated initialization reuses that prompt's existing identity. Prompt publication follows the producing Worker's loop, independently of who reads the source.
+§message-loop-containment A loop contains every message that arrives before it
+concludes; the next turn boundary publishes every inbox row the loop has not yet
+published, oldest first, and stamps each with the row it became. Ordinal 1 is the loop's
+own assignment and shares the loop's fate: a loop that fails before its first turn does
+not replay it. Every other still-unpublished message at conclusion moves into one
+source-keyed recovery loop, renumbered from its first, whose headline it becomes; that loop's first turn publishes the complete
+ordered set exactly once. Recovery retries complete the same queued loop and never
+mint duplicate work. Output withholding preserves readable arrival rows; explicit
+KILL follows the ordinary log contract.
 
-§prompt-loop-containment A loop contains every prompt that arrives before it
-concludes; the next turn publishes every entry for which
-that loop has no `op='prompt'` row, oldest first. Every still-undelivered frame
-at conclusion moves into one source-keyed recovery loop with its opaque ID intact and a new delivery ordinal; that loop's
-first turn publishes the complete ordered set exactly once. Recovery retries
-complete the same queued loop and never mint duplicate work. Output withholding
-preserves readable prompt rows; explicit KILL follows the ordinary log
-contract.
-
-§completion-defers-to-prompts **A completion never answers a conversation the model has not seen.** A model TASK that would end the loop at `200` while the loop still contains an unpublished prompt frame ({§prompt-loop-containment}) is deferred at `102` with a receipt naming the arrival; the next turn boundary publishes the frame as usual and the model completes after it. The arrival is not the model's doing, so the deferral is neither a refusal nor a strike. `499` is not deferred: declaring failure is weighing it, and the orphan recovery loop still carries any unpublished frame. The recovery loop also remains the guard for the one true race, a frame written after the terminal decision is committed.
+§completion-defers-to-messages **A completion never answers a conversation the model has not seen.** A model TASK that would end the loop at `200` while the loop still contains an unpublished message ({§message-loop-containment}) is deferred at `102` with a receipt naming the arrival; the next turn boundary publishes the message as usual and the model completes after it. The arrival is not the model's doing, so the deferral is neither a refusal nor a strike. `499` is not deferred: declaring failure is weighing it, and the orphan recovery loop still carries any unpublished message. The recovery loop also remains the guard for the one true race, a message written after the terminal decision is committed.
 
 §packet-catalog **Catalogs are query results, not packet state.** The packet
 stores no materialized manifest. Complete and one-level entry directories,

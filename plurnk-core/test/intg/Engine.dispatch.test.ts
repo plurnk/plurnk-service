@@ -818,19 +818,19 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
     try {
         const turnId = await insertOperationTurn(db, env.loopId, 2, "plugin");
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("prompt", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("reasoning", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
             sequence: 1, origin: "plugin",
         });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
         assert.equal(result.problem?.writer, "plugin");
-        assert.equal(result.problem?.scheme, "prompt");
-        assert.deepEqual(result.problem?.allowedWriters, ["client", "_plurnk"]);
+        assert.equal(result.problem?.scheme, "reasoning");
+        assert.deepEqual(result.problem?.allowedWriters, []);
         // 403 still writes a log row
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: turnId });
         assert.equal(log?.status_rx, 403);
-        assert.equal(log?.scheme, "prompt");
+        assert.equal(log?.scheme, "reasoning");
     } finally { await db.close(); }
 });
 
@@ -848,11 +848,11 @@ test("{§reasoning-history}: log EDIT has no mutation surface; reasoning uses an
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client own the task frames)", async () => {
+test("Engine.dispatch: model EDIT reasoning:/// rejected with 403 (turn sources are immutable)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("prompt", "/1/1"), body: "y" }),
+            statement: editStmt({ target: urlPath("reasoning", "/1/1"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });

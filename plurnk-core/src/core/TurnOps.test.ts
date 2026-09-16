@@ -19,7 +19,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
         },
         {
             op: "TASK", aside: null, target: null, metadata: null,
-            lineMarker: null, body: [{ content: "Address the prompt.", status: "in_progress" }], position: UNKNOWN_POSITION,
+            lineMarker: null, body: [{ content: "Address the message.", status: "in_progress" }], position: UNKNOWN_POSITION,
         },
     ];
     const source = TurnOps.renderInternal(statements);
@@ -28,7 +28,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
         "````",
         "",
         "````TASK",
-        "[{\"content\":\"Address the prompt.\",\"status\":\"in_progress\"}]",
+        "[{\"content\":\"Address the message.\",\"status\":\"in_progress\"}]",
         "````",
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);

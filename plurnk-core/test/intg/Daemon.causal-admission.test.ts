@@ -75,7 +75,7 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
         const promote = Promise.withResolvers<void>();
         const reconciled = Promise.withResolvers<void>();
         const finish = LoopLifecycle.prototype.finish;
-        const reconcile = DrainSupervisor.prototype.reconcileOrphanedPrompts;
+        const reconcile = DrainSupervisor.prototype.reconcileOrphanedMessages;
         let taskLoopId: number | undefined;
         let firstConclusion = true;
         let firstPromotion = true;
@@ -87,7 +87,7 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
             }
             return finish.apply(this, args);
         });
-        t.mock.method(DrainSupervisor.prototype, "reconcileOrphanedPrompts", async function (this: DrainSupervisor, ...args: Parameters<typeof reconcile>) {
+        t.mock.method(DrainSupervisor.prototype, "reconcileOrphanedMessages", async function (this: DrainSupervisor, ...args: Parameters<typeof reconcile>) {
             if (!firstPromotion) return reconcile.apply(this, args);
             firstPromotion = false;
             promoting.resolve();
@@ -112,8 +112,8 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
                 "cancellation does not rewrite a completed result");
             assert.equal((await db.test_loop_queue_by_worker.all<{ status: number }>({ worker_id: workerId }))
                 .some(({ status }) => [100, 102, 202].includes(status)), false, "cancelled unread work was not promoted");
-            assert.deepEqual(await db.recovery_orphan_prompt_sources.all({}), [], "boot cannot resurrect the cancelled arrival");
-            assert.equal((await db.test_prompt_paths_by_worker.all({ worker_id: workerId })).length, 2,
+            assert.deepEqual(await db.recovery_orphan_message_sources.all({}), [], "boot cannot resurrect the cancelled arrival");
+            assert.equal((await db.test_messages_by_worker.all({ worker_id: workerId })).length, 2,
                 "both original prompt frames remain available as evidence");
             await daemon.stop();
             const restarted = new Daemon({ db, provider });
@@ -147,7 +147,7 @@ for (const recipientState of ["idle", "parked"]) {
                 const task = await daemon.runLoop({ workspaceId, workerId, prompt: "Await instructions." });
                 await waitForDb(async () => (await db.test_get_loop_status.get({ id: task.loopId }))?.status, (status) => status === 202);
             }
-            const promptsBefore = await db.test_prompt_paths_by_worker.all({ worker_id: workerId });
+            const promptsBefore = await db.test_messages_by_worker.all({ worker_id: workerId });
             const loopsBefore = await db.test_loop_queue_by_worker.all({ worker_id: workerId });
             const entered = Promise.withResolvers<void>();
             const release = Promise.withResolvers<void>();
@@ -172,7 +172,7 @@ for (const recipientState of ["idle", "parked"]) {
                 assert.equal((await db.test_get_loop_status.get({ id: task.loopId }))?.status, 499);
                 release.resolve();
                 await finished.promise;
-                assert.deepEqual(await db.test_prompt_paths_by_worker.all({ worker_id: workerId }), promptsBefore,
+                assert.deepEqual(await db.test_messages_by_worker.all({ worker_id: workerId }), promptsBefore,
                     "the cancelled source did not append a prompt to the recipient");
                 assert.deepEqual(await db.test_loop_queue_by_worker.all({ worker_id: workerId }), loopsBefore,
                     "the cancelled source did not start or wake recipient work");

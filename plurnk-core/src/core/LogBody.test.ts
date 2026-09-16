@@ -335,7 +335,7 @@ test("LogBody gives extension rows the same structural body contract", () => {
 test("LogBody decodes persisted JSON envelopes before resolving", () => {
     assert.deepEqual(
         LogBody.resolve({
-            op: "prompt",
+            op: "READ",
             tx: "",
             rx: JSON.stringify({ content: "persisted", mimetype: "text/markdown", startLine: null }),
             mimetypeRx: "application/json",

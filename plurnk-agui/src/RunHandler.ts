@@ -326,7 +326,7 @@ export default class RunHandler {
     }
 
     // {§agui-run-source} — the run's user message is the causal actor behind the loop's prompt
-    // ({§prompt-causal-source}), named under the authenticated principal the way the A2A adapter
+    // ({§message-causal-source}), named under the authenticated principal the way the A2A adapter
     // names its messages; `anonymous` until the authorization layer names principals.
     static #source(input: RunAgentInput, message: UserMessage): string {
         return `agui://anonymous/threads/${encodeURIComponent(input.threadId)}`

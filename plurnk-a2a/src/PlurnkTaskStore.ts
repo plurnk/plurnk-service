@@ -34,19 +34,27 @@ interface LogRow extends LogEntryWire {
     readonly op?: unknown;
     readonly rx?: unknown;
     readonly mimetype_rx?: unknown;
+    readonly tx?: unknown;
+    readonly origin?: unknown;
+    readonly attrs?: unknown;
     readonly source?: unknown;
 }
 
 const nonempty = (value: unknown): value is string =>
     typeof value === "string" && value.length > 0;
 
-const promptContent = (row: LogRow): string => {
-    const result = row.rx;
-    if (typeof result !== "object" || result === null || !("content" in result)
-        || typeof result.content !== "string") {
-        throw new Error(`A2A prompt log ${String(row.id)} has no content projection.`);
-    }
-    return result.content;
+// {§message-arrival}: an arrival is an inbound SEND row whose sent side is the sender's statement,
+// marked `attrs.kind = "message"`.
+const attrKind = (attrs: unknown): unknown => {
+    const parsed = typeof attrs === "string" ? JSON.parse(attrs) as unknown : attrs;
+    return parsed !== null && typeof parsed === "object" ? (parsed as { kind?: unknown }).kind : undefined;
+};
+const arrivalContent = (row: LogRow): string => {
+    const tx = typeof row.tx === "string" ? JSON.parse(row.tx) as unknown : row.tx;
+    const body = typeof tx === "object" && tx !== null ? (tx as { body?: unknown }).body : undefined;
+    if (typeof body === "string") return body;
+    if (typeof body === "object" && body !== null && typeof (body as { raw?: unknown }).raw === "string") return (body as { raw: string }).raw;
+    throw new Error(`A2A arrival log ${String(row.id)} has no statement body.`);
 };
 
 type TaskCursor = readonly [timestamp: number, id: string];
@@ -313,7 +321,8 @@ export default class PlurnkTaskStore implements TaskStore {
             pending,
         );
         const history = rows
-            .filter((row) => row.loop_id === loop.id && row.op === "prompt"
+            .filter((row) => row.loop_id === loop.id && row.op === "SEND" && row.origin === "_plurnk"
+                && attrKind(row.attrs) === "message"
                 && typeof row.source === "string"
                 && PlurnkTaskStore.#ownsSource(row.source, context.name, task.name))
             .toSorted((left, right) => Number(left.id) - Number(right.id))
@@ -322,7 +331,7 @@ export default class PlurnkTaskStore implements TaskStore {
                 context.name,
                 task.name,
                 Role.ROLE_USER,
-                promptContent(row),
+                arrivalContent(row),
                 "text/markdown",
             ));
         return {

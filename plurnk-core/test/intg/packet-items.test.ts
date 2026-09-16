@@ -15,7 +15,7 @@ const packet = (records: readonly string[], prompt: string): DurablePacket => ({
     sections: [
         { name: "definition", slot: "system", header: null, content: "# Plurnk", weight: 2 },
         { name: "log", slot: "user", header: "Log", content: records.join("\n\n"), weight: 4, items: records },
-        { name: "prompt", slot: "user", header: "Active Prompts", content: prompt, weight: 1 },
+        { name: "messages", slot: "user", header: "Open Messages", content: prompt, weight: 1 },
     ],
     attributions: ["worker://a"],
 });
@@ -26,8 +26,8 @@ test("{§packet-items}: a turn stores only the items the previous turn did not, 
         const workspaceId = await insertWorkspace(db, `packet-items-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        const first = packet(RECORDS.slice(0, 1), "[\"prompt://w/1/a\"]");
-        const second = packet(RECORDS, "[\"prompt://w/1/a\"]");
+        const first = packet(RECORDS.slice(0, 1), "[{\"path\":\"log:///1/1/1/SEND\"}]");
+        const second = packet(RECORDS, "[{\"path\":\"log:///1/1/1/SEND\"}]");
         const firstId = await insertPacketTurn(db, loopId, 1, first, 102);
         const before = (await db.test_packet_item_count.get<{ n: number }>({}))!.n;
         assert.equal(before, 3, "turn 1: definition, one log record, prompt");
@@ -40,7 +40,7 @@ test("{§packet-items}: a turn stores only the items the previous turn did not, 
             { section: 0, position: 0, text: "# Plurnk" },
             { section: 1, position: 0, text: RECORDS[0] },
             { section: 1, position: 1, text: RECORDS[1] },
-            { section: 2, position: 0, text: "[\"prompt://w/1/a\"]" },
+            { section: 2, position: 0, text: "[{\"path\":\"log:///1/1/1/SEND\"}]" },
         ]);
         assert.ok(items.every(({ item_hash, text }) => item_hash === sha256(text)), "an item's address is the SHA-256 of its text");
 

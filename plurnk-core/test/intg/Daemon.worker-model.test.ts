@@ -462,11 +462,11 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
             const delegatedPrompt = (await daemon.readLog({
                 workspaceId,
                 workerId: kid.id,
-            })).find((entry) => entry.op === "prompt");
+            })).find((entry) => entry.op === "SEND" && entry.origin === "_plurnk");
             assert.equal(
                 delegatedPrompt?.source,
                 `worker://${root.name}`,
-                "the child prompt retains its delegating worker's causal identity",
+                "the child's message retains its delegating worker's causal identity",
             );
             const loops = await db.test_all_loops.all<LoopRow>({});
             const delegated = loops.find(({ worker_id: owner }) => owner === kid.id);

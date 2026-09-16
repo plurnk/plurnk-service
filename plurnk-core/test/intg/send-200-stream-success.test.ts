@@ -43,7 +43,7 @@ for (const command of ["true", "hostname"]) {
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
                 assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
-                assert.equal(rows.filter((r) => r.op === "SEND" && r.status_rx === 200).length, 2, "both messages were delivered");
+                assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "model" && r.status_rx === 200).length, 2, "both messages were delivered");
                 assert.equal(rows.filter((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102).length, hasTask ? 1 : 0,
                     "an explicit blind completion is deferred; omission continues silently");
             } finally {

@@ -27,7 +27,7 @@ const supervisor = (
     lifecycle: {} as never,
     injectPrompt: async () => null,
     assertInjectionCompatibility: async () => {},
-    reconcilePrompts: async () => {},
+    reconcileMessages: async () => {},
     runLoop: async () => { throw new Error("unused runLoop"); },
     loopUsage: async () => ({} as never),
     loopAttributions: async () => [],

@@ -31,8 +31,7 @@ import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { taskTiming } from "./LoopLifecycle.ts";
-import { generatedPathname, promptLoopPrefix } from "./plurnk-uri.ts";
-import PromptFrames from "./PromptFrames.ts";
+import { generatedPathname } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
@@ -75,16 +74,6 @@ import CapabilityResolver from "./CapabilityResolver.ts";
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
-// {§prompt-address}: the same literal address in every observer's packet.
-const promptTarget = (workerName: string, storage: string): UrlPath => {
-    return {
-        kind: "url", raw: `prompt://${workerName}${storage}`,
-        scheme: "prompt", username: null, password: null,
-        hostname: workerName, port: null,
-        pathname: storage, query: null, fragment: null,
-    };
-};
-
 const regexLiteral = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 const workerCatalogTarget = (
@@ -110,26 +99,6 @@ const assertOpenPaths = (value: unknown, source: string): string[] => {
         throw new TypeError(`${source}: expected an array of non-empty strings`);
     }
     return value as string[];
-};
-
-const parsePromptAttributes = (encoded: string, source: string): Readonly<Record<string, unknown>> => {
-    const attributes = JSON.parse(encoded) as unknown;
-    if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
-        throw new TypeError(`${source}: expected a JSON object`);
-    }
-    return attributes as Readonly<Record<string, unknown>>;
-};
-
-const promptSourceFromAttributes = (
-    attributes: Readonly<Record<string, unknown>>,
-    source: string,
-): string | null => {
-    const value = attributes.source;
-    if (value === undefined) return null;
-    if (typeof value !== "string" || value.length === 0) {
-        throw new TypeError(`${source}: source must be a non-empty string when present`);
-    }
-    return value;
 };
 
 // Per-emission action ceiling — OFF by default. `-1` (or unset/non-positive) = no cap:
@@ -308,37 +277,19 @@ type TurnArgs = {
     readonly invalidEmissionRecoveryEntryId: number | null | undefined;
 };
 
-type LoopPromptRow = {
-    prompt: string;
-    prompt_source: string | null;
-    sequence: number;
-    open_paths: string;
-    prompt_published: number;
-    prompt_pathname: string | null;
-};
-
-// {§prompt-entry} — the loop's prompt, framed for its one durable publication.
-type PromptPublication = {
-    readonly content: string;
-    readonly source: string | null;
-    readonly path: UrlPath;
-    readonly openPaths: string[];
-};
-
 // Phase 1 — the producer-neutral turn container: the turns opened for this cycle
 // and the initialization plan the worker's first turn executes. The model turn is
 // opened here only when no initialization turn precedes it.
 type TurnContainer = {
     readonly workerName: string;
     readonly transientOpenLogEntryId: number | null;
-    readonly loopRow: LoopPromptRow | undefined;
+    readonly loopSequence: number;
     readonly createdTurnIds: number[];
     readonly initializationTurn: TurnRow | null;
     readonly initializationPolicies: CapabilityPolicy[];
     readonly initializationStatements: InternalTurnStatement[];
     readonly modelTurn: TurnRow | null;
     readonly systemCtx: PlurnkSchemeContext;
-    readonly promptPublication: PromptPublication | null;
 };
 
 // What packet assembly reads from the turn; capacity recovery rebuilds from the same facts.
@@ -715,7 +666,7 @@ export default class TurnRunner {
     // durable turn and completes it only after its ordered operations settle; model
     // packets and provider metadata are optional inference evidence, not turn identity.
     async #openTurnContainer(args: TurnArgs, createdTurnIds: number[]): Promise<TurnContainer> {
-        const { workspaceId, workerId, loopId, turnNumber, invalidEmissionRecoveryEntryId } = args;
+        const { workspaceId, workerId, loopId, invalidEmissionRecoveryEntryId } = args;
         const workerName = await WorkerName.forId(this.#db, workerId);
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
             ? invalidEmissionRecoveryEntryId
@@ -725,11 +676,11 @@ export default class TurnRunner {
         // Turn-0 foists that belong to the Worker (catalog preview, AGENTS) gate
         // on its first inference history, not on loop sequence: honest client or
         // runtime administrative turns may precede the first provider exchange.
-        // Per-loop foists such as
-        // {§prompt-entry} still fires once per loop. Durable publication state,
-        // rather than the model-turn ordinal, prevents an overflow diversion
-        // from replaying the prompt and its automatic path READs.
-        const loopRow = await this.#db.engine_get_loop_prompt.get<LoopPromptRow>({ loop_id: loopId });
+        // Per-loop foists such as the initial message's publication
+        // ({§message-arrival}) fire once per loop: the inbox row's publication state,
+        // rather than the model-turn ordinal, prevents an overflow diversion from
+        // replaying a message and its automatic path READs.
+        const loopSequence = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
         const priorInference = await this.#db.engine_worker_has_inference_history.get<{ present: number }>({
             worker_id: workerId,
         });
@@ -758,22 +709,6 @@ export default class TurnRunner {
             throw new Error(`worker ${workerId} has no durable ambient observation boundary`);
         }
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
-        // {§prompt-entry} — the prompt entry exists before any turn of the loop
-        // runs; its `prompt` log row is published to the model turn below (one
-        // durable publication per loop, decided by that row).
-        const promptPublication = turnNumber === 1 && loopRow?.prompt_published === 0
-            && typeof loopRow.prompt === "string" && loopRow.prompt.length > 0
-            ? {
-                content: loopRow.prompt,
-                source: loopRow.prompt_source,
-                path: promptTarget(workerName, await PromptFrames.write(systemCtx, {
-                    loopSequence: loopRow.sequence, ordinal: 1, content: loopRow.prompt,
-                    source: loopRow.prompt_source, pathname: loopRow.prompt_pathname,
-                    openPaths: assertOpenPaths(JSON.parse(loopRow.open_paths) as unknown, `Loop ${loopId} open_paths`),
-                })),
-                openPaths: assertOpenPaths(JSON.parse(loopRow.open_paths) as unknown, `Loop ${loopId} open_paths`),
-            }
-            : null;
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and an ordinary TASK.
@@ -802,9 +737,9 @@ export default class TurnRunner {
             }
         }
         return {
-            workerName, transientOpenLogEntryId, loopRow, createdTurnIds,
+            workerName, transientOpenLogEntryId, loopSequence, createdTurnIds,
             initializationTurn, initializationPolicies, initializationStatements,
-            modelTurn, systemCtx, promptPublication,
+            modelTurn, systemCtx,
         };
     }
 
@@ -869,7 +804,7 @@ export default class TurnRunner {
     // complete turn before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow): Promise<void> {
         const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
-        const { loopRow, initializationStatements, initializationPolicies } = container;
+        const { loopSequence, initializationStatements, initializationPolicies } = container;
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
         // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
         // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
@@ -883,14 +818,14 @@ export default class TurnRunner {
         }
         const task: DispositionStatement = {
             op: "TASK", aside: null, target: null, metadata: null, lineMarker: null,
-            body: [{ content: "Address the prompt.", status: "in_progress" }],
+            body: [{ content: "Address the message.", status: "in_progress" }],
             position: UNKNOWN_POSITION,
         };
-        const pathname = `/${loopRow!.sequence}/${initializationTurn.sequence}`;
+        const pathname = `/${loopSequence}/${initializationTurn.sequence}`;
         await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", ReasoningView.initialSource());
         // {§reasoning-initial-read} — the pattern READ needs a text/plain projection to run the regex.
         const pluck = await this.#mimetypes.getHandler("text/plain") !== null;
-        const reasoningRead = ReasoningView.initialRead(provider, loopRow!.sequence, initializationTurn.sequence, pluck);
+        const reasoningRead = ReasoningView.initialRead(provider, loopSequence, initializationTurn.sequence, pluck);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
         initializationStatements.push({
             op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
@@ -900,7 +835,7 @@ export default class TurnRunner {
             },
             lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
         });
-        // {§prompt-entry} — the prompt reaches the model as its `prompt` row in the first
+        // {§message-arrival} — the prompt reaches the model as its `prompt` row in the first
         // model turn; initialization does not READ it a second time.
         initializationStatements.push(task);
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
@@ -1042,9 +977,8 @@ export default class TurnRunner {
         if (container.modelTurn === null) container.createdTurnIds.push(modelTurn.id);
         const { id: turnId, sequence: seq } = modelTurn;
         const systemCtx = this.#schemeContext(args, turnId);
-        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        const prompts = await this.#publishPrompts(args, container, turnId, loopSeq);
-        let nextActionIndex = await this.#readOpenPaths(args, turnId, prompts.openPaths, prompts.nextActionIndex);
+        const messages = await this.#publishMessages(args, turnId);
+        let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex);
         // {§env-delta-log-pull} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
         // distinct byte-cursor path for this worker's streams.
@@ -1068,70 +1002,39 @@ export default class TurnRunner {
         // {§context-output-admission} — output admission changes no operation
         // outcome, authored inventory, or turn identity.
         if (await this.#packets.admitOutput(packet, turnId)) packet = await this.#buildPacket(args, facts);
-        return { ...facts, createdTurnIds: container.createdTurnIds, loopSeq, systemCtx, nextActionIndex, packet };
+        return { ...facts, createdTurnIds: container.createdTurnIds, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
     }
 
-    // Pre-model writes. Each prompt the model has not seen yet becomes a `prompt`
-    // operation row whose target is its durable prompt:// entry; model operations
-    // continue the same turn sequence after these rows. Returns the next action index
-    // and the frames' open paths.
-    async #publishPrompts(
+    // Pre-model writes. Each message the model has not seen yet becomes an inbound `SEND`
+    // row; model operations continue the same turn sequence after these rows. Returns the
+    // next action index and the messages' open paths.
+    // {§message-loop-containment}: the loop contains every message that arrived before this
+    // boundary. Publish each unpublished inbox row oldest-first, exactly once, as an inbound
+    // SEND row ({§message-arrival}); its selected paths ride along for the READs that follow.
+    async #publishMessages(
         { workerId, loopId, onDispatch, onSettled }: TurnArgs,
-        { workerName, promptPublication }: TurnContainer,
         turnId: number,
-        loopSeq: number,
     ): Promise<{ nextActionIndex: number; openPaths: string[] }> {
         let nextActionIndex = 1;
         const openPaths: string[] = [];
-        if (promptPublication !== null) { // {§prompt-entry} — one durable publication per loop
-            openPaths.push(...promptPublication.openPaths);
-            const promptLogId = await this.#materialization.writePromptLog({
-                workerId,
-                loopId,
-                turnId,
-                sequence: nextActionIndex++,
-                target: promptPublication.path,
-                content: promptPublication.content,
-                source: promptPublication.source,
+        const unpublished = await this.#db.drain_unpublished_messages_for_loop.all<{
+            id: number; ordinal: number; source: string | null; body: string; open_paths: string;
+        }>({ loop_id: loopId });
+        for (const message of unpublished) {
+            openPaths.push(...assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
+            const logEntryId = await this.#materialization.writeArrivalLog({
+                workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source,
             });
-            onDispatch?.(promptLogId);
-            await onSettled?.(promptLogId);
-        }
-        // {§prompt-loop-containment}: the loop contains every prompt that arrived
-        // while it ran. Publish each undelivered frame oldest-first exactly once.
-        const prefix = promptLoopPrefix(loopSeq);
-        const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
-            worker_id: workerId,
-            pattern: `${prefix}%`,
-            prefix_len: prefix.length,
-            loop_id: loopId,
-        }))
-            .filter((row) => typeof row.content === "string" && row.content.length > 0);
-        for (const injectedRow of undelivered) {
-            const attributes = parsePromptAttributes(injectedRow.attributes, `Prompt ${injectedRow.pathname} attributes`);
-            if (attributes.openPaths !== undefined) {
-                openPaths.push(...assertOpenPaths(attributes.openPaths, `Prompt ${injectedRow.pathname} openPaths`));
-            }
-            const promptLogId = await this.#materialization.writePromptLog({
-                workerId,
-                loopId,
-                turnId,
-                sequence: nextActionIndex++,
-                target: promptTarget(workerName, injectedRow.pathname),
-                content: injectedRow.content,
-                source: promptSourceFromAttributes(
-                    attributes,
-                    `Prompt ${injectedRow.pathname} attributes`,
-                ),
-            });
-            onDispatch?.(promptLogId);
-            await onSettled?.(promptLogId);
+            const published = await this.#db.drain_publish_message.get<{ id: number }>({ id: message.id, log_entry_id: logEntryId });
+            if (published === undefined) throw new Error(`TurnRunner.#publishMessages: message ${message.id} was already published`);
+            onDispatch?.(logEntryId);
+            await onSettled?.(logEntryId);
         }
         return { nextActionIndex, openPaths };
     }
 
-    // {§methods-loop-run-open-paths}: selected workspace paths belong to the prompt
-    // frame. Publish the frame, then dispatch ordinary core READs in that same turn;
+    // {§methods-loop-run-open-paths}: selected workspace paths belong to the message.
+    // Publish it, then dispatch ordinary core READs in that same turn;
     // missing/non-member paths retain their normal 4xx. Returns the next action index.
     async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number): Promise<number> {
         let nextActionIndex = fromSequence;

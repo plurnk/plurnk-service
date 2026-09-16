@@ -4,7 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
 import WorkerName from "./WorkerName.ts";
-import { generatedPathname, renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
+import { generatedPathname, renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
@@ -221,8 +221,8 @@ export default class PacketBuilder {
         // One packet may expose a durably suppressed row without mutating its
         // curation state ({§invalid-emission-attempts}).
         transientOpenLogEntryId?: number | null;
-        // Capacity recovery may withhold automatic prompt bodies while keeping
-        // their complete prompt://<worker>/ entries addressable.
+        // Capacity recovery may withhold automatic arrival bodies while keeping
+        // their rows READable by log coordinate ({§message-projection}).
         promptProjection?: "automatic" | "withheld";
         turnId?: number | null;
     }): Promise<RequestPacket> {
@@ -234,30 +234,23 @@ export default class PacketBuilder {
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
-        // The prompt section sources the loop's prompt://<worker>/<loop>/<id> entries.
-        // Inject and turn-1 initialization write them. Bare callers that
-        // bypass prompt persistence fall back to messages.user.
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const workerName = await WorkerName.forId(this.#db, workerId);
-        const promptPrefix = promptLoopPrefix(loopSeqRow?.sequence ?? loopId);
-        const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string; source: string | null }>({
-            worker_id: workerId,
-            pattern: `${promptPrefix}%`,
-            prefix_len: promptPrefix.length,
-        }))
-            .filter((r) => typeof r.content === "string" && r.content.length > 0);
-        // The section is a JSON array of prompt pointers in Delegation's shape (no bodies): the
-        // frame's address and, when another actor caused it, that actor's source
-        // ({§prompt-causal-source}, #706). Each prompt's content reaches the model through its
-        // actionless prompt row, and prior prompts stay READable by the listed address - never
-        // silently lost, never an unfair curation imposition. Fallback: callers that bypass
-        // persistence (bare messages) still get their user text rendered directly.
-        const prompt = promptRows.length > 0
-            ? `[${promptRows.map((r) => JSON.stringify({
-                path: `prompt://${workerName}${r.pathname}`,
-                ...(r.source === null ? {} : { source: r.source }),
+        // {§message-arrival} — the Open Messages section lists the loop's unanswered arrivals as
+        // pointers in Delegation's shape: the inbound SEND row's log coordinate and, when another
+        // actor caused it, that actor's source ({§message-causal-source}, #706). Bodies stay on the
+        // rows; the section is the index of what still owes an answer. Fallback: callers that
+        // bypass persistence (bare messages) still get their user text rendered directly.
+        const openMessages = await this.#db.engine_open_messages.all<{
+            id: number; loop_seq: number; turn_seq: number; seq: number; source: string | null;
+        }>({ loop_id: loopId });
+        const userText = byRole("user");
+        const prompt = openMessages.length > 0
+            ? `[${openMessages.map((m) => JSON.stringify({
+                path: `log:///${m.loop_seq}/${m.turn_seq}/${m.seq}/SEND`,
+                ...(m.source === null ? {} : { source: m.source }),
             })).join(",\n")}]`
-            : byRole("user");
+            : userText.length > 0 ? userText : "[]";
         // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
         const recapContent = recap.length > 0
             ? recap
@@ -380,9 +373,9 @@ export default class PacketBuilder {
             // Familiar token language is a deliberate final model projection;
             // internally this is curation weight, never provider admission.
             { name: "budget", slot: "user", header: "Context Curation", content: budgetReadout },
-            // The prompts section closes the status clump as a paths-only list;
-            // bodies arrive through first-class prompt rows.
-            { name: "prompt", slot: "user", header: "Active Prompts", content: prompt },
+            // The messages section closes the status clump as a pointer list of open
+            // arrivals; bodies arrive through their inbound SEND rows ({§message-arrival}).
+            { name: "messages", slot: "user", header: "Open Messages", content: prompt },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the

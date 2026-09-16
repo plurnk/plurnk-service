@@ -310,8 +310,10 @@ export default class Translator {
         });
         for (const e of chronological) {
             const id = String(e.coordinate ?? e.id);
-            if (e.origin === "_plurnk" && e.op === "prompt") {
-                messages.push({ id, role: "user", content: Translator.#resultContent(e.rx) });
+            // {§message-arrival} — an arrival replays as a user message; another actor's arrival
+            // carries its source as the message name ({§message-causal-source}).
+            if (e.origin === "_plurnk" && e.op === "SEND" && Translator.#attrKind(e.attrs) === "message") {
+                messages.push({ id, role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}) });
                 continue;
             }
             if (e.origin !== "model") continue;
@@ -465,6 +467,11 @@ export default class Translator {
 
     // The model-facing textual statement body out of the tx. The real
     // wire ships tx PARSED (an object); a string is tolerated and parsed for robustness.
+    static #attrKind(attrs: unknown): unknown {
+        const parsed = typeof attrs === "string" ? JSON.parse(attrs) as unknown : attrs;
+        return parsed !== null && typeof parsed === "object" ? (parsed as { kind?: unknown }).kind : undefined;
+    }
+
     static #txBody(tx: unknown): string {
         let parsed: unknown = tx;
         if (typeof tx === "string") {
@@ -483,19 +490,6 @@ export default class Translator {
         if (typeof v === "string") return v;
         if (v === null || v === undefined) return "";
         return JSON.stringify(v);
-    }
-
-    static #resultContent(value: unknown): string {
-        let parsed = value;
-        if (typeof parsed === "string") {
-            const raw = parsed;
-            try { parsed = JSON.parse(parsed); } catch { return raw; }
-        }
-        if (parsed !== null && typeof parsed === "object") {
-            const content = (parsed as { content?: unknown }).content;
-            if (typeof content === "string") return content;
-        }
-        throw new TypeError("A prompt replay row must carry textual rx.content.");
     }
 
     // Tool-call args: the op's addressing + body as one JSON string (AG-UI streams args as deltas;

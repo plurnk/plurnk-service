@@ -127,7 +127,7 @@ export default class LogBody {
             return { ...(contentBody ?? EMPTY_BODY), provenance: "authored" };
         }
 
-        if (row.op === "READ" || row.op === "FIND" || row.op === "BARE" || row.op === "prompt") {
+        if (row.op === "READ" || row.op === "FIND" || row.op === "BARE") {
             return contentBody ?? EMPTY_BODY;
         }
 

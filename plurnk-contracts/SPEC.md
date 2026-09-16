@@ -946,7 +946,7 @@ disposition. The shape rules ARE structural:
   Actionable work does not require an invented OP and does not imply parking.
   Ordinary repetition, strike and execution limits still apply.
 
-SEND with no `(path)` responds to the Active Prompts without ending the turn. SEND with
+SEND with no `(path)` answers the open messages without ending the turn. SEND with
 `(path)` directs the message to that recipient. Neither changes loop status.
 
 ### §send-body SEND body projection

@@ -95,12 +95,14 @@ SELECT execution_budget_ms, execution_elapsed_ms FROM loops WHERE id = $id;
 SELECT policy, model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
--- PREP: test_prompt_paths_by_worker
-SELECT pathname FROM entries e JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-WHERE w.id = $worker_id AND scheme = 'prompt'
-ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGER),
-         json_extract(e.attributes, '$.ordinal');
+-- PREP: test_messages_by_loop
+SELECT id, ordinal, source, body, open_paths, log_entry_id FROM loop_messages
+WHERE loop_id = $loop_id ORDER BY ordinal;
 
+-- PREP: test_messages_by_worker
+SELECT m.id, m.loop_id, m.ordinal, m.source, m.body, m.open_paths, m.log_entry_id
+FROM loop_messages m JOIN loops l ON l.id = m.loop_id
+WHERE l.worker_id = $worker_id ORDER BY m.id;
 -- PREP: test_get_turn
 -- {§packet-items}: the packet assembled, as every whole-packet reader sees it.
 SELECT id, loop_id, sequence, producer, kind, status, completed_at,
@@ -636,13 +638,12 @@ FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
 -- PREP: test_first_turn_for_loop
 SELECT packet FROM turn_packets WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
 
--- PREP: test_prompt_folded
+-- PREP: test_arrival_folded
 SELECT projection.folded
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
-WHERE le.scheme='prompt' AND le.op='prompt'
+WHERE le.op = 'SEND' AND le.origin = '_plurnk' AND json_extract(le.attrs, '$.kind') = 'message'
 LIMIT 1;
-
 -- PREP: test_turn_id_by_seq
 SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;
 

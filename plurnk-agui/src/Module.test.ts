@@ -1776,7 +1776,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
-        { id: 0, coordinate: "1/1/0/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 0, rx: { content: "original question", mimetype: "text/markdown" } },
+        { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
         { id: 1, coordinate: "1/1/1/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
             { content: "Inspect, repair, and verify.", status: "in_progress" },
         ] } },
@@ -1797,7 +1797,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
         });
         const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: unknown[] } | undefined;
         assert.deepEqual(snapshot?.messages, [
-            { id: "1/1/0/prompt", role: "user", content: "original question" },
+            { id: "1/1/0/SEND", role: "user", content: "original question" },
             { id: "workspace/plan", role: "activity", activityType: "PLAN", content: {
                 entries: [{ content: "Inspect, repair, and verify.", priority: "medium", status: "in_progress" }],
             } },
@@ -1821,7 +1821,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
     seam.readLog = async (args) => {
         reads.push(args);
         return [
-            { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
+            { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
             { id: 2, coordinate: "1/1/2/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
                 { content: "Answer the prior question.", status: "completed" },
             ] } },
@@ -1843,7 +1843,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         ]);
         const snapshot = events[2] as { messages?: unknown[] };
         assert.deepEqual(snapshot.messages, [
-            { id: "1/1/1/prompt", role: "user", content: "Prior question." },
+            { id: "1/1/1/SEND", role: "user", content: "Prior question." },
             { id: "sync-client/plan", role: "activity", activityType: "PLAN", content: {
                 entries: [{ content: "Answer the prior question.", priority: "medium", status: "completed" }],
             } },
@@ -1969,7 +1969,7 @@ test("the official AG-UI client keeps the accepted current user message after au
         { id: 2, coordinate: "1/1/2/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
             { content: "Answer the prior question.", status: "completed" },
         ] } },
-        { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
+        { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ];
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
@@ -1991,7 +1991,7 @@ test("the official AG-UI client keeps the accepted current user message after au
         assert.deepEqual(
             agent.messages.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
             [
-                { id: "1/1/1/prompt", content: "Prior question." },
+                { id: "1/1/1/SEND", content: "Prior question." },
                 { id: "replay-run/user", content: "Current question." },
             ],
         );
@@ -2006,7 +2006,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
-        { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
+        { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ];
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);

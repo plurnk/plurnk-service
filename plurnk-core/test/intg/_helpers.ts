@@ -294,11 +294,16 @@ export const insertWorker = async (
     return row.id;
 };
 
+// {§message-arrival} — a loop's nonempty initial prompt is ordinal 1 of its inbox, published on turn 1.
 export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = ""): Promise<number> => {
     const row = await db.test_insert_loop.get<{ id: number }>({
         worker_id: workerId, sequence, prompt,
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
+    if (prompt.length > 0) {
+        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]" });
+        if (message === undefined) throw new Error("insertLoop: message enqueue returned no row");
+    }
     return row.id;
 };
 
@@ -473,3 +478,10 @@ export const fixtureExecutors = (text: string): readonly string[] => [...new Set
     ...TEST_EXECUTORS,
     ...[...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!),
 ])];
+
+// {§message-arrival} — an arrival row: the harness's inbound SEND, marked `attrs.kind = "message"`.
+export const isArrivalRow = (row: { op?: unknown; origin?: unknown; attrs?: unknown }): boolean => {
+    if (row.op !== "SEND" || row.origin !== "_plurnk") return false;
+    const attrs = typeof row.attrs === "string" ? JSON.parse(row.attrs) as unknown : row.attrs;
+    return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
+};

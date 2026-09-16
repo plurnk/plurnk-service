@@ -21,9 +21,8 @@ const childPrompts = async (db: Db, parentWorkerId: number) => {
     const children = await db.test_children_of_worker.all<{ id: number; name: string }>({ worker_id: parentWorkerId });
     assert.equal(children.length, 1, "exactly one child worker exists");
     const child = children[0]!;
-    const prompts = await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({
-        worker_id: child.id, pattern: "/1/%", prefix_len: 3,
-    });
+    const prompts = ((await db.test_messages_by_worker.all({ worker_id: child.id })) as Array<{ body: string }>)
+        .map(({ body }) => ({ content: body }));
     return { child, prompts };
 };
 

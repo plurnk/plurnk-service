@@ -10,7 +10,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { foldAuthorityIntoPath, promptLoopPrefix, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -518,11 +518,8 @@ export default class Dispatcher {
         } = context;
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
-        // {§send-prompt-acceptance} — a model SEND addressed to one of this loop's own prompts
-        // means what an untargeted SEND means; the address the packet showed it is accepted.
-        const ownPrompt = statement.op === "SEND" && origin === "model" && await this.#isOwnPromptAddress(statement.target, workerId, loopId);
-        const denial = ownPrompt ? null : (this.#checkWritable(statement, origin, workspaceId)
-            ?? await this.#checkCapabilities(statement, schemeCtx));
+        const denial = this.#checkWritable(statement, origin, workspaceId)
+            ?? await this.#checkCapabilities(statement, schemeCtx);
         if (denial !== null) {
             result = denial;
         } else {
@@ -534,7 +531,7 @@ export default class Dispatcher {
             try {
                 if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
-                } else if (statement.op === "SEND" && (statement.target === null || ownPrompt)) {
+                } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#respond(statement, schemeCtx, origin, workerId, loopId);
                 } else if (TurnDisposition.is(statement)) {
                     result = await this.#disposition.handle(statement, {
@@ -1006,7 +1003,7 @@ export default class Dispatcher {
                 {
                     target: statement.target?.raw ?? String(target),
                     stage: "dispatch",
-                    recovery: "A targetless SEND answers the active prompt; a directed SEND requires a recipient that implements SEND.",
+                    recovery: "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND.",
                     retryable: false,
                 },
             );
@@ -1203,10 +1200,7 @@ export default class Dispatcher {
     }
 
 
-    // {§send-prompt-acceptance} `prompt://<this worker>/<this loop>/<id>` names a prompt the loop
-    // contains; a SEND to it is the response, exactly as if untargeted. Another worker's or
-    // another loop's prompt is not a recipient and keeps the ordinary refusal.
-    // {§send-response-receipt} — a response names the prompts it answers, so the receipt
+    // {§send-response-receipt} — a response names the open messages it answers, so the receipt
     // says where the text went. {§send-looks-like-operation} — a model response whose first
     // line is an operation heading is a mis-fenced operation, not a reply: the 2026-09-11
     // dogfood put four operations on the line after their fences, delivered all four to the
@@ -1229,7 +1223,7 @@ export default class Dispatcher {
                 );
             }
         }
-        return { status: 200, recipients: await this.#activePrompts(workerId, loopId) };
+        return { status: 200, recipients: await this.#openMessages(loopId) };
     }
 
     // The first non-blank line, when it parses alone as one clean heading naming an operation
@@ -1250,26 +1244,11 @@ export default class Dispatcher {
         return line;
     }
 
-    // The loop's Active Prompts, oldest first, exactly as the packet lists them.
-    async #activePrompts(workerId: number, loopId: number): Promise<string[]> {
-        const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
-        if (worker === undefined) throw new Error(`worker ${workerId} does not exist`);
-        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        const prefix = promptLoopPrefix(loopSeq);
-        const rows = await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({
-            worker_id: workerId,
-            pattern: `${prefix}%`,
-            prefix_len: prefix.length,
-        });
-        return rows.map((row) => `prompt://${worker.name}${row.pathname}`);
-    }
-
-    async #isOwnPromptAddress(target: ParsedPath | null, workerId: number, loopId: number): Promise<boolean> {
-        if (target === null || target.kind !== "url" || target.scheme !== "prompt") return false;
-        const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
-        if (worker === undefined || target.hostname !== worker.name) return false;
-        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        return target.pathname.startsWith(promptLoopPrefix(loopSeq));
+    // {§send-response-receipt} — the loop's open messages, oldest first, by the log coordinate the
+    // packet lists them under ({§message-arrival}).
+    async #openMessages(loopId: number): Promise<string[]> {
+        const rows = await this.#db.engine_open_messages.all<{ loop_seq: number; turn_seq: number; seq: number }>({ loop_id: loopId });
+        return rows.map((row) => `log:///${row.loop_seq}/${row.turn_seq}/${row.seq}/SEND`);
     }
 
     // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,

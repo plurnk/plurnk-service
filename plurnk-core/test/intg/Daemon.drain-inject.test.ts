@@ -8,6 +8,10 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { isArrivalRow } from "./_helpers.ts";
+
+// {§message-arrival} — an arrival row's body is its sent side.
+const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { body: { raw: string } }).body.raw;
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
@@ -275,11 +279,8 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             assert.ok(typeof result2.turnSeq === "number" && result2.turnSeq > 1,
                 `injected into a turn slot >1; got ${result2.turnSeq}`);
 
-            type EntryRow = { scheme: string; pathname: string };
-            const entries = await (db as unknown as { test_list_entries_by_workspace_workspace_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_workspace_workspace_pathname.all<EntryRow>({ workspace_id: 1 });
-            const prompts = entries.filter((e) => e.scheme === "prompt");
-            assert.equal(prompts.length, 2, "the initial and injected prompts coexist");
-            for (const entry of prompts) assert.match(entry.pathname, /^\/\d+\/[a-f0-9]{8}$/u);
+            const inbox = (await db.test_messages_by_loop.all({ loop_id: (r2.result as { loopId: number }).loopId })) as Array<{ ordinal: number; body: string }>;
+            assert.deepEqual(inbox.map(({ body }) => body), ["kick off", "follow-up"], "the initial and injected messages coexist in the live loop's inbox");
 
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which
             // consumes the injected prompt and ends cleanly.
@@ -296,9 +297,9 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             assert.equal(ended[0].result.status, 200, "loop 1 ends cleanly after consuming the injected prompt");
 
             const rows = await db.test_log_entries_by_loop.all<{
-                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; rx: string;
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; tx: string; attrs: string;
             }>({ loop_id: ended[0].loopId });
-            const frame = rows.find((row) => row.op === "prompt" && JSON.parse(row.rx).content === "follow-up");
+            const frame = rows.find((row) => isArrivalRow(row) && arrivalBody(row) === "follow-up");
             const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
             assert.ok(frame, "the injected prompt was published as its own frame");
             assert.ok(contextRead, "the injected prompt's selected path produced a core READ");
@@ -369,9 +370,9 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
                 { timeoutMs: 5000 },
             );
             const rows = await db.test_log_entries_by_loop.all<{
-                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; rx: string;
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; tx: string; attrs: string;
             }>({ loop_id: loopId });
-            const frame = rows.find((row) => row.op === "prompt" && JSON.parse(row.rx).content === "resume with this file");
+            const frame = rows.find((row) => isArrivalRow(row) && arrivalBody(row) === "resume with this file");
             const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
             assert.ok(frame, "the waking prompt was published as its own frame");
             assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
@@ -384,7 +385,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     });
 });
 
-test("{§prompt-loop-containment}: an injection crossing the park transition is not stranded", async (t) => {
+test("{§message-loop-containment}: an injection crossing the park transition is not stranded", async (t) => {
     const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     t.after(() => {
@@ -437,9 +438,9 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
                 (events) => events.some((event) => event.loopId === loopId),
                 { timeoutMs: 5000 },
             );
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; rx: string }>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; pathname: string; tx: string; attrs: string }>({ loop_id: loopId });
             assert.ok(
-                rows.some((row) => row.op === "prompt" && JSON.parse(row.rx).content === "do not strand this prompt"),
+                rows.some((row) => isArrivalRow(row) && arrivalBody(row) === "do not strand this prompt"),
                 "the park-boundary prompt reaches the resumed turn",
             );
         } finally {
@@ -449,7 +450,7 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
     });
 });
 
-test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in order", async () => {
+test("{§message-loop-containment}: every orphaned prompt frame is promoted in order", async () => {
     // Edge: next-turn prompts injected into a loop that then terminates before
     // reaching that turn would be silently lost. Forced deterministically: hold
     // loop 1 at a proposal (status=102, turn 1), inject two turn-2 frames, then
@@ -463,7 +464,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
         contextWindow: 16384,
         responses: [
             // The frames arrive during turn 1, so a model terminal over them defers
-            // ({§completion-defers-to-prompts}); loop 1 ends turn 1 at its turn ceiling instead
+            // ({§completion-defers-to-messages}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
             sendOnly("```sh\ntrue\n```\n\n```SEND\nloop 1 ends at turn 1\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),  // pause, then end
             sendOnly("```SEND\nreconciled loop ran\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),                              // the promoted loop
@@ -499,10 +500,8 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             assert.equal((r3.result as { action: string }).action, "injected_next_turn", JSON.stringify(r3.result));
 
             const sourceLoopId = ((await firstPromise).result as { loopId: number }).loopId;
-            const sourceWorker = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: sourceLoopId });
-            const original = await db.drain_get_all_prompt_bodies_for_loop.all<{ pathname: string; content: string }>({
-                worker_id: sourceWorker!.worker_id, pattern: "/1/%", prefix_len: 3,
-            });
+            const original = (await db.test_messages_by_loop.all({ loop_id: sourceLoopId })) as Array<{ ordinal: number; body: string }>;
+            assert.deepEqual(original.map(({ body }) => body), ["kick off", "the first orphaned follow-up", "the second orphaned follow-up"], "the source loop's inbox holds its assignment and both arrivals");
 
             // Release the proposal → turn 1 completes → loop 1 ends; the
             // injected turn 2 never runs (it's now orphaned).
@@ -527,29 +526,26 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             const promotedPosture = await db.test_get_loop_posture.get<{
                 flags: string; model_route_id: number | null; max_turns: number; orphan_source_loop_id: number | null;
             }>({ id: promoted.loopId });
-            const promotedLoopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
-                loop_id: promoted.loopId,
-            }))!.sequence;
             assert.deepEqual(
                 promotedPosture,
                 { ...sourcePosture, orphan_source_loop_id: firstLoopId },
                 "recovery preserves the source loop's posture and names its durable source",
             );
             const rows = await db.test_log_entries_by_loop.all<{
-                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; rx: string;
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; tx: string; attrs: string;
             }>({ loop_id: promoted.loopId });
-            const frames = rows.filter((row) => row.op === "prompt");
+            const frames = rows.filter((row) => isArrivalRow(row));
             assert.deepEqual(
-                frames.map((row) => ({
-                    pathname: row.pathname,
-                    content: (JSON.parse(row.rx) as { content: string }).content,
-                })),
-                [
-                    { pathname: `/${promotedLoopSequence}/${original[1]!.pathname.split("/").at(-1)}`, content: "the first orphaned follow-up" },
-                    { pathname: `/${promotedLoopSequence}/${original[2]!.pathname.split("/").at(-1)}`, content: "the second orphaned follow-up" },
-                ],
+                frames.map((row) => arrivalBody(row)),
+                ["the first orphaned follow-up", "the second orphaned follow-up"],
                 "the complete orphan set remains separate and ordered in one subsequent turn",
             );
+            const promotedInbox = (await db.test_messages_by_loop.all({ loop_id: promoted.loopId })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+            assert.deepEqual(promotedInbox.map(({ ordinal, body }) => ({ ordinal, body })), [
+                { ordinal: 1, body: "the first orphaned follow-up" },
+                { ordinal: 2, body: "the second orphaned follow-up" },
+            ], "the orphans moved into the recovery loop's inbox, renumbered from its first");
+            assert.ok(promotedInbox.every(({ log_entry_id }) => log_entry_id !== null), "the recovery loop published them");
             const contextReads = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null);
             assert.deepEqual(
                 contextReads.map((row) => row.pathname),
@@ -558,12 +554,9 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             );
             assert.ok(contextReads.every((row) => row.turn_id === frames[0]?.turn_id),
                 "all promoted frame paths are read in the turn that publishes the frames");
-            const promptPaths = await db.test_prompt_paths_by_worker.all<{ pathname: string }>({ worker_id: (r2.result as { modelWorkerId: number }).modelWorkerId });
-            assert.deepEqual(
-                promptPaths.map((row) => row.pathname),
-                [original[0]!.pathname, ...frames.map((row) => row.pathname)],
-                "recovery re-homes each orphan identity instead of retaining duplicate old addresses",
-            );
+            const sourceInbox = (await db.test_messages_by_loop.all({ loop_id: sourceLoopId })) as Array<{ body: string }>;
+            assert.deepEqual(sourceInbox.map(({ body }) => body), ["kick off"],
+                "recovery moves each orphan instead of retaining duplicate old rows; the source keeps only its own assignment");
         } finally { ws.close(); }
     });
 });
@@ -659,7 +652,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     });
 });
 
-// {§completion-defers-to-prompts} — a Mock whose first response waits on a gate, so the test
+// {§completion-defers-to-messages} — a Mock whose first response waits on a gate, so the test
 // can inject prompts while turn 1 is genuinely in flight and then let the model complete over them.
 class GatedMock extends Mock {
     #gate: Promise<void>;
@@ -677,7 +670,7 @@ class GatedMock extends Mock {
     }
 }
 
-test("{§completion-defers-to-prompts}: prompts that arrive during a completing turn defer it, without a strike or a second loop", async () => {
+test("{§completion-defers-to-messages}: prompts that arrive during a completing turn defer it, without a strike or a second loop", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const mock = new GatedMock(gate, {
@@ -710,15 +703,15 @@ test("{§completion-defers-to-prompts}: prompts that arrive during a completing 
                 { timeoutMs: 5000 },
             );
             assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null }>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
             const tasks = rows.filter((r) => r.op === "TASK" && r.origin === "model");
             assert.equal(tasks.length, 2, "one deferred completion, then the real one");
             assert.equal(tasks[0]!.status_rx, 102, "the first completion is deferred, not refused");
-            assert.match(tasks[0]!.rx ?? "", /Completion deferred: 2 new prompts arrived during this turn\. They are in this packet; a response and a TASK now complete\./);
+            assert.match(tasks[0]!.rx ?? "", /Completion deferred: 2 new messages arrived during this turn\. They are in this packet; a response and a TASK now complete\./);
             assert.doesNotMatch(tasks[0]!.rx ?? "", /409|problem/, "a deferral carries no Problem and no strike");
             assert.equal(tasks[1]!.status_rx, 200);
-            const prompts = rows.filter((r) => r.op === "prompt" && r.origin === "_plurnk");
-            assert.equal(prompts.length, 3, "the initial prompt plus both follow-ups were published");
+            const prompts = rows.filter((r) => isArrivalRow(r));
+            assert.equal(prompts.length, 3, "the initial message plus both follow-ups were published");
             assert.ok(prompts.slice(1).every((p) => p.turn_id === tasks[1]!.turn_id), "both follow-ups were published in the turn the model completed from");
             await flush();
             const ts = terminated() as Array<{ loopId: number; result: { status: number } }>;

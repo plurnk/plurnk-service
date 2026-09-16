@@ -1,5 +1,4 @@
 // The durable writes a turn makes beside its packet: environment and stream deltas, filesystem fictions, the prompt log. Split out of TurnRunner.
-import type { UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import { type FsDivergence } from "./git-membership.ts";
 import { type GitStatusSnapshot } from "./git-state.ts";
@@ -316,24 +315,28 @@ export default class TurnMaterialization {
 
 
 
-    async writePromptLog({
+    // {§message-arrival} — an arrival is an inbound SEND row: the sender's statement as the row's
+    // sent side, published by the harness (origin `_plurnk`) with the causal `source` when another
+    // actor caused it ({§message-causal-source}). `attrs.kind = "message"` tells it from the
+    // engine's other harness-published SEND rows: a child's crossed activity and its conclusion
+    // narration ({§env-delta-child-termination}).
+    async writeArrivalLog({
         workerId,
         loopId,
         turnId,
         sequence,
-        target,
-        content,
+        body,
         source,
     }: {
         workerId: number;
         loopId: number;
         turnId: number;
         sequence: number;
-        target: UrlPath;
-        content: string;
+        body: string;
         source: string | null;
     }): Promise<number> {
-        const rx = JSON.stringify({ content, mimetype: "text/markdown" });
+        const tx = JSON.stringify({ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, matcher: null, body: { raw: body } });
+        const rx = JSON.stringify({ status: 200 });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId,
             loop_id: loopId,
@@ -342,36 +345,36 @@ export default class TurnMaterialization {
             origin: "_plurnk",
             source,
             model_call_id: null,
-            op: "prompt",
+            op: "SEND",
             signal: null,
-            scheme: target.scheme,
-            username: target.username,
-            password: target.password,
-            hostname: target.hostname,
-            port: target.port,
-            pathname: target.pathname,
-            query: target.query,
-            fragment: target.fragment,
+            scheme: null,
+            username: null,
+            password: null,
+            hostname: null,
+            port: null,
+            pathname: null,
+            query: null,
+            fragment: null,
             lineMarker: null,
-            tx: "",
-            mimetype_tx: "text/plain",
+            tx,
+            mimetype_tx: "application/json",
             rx,
             mimetype_rx: "application/json",
             status_rx: 200,
             weight: LogBody.weight({
-                op: "prompt",
-                attrs: {},
-                tx: "",
+                op: "SEND",
+                attrs: { kind: "message" },
+                tx,
                 rx,
-                mimetypeTx: "text/plain",
+                mimetypeTx: "application/json",
                 mimetypeRx: "application/json",
             }, this.#weighContent),
             state: "resolved",
             outcome: null,
-            attrs: "{}",
+            attrs: JSON.stringify({ kind: "message" }),
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         });
-        if (row === undefined) throw new Error("TurnRunner.#writePromptLog: INSERT ... RETURNING produced no row");
+        if (row === undefined) throw new Error("TurnMaterialization.writeArrivalLog: INSERT ... RETURNING produced no row");
         return row.id;
     }
 

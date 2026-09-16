@@ -147,8 +147,8 @@ WHERE status = 202
         AND child_loop.status IN (100, 102, 202)
   )));
 
--- PREP: recovery_orphan_prompt_sources
--- {§prompt-loop-containment}: finish an absent or partially staged orphan
+-- PREP: recovery_orphan_message_sources
+-- {§message-loop-containment}: finish an absent or partially staged orphan
 -- recovery before queued drains become visible at boot. A non-queued recovery
 -- already crossed its delivery boundary and must never be replayed.
 SELECT source.id AS loop_id, source.worker_id AS worker_id, w.origin
@@ -159,21 +159,8 @@ WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
   AND source.terminated_by IS NOT 'cancel'
   AND source.sequence > w.cancelled_through_sequence
   AND (recovery.id IS NULL OR recovery.status = 100)
-  AND EXISTS (
-      SELECT 1
-      FROM entries e
-      JOIN entry_channels c ON c.entry_id = e.id AND c.name = 'body'
-      WHERE e.scheme = 'prompt'
-        AND e.workspace_id = w.workspace_id AND e.authority = w.name
-        AND e.pathname LIKE '/' || source.sequence || '/%'
-        AND NOT EXISTS (
-            SELECT 1 FROM log_entries le
-            WHERE le.loop_id = source.id AND le.origin = '_plurnk' AND le.op = 'prompt'
-              AND le.scheme = 'prompt' AND le.pathname = e.pathname
-        )
-  )
+  AND EXISTS (SELECT 1 FROM loop_messages m WHERE m.loop_id = source.id AND m.ordinal > 1 AND m.log_entry_id IS NULL)
 ORDER BY source.worker_id, source.sequence;
-
 -- PREP: recovery_queued_workers
 SELECT DISTINCT w.id AS worker_id, w.workspace_id, w.origin
 FROM workers w

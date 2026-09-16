@@ -151,7 +151,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
     }
 });
 
-test("a delegated prompt reaches the parent as ordinary body-suppressed child activity", async () => {
+test("a delegated message reaches the parent as ordinary body-suppressed child activity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lineage-prompt-${crypto.randomUUID()}`);
@@ -182,15 +182,15 @@ test("a delegated prompt reaches the parent as ordinary body-suppressed child ac
             op: string;
             origin: string;
             source: string | null;
-            rx: string;
+            tx: string;
             initial_folded: string;
             folded: string;
         }>({ worker_id: parent });
-        const prompt = rows.find(({ op, origin, source }) => op === "prompt" && origin === "_plurnk" && source === "worker://child");
-        assert.ok(prompt, "the real prompt-publication path reaches the direct parent");
-        assert.match(prompt.rx, /inspect the delegated evidence/);
+        // {§message-arrival} — the child's own arrival row crosses like any of its activity.
+        const prompt = rows.find(({ op, origin, source, tx }) => op === "SEND" && origin === "_plurnk" && source === "worker://child" && tx.includes("inspect the delegated evidence"));
+        assert.ok(prompt, "the real message-publication path reaches the direct parent");
         assert.equal(prompt.initial_folded, "[[1,-1]]");
-        assert.equal(prompt.folded, "[]", "the parent can READ the initially suppressed prompt");
+        assert.equal(prompt.folded, "[]", "the parent can READ the initially suppressed message");
     } finally {
         await db.close();
     }

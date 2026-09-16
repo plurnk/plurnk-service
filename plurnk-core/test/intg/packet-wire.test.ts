@@ -1246,7 +1246,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
     // The turn-0 foisted FIND catalog map is how a worker's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
-    const catalog = '[\n  {\n    "path": "prompt:///1/1",\n    "channels": {\n      "prompt:///1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
+    const catalog = '[\n  {\n    "path": "worker:///1/1",\n    "channels": {\n      "worker:///1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "_plurnk",
@@ -1256,7 +1256,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
         tx: { op: "FIND", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
-    assert.match(out, /"path": "prompt:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
+    assert.match(out, /"path": "worker:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
     assert.match(out, /\n1:\[/);
 });
 
@@ -1317,7 +1317,7 @@ test("a program READ presents exact source, line-numbered", () => {
 test("{§body-projection}: scoped program READs bypass previews, not curation or output withholding", () => {
     const source = [
         ...Array.from({ length: 20 }, (_, index) => `\`\`\`\`READ (file-${index}.md) <!-- ${"orientation ".repeat(20)}-->\`\`\`\``),
-        '````TASK\n[{"content":"Address the prompt.","status":"in_progress"}]\n````',
+        '````TASK\n[{"content":"Address the message.","status":"in_progress"}]\n````',
     ].join("\n\n");
     const lines = source.split("\n");
     const numbered = lines.map((line, index) => `${String(index + 1).padStart(String(lines.length).length)}:${line}`);
@@ -1352,14 +1352,14 @@ test("initialization renders a program READ alongside its other real operation o
         },
         {
             coordinate: "1/1/2", origin: "_plurnk", op: "TASK", status: 102, folded: [],
-            tags: ["_plurnk", "init"], tx: { body: planValue("Address the prompt.") },
+            tags: ["_plurnk", "init"], tx: { body: planValue("Address the message.") },
         },
         {
             coordinate: "1/1/3", origin: "_plurnk", op: "READ", status: 200, folded: [],
             tags: ["_plurnk", "init"], target: { scheme: "ops", pathname: "/1/1" },
             rx: { content: `\`\`\`FIND (*)\`\`\`
 \`\`\`TASK
-${JSON.stringify(planValue("Address the prompt."))}
+${JSON.stringify(planValue("Address the message."))}
 \`\`\``, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
@@ -1640,12 +1640,12 @@ test("structured mutation receipts bypass a second generic preview", () => {
     });
 });
 
-test("{§prompt-projection}: prompt rows share one explicit projection-weight allowance", () => {
+test("{§message-projection}: exterior arrival rows share one explicit projection-weight allowance", () => {
     const content = Array.from({ length: 80 }, (_, i) => `prompt ${i + 1} ${"x".repeat(32)}`).join("\n");
     const budget = 80;
     const rendered = PacketWire.renderLog([
-        { coordinate: "1/1/1", op: "prompt", origin: "_plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { content, mimetype: "text/markdown" } },
-        { coordinate: "1/1/2", op: "prompt", origin: "_plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
+        { coordinate: "1/1/1", op: "SEND", origin: "_plurnk", source: "agui://anonymous/threads/t/runs/r/messages/m1", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } },
+        { coordinate: "1/1/2", op: "SEND", origin: "_plurnk", source: "agui://anonymous/threads/t/runs/r/messages/m2", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } },
     ], tok, { promptProjectionWeight: budget });
 
     const weights = parseLogRecords(rendered).map((row) => tok(String(row.body ?? "").replace(/\n$/u, "")));

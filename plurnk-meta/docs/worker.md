@@ -133,7 +133,7 @@ parked time does not consume execution time. An untimed wait without live work
 continues. A terminal inventory with at least one completed item claims success;
 a nonempty all-failed inventory concludes unsuccessfully.
 
-Each child task's conclusion reaches its parent automatically as a log `SEND` from
+Each child task's conclusion reaches its parent as a message from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
 failure preserves its status and Problem. `READ (worker://capital-checker)`
 collects the same result explicitly. While the child is running it returns

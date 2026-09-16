@@ -55,7 +55,7 @@ test("core preserves opaque state only in provider evidence while readable reaso
         const refs = await db.test_log_entries_by_worker.all<{ id: number; turn_id: number }>({ worker_id: workerId });
         const wires = await Promise.all(refs.filter(({ turn_id }) => turn_id === t1.turnId).map(({ id }) => LogEntry.fetchLogEntry(db, id)));
         for (const op of ["SEND", "TASK"]) {
-            assert.equal(wires.find((row) => row.op === op)?.reasoning, "readable provider reasoning",
+            assert.equal(wires.find((row) => row.op === op && row.origin === "model")?.reasoning, "readable provider reasoning",
                 `${op} derives readable reasoning from the admitted packet`);
         }
         assert.ok(wires.filter(({ op }) => op !== "SEND" && op !== "TASK").every((wire) => !Object.hasOwn(wire, "reasoning")), "non-conversational rows do not project provider reasoning");

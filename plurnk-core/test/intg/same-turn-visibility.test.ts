@@ -26,8 +26,8 @@ test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot
             const firstModelTurnId = rows.find(({ origin, op }) => origin === "model" && op === "FIND")?.turn_id;
             assert.ok(firstModelTurnId !== undefined);
             const firstModelTurn = rows.filter(({ turn_id }) => turn_id === firstModelTurnId);
-            const prompt = firstModelTurn.find(({ op }) => op === "prompt");
-            assert.equal(prompt?.active, 0, "the pre-program prompt row was in the selected snapshot");
+            const prompt = firstModelTurn.find(({ op, origin }) => op === "SEND" && origin === "_plurnk");
+            assert.equal(prompt?.active, 0, "the pre-program arrival row was in the selected snapshot");
             for (const op of ["FIND", "KILL", "TASK"] as const) {
                 assert.equal(
                     firstModelTurn.find((row) => row.op === op)?.active,

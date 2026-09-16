@@ -181,7 +181,7 @@ every other daemon surface.
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
   to its existing workspace by name→id and opens ORIENTED: durable
-  prompt rows replay as user messages, the model worker's current PLAN activity and SEND speech
+  arrival rows replay as user messages, named by their source when another actor caused them ({§message-causal-source}), the model worker's current PLAN activity and SEND speech
   replay chronologically, and the one validated current Run user message follows them under a
   Run-owned identity in the authoritative `MESSAGES_SNAPSHOT`. Client-claimed earlier history is not
   imported. A client already carrying any durable assistant identity receives no repeated snapshot.
@@ -551,10 +551,10 @@ is rejected until the model-loop seam supports it deliberately. Proposal
 disposition remains Core policy; the module forwards it without reinterpretation.
 
 §agui-run-source The run's user message is the causal actor behind the loop's prompt
-({§prompt-causal-source}). The module supplies its canonical address as the loop's `source`:
+({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
 `agui://<principal>/threads/<threadId>/runs/<runId>/messages/<messageId>`, every segment
 URI-encoded, the principal `anonymous` until the authorization layer names one. The frontend's
-self-identification never enters the address ({§client-metadata}). The prompt row renders that
+self-identification never enters the address ({§client-metadata}). The arrival row renders that
 source, so a model tells an operator's message from a worker's or a schedule's by address
 rather than by absence (#706).
 

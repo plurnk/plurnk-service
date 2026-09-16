@@ -1,4 +1,4 @@
-// {§prompt-entry}, {§context-output-selection}. Prompt frames are ordinary
+// {§message-arrival}, {§context-output-selection}. Arrival rows are ordinary
 // curatable log memory; withholding output does not curate it.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "go");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    // {§prompt-entry}: the initial frame has one first-class prompt row.
+    // {§message-arrival}: the initial message has one inbound SEND row.
     await engine.runTurn({
         provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
@@ -27,48 +27,48 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
-test("an explicit scoped KILL of the prompt row is ordinary curation", async () => {
+test("an explicit scoped KILL of the arrival row is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // Turn 1 is initialization; the first model turn's prompt is turn 2, row 1.
-        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 200, "the valid prompt log row accepts scoped KILL like every other visible row");
+        // Turn 1 is initialization; the first model turn's arrival is turn 2, row 1.
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/SEND"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.equal(r.status, 200, "the valid arrival row accepts scoped KILL like every other visible row");
         assert.equal((r as { matched?: number }).matched, 1);
-        const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
+        const visibility = await db.test_arrival_folded.get<{ folded: string }>({});
         assert.equal(visibility?.folded, "[[1,-1]]", "the explicit curation request is honored");
     } finally { await db.close(); }
 });
-test("prior and current loop prompts share the same explicit curation contract", async () => {
+test("prior and current loop arrivals share the same explicit curation contract", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, engine } = await seedPromptWorker(db);
-        // A second loop takes over the frame; loop 1's prompt becomes curatable history.
+        // A second loop takes over; loop 1's arrival becomes curatable history.
         const loop2 = await insertLoop(db, workerId, 2, "the next task");
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } }] }),
             workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
-        const stale = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(stale.status, 200, "the old loop's prompt accepts scoped KILL");
-        assert.equal((stale as { matched?: number }).matched, 1, "the KILL matched the stale prompt row - not a vacuous zero-match 200");
-        // Loop 2 has no initialization, so its prompt is row 1.
-        const current = await engine.dispatch({ statement: killStmt(urlLog("log:///2/1/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(current.status, 200, "the current prompt accepts scoped KILL under the same valid-entry contract");
+        const stale = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/SEND"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.equal(stale.status, 200, "the old loop's arrival accepts scoped KILL");
+        assert.equal((stale as { matched?: number }).matched, 1, "the KILL matched the stale arrival row - not a vacuous zero-match 200");
+        // Loop 2 has no initialization, so its arrival is row 1.
+        const current = await engine.dispatch({ statement: killStmt(urlLog("log:///2/1/1/SEND"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
+        assert.equal(current.status, 200, "the current arrival accepts scoped KILL under the same valid-row contract");
     } finally { await db.close(); }
 });
 
-test("KILL of the prompt remains deliberate curation", async () => {
+test("KILL of the arrival remains deliberate curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.ok(r.status < 400, `KILL of the prompt succeeds (deliberate) — got ${r.status}`);
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/SEND")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.ok(r.status < 400, `KILL of the arrival succeeds (deliberate) — got ${r.status}`);
     } finally { await db.close(); }
 });
 
-test("sister workers' initial prompts have independent literal identities", async () => {
+test("sister workers' initial messages have independent inbox rows and publications", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);
@@ -81,14 +81,15 @@ test("sister workers' initial prompts have independent literal identities", asyn
         const workerLoop = await insertLoop(db, childWorker, 1, "the worker task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: childWorker, loopId: workerLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the worker task" }] });
 
-        const bodyAt = async (workerId: number) => (await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ worker_id: workerId, pattern: "/1/%", prefix_len: 3 }));
-        const parentRows = await bodyAt(parentWorker);
-        const workerRows = await bodyAt(childWorker);
-        assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its worker-qualified address");
-        assert.equal(workerRows.length, 1, "the worker's prompt entry exists at ITS worker-qualified address");
-        assert.equal(parentRows[0].content, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
-        assert.equal(workerRows[0].content, "the worker task");
-        for (const row of [...parentRows, ...workerRows]) assert.match(row.pathname, /^\/1\/[a-f0-9]{8}$/u);
+        const inboxOf = async (loopId: number) => (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ body: string; log_entry_id: number | null }>;
+        const parentRows = await inboxOf(parentLoop);
+        const workerRows = await inboxOf(workerLoop);
+        assert.equal(parentRows.length, 1, "the parent's message exists in its own loop's inbox");
+        assert.equal(workerRows.length, 1, "the worker's message exists in ITS loop's inbox");
+        assert.equal(parentRows[0]!.body, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
+        assert.equal(workerRows[0]!.body, "the worker task");
+        assert.ok(parentRows[0]!.log_entry_id !== null && workerRows[0]!.log_entry_id !== null, "both were published");
+        assert.notEqual(parentRows[0]!.log_entry_id, workerRows[0]!.log_entry_id, "each became its own row");
     } finally { await db.close(); }
 });
 

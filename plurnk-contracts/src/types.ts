@@ -34,7 +34,7 @@ export type PlurnkOp = (typeof PLURNK_OPS)[number];
 // The engine's own lowercase row ops (`prompt`, `extension`, `error`) are reserved runtime names.
 export type RuntimeTag = Lowercase<string>;
 export const RUNTIME_TAG = /^[a-z][a-z0-9+.-]*$/;
-export const INTERNAL_ROW_OPS: ReadonlySet<string> = new Set(["prompt", "extension", "error"]);
+export const INTERNAL_ROW_OPS: ReadonlySet<string> = new Set(["extension", "error"]);
 export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag => typeof op === "string" && !INTERNAL_ROW_OPS.has(op) && RUNTIME_TAG.test(op);
 export const isExecution = <T extends { readonly op?: string | undefined }>(statement: T): statement is Extract<T, { runtime: RuntimeTag }> =>
     "runtime" in statement;

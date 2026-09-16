@@ -384,11 +384,11 @@ test("the default wire preserves canonical order and projects the Recap override
         const packet = await getPacket(db, result.turnId);
 
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
-        // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
+        // append-mostly log precedes per-turn status, open message pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: worker -> log -> turn -> status clump -> active prompt paths -> Recap");
-        assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active Prompts");
+        assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "user slot: worker -> log -> turn -> status clump -> open message pointers -> Recap");
+        assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
         assert.equal(packet.sections.at(-1)?.content, "CUSTOM_RECAP_SENTINEL");

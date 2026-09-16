@@ -1,6 +1,6 @@
 // {§agui-run-source} The client has an address. A run's user message is the causal actor
-// behind the loop's prompt, and the module names it under the AG-UI principal the way the
-// A2A adapter names its messages ({§prompt-causal-source}); the prompt row the model reads
+// behind the loop's message, and the module names it under the AG-UI principal the way the
+// A2A adapter names its messages ({§message-causal-source}); the arrival row the model reads
 // carries that source, so an operator's message is told from a worker's by address (#706).
 
 import { test } from "node:test";
@@ -28,7 +28,7 @@ const post = async (port: number, input: Readonly<Record<string, unknown>>): Pro
         .map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
 };
 
-test("a client run's prompt row names its AG-UI message as the causal source", { timeout: 60_000 }, async () => {
+test("a client run's arrival row names its AG-UI message as the causal source", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
@@ -66,10 +66,10 @@ test("a client run's prompt row names its AG-UI message as the causal source", {
         const expected = "agui://anonymous/threads/run-source/runs/run-1/messages/message%201";
         const loops = (await db.test_all_loops.all()) as Array<{ id: number }>;
         const prompts = (await Promise.all(loops.map(async ({ id }) => {
-            const rows = (await db.test_log_entries_by_loop.all({ loop_id: id })) as Array<{ op: string; origin: string; source: string | null }>;
-            return rows.filter((row) => row.op === "prompt").map((row) => ({ ...row, loopId: id }));
+            const rows = (await db.test_log_entries_by_loop.all({ loop_id: id })) as Array<{ op: string; origin: string; source: string | null; attrs: string }>;
+            return rows.filter((row) => row.op === "SEND" && row.origin === "_plurnk").map((row) => ({ ...row, loopId: id }));
         }))).flat();
-        assert.equal(prompts.length, 1, "the run published exactly one prompt row");
+        assert.equal(prompts.length, 1, "the run published exactly one arrival row");
         const [prompt] = prompts;
         assert.equal(prompt!.origin, "_plurnk", "the harness published the row");
         assert.equal(prompt!.source, expected, "the row's causal actor is the AG-UI message, URI-encoded per segment");
@@ -80,18 +80,18 @@ test("a client run's prompt row names its AG-UI message as the causal source", {
         }).sections?.filter((section) => section.name === "log") ?? []);
         assert.ok(
             logSections.some(({ content }) => content.includes(`"source":"${expected}"`)),
-            "the packet renders the source on the prompt row, so the model reads the sender by address",
+            "the packet renders the source on the arrival row, so the model reads the sender by address",
         );
         const promptSections = turns.flatMap(({ packet }) => packet === null ? [] : (JSON.parse(packet) as {
             sections?: Array<{ name: string; content: string }>;
-        }).sections?.filter((section) => section.name === "prompt") ?? []);
+        }).sections?.filter((section) => section.name === "messages") ?? []);
         assert.ok(
-            promptSections.some(({ content }) => /^\[\{"path":"prompt:\/\/[^/"]+\/1\/[a-f0-9]{8}","source":"agui:\/\/anonymous\/threads\/run-source\/runs\/run-1\/messages\/message%201"\}\]$/.test(content)),
-            "the Active Prompts pointer carries the same source beside the frame's address",
+            promptSections.some(({ content }) => /^\[\{"path":"log:\/\/\/1\/\d+\/1\/SEND","source":"agui:\/\/anonymous\/threads\/run-source\/runs\/run-1\/messages\/message%201"\}\]$/.test(content)),
+            "the Open Messages pointer carries the same source beside the row's coordinate",
         );
         assert.ok(
-            !logSections.some(({ content }) => /"target":"prompt:\/\/[^"]+"[^\n]*"origin":"_plurnk"/.test(content)),
-            "the prompt row no longer carries its constant origin",
+            !logSections.some(({ content }) => /### log:\/\/\/\d+\/\d+\/\d+\/SEND\n\{[^\n]*"origin":"_plurnk"/.test(content)),
+            "the arrival row carries no constant origin",
         );
     } finally {
         await daemon.stop();
