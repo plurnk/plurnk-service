@@ -54,8 +54,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-tool-presentation}", "plurnk-core intg 'AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery'"],
-        note: "One operator-filtered exact Registry snapshot; only enabled names are routed.",
+        evidence: ["{§mcp-core-matrix}", "{§mcp-tool-presentation}", "plurnk-core intg 'AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        note: "One operator-filtered exact Registry snapshot; only enabled names are routed. Immediate and Task results share host-composed output-schema success/rejection and tool-error coverage; malformed success is not accepted evidence or a replay instruction.",
     },
     {
         id: "resources",

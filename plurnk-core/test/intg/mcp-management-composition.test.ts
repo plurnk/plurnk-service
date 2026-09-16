@@ -10,6 +10,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
+import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
 
 type Event = Record<string, unknown>;
 type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: { type: string; status: number } };
@@ -355,3 +356,69 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-
         await running;
     }
 });
+
+for (const deferred of [false, true]) {
+    for (const outcome of ["valid", "invalid", "missing", "tool-error"] as const) {
+        test(`{§mcp-host-composition}: ${deferred ? "Task" : "immediate"} ${outcome} output preserves schema and failure semantics`, { timeout: 20000 }, async (t) => {
+            const fixture = taskHandler("tool-error");
+            const handler = deferred ? fixture.handler : createMcpHandler(() => {
+                const server = new McpServer({ name: "structured", version: "1.0.0" });
+                server.registerTool(fixture.toolName, { inputSchema: z.object({ topic: z.string() }) }, async () => ({ content: [] }));
+                return server;
+            }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+            const result = {
+                resultType: "complete", content: [{ type: "text", text: "structured-result evidence" }],
+                ...(outcome === "missing" ? {} : { structuredContent: { count: outcome === "valid" ? 42 : "wrong-type" } }),
+                ...(outcome === "tool-error" ? { isError: true } : {}),
+            };
+            let calls = 0;
+            const served = await serveMcpHttp(t, handler, async (request) => {
+                const wire = await request.clone().json() as { id: number | string; method: string };
+                const reply = (value: unknown) => Response.json({ jsonrpc: "2.0", id: wire.id, result: value });
+                if (wire.method === "tools/list") return reply({ resultType: "complete", ttlMs: 0, cacheScope: "public", tools: [{
+                    name: fixture.toolName, inputSchema: { type: "object", properties: { topic: { type: "string", "x-mcp-header": "Topic" } }, required: ["topic"] },
+                    outputSchema: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+                }] });
+                if (wire.method === "tools/call") {
+                    calls++;
+                    if (!deferred) return reply(result);
+                }
+                if (deferred && wire.method === "tasks/get") {
+                    const response = await fixture.route(request);
+                    assert.ok(response);
+                    const body = await response.json() as { result: Record<string, unknown> };
+                    return reply({ ...body.result, result });
+                }
+                return deferred ? fixture.route(request) : null;
+            });
+            const { action, post, provider } = await setup(t, [
+                makeMockResponse(`\`\`\`\`fixture (${fixture.toolName})\n{"topic":"MCP"}\n\`\`\`\`\n\n\`\`\`\`TASK\n[{"content":"Observe the result.","status":"waiting"}]\n\`\`\`\``),
+                makeMockResponse('````SEND\nInspected the result.\n````\n\n````TASK\n[{"content":"Inspected the result.","status":"completed"}]\n````'),
+            ]);
+            const added = await action("structured", "workspace.mcp.add", { alias: "fixture", definition: {
+                name: "fixture", transport: "http", url: served.url, read: [fixture.toolName],
+            } });
+            assert.equal(added.ok, true, JSON.stringify(added));
+            const events = await post("structured", undefined, "Inspect the tool's result, including any failure.");
+            assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+            assert.equal(calls, 1, "validation never replays the remote operation");
+            assert.equal(provider.received.length, 2);
+            const packet = provider.received[1]!.map(chatMessageText).join("\n");
+            if (outcome === "valid") {
+                assert.match(packet, /structured-result evidence/);
+                assert.doesNotMatch(packet, /tool-call-failed|tool-reported-error/);
+            } else if (outcome === "tool-error") {
+                assert.match(packet, /structured-result evidence/);
+                assert.match(packet, /executor\/mcp\/tool-reported-error/);
+                assert.doesNotMatch(packet, /tool-call-failed/);
+            } else {
+                assert.match(packet, /executor\/mcp\/tool-call-failed/);
+                const diagnostic = outcome === "missing" ? /did not return structured content/
+                    : deferred ? /returned invalid structured content: data\/count must be integer/
+                        : /Structured content does not match the tool's output schema: data\/count must be integer/;
+                assert.match(packet, diagnostic);
+                assert.doesNotMatch(packet, /structured-result evidence/, "an invalid success result is never presented as accepted content");
+            }
+        });
+    }
+}
