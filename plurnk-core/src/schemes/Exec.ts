@@ -1048,11 +1048,14 @@ export default class Exec extends CoreSchemeAdapterBase {
             { runtime, stage: "execution", retryable: false },
         );
         try {
-            if (signal.aborted) {
+            // A cancellation may land while the environment resolves; a listener added to an
+            // already-aborted signal never fires, so the run never receives a dead signal.
+            const composed = signal.aborted ? null
+                : await EnvFunctionality.resolve(db, ctx.workspaceId, ctx.workerId, EnvFunctionality.modifier(metadata));
+            if (composed !== null) await Exec.#recordEnv(db, entryId, composed.record);
+            if (composed === null || signal.aborted) {
                 result = cancelled();
             } else try {
-                const composed = await EnvFunctionality.resolve(db, ctx.workspaceId, ctx.workerId, EnvFunctionality.modifier(metadata));
-                await Exec.#recordEnv(db, entryId, composed.record);
                 const reported: ExecutorResult = await executor.run({
                     registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,

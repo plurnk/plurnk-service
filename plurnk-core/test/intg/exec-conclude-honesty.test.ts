@@ -180,18 +180,23 @@ for (const rejection of ["signal reason", "AbortError", "unrelated error"] as co
     test(`{§executor-results}: an executor rejecting with ${rejection} during cancellation is classified by its cause`, async (t) => {
         const diagnostics: unknown[][] = [];
         t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+        // The classification under test is of a rejection the executor raises on abort, so the
+        // cancellation waits for the run to begin: an earlier one concludes before any run.
+        const running = Promise.withResolvers<void>();
         const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(({ signal }) => new Promise((_resolve, reject) => {
             signal.addEventListener("abort", () => reject(rejection === "signal reason"
                 ? signal.reason
                 : rejection === "AbortError"
                     ? new DOMException("The operation was aborted", "AbortError")
                     : new Error("Unrelated executor defect")), { once: true });
+            running.resolve();
         }));
         try {
             const started = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
             assert.equal(started.status, 200);
             const sub = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
             assert.ok(sub);
+            await running.promise;
             await engine.cancelSubscription(sub.id);
             const [concluded] = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
             const cancelled = rejection !== "unrelated error";
