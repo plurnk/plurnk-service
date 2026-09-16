@@ -2003,7 +2003,7 @@ test("exact FIND preparation reuses only a derived representation produced by th
             },
         });
         const { ctx, inspect } = makeCtx(
-            priorEntry("stored projection", "text/markdown", header, undefined, "static"),
+            priorEntry(Buffer.from([0]).toString("base64"), "application/pdf", header, "stored projection", "static"),
             { projection },
         );
         let fetched = false;
@@ -2022,6 +2022,8 @@ test("exact FIND preparation reuses only a derived representation produced by th
         });
         assert.equal(fetched, expectedFetch);
         assert.equal(inspect().wrote?.entry.channels.readable?.content, expectedFetch ? "current projection" : undefined);
+        if (expectedFetch) assert.deepEqual(inspect().wrote?.entry.channels.body?.bytes, Buffer.from([1]));
+        else assert.equal(inspect().storedEntry?.channels.body?.content, Buffer.from([0]).toString("base64"));
     }
 });
 
@@ -2685,6 +2687,7 @@ test("exact FIND preparation cache policy: an unset operator ceiling fails at co
 });
 
 test("304 merges freshness metadata without relabeling a processed representation", async () => {
+    const source = Buffer.from("%PDF-cache");
     const projection = projectionCaps({
         async identity(mimetype) {
             assert.equal(mimetype, "application/pdf");
@@ -2702,7 +2705,7 @@ test("304 merges freshness metadata without relabeling a processed representatio
         "x-origin-version: 1",
     ].join("\n"))}\nx-plurnk-projection-id: pdf-reader-v1`;
     const { ctx, inspect } = makeCtx(
-        priorEntry("projected PDF", "text/markdown", storedHeader),
+        priorEntry(source.toString("base64"), "application/pdf", storedHeader, "projected PDF"),
         { projection },
     );
     let conditional = false;
@@ -2739,9 +2742,12 @@ test("304 merges freshness metadata without relabeling a processed representatio
     assert.match(served, /^content-range: bytes 0-9\/10$/m);
     assert.match(served, /^content-length: 10$/m);
     assert.match(served, /^x-plurnk-projection-id: pdf-reader-v1$/m);
+    assert.equal(inspect().storedEntry?.channels.body?.content, source.toString("base64"));
+    assert.equal(inspect().storedEntry?.channels.body?.mimetype, "application/pdf");
+    assert.equal(inspect().storedEntry?.channels.readable?.content, "projected PDF");
 
     const { ctx: refreshedCtx } = makeCtx(
-        priorEntry("projected PDF", "text/markdown", served),
+        inspect().storedEntry,
         { projection },
     );
     let fetchedAgain = false;
@@ -2814,7 +2820,7 @@ test("TTL: a changed projection identity invalidates derived content and its ori
         },
     });
     const { ctx, inspect } = makeCtx(
-        priorEntry("old projection", "text/markdown", header),
+        priorEntry(Buffer.from([0]).toString("base64"), "application/pdf", header, "old projection"),
         { projection },
     );
     let fetched = false;
