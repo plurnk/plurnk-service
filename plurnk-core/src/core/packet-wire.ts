@@ -1214,7 +1214,8 @@ export default class PacketWire {
 
     static #renderGitState(git: GitStatus & { files?: readonly { path: string; status: string; member?: string | null }[] }): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
-        const head = `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
+        const position = git.branch === null ? "detached HEAD" : `branch \`${git.branch}\`${git.unborn ? " (no commits)" : ""}`;
+        const head = `${position}${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
         const files = git.files ?? [];
         const path = (p: string): string => `\`${p}\``;
         const untracked = files.filter((f) => f.status === "??");

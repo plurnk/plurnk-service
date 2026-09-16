@@ -7,6 +7,7 @@
 
 import EventRouter from "./EventRouter.ts";
 import { aliveChildren } from "./AguiPlus.ts";
+import { selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import type { TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
 import type {
@@ -342,12 +343,12 @@ export default class Portal {
     }
 
     async #activeLoopId(workspaceId: number, workerId: number): Promise<number> {
-        const active = (await this.#seam.listWorkerLoops({ workspaceId, workerId }))
-            .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null);
-        if (active.length !== 1) {
-            throw new Error(`controlling worker ${workerId} has ${active.length} active loops`);
+        const active = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId }))
+            .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
+        if (active === null) {
+            throw new Error(`controlling worker ${workerId} has no active loop`);
         }
-        return active[0].id;
+        return active.id;
     }
 
     interruptForToolCall(toolCallId: string): Interrupt | null {
@@ -473,13 +474,9 @@ export default class Portal {
     async synchronize(workspaceId: number, thread: unknown): Promise<boolean> {
         const bound = thread as Thread;
         if (await this.#resurfaceControlled(workspaceId, bound)) return false;
-        const active = (await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
-            .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null);
-        if (active.length > 1) {
-            throw new Error(`controlling worker ${bound.workerId} has ${active.length} active loops`);
-        }
-        const loop = active[0];
-        if (loop === undefined) {
+        const loop = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
+            .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
+        if (loop === null) {
             this.finishThread(bound, []);
             return false;
         }

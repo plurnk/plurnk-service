@@ -81,7 +81,10 @@ Delay is nonnegative; an interval is positive. Occurrences never overlap; missed
 ticks coalesce without a backlog. Each occurrence uses the original instruction
 and policy with fresh task limits. Success permits the next occurrence; an all-failed inventory or
 an engine failure ends the recurrence. KILL cancels current and future tasks.
-Queued future tasks remain live worker obligations, visible with their due times.
+Queued future tasks remain live obligations: your `Worker.scheduledTasks` lists
+their loop numbers, status, minutes until due, and recurring intervals. A busy
+worker finishes its current loop before claiming a due task. Children’s scheduled
+work remains visible under `Delegation`.
 
 ## BARE inference
 

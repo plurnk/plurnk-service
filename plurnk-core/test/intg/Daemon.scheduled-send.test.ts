@@ -5,6 +5,7 @@ import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import StoredPacket from "../../src/core/StoredPacket.ts";
 import { insertWorker } from "./_helpers.ts";
 import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 
@@ -37,6 +38,15 @@ test("{§worker-scheduled-send}: directed timing queues a separate task without 
             await waitForDb(() => db.test_get_loop_status.get({ id: immediate.loopId }), (row) => row?.status === 200);
             assert.equal(provider.received.length, 2, "a future item never blocks unrelated ready work");
             assert.equal((await db.test_get_loop_status.get({ id: scheduled.id }))?.status, 100);
+            assert.equal((await daemon.readWorker({ workspaceId, identity: { id: workerId } }))?.lifecycle, "queued", "a newer completed loop does not hide the scheduled obligation");
+            assert.equal((await daemon.listWorkers(workspaceId)).find(({ id }) => id === workerId)?.lifecycle, "queued");
+            const packets = await db.test_list_turns_in_loop.all<{ packet: string | null }>({ loop_id: immediate.loopId });
+            const packet = packets.find(({ packet }) => packet !== null)?.packet;
+            assert.ok(packet);
+            const stored = StoredPacket.parse(packet);
+            assert.ok(stored);
+            const identity = JSON.parse(stored.sections.find(({ name }) => name === "worker")!.content);
+            assert.deepEqual(identity.scheduledTasks, [{ loop: scheduled.sequence, status: "queued", dueInMinutes: 60 }], "the actual next packet exposes the self-task without depending on its old SEND receipt");
             await daemon.cancelWorker({ workspaceId, workerId });
             assert.equal((await db.test_get_loop_status.get({ id: scheduled.id }))?.status, 499);
         } finally { await daemon.cancelWorker({ workspaceId, workerId }); }

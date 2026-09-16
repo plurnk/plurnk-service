@@ -1072,7 +1072,7 @@ export default class Daemon implements ApplicationPort {
                 { retryable: false },
             );
         }
-        type Row = Omit<ApplicationWorkerProjection, "lifecycle"> & { workspace_id: number; latestLoopStatus: number | null };
+        type Row = Omit<ApplicationWorkerProjection, "lifecycle"> & { workspace_id: number; loopObservations: string };
         const row = hasId
             ? await this.#db.envelope_get_worker_by_id.get<Row>({
                 id: ClientInput.assertId("worker.read", "id", args.identity.id) })

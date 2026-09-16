@@ -11,7 +11,8 @@ SELECT * FROM workspaces ORDER BY id;
 SELECT * FROM workers ORDER BY id;
 
 -- PREP: digest_loops
-SELECT id, worker_id, sequence, status, prompt, policy, terminated_by, terminal_result
+SELECT id, worker_id, sequence, status, prompt, policy, terminated_by, terminal_result,
+       terminated_at, scheduled_at, repeat_interval_ms, recurrence_root_loop_id
 FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns

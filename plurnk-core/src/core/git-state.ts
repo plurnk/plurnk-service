@@ -15,7 +15,8 @@ interface GitFileStatus {
 }
 
 export interface GitStatus {
-    branch: string;
+    branch: string | null;
+    unborn?: boolean;
     ahead: number;
     behind: number;
     staged: number;
@@ -61,7 +62,7 @@ export default class GitState {
         // membership pass that precedes this read announces the refusal once.
         if ((await declaredFilterProgram(repositoryRoot, signal)) !== null) return null;
         try {
-            statusOutput = (await GitState.#execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], options)).stdout;
+            statusOutput = (await GitState.#execFileP("git", ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"], options)).stdout;
         } catch {
             return null;  // the worktree vanished or git failed — fail closed, no status
         }
@@ -91,11 +92,11 @@ export default class GitState {
         }
     }
 
-    // `git status --porcelain=v1 -z --branch --untracked-files=all`: one NUL-delimited branch header,
-    // then XY + path records. NUL mode preserves every legal pathname and gives
-    // rename/copy records a second path field without an invented ` -> ` syntax.
+    // Porcelain v2's branch headers distinguish unborn/detached HEAD without parsing prose.
+    // NUL mode preserves path bytes, including the separate source of a rename/copy.
     static #parse(stdout: string, workspaceRoot: string, repositoryRoot: string): GitStatusSnapshot {
-        let branch = "";
+        let branch: string | null | undefined;
+        let unborn = false;
         let ahead = 0;
         let behind = 0;
         let staged = 0;
@@ -106,26 +107,37 @@ export default class GitState {
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
             if (record.length === 0) continue;
-            if (record.startsWith("## ")) {
-                branch = record.slice(3).split(/\.\.\.| /, 1)[0];
-                ahead = Number(record.match(/ahead (\d+)/)?.[1] ?? 0);
-                behind = Number(record.match(/behind (\d+)/)?.[1] ?? 0);
+            if (record.startsWith("# ")) {
+                if (record.startsWith("# branch.head ")) {
+                    const head = record.slice("# branch.head ".length);
+                    branch = head === "(detached)" ? null : head;
+                } else if (record.startsWith("# branch.oid ")) {
+                    unborn = record === "# branch.oid (initial)";
+                } else if (record.startsWith("# branch.ab ")) {
+                    const counts = /^# branch\.ab \+(\d+) -(\d+)$/.exec(record);
+                    if (counts === null) throw new TypeError(`Git status returned malformed tracking counts: ${JSON.stringify(record)}`);
+                    ahead = Number(counts[1]);
+                    behind = Number(counts[2]);
+                }
                 continue;
             }
-            if (record.length < 4 || record[2] !== " ") {
+            if (record.startsWith("? ")) {
+                untracked++;
+                files.push({ path: Namespace.fromRepositoryPath(record.slice(2), workspaceRoot, repositoryRoot), status: "??" });
+                continue;
+            }
+            const fields = record.split(" ");
+            const prefixLength = record[0] === "1" ? 8 : record[0] === "2" ? 9 : record[0] === "u" ? 10 : 0;
+            if (prefixLength === 0 || fields.length <= prefixLength || fields[1]?.length !== 2
+                || fields.slice(0, prefixLength).some((field) => field.length === 0)) {
                 throw new TypeError(`Git status returned a malformed porcelain record: ${JSON.stringify(record)}`);
             }
-            const xy = record.slice(0, 2);
-            const path = Namespace.fromRepositoryPath(record.slice(3), workspaceRoot, repositoryRoot);
-            if (xy === "??") {
-                untracked++;
-                files.push({ path, status: "??" });
-                continue;
-            }
+            const xy = fields[1].replaceAll(".", " ");
+            const path = Namespace.fromRepositoryPath(fields.slice(prefixLength).join(" "), workspaceRoot, repositoryRoot);
             if (xy[0] !== " ") staged++;
             if (xy[1] !== " ") unstaged++;
             files.push({ path, status: xy });
-            if (xy[0] === "R" || xy[0] === "C") {
+            if (record[0] === "2") {
                 const priorRecord = records[++i];
                 if (priorRecord === undefined || priorRecord.length === 0) {
                     throw new TypeError(`Git status omitted the source path for ${JSON.stringify(record)}`);
@@ -133,7 +145,8 @@ export default class GitState {
                 files.push({ path: Namespace.fromRepositoryPath(priorRecord, workspaceRoot, repositoryRoot), status: xy });
             }
         }
+        if (branch === undefined || branch === "") throw new TypeError("Git status omitted its branch.head header");
         files.sort((a, b) => a.path.localeCompare(b.path) || a.status.localeCompare(b.status));
-        return { branch, ahead, behind, staged, unstaged, untracked, files };
+        return { branch, unborn, ahead, behind, staged, unstaged, untracked, files };
     }
 }

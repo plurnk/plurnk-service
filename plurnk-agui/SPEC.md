@@ -146,7 +146,7 @@ state paths that could be mistaken for standard AG-UI fields.
 |:--------------------------------------------|:-----------------------------------------|:--------|
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
 | `snapshot.plurnk.status.model`               | `ApplicationPort.readWorkerModel`          | The bound Worker's durable resolved model route, including its alias when selected. |
-| `snapshot.plurnk.status.loopId`              | latest `ApplicationLoopProjection.id`      | Latest durable work Loop for the bound Worker, or `null` before one exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
+| `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
 | `snapshot.plurnk.status.{scheduledAt,intervalMinutes,recurrenceId}` | {§application-loop-observation} | Scheduled-task timing, initialized to `null` when absent. Packet deltas refresh it and clear an ordinary task's absent timing. |

@@ -509,6 +509,27 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
     } finally { await mod.close(); }
 });
 
+test("{§application-worker-observation}: an older running task owns the snapshot over newer queued and completed loops", async () => {
+    const { seam } = mockSeam();
+    const base = { workerId: 20, prompt: "task", promptSource: null, terminatedAt: null, terminalResult: null, packetCount: 4 };
+    seam.listWorkerLoops = async () => [
+        { ...base, id: 56, sequence: 2, status: 102 },
+        { ...base, id: 58, sequence: 4, status: 200, terminatedAt: "2026-09-15T00:00:00.000Z", terminalResult: { status: 200 } },
+        { ...base, id: 59, sequence: 5, status: 100, packetCount: 0 },
+    ];
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "status",
+            forwardedProps: { plurnk: { workspace: "status", action: { kind: "worker.model.get" } } },
+        });
+        const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { status: { lifecycle: string; loopId: number; packetCount: number } } } };
+        assert.equal(snapshot.snapshot.plurnk.status.lifecycle, "running");
+        assert.equal(snapshot.snapshot.plurnk.status.loopId, 56);
+        assert.equal(snapshot.snapshot.plurnk.status.packetCount, 4);
+    } finally { await mod.close(); }
+});
+
 test("{§agui-worker-model-actions}: worker model get/set reach the seam and child null means inherit", async () => {
     const { seam, modelSets } = mockSeam();
     seam.readWorkerModel = async () => ({ model: { alias: "opus", provider: "anthropic", model: "claude" }, spawnModel: { alias: "tiny", provider: "openai", model: "mini" } });

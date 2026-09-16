@@ -48,7 +48,7 @@ export interface ClientEnvelope {
 export type ApplicationWorkerOrigin = "model" | "client" | "_plurnk";
 
 // {§application-worker-observation} — `kind` is how the worker was minted (a conversation, a FORK
-// child with a forked log, a WORK child with a fresh log); `lifecycle` projects its latest loop
+// child with a forked log, a WORK child with a fresh log); `lifecycle` projects its representative loop
 // through the shared {§loop-lifecycle-vocabulary}, so a directory row can carry the same glyph the
 // bound worker's own status gauge shows. Neither is inferred by a client.
 export type ApplicationWorkerKind = "conversation" | "fork" | "work";

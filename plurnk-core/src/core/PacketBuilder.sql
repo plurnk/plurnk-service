@@ -29,6 +29,13 @@ SELECT p.name,
 FROM workers c JOIN workers p ON p.id = c.parent_worker_id
 WHERE c.id = $worker_id;
 
+-- PREP: engine_worker_scheduled_tasks
+-- {§worker-scheduled-send}: the worker's own queue survives curation of its SEND receipts.
+SELECT sequence AS loop, status, scheduled_at, repeat_interval_ms
+FROM loops
+WHERE worker_id = $worker_id AND scheduled_at IS NOT NULL AND status IN (100, 102, 202)
+ORDER BY sequence;
+
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
 -- size and the size last reported to the model (the publication cursor). Powers the Delegation streams

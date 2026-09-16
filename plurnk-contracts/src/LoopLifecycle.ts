@@ -12,3 +12,16 @@ export const lifecycleOfLoopStatus = (status: number | null | undefined): LoopLi
     if (status >= 400) return "failed";
     return "running";
 };
+
+// {§application-worker-observation}: observation must not mistake queue creation order for activity.
+export const selectWorkerLoop = <T extends { status: number; sequence: number; terminatedAt: string | null }>(loops: readonly T[]): T | null => {
+    const rank = (loop: T): number => loop.status === 102 ? 0 : loop.status === 202 ? 1 : loop.status === 100 ? 2 : 3;
+    return loops.reduce<T | null>((selected, loop) => {
+        if (selected === null) return loop;
+        const delta = rank(loop) - rank(selected);
+        if (delta !== 0) return delta < 0 ? loop : selected;
+        if (rank(loop) < 3) return loop.sequence < selected.sequence ? loop : selected;
+        const settled = (loop.terminatedAt ?? "").localeCompare(selected.terminatedAt ?? "");
+        return settled > 0 || (settled === 0 && loop.sequence > selected.sequence) ? loop : selected;
+    }, null);
+};

@@ -326,6 +326,14 @@ export default class PacketBuilder {
         // block; a root worker states `"parent": null` rather than omitting it.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
         const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
+        const scheduledTasks = (await this.#db.engine_worker_scheduled_tasks.all<{
+            loop: number; status: number; scheduled_at: number; repeat_interval_ms: number | null;
+        }>({ worker_id: workerId })).map((task) => ({
+            loop: task.loop,
+            status: task.status === 100 ? "queued" : task.status === 102 ? "running" : "waiting",
+            ...(task.status !== 100 ? {} : { dueInMinutes: Math.max(0, Math.ceil((task.scheduled_at - Date.now()) / 60_000)) }),
+            ...(task.repeat_interval_ms === null ? {} : { intervalMinutes: task.repeat_interval_ms / 60_000 }),
+        }));
         // {§fs-namespace} — the log renders working directories relative to the model's `/`.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const renderedLog = PacketWire.renderLogWithAccounting(
@@ -356,7 +364,7 @@ export default class PacketBuilder {
             // the actor is, whose child it is, and the coordinate this packet's response becomes —
             // the one fact the sources cannot state about themselves (which `reasoning:///L/T` is
             // the model's own). It changes every turn, so it never precedes the log.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq, ...(scheduledTasks.length === 0 ? {} : { scheduledTasks }) }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word, just above errors. Terse pointers (the path is the actionable address

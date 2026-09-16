@@ -17,7 +17,7 @@ import Portal from "./Portal.ts";
 import { aliveChildren, derivationActivity, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
-import { Problems, Validator, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, selectWorkerLoop, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
@@ -377,7 +377,7 @@ export default class Module {
         ]);
         return statusState(
             model,
-            loops.at(-1) ?? null,
+            selectWorkerLoop(loops),
             derivationActivity(this.#seam.workspaceDerivationStatus(workspaceId)),
             aliveChildren(children),
         );

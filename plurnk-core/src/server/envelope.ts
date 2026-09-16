@@ -10,7 +10,7 @@ import GitMembership from "../core/git-membership.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import WorkerName from "../core/WorkerName.ts";
-import { lifecycleOfLoopStatus, type ApplicationWorkerKind, type LoopLifecycle as WorkerLifecycle } from "@plurnk/plurnk-contracts";
+import { lifecycleOfLoopStatus, selectWorkerLoop, type ApplicationWorkerKind, type LoopLifecycle as WorkerLifecycle } from "@plurnk/plurnk-contracts";
 
 const envelopeFailure = (
     owner: string,
@@ -40,10 +40,10 @@ export interface WorkerRow {
     lifecycle: WorkerLifecycle;
 }
 
-// The SQL projects the latest loop's status; the shared vocabulary turns it into a lifecycle word.
-export const projectWorkerRow = <T extends { latestLoopStatus: number | null }>(row: T): Omit<T, "latestLoopStatus"> & { lifecycle: WorkerLifecycle } => {
-    const { latestLoopStatus, ...rest } = row;
-    return { ...rest, lifecycle: lifecycleOfLoopStatus(latestLoopStatus) };
+export const projectWorkerRow = <T extends { loopObservations: string }>(row: T): Omit<T, "loopObservations"> & { lifecycle: WorkerLifecycle } => {
+    const { loopObservations, ...rest } = row;
+    const loops = JSON.parse(loopObservations) as Array<{ status: number; sequence: number; terminatedAt: string | null }>;
+    return { ...rest, lifecycle: lifecycleOfLoopStatus(selectWorkerLoop(loops)?.status) };
 };
 
 export interface WorkerQuery {
@@ -232,7 +232,7 @@ export default class Envelope {
         query: WorkerQuery = {},
     ): Promise<WorkerRow[]> {
         const filterParent = Object.hasOwn(query, "parentWorkerId");
-        const rows = await db.envelope_list_workers_for_workspace.all<Omit<WorkerRow, "lifecycle"> & { latestLoopStatus: number | null }>({
+        const rows = await db.envelope_list_workers_for_workspace.all<Omit<WorkerRow, "lifecycle"> & { loopObservations: string }>({
             workspace_id: workspaceId,
             origin: query.origin ?? null,
             filter_parent: filterParent ? 1 : 0,

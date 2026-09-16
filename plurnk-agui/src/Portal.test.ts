@@ -188,7 +188,11 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 test("{§agui-conversation-sync}: synchronization observes an already-active loop without taking cancellation ownership", async () => {
     const m = mockSeam([], [], {
         workers: [worker(10)],
-        loops: new Map([[10, [loop(10, 77)]]]),
+        loops: new Map([[10, [
+            { ...loop(10, 77), sequence: 1, status: 102 },
+            { ...loop(10, 78), sequence: 2, status: 100, scheduledAt: "2099-01-01T00:00:00.000Z" },
+            { ...loop(10, 79), sequence: 3, status: 200, terminatedAt: "2026-09-15T00:00:00.000Z", terminalResult: { status: 200 } },
+        ]]]),
     });
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
@@ -514,7 +518,7 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
     const m = mockSeam([], [pendingInteraction], {
         workers: [worker(10), worker(20, 10)],
         loops: new Map([
-            [10, [loop(10, 77)]],
+            [10, [loop(10, 77), { ...loop(10, 79), sequence: 2, status: 100 }]],
             [20, [loop(20, 88)]],
         ]),
     });
@@ -549,13 +553,17 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
         threadId: "nvim",
         notificationScope: "conversation",
         resume,
-        emit: () => {},
+        emit: (events) => seen.push(...events),
     });
     await portal.resolve(3, resumed, resume);
     assert.deepEqual(m.interactionResolves, [{
         interactionId: 30,
         resolution: { status: "resolved", payload: { color: "orange" } },
     }]);
+    const beforeTerminal = seen.length;
+    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 77 }));
+    assert.ok(seen.slice(beforeTerminal).some((event) => event.type === "RUN_FINISHED"),
+        "the future queued task does not steal the resumed controlling loop's binding");
     portal.stop();
 });
 

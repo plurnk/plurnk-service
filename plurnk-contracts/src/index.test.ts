@@ -66,6 +66,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "isExecutionOp",
         "lifecycleOfLoopStatus",
         "renderJsonResult",
+        "selectWorkerLoop",
         "writtenOp",
     ]);
 });

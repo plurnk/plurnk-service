@@ -362,6 +362,10 @@ export default class DigestRender {
                     lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
                     lines.push(`Prompt: ${DigestRender.#summarize(loop.prompt, 160)}`);
+                    if (loop.scheduled_at !== null) {
+                        lines.push(`Schedule: ${new Date(loop.scheduled_at).toISOString()}`
+                            + (loop.repeat_interval_ms === null ? "" : ` · every ${loop.repeat_interval_ms / 60_000} min · recurrence ${loop.recurrence_root_loop_id ?? loop.id}`));
+                    }
                     if (loop.status !== 200 && terminal?.problem?.detail !== undefined) {
                         lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${DigestRender.#summarize(terminal.problem.detail, 400)}`);
                     }
@@ -547,6 +551,10 @@ export default class DigestRender {
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, policy: DigestRender.parseJson(l.policy, {}),
                 terminated_by: l.terminated_by,
+                terminated_at: l.terminated_at,
+                scheduled_at: l.scheduled_at,
+                repeat_interval_ms: l.repeat_interval_ms,
+                recurrence_root_loop_id: l.recurrence_root_loop_id,
                 result: DigestRender.#terminalResult(l),
                 accounting: DigestRender.#accounting(m.requestsByLoop.get(l.id) ?? []),
             })),

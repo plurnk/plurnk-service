@@ -1310,8 +1310,11 @@ it; Core validates and records it through the same prompt admission path.
 §application-worker-observation Worker observation exposes durable identity,
 origin, immediate parent identity, minted `kind` (`conversation`; `fork` for a
 child carrying a fork boundary; `work` for any other child), and `lifecycle`,
-the worker's latest work loop projected through {§loop-lifecycle-vocabulary} (`idle`
-when it has none). Maintenance-only loops do not change this projection;
+the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle`
+when it has none). `selectWorkerLoop` chooses running before parked before queued;
+ties select the oldest unresolved sequence. With no live work, the latest terminal
+settlement wins (sequence breaks equal timestamps). Newer terminal history never
+hides unfinished work. Maintenance-only loops do not change this projection;
 their ordinary turns and results remain durable history. `readWorker` resolves exactly one id or name and returns
 `null` when absent. `listWorkers` filters collections by origin or lineage
 position; an omitted parent filter means every position and an explicit `null`
