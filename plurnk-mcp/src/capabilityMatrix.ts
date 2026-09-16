@@ -114,8 +114,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'resource reads maintain one overlap-replaced subscription for selected cache entries'", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
-        note: "Freshness honored with notification invalidation; private entries partitioned by authorization context.",
+        evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-refresh-in-place}", "plurnk-core/test/intg/mcp-cache-composition.test.ts", "plurnk-core/test/intg/mcp-catalog-composition.test.ts", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
+        note: "SDK freshness and invalidation compose with version-aware host publication. Real daemon tests exercise overlapping catalog notifications, failed/aborted refresh, workspace authorization isolation, shared-worker caching, and credential rotation through attachment restart.",
     },
     {
         id: "subscriptions",
