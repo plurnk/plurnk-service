@@ -268,3 +268,25 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
     }
 });
+
+// {§workspace-env} — a module reading the environment on a Worker's behalf sees that Worker's own
+// overrides above the workspace layer, exactly what its commands run under; the workspace read
+// never includes them.
+test("{§functionality-scope} readWorkerEnvironment layers the Worker's overrides over the workspace's defaults", async () => {
+    const db = await openMigrated();
+    const daemon = await boot(db);
+    try {
+        const workspaceId = await insertWorkspace(db, `env-seam-${crypto.randomUUID()}`);
+        const alice = await insertWorker(db, workspaceId, null, "alice", "client");
+        const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+        await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", definition: { value: "Europe/Paris" } }, { scope: "workspace", workspaceId });
+        await daemon.invokeModuleAction("worker.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "worker", workspaceId, workerId: alice });
+        const ambient = { TZ: "UTC", PATH: process.env.PATH ?? "" };
+        assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))(ambient).TZ, "Europe/Paris", "the workspace layer over the ambient value");
+        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Asia/Tokyo", "alice's own override wins for alice");
+        assert.equal((await daemon.readWorkerEnvironment(workspaceId, bob))(ambient).TZ, "Europe/Paris", "bob inherits the workspace layer");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});

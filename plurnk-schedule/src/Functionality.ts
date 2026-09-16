@@ -25,6 +25,11 @@ interface WorkspaceIdentity {
     readonly workspaceId: number;
 }
 
+// The coordinator names the invoking Worker on a model-invoked verb.
+interface CallIdentity extends WorkspaceIdentity {
+    readonly workerId?: number;
+}
+
 interface CallOptions {
     readonly env?: Readonly<Record<string, string>>;
 }
@@ -61,6 +66,7 @@ export interface FunctionalityFamilyHandle {
 
 export interface EnvironmentSeam {
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
+    readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
 }
 
 interface Snapshot {
@@ -169,7 +175,7 @@ export default class ScheduleFunctionality {
     }
 
     // {§schedule-clock} — the one place the time is told: on demand, beside the rule it reads.
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity, options?: CallOptions): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: CallIdentity, options?: CallOptions): Promise<readonly FunctionalityCandidate[]> {
         if (query.configuration !== undefined) {
             throw failure("configuration-unsupported", 400, "schedule discovery reads rule text from `source`; it takes no configuration.", { retryable: false });
         }
@@ -196,7 +202,7 @@ export default class ScheduleFunctionality {
         }];
     }
 
-    async admit(input: unknown, identity: WorkspaceIdentity, _caller?: unknown, options?: CallOptions): Promise<{ alias: string; definition: object }> {
+    async admit(input: unknown, identity: CallIdentity, _caller?: unknown, options?: CallOptions): Promise<{ alias: string; definition: object }> {
         const params = isRecord(input) ? input : {};
         if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule add needs an alias.", { retryable: false });
         let definition: ScheduleDefinition;
@@ -272,13 +278,16 @@ export default class ScheduleFunctionality {
     async teardown(_snapshot: unknown, _identity: WorkspaceIdentity): Promise<void> {}
 
     // {§schedule-zone} — the zone a rule is read in: the call's own env when it carries one (a
-    // worker's `env` metadata), else the workspace's environment layer over the service's.
-    async #zone(identity: WorkspaceIdentity, options?: CallOptions): Promise<string> {
+    // worker's `env` metadata), else the invoking Worker's environment (its overrides over the
+    // workspace layer over the service's), else the workspace's.
+    async #zone(identity: CallIdentity, options?: CallOptions): Promise<string> {
         const called = options?.env?.TZ;
         if (called !== undefined && called.length > 0) return called;
         const environment = this.#environment === null
             ? this.#env
-            : (await this.#environment.readWorkspaceEnvironment(identity.workspaceId))(this.#env);
+            : identity.workerId === undefined
+                ? (await this.#environment.readWorkspaceEnvironment(identity.workspaceId))(this.#env)
+                : (await this.#environment.readWorkerEnvironment(identity.workspaceId, identity.workerId))(this.#env);
         const zone = environment.TZ;
         if (zone === undefined || zone.length === 0) throw new Error("TZ is unset; @plurnk/plurnk-schedule declares its default in .env.defaults.");
         return zone;

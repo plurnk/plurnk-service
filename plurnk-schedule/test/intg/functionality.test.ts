@@ -107,7 +107,11 @@ const attached = (adapter: ScheduleFunctionality, zone = "UTC"): number[] => {
         invoke: async () => { throw new Error("not invoked in this test"); },
         refresh: async ({ workspaceId }) => { refreshed.push(workspaceId); },
     };
-    adapter.attach(handle, { readWorkspaceEnvironment: async () => (ambient) => ({ ...ambient, TZ: zone }) });
+    adapter.attach(handle, {
+        readWorkspaceEnvironment: async () => (ambient) => ({ ...ambient, TZ: zone }),
+        // The invoking Worker's own override sits above the workspace layer.
+        readWorkerEnvironment: async () => (ambient) => ({ ...ambient, TZ: "Asia/Tokyo" }),
+    });
     return refreshed;
 };
 
@@ -154,6 +158,10 @@ test("{§schedule-bound} admission canonicalizes the rule in the workspace's zon
     });
     const called = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1 }, "operation", { env: { TZ: "UTC" } });
     assert.equal((called.definition as { rule: string }).rule, "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", "a call's own TZ wins for that call");
+    const byWorker = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1, workerId: 7 }, "operation");
+    assert.equal((byWorker.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Worker's own TZ override wins over the workspace layer");
+    const [preview] = await adapter.discover({ source: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, workerId: 7 });
+    assert.match(preview!.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Worker reads the time in its own zone");
     assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
     assert.equal((await problemOf(() => adapter.admit({ definition: HEARTBEAT }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/alias-required");
     const invalid = await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." } }, { workspaceId: 1 }));

@@ -34,7 +34,7 @@ import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
-import EnvFunctionality from "./EnvFunctionality.ts";
+import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
 import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import Fork from "../core/fork.ts";
@@ -1379,6 +1379,14 @@ export default class Daemon implements ApplicationPort {
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId);
         return (ambient) => snapshot(ambient).env;
+    }
+
+    async readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const shared = await EnvFunctionality.workspace(this.#db, workspaceId);
+        const row = await this.#db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
+        const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
+        return (ambient) => EnvFunctionality.compose(shared(ambient).env, state).env;
     }
 
     async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {

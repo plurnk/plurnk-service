@@ -36,9 +36,11 @@ unbounded; the operator owns it. An exhausted rule stays listed `active` with
 
 `TZ` is the zone a rule is read in and the zone the time is told in. The
 package declares `TZ=UTC` in `.env.defaults`; the operator's environment
-overrides it and a workspace overrides it through the `env` family
-({§workspace-env}). A call carrying `env` metadata with `TZ` is read in that
-zone for that call. Without a `DTSTART` a rule starts when it is read, at the
+overrides it, a workspace overrides it through the `env` family
+({§workspace-env}), and a Worker's own `env` override wins for the verbs that
+Worker invokes ({§functionality-scope}). A call carrying `env` metadata with
+`TZ` is read in that zone for that call. A rule keeps the zone stamped at its
+`add`; a later `env` change moves no existing rule. Without a `DTSTART` a rule starts when it is read, at the
 next whole second in the effective zone, so its first occurrence is still
 ahead: a workspace rule is read at `add`, a service rule once, when the daemon
 starts, in the service's zone. A floating `DTSTART` is read in the effective
