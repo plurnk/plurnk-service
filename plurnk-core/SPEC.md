@@ -2128,8 +2128,10 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
   result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
   `image: { mimetype, width, height, bytes }`, a PDF ({§mimetype-pdf-facts}) as
   `document: { mimetype, pages, bytes }` (`pages` null when the page tree is unreadable; the
-  attachment then weighs by bytes and carries no page count). READ snapshots complete source bytes through
-  the scheme's byte supplier or ordinary stored binary channel ({§binary-parity}); the text/hex projection
+  attachment then weighs by bytes and carries no page count), or audio ({§mimetype-audio-facts}) as
+  `audio: { mimetype, duration, bytes }` (`duration` in seconds, null when unknown). READ snapshots complete source bytes through
+  the scheme's byte supplier or ordinary stored binary channel ({§binary-parity}), checking
+  {§mimetype-binary-input} before loading the native snapshot; the text/hex projection
   and native observation use those same bytes. Immutable content-addressed `native_contents` stores each
   byte sequence once; the result's `nativeContentHash`, enforced by the log's foreign key, identifies it.
   This is retained evidence, not a separate visibility or delivery lifecycle. Source mutation/deletion
@@ -2140,7 +2142,8 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
   suppresses the complete native part under {§context-output-admission}. Unsupported routes receive only the
   text projection and no native charge; switching back to a compatible route exposes still-retained media.
   Each included part contributes `tokensAttachment` within `logTokens`: `ceil(width × height / 750)` for an
-  image, `pages × 1500` for a document, or `ceil(bytes / 4)` when its page count is unknown. Byte ranges select
+  image, `pages × 1500` for a document, `ceil(duration × 32)` for audio, or `ceil(bytes / 4)` when page count
+  or duration is unknown. Byte ranges select
   hexadecimal text, never crop the native resource. Retries reuse the frozen request; model-call evidence
   records the exact READ coordinates sent without controlling retention. Missing immutable bytes are an
   internal integrity failure, never silently dropped content. No ejection message or permanent teaching is

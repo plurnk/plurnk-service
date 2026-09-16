@@ -135,6 +135,7 @@
         "@plurnk/plurnk-mimetypes-grammar-zig": "1.16.1",
         "@plurnk/plurnk-mimetypes-application-pdf": "1.18.0",
         "@plurnk/plurnk-mimetypes-image": "1.18.0",
+        "@plurnk/plurnk-mimetypes-audio": "1.18.0",
         "@plurnk/plurnk-mimetypes-text-csv": "1.18.0",
         "@plurnk/plurnk-mimetypes-text-diff": "1.18.0",
         "@plurnk/plurnk-mimetypes-text-dotenv": "1.18.0",

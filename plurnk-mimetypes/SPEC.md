@@ -71,6 +71,8 @@ limit; it may not weaken the framework ceiling.
 
 §mimetype-pdf-facts `@plurnk/plurnk-mimetypes-application-pdf` is a header-only owner, exactly as the image owner is: it validates the `%PDF-` magic, reports `facts` — `pages` (the root page tree's `/Count`; null when the tree sits inside a compressed object stream) and `bytes` — and reads as its facts line (`PDF document, 3 pages, 12345 bytes`). It extracts no text, renders nothing, indexes nothing, and carries no dependency; a model that needs the text runs the workspace's own tools through an executor fence. The document itself is the service's to attach ({§packet-attachment-parts} in the core specification), weighed by pages when known and by bytes otherwise.
 
+§mimetype-audio-facts `@plurnk/plurnk-mimetypes-audio` lazily parses binary audio containers through `music-metadata`. Its manifest owns supported MIME names and extensions; `.webm` alone does not imply audio. `facts` and `deepJson` expose `format`, `duration` (seconds, null when unknown), and `bytes`; `content` and `summary` are one facts line. Unrecognized/non-audio input has no readable/native projection. No transcription, sample decoding, transcoding, or cover-art extraction occurs. Duration inspection may scan the complete admitted bytes, bounded by the existing binary input limit. Native delivery, curation weight, and retention belong to {§packet-attachment-parts}; provider codec support remains external.
+
 ### §mimetype-lifecycle 1.2 Orchestrator lifecycle
 
 ```mermaid

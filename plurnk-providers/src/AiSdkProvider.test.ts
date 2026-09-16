@@ -2096,6 +2096,58 @@ test("{§provider-input-modalities} compatible transports serialize image files 
     }]);
 });
 
+for (const [mediaType, format] of [["audio/wav", "wav"], ["audio/mpeg", "mp3"]]) {
+    test(`{§provider-input-modalities} ${mediaType} reaches the compatible wire as native input_audio`, async () => {
+        const provider = testProvider({
+            model: "audio-model", url: "https://example.test/v1/chat/completions", fetchTimeoutMs: 5000,
+            temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        });
+        const calls = installFetch([{ choices: [{ delta: { content: "heard" } }] }]);
+        const bytes = new Uint8Array([82, 73, 70, 70]);
+        await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
+            { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: mediaType! },
+        ] }] });
+        assert.deepEqual(JSON.parse(String(calls[0]?.init.body)).messages, [{ role: "user", content: [
+            { type: "text", text: "listen" },
+            { type: "input_audio", input_audio: { data: Buffer.from(bytes).toString("base64"), format } },
+        ] }]);
+    });
+}
+
+test("{§provider-input-modalities} Google serializes native audio through its own SDK adapter", async () => {
+    const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+    const google = createGoogleGenerativeAI({ apiKey: "fixture", baseURL: "https://example.test/v1beta" });
+    const calls = installFetchJson({ candidates: [{ content: { role: "model", parts: [{ text: "heard" }] }, finishReason: "STOP" }] });
+    const provider = testProvider({
+        model: "audio-fixture", languageModel: google("audio-fixture"), fetchTimeoutMs: 5000,
+        temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        streaming: false,
+    });
+    const bytes = new Uint8Array([82, 73, 70, 70]);
+    await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
+        { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: "audio/wav" },
+    ] }] });
+    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)).contents, [{ role: "user", parts: [
+        { text: "listen" }, { inlineData: { mimeType: "audio/wav", data: Buffer.from(bytes).toString("base64") } },
+    ] }]);
+});
+
+test("{§provider-input-modalities} an unsupported audio codec fails visibly instead of dropping its part", async () => {
+    const provider = testProvider({
+        model: "audio-model", url: "https://example.test/v1/chat/completions", fetchTimeoutMs: 5000,
+        temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+    });
+    const calls = installFetch([]);
+    await assert.rejects(provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
+        { type: "file", data: new Uint8Array([79, 103, 103, 83]), mediaType: "audio/ogg" },
+    ] }] }), (error: unknown) => {
+        assert.ok(error instanceof ProviderError);
+        assert.match(error.message, /audio\/ogg/u);
+        return true;
+    });
+    assert.equal(calls.length, 0, "no text-only substitute is sent to the provider");
+});
+
 test("generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
     const { ProviderError } = await import("./errors.ts");
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });

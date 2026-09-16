@@ -71,6 +71,7 @@ interface RxView {
     range?: unknown;
     image?: unknown;
     document?: unknown;
+    audio?: unknown;
     receipt?: unknown;
     effects?: unknown;
 }
@@ -129,7 +130,7 @@ export interface RenderedLog {
     readonly newOverflow: boolean;
 }
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
-import { imageWeight, pdfWeight } from "./attachments.ts";
+import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 export { imageWeight, pdfWeight };
 
@@ -1139,6 +1140,15 @@ export default class PacketWire {
                 contentHash, coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf",
                 ...(pages === null ? {} : { pages }),
                 weight: pdfWeight(pages, document.bytes as number),
+            };
+        }
+        const audio = view?.audio as { mimetype?: unknown; duration?: unknown; bytes?: unknown } | undefined;
+        if (audio !== undefined && typeof audio.mimetype === "string" && Number.isSafeInteger(audio.bytes)) {
+            const duration = typeof audio.duration === "number" && Number.isFinite(audio.duration) && audio.duration >= 0 ? audio.duration : null;
+            return {
+                contentHash, coordinate, path, scheme, pathname, mimetype: audio.mimetype, kind: "audio",
+                ...(duration === null ? {} : { duration }),
+                weight: audioWeight(duration, audio.bytes as number),
             };
         }
         return null;

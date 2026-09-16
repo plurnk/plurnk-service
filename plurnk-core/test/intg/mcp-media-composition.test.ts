@@ -5,6 +5,7 @@ import { McpServer, createMcpHandler, fromJsonSchema, type ContentBlock } from "
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText, type InputModality } from "@plurnk/plurnk-providers";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
+import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_helpers.ts";
@@ -15,7 +16,7 @@ process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const task = (status: string) => `\`\`\`TASK\n[{"content":"Inspect the screenshot.","status":"${status}"}]\n\`\`\``;
+const task = (status: string) => `\`\`\`TASK\n[{"content":"Inspect the media.","status":"${status}"}]\n\`\`\``;
 
 class ResourceReader extends Mock {
     resource: string | undefined;
@@ -34,28 +35,32 @@ class ResourceReader extends Mock {
     }
 }
 
+for (const media of [
+    { kind: "image", bytes: PNG, mimeType: "image/png", name: "screenshot.png", hex: /1:89\n2:50\n3:4e/u },
+    { kind: "audio", bytes: wav(), mimeType: "audio/wav", name: "clip.wav", hex: /1:52\n2:49\n3:46/u },
+] as const) {
 for (const form of ["inline", "embedded", "link", "multipart"] as const) {
-for (const modalities of [["image"], []] as InputModality[][]) {
-    test(`{§mcp-result-content} {§packet-attachment-parts} ${form}: MCP completion wakes; resource READ delivers ${modalities.length ? "native bytes" : "text only"}`, { timeout: 20_000 }, async (t) => {
+for (const modalities of [[media.kind], []] as InputModality[][]) {
+    test(`{§mcp-result-content} {§packet-attachment-parts} ${media.kind}/${form}: MCP completion wakes; resource READ delivers ${modalities.length ? "native bytes" : "text only"}`, { timeout: 20_000 }, async (t) => {
         const release = Promise.withResolvers<void>();
         const called = Promise.withResolvers<void>();
-        const uri = "fixture://images/screenshot.png";
+        const uri = `fixture://media/${media.name}`;
         let resourceReads = 0;
         const content: ContentBlock[] = form === "inline"
-            ? [{ type: "image", data: PNG.toString("base64"), mimeType: "image/png" }]
+            ? [{ type: media.kind, data: media.bytes.toString("base64"), mimeType: media.mimeType }]
             : form === "embedded"
-                ? [{ type: "resource", resource: { uri, blob: PNG.toString("base64"), mimeType: "image/png" } }]
-                : [{ type: "resource_link", uri, name: "screenshot.png", mimeType: "image/png" }];
+                ? [{ type: "resource", resource: { uri, blob: media.bytes.toString("base64"), mimeType: media.mimeType } }]
+                : [{ type: "resource_link", uri, name: media.name, mimeType: media.mimeType }];
         const handler = createMcpHandler(() => {
-            const server = new McpServer({ name: "image-witness", version: "1.0.0" });
-            server.registerResource("screenshot", uri, { mimeType: "image/png", cacheHint: { ttlMs: 60_000, cacheScope: "public" } }, async () => {
+            const server = new McpServer({ name: "media-witness", version: "1.0.0" });
+            server.registerResource("observation", uri, { mimeType: media.mimeType, cacheHint: { ttlMs: 60_000, cacheScope: "public" } }, async () => {
                 resourceReads += 1;
                 return { contents: [
-                    ...(form === "multipart" ? [{ uri: "fixture://images/note.txt", mimeType: "text/plain", text: "Screenshot attached." }] : []),
-                    { uri, mimeType: "image/png", blob: PNG.toString("base64") },
+                    ...(form === "multipart" ? [{ uri: "fixture://media/note.txt", mimeType: "text/plain", text: "Media attached." }] : []),
+                    { uri, mimeType: media.mimeType, blob: media.bytes.toString("base64") },
                 ] };
             });
-            server.registerTool("screenshot", {
+            server.registerTool("observe", {
                 inputSchema: fromJsonSchema({ type: "object", additionalProperties: false }),
                 annotations: { readOnlyHint: true },
             }, async () => {
@@ -67,7 +72,7 @@ for (const modalities of [["image"], []] as InputModality[][]) {
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
         const served = await serveMcpHttp(t, handler);
         const provider = new ResourceReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`fixture (screenshot)\n{}\n\`\`\`\n\n${task("waiting")}`),
+            turn(`\`\`\`fixture (observe)\n{}\n\`\`\`\n\n${task("waiting")}`),
             ...(form === "multipart" ? [turn(`\`\`\`READ ($RESOURCE)\`\`\`\n\n${task("in_progress")}`)] : []),
             turn(`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\n\n${task("in_progress")}`),
             turn(task("in_progress")),
@@ -81,14 +86,14 @@ for (const modalities of [["image"], []] as InputModality[][]) {
             PLURNK_MCP_REQUEST_TIMEOUT: "10000",
             PLURNK_MCP_FIXTURE: served.url,
             PLURNK_MCP_ENABLED: '["fixture"]',
-            PLURNK_MCP_FIXTURE_READ: '["screenshot"]',
+            PLURNK_MCP_FIXTURE_READ: '["observe"]',
         } }));
         let identity: { workspaceId: number; workerId: number } | undefined;
         try {
             await daemon.start();
-            const { workspaceId } = await daemon.createWorkspace({ name: "mcp-image-composition" });
+            const { workspaceId } = await daemon.createWorkspace({ name: "mcp-media-composition" });
             identity = { workspaceId, workerId: await daemon.ensureModelWorker(workspaceId) };
-            const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP screenshot.", policy: { proposals: "accept" } });
+            const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP media.", policy: { proposals: "accept" } });
             const lifecycle = new LoopLifecycle(db);
             await called.promise;
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 202, { timeoutMs: 5000 });
@@ -99,21 +104,21 @@ for (const modalities of [["image"], []] as InputModality[][]) {
             assert.equal(provider.received.length, delivered + 2, "completion woke exactly the waiting loop");
             assert.ok(provider.resource, "the result exposes an ordinary resource address");
             if (form === "inline") assert.match(provider.resource, /\/resources\/[a-f0-9]{8}$/u);
-            if (form === "embedded" || form === "multipart") assert.match(provider.resource, /\/resources\/screenshot\.png$/u, "a supplied name survives");
+            if (form === "embedded" || form === "multipart") assert.ok(provider.resource.endsWith(`/resources/${media.name}`), "a supplied name survives");
             const texts = provider.received.map((messages) => messages.map(chatMessageText).join("\n"));
-            assert.ok(texts.every((text) => !text.includes(PNG.toString("base64"))), "base64 evidence does not flood the ordinary body");
+            assert.ok(texts.every((text) => !text.includes(media.bytes.toString("base64"))), "base64 evidence does not flood the ordinary body");
             const parts = provider.received.map((messages) => messages.flatMap((message) =>
                 Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
             assert.equal(parts[1]!.length, 0, "listing a resource does not attach it");
             assert.equal(parts[delivered]!.length, modalities.length, "only READ creates supported native delivery");
             if (modalities.length) {
-                assert.equal(parts[delivered]![0]!.mediaType, "image/png");
-                assert.deepEqual(Buffer.from(parts[delivered]![0]!.data), PNG, "a scoped READ delivers the complete original image");
+                assert.equal(parts[delivered]![0]!.mediaType, media.mimeType);
+                assert.deepEqual(Buffer.from(parts[delivered]![0]!.data), media.bytes, "a scoped READ delivers the complete original media");
             }
             assert.doesNotMatch(texts[delivered]!, /has been ejected from context/u);
             assert.equal(parts[delivered + 1]!.length, modalities.length, "later turns retain the READ's native content");
-            if (modalities.length) assert.deepEqual(Buffer.from(parts[delivered + 1]![0]!.data), PNG);
-            if (form === "inline" || form === "link") assert.match(texts[delivered]!, /1:89\n2:50\n3:4e/u, "byte scope still returns exactly the selected octets");
+            if (modalities.length) assert.deepEqual(Buffer.from(parts[delivered + 1]![0]!.data), media.bytes);
+            if (form === "inline" || form === "link") assert.match(texts[delivered]!, media.hex, "byte scope still returns exactly the selected octets");
             assert.equal(resourceReads, form === "inline" || form === "embedded" ? 0 : 1, "embedded content needs no refetch; resource reads use the standard MCP cache");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; status_rx: number }>({ loop_id: run.loopId });
             assert.ok(rows.some((row) => row.op === "READ" && row.pathname.includes("/resources/") && row.status_rx === 200), "resource READ succeeded through the dispatcher");
@@ -129,5 +134,6 @@ for (const modalities of [["image"], []] as InputModality[][]) {
             await db.close();
         }
     });
+}
 }
 }

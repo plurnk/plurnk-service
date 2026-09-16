@@ -1,0 +1,54 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-audio",
+    "version": "1.18.0",
+    "description": "Audio format and duration facts for ordinary PLURNK READ and native model input.",
+    "keywords": ["plurnk", "mimetype", "audio", "multimodal"],
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": { "access": "public" },
+    "engines": { "node": ">=26" },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": ["dist/**/*", "README.md"],
+    "plurnk": {
+        "kind": "mimetype",
+        "binary": true,
+        "handlers": [
+            { "name": "audio/wav", "revision": "1", "glyph": "🎵", "extensions": [".wav"] },
+            { "name": "audio/x-wav", "revision": "1", "glyph": "🎵", "extensions": [] },
+            { "name": "audio/vnd.wave", "revision": "1", "glyph": "🎵", "extensions": [] },
+            { "name": "audio/mpeg", "revision": "1", "glyph": "🎵", "extensions": [".mp3"] },
+            { "name": "audio/flac", "revision": "1", "glyph": "🎵", "extensions": [".flac"] },
+            { "name": "audio/ogg", "revision": "1", "glyph": "🎵", "extensions": [".ogg", ".oga", ".opus"] },
+            { "name": "audio/mp4", "revision": "1", "glyph": "🎵", "extensions": [".m4a"] },
+            { "name": "audio/aac", "revision": "1", "glyph": "🎵", "extensions": [".aac"] },
+            { "name": "audio/webm", "revision": "1", "glyph": "🎵", "extensions": [] },
+            { "name": "audio/aiff", "revision": "1", "glyph": "🎵", "extensions": [".aiff", ".aif"] }
+        ]
+    },
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    },
+    "dependencies": { "music-metadata": "^11.15.0" },
+    "peerDependencies": { "@plurnk/plurnk-mimetypes": "^1.18.0" },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-audio#readme",
+    "bugs": { "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues" },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-mimetypes-audio"
+    }
+}

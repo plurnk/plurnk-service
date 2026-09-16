@@ -1,5 +1,6 @@
 import { Validator, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
+import { ATTACHMENT_KINDS, type AttachmentKind } from "./attachments.ts";
 
 export interface StoredPacketSection extends PacketSectionDraft {
     readonly weight: number;
@@ -22,11 +23,12 @@ export interface PacketAttachment {
     readonly scheme: string;
     readonly pathname: string;
     readonly mimetype: string;
-    readonly kind: "image" | "pdf";
+    readonly kind: AttachmentKind;
     readonly weight: number;
     readonly width?: number;
     readonly height?: number;
     readonly pages?: number;
+    readonly duration?: number;
 }
 export type RequestPacket = {
     weight: number;
@@ -98,14 +100,17 @@ export default class StoredPacket {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
             const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
-            StoredPacket.#keys(attachment, ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages"], `${subject}[${index}]`);
+            StoredPacket.#keys(attachment, ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages", "duration"], `${subject}[${index}]`);
             for (const key of ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype"]) {
                 if (typeof attachment[key] !== "string" || attachment[key] === "") throw new TypeError(`${subject}[${index}].${key} must be a non-empty string`);
             }
-            if (attachment.kind !== "image" && attachment.kind !== "pdf") throw new TypeError(`${subject}[${index}].kind must be "image" or "pdf"`);
+            if (!ATTACHMENT_KINDS.some(({ kind }) => attachment.kind === kind)) throw new TypeError(`${subject}[${index}].kind must be one of ${ATTACHMENT_KINDS.map(({ kind }) => kind).join(", ")}`);
             StoredPacket.#nonnegativeInteger(attachment.weight, `${subject}[${index}].weight`);
             for (const key of ["width", "height", "pages"]) {
                 if (own(attachment, key)) StoredPacket.#nonnegativeInteger(attachment[key], `${subject}[${index}].${key}`);
+            }
+            if (own(attachment, "duration") && (typeof attachment.duration !== "number" || !Number.isFinite(attachment.duration) || attachment.duration < 0)) {
+                throw new TypeError(`${subject}[${index}].duration must be a nonnegative finite number`);
             }
         });
     }

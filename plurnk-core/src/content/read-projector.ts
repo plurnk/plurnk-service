@@ -1,5 +1,5 @@
 import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker, type ReadStatement } from "@plurnk/plurnk-contracts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { binaryInputMaximum, MimetypeInputLimitError, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type {
     EntryReadResult,
     StoredEntryData,
@@ -39,6 +39,15 @@ const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: stri
     if (facts === undefined || !Number.isSafeInteger(facts.bytes)) return null;
     const pages = Number.isSafeInteger(facts.pages) ? facts.pages as number : null;
     return { mimetype: projection.mimetype, pages, bytes: facts.bytes as number };
+};
+
+const audioOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; duration: number | null; bytes: number } | null => {
+    const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { duration?: unknown; bytes?: unknown } } | undefined;
+    if (typeof projection?.mimetype !== "string" || !projection.mimetype.startsWith("audio/")) return null;
+    const facts = projection.facts;
+    if (facts === undefined || !Number.isSafeInteger(facts.bytes)) return null;
+    const duration = typeof facts.duration === "number" && Number.isFinite(facts.duration) && facts.duration >= 0 ? facts.duration : null;
+    return { mimetype: projection.mimetype, duration, bytes: facts.bytes as number };
 };
 
 export interface AnchoredReadResult extends EntryReadResult {
@@ -133,19 +142,21 @@ export default class ReadProjector {
         const attributes = opts.representation.attributes;
         const sourceProjection = attributes?.sourceProjection as { mimetype?: string } | undefined;
         const mimetype = sourceProjection?.mimetype ?? opts.representation.channels[opts.manifest.defaultChannel]?.mimetype;
-        const native = mimetype?.startsWith("image/") || mimetype === "application/pdf";
+        const native = mimetype?.startsWith("image/") || mimetype?.startsWith("audio/") || mimetype === "application/pdf";
         let content: Uint8Array | null = null;
         let bytes = opts.bytes;
         if (native && bytes !== undefined) {
             const size = await bytes.size();
             if (size !== null) {
+                const maximumBytes = binaryInputMaximum();
+                if (size > maximumBytes) throw new MimetypeInputLimitError({ mimetype: mimetype!, maximumBytes, observedBytes: size });
                 content = Buffer.from(await bytes.read(1, size));
                 const snapshot = content;
                 bytes = { size: async () => snapshot.byteLength, read: async (start, end) => snapshot.subarray(start - 1, end) };
             }
         }
         const result = await ReadProjector.#project({ ...opts, ...(bytes === undefined ? {} : { bytes }) });
-        if (result.status >= 300 || !("image" in result || "document" in result)) return result;
+        if (result.status >= 300 || !("image" in result || "document" in result || "audio" in result)) return result;
         const hash = content !== null && opts.retainNative !== undefined
             ? await opts.retainNative(content)
             : attributes?.nativeContentHash;
@@ -169,10 +180,12 @@ export default class ReadProjector {
             : { sourceProjection: { mimetype: projection.sourceMimetype, facts: projection.facts } };
         const image = imageOf(attributes);
         const document = documentOf(attributes);
+        const audio = audioOf(attributes);
         const withAttachmentFacts = (result: AnchoredReadResult): AnchoredReadResult => ({
             ...result,
             ...(image === null ? {} : { image }),
             ...(document === null ? {} : { document }),
+            ...(audio === null ? {} : { audio }),
         });
         const failure = (
             code: string,
@@ -388,15 +401,13 @@ export default class ReadProjector {
         const siblings = Object.entries(representation.channels)
             .filter(([name]) => name !== selected)
             .map(([name, data]) => [`#${name}`, opts.weigh!(data.content)] as const);
-        const projected = {
+        const projected = withAttachmentFacts({
             ...resolved,
             channel,
             ...(opts.weigh === undefined || siblings.length === 0 ? {} : { channels: Object.fromEntries(siblings) }),
             ...(resolved.mimetype === selectedRepresentation.mimetype ? {} : { sourceMimetype: selectedRepresentation.mimetype }),
             ...(matched === undefined ? {} : { matched }),
-            ...(image === null ? {} : { image }),
-            ...(document === null ? {} : { document }),
-        };
+        });
         const producerResult = selectedRepresentation.producerResult;
         // {§read-content-wins} — a channel that delivered content reads as that content; the
         // producer's failure projects onto a READ only when there is nothing to read.

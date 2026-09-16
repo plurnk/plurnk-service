@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import PacketWire from "./packet-wire.ts";
 import StoredPacket, { type RequestPacket } from "./StoredPacket.ts";
-import { imageWeight, pdfWeight } from "./attachments.ts";
+import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
 
 const weigh = (text: string): number => Math.ceil(text.length / 2);
 const contentHash = "a".repeat(64);
@@ -23,6 +23,38 @@ const pdfRow = () => readRow({
     tx: { target: { kind: "url", raw: "file:///contract.pdf", scheme: "file", pathname: "/contract.pdf" } },
     rx: { content: "Page one.", mimetype: "text/plain", document: { mimetype: "application/pdf", pages: 3, bytes: 4096 } },
     mimetype_rx: "text/plain",
+});
+
+test("{§packet-attachment-parts} audio duration weighs the retained source, with a byte fallback and ordinary admission", async () => {
+    const row = readRow({
+        target: { kind: "url", raw: "file:///clip.wav", scheme: "file", pathname: "/clip.wav" },
+        tx: { target: { kind: "url", raw: "file:///clip.wav", scheme: "file", pathname: "/clip.wav" } },
+        rx: { content: "WAVE audio, 1.25 s, 20044 bytes", mimetype: "text/plain", audio: { mimetype: "audio/wav", duration: 1.25, bytes: 20044 } },
+    });
+    const rendered = PacketWire.renderLogWithAccounting([row], weigh);
+    assert.equal(audioWeight(1.25, 20044), 40);
+    assert.equal(audioWeight(null, 20044), 5011);
+    assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///clip.wav", scheme: "file", pathname: "/clip.wav", mimetype: "audio/wav", kind: "audio" as const, duration: 1.25, weight: 40 }]);
+    assert.match(rendered.content, /"tokensAttachment":40/u);
+    assert.equal(PacketWire.renderLogWithAccounting([{ ...row, output_withheld: true }], weigh).attachments.length, 0);
+    const textOnly = PacketWire.renderLogWithAccounting([row], weigh, { acceptedAttachmentKinds: new Set() });
+    assert.equal(textOnly.attachments.length, 0);
+    assert.doesNotMatch(textOnly.content, /tokensAttachment/u);
+    const unknown = PacketWire.renderLogWithAccounting([{ ...row, rx: { ...row.rx, audio: { mimetype: "audio/wav", duration: null, bytes: 20044 } } }], weigh);
+    assert.equal(unknown.attachments[0]?.weight, 5011);
+    assert.equal(unknown.attachments[0]?.duration, undefined);
+    const packet: RequestPacket = {
+        weight: 50, attributions: [], attachments: [...rendered.attachments],
+        sections: [{ name: "log", slot: "user", header: null, content: "log", weight: 10 }],
+    };
+    assert.deepEqual(StoredPacket.parse(JSON.stringify(packet)), packet);
+    for (const duration of [-1, NaN, Infinity, "1"]) {
+        assert.throws(() => StoredPacket.assert({ ...packet, attachments: [{ ...rendered.attachments[0], duration }] }), /duration must be a nonnegative finite number/u);
+    }
+    const bytes = new Uint8Array([82, 73, 70, 70]);
+    const [, user] = await PacketWire.wireMessages(packet, async () => bytes);
+    assert.ok(Array.isArray(user.content));
+    assert.deepEqual(user.content[1], { type: "file", data: bytes, mediaType: "audio/wav" });
 });
 
 test("{§packet-attachment-parts} a visible READ of an image weighs the picture and becomes an image attachment", () => {

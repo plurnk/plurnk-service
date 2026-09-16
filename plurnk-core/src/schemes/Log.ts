@@ -245,7 +245,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const trimmed = LogVisibility.parse(row.folded);
         const { stream } = JSON.parse(row.attrs) as { stream?: unknown };
         const result = row.mimetype_rx === "application/json" ? JSON.parse(row.rx) as Record<string, unknown> : {};
-        const media = (result.image ?? result.document) as { mimetype?: string } | undefined;
+        const media = (result.image ?? result.document ?? result.audio) as { mimetype?: string } | undefined;
         const attributes = {
             ...(typeof stream === "string" ? { stream } : {}),
             ...(typeof result.nativeContentHash === "string" && media?.mimetype !== undefined

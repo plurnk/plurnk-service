@@ -408,7 +408,7 @@ accepts, from the catalog's input modalities (Models.dev `modalities.input` minu
 `text`, kept to the vocabulary `image`, `pdf`, `audio`, `video`; empty when the
 model is unknown). A user `ChatMessage` may then carry text beside the AI SDK's
 current `{ type: "file", data: bytes, mediaType }` part; `mediaType` distinguishes
-an image, PDF, or future native input without a second internal part shape. The
+an image, PDF, audio, or future native input without a second internal part shape. The
 AI SDK transport forwards those parts as the model's native file inputs; it
 alone serializes the canonical model and messages before provider extension
 fields are merged. System and assistant messages stay text, and prompt-token estimates count text
@@ -416,6 +416,8 @@ only, the provider's reported usage owning each part's cost. A pool declares a
 modality only when every backend does; the Mock declares them by option and
 records every request it receives. Which parts actually ride a request is the
 service's decision per attachment ({§packet-attachment-parts} in the core specification).
+An accepted modality does not imply every codec/container is supported: SDK or endpoint
+format rejections remain provider errors, never silent omission or a text-only substitute.
 
 ### §model-fact-resolution Model fact precedence
 

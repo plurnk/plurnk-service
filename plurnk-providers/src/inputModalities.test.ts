@@ -16,6 +16,7 @@ const parts: ChatMessage = {
         { type: "text", text: "look at this" },
         { type: "file", data: PNG, mediaType: "image/png" },
         { type: "file", data: PDF, mediaType: "application/pdf" },
+        { type: "file", data: new Uint8Array([82, 73, 70, 70]), mediaType: "audio/wav" },
     ],
 };
 
