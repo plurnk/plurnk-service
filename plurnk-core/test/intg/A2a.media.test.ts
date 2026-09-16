@@ -4,6 +4,7 @@ import { OutboundModule } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
+import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_helpers.ts";
@@ -18,7 +19,7 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 for (const media of [
     { modality: "image", bytes: png, mimetype: "image/png", filename: "screen.png" },
     { modality: "audio", bytes: wav(), mimetype: "audio/wav", filename: "clip.wav" },
-    { modality: "pdf", bytes: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Pages /Count 1 >>\nendobj\n%%EOF\n"), mimetype: "application/pdf", filename: "report.pdf" },
+    { modality: "pdf", bytes: Buffer.from(buildPdf({ title: "A2A evidence" })), mimetype: "application/pdf", filename: "report.pdf" },
 ] as const) {
 for (const mode of ["complete", "direct-message"] as const) {
 for (const supported of [true, false]) {
