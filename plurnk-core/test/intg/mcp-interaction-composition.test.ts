@@ -237,6 +237,42 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI be
     assert.equal(new Set(operationIds).size, operationIds.length, "each protocol request has a fresh correlation ID");
 });
 
+for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
+    test(`{§mcp-host-composition}: remote Task ${state} reaches its worker once without an interaction or replay`, { timeout: 20_000 }, async (t) => {
+        const fixture = taskHandler(state === "unsupported-input" ? "unsupported" : "protocol-failure");
+        const served = await serveMcpHttp(t, fixture.handler, async (request) => {
+            const response = await fixture.route(request);
+            if (state !== "cancelled" || (await request.clone().json()).method !== "tasks/get") return response;
+            assert.ok(response);
+            const body = await response.json() as { result: Record<string, unknown> };
+            const { error, ...task } = body.result;
+            assert.ok(error, "the fixture provided the failed Task being changed to cancelled");
+            return Response.json({ ...body, result: { ...task, status: "cancelled" } });
+        });
+        const { provider, start, daemon } = await setup(t, `\`\`\`\`fixture (${fixture.toolName})\n{"topic":"MCP"}\n\`\`\`\``, {
+            PLURNK_MCP_FIXTURE: served.url, PLURNK_MCP_FIXTURE_READ: JSON.stringify([fixture.toolName]),
+        });
+        const events = await start();
+        const terminal = events.at(-1);
+        assert.ok(terminal);
+        assert.equal((terminal.outcome as { type?: string }).type, "success", JSON.stringify(terminal));
+        assert.equal(provider.received.length, 2, "the original worker receives one failure and continues normally");
+        const packet = provider.received[1]!.map(chatMessageText).join("\n");
+        assert.match(packet, /executor\/mcp\/tool-call-failed/);
+        assert.match(packet, state === "failed" ? /task execution exploded/
+            : state === "cancelled" ? /cancelled/ : /sampling\/createMessage/);
+        assert.equal(events.some((event) => event.type === "TOOL_CALL_START" && event.toolCallName === "mcp_input_required"), false);
+        const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT")?.snapshot as {
+            plurnk: { workspace: { id: number } };
+        };
+        assert.deepEqual(await daemon.pendingClientInteractions(snapshot.plurnk.workspace.id), []);
+        assert.deepEqual(fixture.updates, []);
+        assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), state === "unsupported-input" ? [taskId] : [],
+            "unhandled input abandons the live Task; terminal Tasks need no second cancellation");
+        assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length, 1);
+    });
+}
+
 for (const stage of ["MRTR", "Task"] as const) {
     for (const boundary of ["owner cancellation", "daemon shutdown"] as const) {
         test(`{§mcp-host-composition}: ${boundary} settles pending ${stage} input and its remote work`, { timeout: 20_000 }, async (t) => {

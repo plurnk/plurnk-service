@@ -604,6 +604,18 @@ non-advertised ({§mcp-capability-matrix}). Re-evaluate only when a
 sandbox-capable client exists and a standard AG-UI projection is agreed;
 even then the capability would be per-client-advertised, never daemon-wide.
 
+## §mcp-skills-deferral Skills extension adoption boundary
+
+Plurnk does not advertise or implement `io.modelcontextprotocol/skills`.
+[SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2640-skills-extension.md)
+is Final, with a
+[stable extension specification](https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx).
+Deferral concerns host integration, not standards maturity: origin-qualified
+identities, manifest verification, content-bound approval, and activation
+must compose with the existing skills, resource, and proposal owners before
+adoption. Reading an MCP resource does not claim extension support or activate
+it as a skill. The design review is tracked in #654.
+
 ## §mcp-model-projection Model-facing projection
 
 | MCP surface | Plurnk surface |
