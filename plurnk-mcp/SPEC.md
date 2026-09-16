@@ -445,7 +445,19 @@ duplicate remote name, an enabled name not representable as a Plurnk target,
 or a `read` name outside the enabled set fails that workspace activation. No
 partial namespace is published and every acquired candidate closes.
 
-- §mcp-catalog-refresh-in-place **A catalog change refreshes in place.** When a server announces a changed catalog, the alias is dirty and its executor is rebuilt on the next preparation — on the connection the alias already holds, never by spawning a second server: with an unchanged definition and a live connection, preparation re-lists the catalog over that connection, so neither an aborted attempt nor a commit has anything of the alias to close, and a failed re-listing leaves the current catalog in service. (#429's root: the SDK's negotiated connect probes a stdio server on a disposable sibling process before the real connect, so every stdio connect starts the server twice and the sibling exits on its own schedule — a test that reads "any exit" as "the committed server was closed" flakes under load. The committed server is the last one started; the refresh-in-place rule keeps it so.) Covered: `Module.test.ts` — one process ever, no close marker across the refresh.
+§mcp-catalog-refresh-in-place **A catalog change refreshes in place.** An unchanged
+definition re-lists over its existing connection and atomically republishes its
+executor, documents, and resource facet through {§functionality-publication}.
+SDK cache invalidation and the host's publication acknowledgement are separate
+boundaries; neither closes or replaces the committed connection.
+
+| Refresh boundary | Pending invalidation |
+|---|---|
+| Notification | Marks the alias immediately; notifications coalesce under the existing refresh timer. |
+| Successful publication | Acknowledges only the invalidation captured by that preparation. A newer notification remains pending. |
+| Failed listing | Keeps the previous usable snapshot and retries pending work with bounded backoff. |
+| Aborted publication | Does not acknowledge the unpublished catalog. |
+| Disable/remove, workspace cooling, or shutdown | Retires obsolete refresh timers and invalidations. |
 
 MCP participates in core Functionality residency ({§module-workspace-residency}).
 Every tool call and Task retains the workspace from executor entry through its

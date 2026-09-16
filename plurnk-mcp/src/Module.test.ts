@@ -464,3 +464,31 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
         if (h.snapshots.has(1)) await h.teardown(1).catch(() => undefined);
     }
 });
+
+test("{§mcp-catalog-refresh-in-place} withdrawing an attachment retires its pending catalog retry", async (t) => {
+    let failListing = false;
+    let lists = 0;
+    const handler = httpHandler();
+    const served = await serveMcpHttp(t, handler, async (request) => {
+        const body = await request.clone().json();
+        if (body.method !== "tools/list") return null;
+        lists++;
+        return failListing ? Response.json({ jsonrpc: "2.0", id: body.id,
+            error: { code: -32603, message: "Transient fixture listing failure." },
+        }) : null;
+    });
+    const h = harness();
+    await h.setup();
+    t.after(() => h.module.close());
+    const first = await h.lane(1, new Map([["fixture", { name: "fixture", transport: "http", url: served.url }]]));
+    failListing = true;
+    handler.notify.toolsChanged();
+    for (let attempt = 0; attempt < 300 && h.snapshots.get(1)?.prepared === first; attempt++) await delay(10);
+    assert.notEqual(h.snapshots.get(1)?.prepared, first, "the failed refresh finished, retaining its pending retry");
+    assert.equal(lists, 2);
+    const withdrawn = await h.lane(1, new Map());
+    await delay(750);
+    assert.equal(h.snapshots.get(1)?.prepared, withdrawn, "no retired timer republishes the empty attachment set");
+    assert.equal(lists, 2, "withdrawal causes no further remote catalog requests");
+    assert.deepEqual(h.runtimeTags(1), []);
+});

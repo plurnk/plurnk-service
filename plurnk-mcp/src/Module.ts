@@ -355,7 +355,7 @@ export default class Module {
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
     readonly #identities = new Map<number, WorkspaceIdentity>();
     readonly #pending = new Map<string, PendingAuthorization>();
-    readonly #dirty = new Set<string>();
+    readonly #dirty = new Map<string, symbol>();
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     readonly #retainWorkspace = new Map<number, () => () => void>();
@@ -575,6 +575,8 @@ export default class Module {
                     console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);
                     return;
                 }
+                if (this.#closed) return;
+                this.#dirty.set(this.#pendingKey(workspaceId, definition.name), Symbol());
                 this.#scheduleCatalogRefresh(workspaceId, definition.name);
             },
             onInfrastructureError: (error) => {
@@ -650,8 +652,11 @@ export default class Module {
         const outcomes = new Map<string, Outcome>();
         const fresh: ConnectedAttachment[] = [];
         const consumedPending = new Map<string, PendingAuthorization>();
+        const refreshed = new Map<string, symbol | undefined>();
         try {
             for (const [name, value] of enabled) {
+                const key = this.#pendingKey(workspaceId, name);
+                const invalidation = this.#dirty.get(key);
                 const definition = value as McpServerDefinition;
                 const existing = previous.get(name);
                 const pending = this.#pending.get(this.#pendingKey(workspaceId, name));
@@ -701,7 +706,7 @@ export default class Module {
                     if (attachment.kind !== "unavailable") fresh.push(attachment);
                 }
                 next.set(name, attachment);
-                this.#dirty.delete(this.#pendingKey(workspaceId, name));
+                if (attachment !== existing) refreshed.set(key, invalidation);
             }
         } catch (cause) {
             const cleanup = await Promise.allSettled(fresh.map(({ connection }) => this.#closeOwned([connection])));
@@ -724,6 +729,16 @@ export default class Module {
             snapshot: next,
             commit: async () => {
                 this.#attachments.set(workspaceId, next);
+                // {§mcp-catalog-refresh-in-place} A published snapshot acknowledges only
+                // its captured invalidation, never a newer notification or an aborted candidate.
+                for (const [key, invalidation] of refreshed) {
+                    if (this.#dirty.get(key) === invalidation) this.#clearCatalogRefresh(key);
+                }
+                for (const key of this.#dirty.keys()) {
+                    if (key.startsWith(`${workspaceId}:`) && !next.has(key.slice(`${workspaceId}:`.length))) {
+                        this.#clearCatalogRefresh(key);
+                    }
+                }
                 const retained = new Set([...next.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []));
                 const pendingConnections = new Set([...this.#pending.values()].map(({ connection }) => connection));
                 const obsolete = [...previous.values()]
@@ -775,10 +790,8 @@ export default class Module {
         if (pending.length > 0) {
             throw new Error(`MCP workspace ${workspaceId} cannot cool with pending OAuth residency.`);
         }
-        for (const [key, timer] of this.#refreshTimers) {
-            if (!key.startsWith(`${workspaceId}:`)) continue;
-            clearTimeout(timer);
-            this.#refreshTimers.delete(key);
+        for (const key of this.#dirty.keys()) {
+            if (key.startsWith(`${workspaceId}:`)) this.#clearCatalogRefresh(key);
         }
         const attachments = (snapshot as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
         const connections = [...attachments.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []);
@@ -865,14 +878,18 @@ export default class Module {
     #scheduleCatalogRefresh(workspaceId: number, name: string, attempt = 0): void {
         if (this.#closed) return;
         const key = this.#pendingKey(workspaceId, name);
-        if (this.#refreshTimers.has(key)) return;
+        if (!this.#dirty.has(key) || this.#refreshTimers.has(key)) return;
         const delay = Math.min(250 * (2 ** attempt), 5000);
         const timer = setTimeout(() => {
             this.#refreshTimers.delete(key);
             const identity = this.#identities.get(workspaceId);
-            if (identity === undefined || this.#closed) return;
-            this.#dirty.add(key);
-            void this.#handleOrThrow().refresh(identity).catch((error: unknown) => {
+            if (identity === undefined || this.#closed) {
+                this.#dirty.delete(key);
+                return;
+            }
+            void this.#handleOrThrow().refresh(identity).then(() => {
+                if (this.#dirty.has(key)) this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
+            }).catch((error: unknown) => {
                 if (statusOf(error) === 409) {
                     this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
                     return;
@@ -884,11 +901,18 @@ export default class Module {
         this.#refreshTimers.set(key, timer);
     }
 
+    #clearCatalogRefresh(key: string): void {
+        this.#dirty.delete(key);
+        clearTimeout(this.#refreshTimers.get(key));
+        this.#refreshTimers.delete(key);
+    }
+
     async close(): Promise<void> {
         if (this.#closed) return;
         this.#closed = true;
         for (const timer of this.#refreshTimers.values()) clearTimeout(timer);
         this.#refreshTimers.clear();
+        this.#dirty.clear();
         const closing = this.#closeOwned([...this.#connections]);
         this.#attachments.clear();
         for (const pending of this.#pending.values()) pending.releaseWorkspace();
