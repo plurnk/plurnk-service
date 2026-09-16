@@ -81,7 +81,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             assert.ok(promptSection, "the prompts section exists");
             assert.equal(promptSection!.slot, "user", "the prompt paths list closes the user-slot status clump");
             assert.equal(promptSection!.header, "Active Prompts");
-            assert.match(promptSection!.content, /^\["prompt:\/\/[^/]+\/1\/[a-f0-9]{8}"\]$/, "paths-only, literal prompt address");
+            assert.match(promptSection!.content, /^\[\{"path":"prompt:\/\/[^/]+\/1\/[a-f0-9]{8}"\}\]$/, "a pointer with the literal prompt address and no source: the owner caused the frame");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

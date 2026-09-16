@@ -82,6 +82,17 @@ test("a client run's prompt row names its AG-UI message as the causal source", {
             logSections.some(({ content }) => content.includes(`"source":"${expected}"`)),
             "the packet renders the source on the prompt row, so the model reads the sender by address",
         );
+        const promptSections = turns.flatMap(({ packet }) => packet === null ? [] : (JSON.parse(packet) as {
+            sections?: Array<{ name: string; content: string }>;
+        }).sections?.filter((section) => section.name === "prompt") ?? []);
+        assert.ok(
+            promptSections.some(({ content }) => /^\[\{"path":"prompt:\/\/[^/"]+\/1\/[a-f0-9]{8}","source":"agui:\/\/anonymous\/threads\/run-source\/runs\/run-1\/messages\/message%201"\}\]$/.test(content)),
+            "the Active Prompts pointer carries the same source beside the frame's address",
+        );
+        assert.ok(
+            !logSections.some(({ content }) => /"target":"prompt:\/\/[^"]+"[^\n]*"origin":"_plurnk"/.test(content)),
+            "the prompt row no longer carries its constant origin",
+        );
     } finally {
         await daemon.stop();
         await db.close();

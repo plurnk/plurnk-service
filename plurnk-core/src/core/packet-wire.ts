@@ -748,8 +748,10 @@ export default class PacketWire {
         const renderedLeaf = LogEntryProjection.leaf(e);
         const path = PacketWire.#entryPath(coordinate, renderedLeaf);
         // Absence = "model" — the worker's own authorship is the default,
-        // exactly as `source` absence means the owning worker (#338).
-        if (typeof e.origin === "string" && e.origin !== "model") meta.origin = e.origin;
+        // exactly as `source` absence means the owning worker (#338). A prompt row is always
+        // harness-published ({§prompt-causal-source}), so its origin says nothing and the row
+        // carries only the causal `source` when another actor supplied one (#706).
+        if (typeof e.origin === "string" && e.origin !== "model" && op !== "prompt") meta.origin = e.origin;
         // {§env-delta-attribution}: render the causal worker address or
         // subsystem token when present; absence means the owning worker.
         if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;

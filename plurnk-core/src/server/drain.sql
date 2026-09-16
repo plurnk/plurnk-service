@@ -110,8 +110,8 @@ ORDER BY json_extract(e.attributes, '$.ordinal') ASC;
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
 -- prompts (multiple prompt://<worker>/<loop>/<id> entries), all shown in order. Same pattern as
 -- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
--- each body in its fixed model-facing enclosure.
-SELECT c.content, e.pathname
+-- each pointer with the frame's causal source ({§prompt-causal-source}).
+SELECT c.content, e.pathname, json_extract(e.attributes, '$.source') AS source
 FROM entries e
 JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
 JOIN entry_channels c ON c.entry_id = e.id

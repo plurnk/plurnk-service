@@ -855,9 +855,12 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         const frame = await db.engine_get_loop_prompt.get<{ prompt_pathname: string }>({ loop_id: loopId });
         assert.match(frame!.prompt_pathname, /^\/1\/[a-f0-9]{8}$/u);
         const promptTarget = `prompt://${await WorkerName.forId(db, workerId)}${frame!.prompt_pathname}`;
-        const prompt = log.find((e) => e.origin === "_plurnk" && e.target === promptTarget && String(e.path).endsWith("/prompt"));
+        const prompt = log.find((e) => e.target === promptTarget && String(e.path).endsWith("/prompt"));
         assert.ok(prompt, "first-class prompt row uses the durable source identity");
-        assert.equal(prompt.origin, "_plurnk");
+        // {§prompt-causal-source} — a prompt row is always harness-published, so the rendered row omits
+        // the constant origin and carries only a causal source when another actor supplied one (#706).
+        assert.equal(prompt.origin, undefined, "the rendered prompt row carries no constant origin");
+        assert.equal(prompt.source, undefined, "the owner caused this frame: no source");
         assert.equal(prompt.target, promptTarget);
         assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation delimiter");
     } finally { await db.close(); }
@@ -878,10 +881,10 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
-        // EDIT and a SEND). Found by identity (origin + op + target), robust to the
+        // EDIT and a SEND). Found by identity (op + target), robust to the
         // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "_plurnk" && typeof e.target === "string" && e.target.startsWith("prompt://") && String(e.path).endsWith("/prompt")), "prompt row logged");
+        assert.ok(log.find((e) => typeof e.target === "string" && e.target.startsWith("prompt://") && String(e.path).endsWith("/prompt")), "prompt row logged");
         const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);

@@ -240,19 +240,23 @@ export default class PacketBuilder {
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const workerName = await WorkerName.forId(this.#db, workerId);
         const promptPrefix = promptLoopPrefix(loopSeqRow?.sequence ?? loopId);
-        const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({
+        const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string; source: string | null }>({
             worker_id: workerId,
             pattern: `${promptPrefix}%`,
             prefix_len: promptPrefix.length,
         }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
-        // The section is a JSON array of prompt paths (the errors shape - no bodies);
-        // each prompt's content reaches the model through its actionless prompt row, and
-        // prior prompts stay READable by the listed address - never silently lost, never an
-        // unfair curation imposition. Fallback: callers that bypass persistence (bare messages)
-        // still get their user text rendered directly.
+        // The section is a JSON array of prompt pointers in Delegation's shape (no bodies): the
+        // frame's address and, when another actor caused it, that actor's source
+        // ({§prompt-causal-source}, #706). Each prompt's content reaches the model through its
+        // actionless prompt row, and prior prompts stay READable by the listed address - never
+        // silently lost, never an unfair curation imposition. Fallback: callers that bypass
+        // persistence (bare messages) still get their user text rendered directly.
         const prompt = promptRows.length > 0
-            ? `[${promptRows.map((r) => JSON.stringify(`prompt://${workerName}${r.pathname}`)).join(",\n")}]`
+            ? `[${promptRows.map((r) => JSON.stringify({
+                path: `prompt://${workerName}${r.pathname}`,
+                ...(r.source === null ? {} : { source: r.source }),
+            })).join(",\n")}]`
             : byRole("user");
         // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
         const recapContent = recap.length > 0
