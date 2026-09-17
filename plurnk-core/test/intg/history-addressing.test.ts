@@ -248,7 +248,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
     }
 });
 
-test("{§env-delta-child-activity}: WORK and FORK are observable actions; BARE and WAIT stay local", async () => {
+test("{§env-delta-child-activity}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and received requests stay local", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "delegation-observation");
@@ -265,20 +265,24 @@ test("{§env-delta-child-activity}: WORK and FORK are observable actions; BARE a
         });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
             content: [frame("WORK (worker://research)", "Research the question."), frame("FORK (worker://review)", "Review the evidence."),
+                frame("SEND (worker://research)", "Use the retained evidence."),
                 frame("BARE", "Is the task clear?"), frame("WAIT", "Await both children.")].join("\n\n"), reasoning: null,
         } }] });
         const childProvider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Yes.", reasoning: null } }] });
         const result = await engine.runTurn({ workspaceId, workerId: child, loopId: childLoop, provider, childProvider, messages: [] });
         assert.equal(result.status, 202);
-        const childRows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: child });
-        assert.deepEqual(childRows.filter(({ op }) => ["WORK", "FORK", "BARE", "WAIT"].includes(op))
-            .map(({ op, status_rx }) => [op, status_rx]), [["WORK", 200], ["FORK", 200], ["BARE", 200], ["WAIT", 202]]);
+        const childRows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: child });
+        assert.deepEqual(childRows.filter(({ op, origin }) => origin === "model" && ["WORK", "FORK", "SEND", "BARE", "WAIT"].includes(op))
+            .map(({ op, status_rx }) => [op, status_rx]), [["WORK", 200], ["FORK", 200], ["SEND", 200], ["BARE", 200], ["WAIT", 202]]);
         await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),
         });
-        const observations = (await db.test_log_entries_by_worker.all<{ op: string; source: string }>({ worker_id: parent }))
+        const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ worker_id: parent }))
             .filter(({ source }) => source === "worker://child");
-        assert.deepEqual(observations.map(({ op }) => op), ["SEND", "WORK", "FORK"], "only the inbound assignment and topology-changing actions reach the parent");
+        assert.deepEqual(observations.map(({ op }) => op), ["WORK", "FORK", "SEND"], "only child-authored topology changes and messages reach the parent");
+        const sent = JSON.parse(observations[2]!.tx);
+        assert.equal(sent.target.raw, "worker://research");
+        assert.equal(sent.body.raw, "Use the retained evidence.", "the observed SEND is the outgoing message, not the child's received assignment");
     } finally { await db.close(); }
 });
 
