@@ -1,4 +1,3 @@
-import type { DispositionStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -24,27 +23,22 @@ export default class TurnDispositionHandler {
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
     readonly #pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
     readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
-    readonly #failure: (code: string, status: number, detail: string) => DispatchResult;
 
-    constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork, failure }: {
+    constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork }: {
         db: Db;
         lifecycle: LoopLifecycle;
         unobservedFailureCount: (turnId: number) => Promise<number>;
         pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
         hasLiveWork: (workerId: number) => Promise<boolean>;
-        failure: (code: string, status: number, detail: string) => DispatchResult;
     }) {
         this.#db = db;
         this.#lifecycle = lifecycle;
         this.#unobservedFailureCount = unobservedFailureCount;
         this.#pendingSet = pendingSet;
         this.#hasLiveWork = hasLiveWork;
-        this.#failure = failure;
     }
 
-    async handle(statement: DispositionStatement, ctx: TurnContext): Promise<DispatchResult> {
-        if (statement.lineMarker !== null) return this.#failure("scope-unsupported", 400,
-            "WAIT takes no scope; scheduled delivery uses the schedule family.");
+    async handle(ctx: TurnContext): Promise<DispatchResult> {
         // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
         return await this.#hasLiveWork(ctx.workerId)
             ? { status: 202, attrs: { waiting: -1 } }

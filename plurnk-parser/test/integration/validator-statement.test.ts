@@ -191,7 +191,7 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: WAIT preserves a numeric scope for runtime refusal", () => {
+test("{§send-wait-scope} PlurnkStatement: structured WAIT tolerates a numeric scope", () => {
     const stmt = { ...baseFields("WAIT"), body: null, lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
@@ -214,7 +214,7 @@ test("PlurnkStatement: WAIT rejects numeric signal", () => {
     assert.equal(valid, false);
 });
 
-test("{§turn-disposition} PlurnkStatement: WAIT carries scope for runtime admission, not targets or metadata", () => {
+test("{§turn-disposition} PlurnkStatement: WAIT tolerates scope but does not acquire a routing or metadata contract", () => {
     const task = { ...baseFields("WAIT"), body: null };
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...task, lineMarker: { marks: [1] } }).valid, true);

@@ -133,7 +133,7 @@ private open(implicitName?: string): void {
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.started = true;
     this.slotReady = true;
-    this.metadataReady = this.execFence || this.openOp === "SEND";
+    this.metadataReady = this.execFence || this.openOp === "SEND" || this.openOp === "WAIT";
     this.inlineBody = false;
 }
 

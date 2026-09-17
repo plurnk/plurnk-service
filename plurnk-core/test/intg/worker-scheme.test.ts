@@ -1074,16 +1074,17 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         assert.equal(satisfied.detail, "Nothing is in flight. Continuing.");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
 
-        // {§send-wait-scope} — a scope on WAIT is refused; the loop is untouched, never held open.
+        // {§send-wait-scope} — an ignored scope never invents a future wake.
         const s3 = await insertWorkspace(db, `wait-scope-${crypto.randomUUID()}`);
         const run3 = await insertWorker(db, s3);
         const loop3 = await insertLoop(db, run3, 1, "solo");
         const turn3 = await insertTurn(db, loop3, 1, 200);
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
         const scoped = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
-        const refused = await eng3.dispatch({ statement: scoped, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
-        assert.equal(refused.status, 400, "a scoped wait is refused");
-        assert.match(refused.problem?.type ?? "", /\/scope-unsupported$/u);
+        const continued = await eng3.dispatch({ statement: scoped, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
+        assert.equal(continued.status, 102);
+        assert.equal(continued.problem, undefined);
+        assert.equal(continued.detail, "Nothing is in flight. Continuing.");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 102, "no held-open 202");
     } finally { await db.close(); }
 });

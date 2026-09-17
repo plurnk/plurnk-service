@@ -140,7 +140,7 @@ Find the capital of France from a primary source
 Await capital-checker's answer.
 ````
 
-WAIT takes no scope. It continues the same loop: with live
+WAIT ignores target, scope, and metadata decorations. It continues the same loop: with live
 work, a child or an open stream, the loop parks and wakes when that work
 settles, when a message arrives, or on an open stream's observation cadence;
 without live work it continues at once. To wake later with nothing in flight,

@@ -138,7 +138,7 @@ test("{§completion-defers-to-results}: READ + completed inventory in the same t
     } finally { await db.close(); }
 });
 
-test("{§send-wait-scope} a direct WAIT with a scope is refused without touching the loop", async () => {
+test("{§send-wait-scope} a direct WAIT ignores its scope and continues without live work", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
@@ -153,15 +153,16 @@ test("{§send-wait-scope} a direct WAIT with a scope is refused without touching
         });
         assert.equal(result.status, 102);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 102, "a refused scope never touches the loop");
+        assert.equal(loopStatus, 102, "an ignored scope does not invent a future wake");
         const row = await db.test_disposition_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         assert.equal(row.length, 1);
-        assert.equal(row[0].status_rx, 400);
-        assert.match(JSON.parse(row[0].rx).problem.type, /\/scope-unsupported$/u);
+        assert.equal(row[0].status_rx, 102);
+        assert.equal(JSON.parse(row[0].rx).problem, undefined);
+        assert.equal(JSON.parse(row[0].rx).detail, "Nothing is in flight. Continuing.");
     } finally { await db.close(); }
 });
 
-test("{§send-wait-scope} a scoped WAIT is refused while its valid sibling executes", async () => {
+test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, and ordinary result", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `next-scope-${crypto.randomUUID()}`);
@@ -169,7 +170,7 @@ test("{§send-wait-scope} a scoped WAIT is refused while its valid sibling execu
         const loopId = await insertLoop(db, workerId, 1, "read the note");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "```READ (worker:///note.txt)```\n```WAIT <60>\nstanding by\n```";
+        const content = "```READ (worker:///note.txt)```\n```WAIT (sh:///missing) <60> [{\"timeout\":42}]\nstanding by\n```";
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
             workspaceId, workerId, loopId,
@@ -180,8 +181,12 @@ test("{§send-wait-scope} a scoped WAIT is refused while its valid sibling execu
         assert.equal(rows.find(({ op }) => op === "READ")?.status_rx, 200, "the valid sibling executes");
         assert.equal(rows.some(({ op }) => op === "error"), false);
         const task = rows.find(({ op }) => op === "WAIT");
-        assert.equal(task?.status_rx, 400);
-        assert.match(JSON.parse(task!.rx).problem.type, /\/scope-unsupported$/u);
+        assert.equal(task?.status_rx, 102);
+        assert.equal(JSON.parse(task!.rx).problem, undefined);
+        assert.equal(JSON.parse(task!.rx).detail, "Nothing is in flight. Continuing.");
+        const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
+        assert.ok(packet);
+        assert.equal(JSON.parse(packet.packet).assistant.content, content);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.equal(attempts[0]?.accepted, 1);
         const diagnostics = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string }>;

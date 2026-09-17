@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -68,6 +69,36 @@ const wire = async (run: Executor["run"]) => {
 const idle = async (schemes: SchemeRegistry): Promise<void> => {
     await (schemes.get("exec") as Exec).idle();
 };
+
+test("{§send-wait-scope} a decorated WAIT joins its actual live stream without selecting or timing another", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1";
+    const completion = Promise.withResolvers<{ status: number }>();
+    const fixture = await wire(() => completion.promise);
+    try {
+        const content = [
+            PlurnkParser.frame(fixture.tag, "go"),
+            PlurnkParser.frame("WAIT (worker://absent) <0,0> [{\"timeout\":0}]", "Await results."),
+        ].join("\n\n");
+        const result = await fixture.engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
+            workspaceId: fixture.workspaceId, workerId: fixture.workerId, loopId: fixture.loopId, messages: [],
+        });
+        assert.equal(result.status, 202);
+        assert.deepEqual(result.outcomes, [
+            { op: fixture.tag, status: 200, problemType: null },
+            { op: "WAIT", status: 202, problemType: null },
+        ]);
+        const attempts = await fixture.db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, []]]);
+    } finally {
+        completion.resolve({ status: 200 });
+        await idle(fixture.schemes);
+        await fixture.db.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
 
 test("fast current-turn streams settle before waiting and do not become monitored work", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;

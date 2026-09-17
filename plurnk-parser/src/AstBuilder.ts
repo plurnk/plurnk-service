@@ -384,7 +384,8 @@ export default class AstBuilder {
             aside: AstBuilder.#asideOf(ctx),
             target: null,
             metadata: null,
-            lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
+            // {§send-wait-scope} — decorations never become scheduling inputs.
+            lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };

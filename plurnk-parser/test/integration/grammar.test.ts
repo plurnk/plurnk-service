@@ -317,16 +317,15 @@ test("empty sections normalize to their operation-owned empty values", () => {
     assert.equal("body" in task ? task.body : undefined, null);
 });
 
-test("{§turn-disposition} WAIT has no metadata or target operand", () => {
+test("{§lifecycle-slots} WAIT ignores metadata while NOTE still has no target operand", () => {
     const inlineArray = "```WAIT [{\"trace\":true}]\n```";
     const result = PlurnkParser.parseStatements(inlineArray);
     const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
-    assert.deepEqual(errors.map(({ message, source, severity }) => ({ message, source, severity })), [{
-        message: "WAIT's body begins below the header",
-        source: "lexer",
-        severity: "error",
-    }]);
-    assert.equal(result.items.filter((item) => item.kind === "statement").length, 0);
+    assert.deepEqual(errors, []);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.equal(statements.length, 1);
+    assert.ok(statements[0]?.op === "WAIT");
+    assert.equal(statements[0].metadata, null);
 
     const all = firstError("```NOTE (notes.md) <1>\nContinue the task.\n```");
     assert.equal(all.message, "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
@@ -781,13 +780,13 @@ test("a combined anchor and displayed line number reads as the anchor, with one 
     }
 });
 
-test("scope syntax is retained for runtime admission, including unsupported WAIT scopes", () => {
+test("{§send-wait-scope} WAIT discards scope while execution retains its runtime timing", () => {
     const terminal = oneStatement(section("WAIT", " <30>", "polling"));
     if (terminal.op !== "WAIT") assert.fail("expected WAIT");
-    assert.deepEqual(terminal.lineMarker, { marks: [30] });
+    assert.equal(terminal.lineMarker, null);
     const appended = oneStatement(section("WAIT", " <-1>", "standing by"));
     if (appended.op !== "WAIT") assert.fail("expected WAIT");
-    assert.deepEqual(appended.lineMarker, { marks: [-1] });
+    assert.equal(appended.lineMarker, null);
     const exec = oneStatement("```node (./) <60,5>\ncommand\n```");
     if (!isExecution(exec)) assert.fail("expected an execution");
     assert.deepEqual(exec.lineMarker, { marks: [60, 5] });

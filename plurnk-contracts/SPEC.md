@@ -426,9 +426,9 @@ adjacent slots and scope/metadata permutations within a selection without
 changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order.
 
-§lifecycle-slots NOTE and WAIT accept no target or metadata. NOTE
-accepts no scope; lifecycle scopes reach the ordinary refusal in {§send-wait-scope}.
-Their literal bodies begin below the header.
+§lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT ignores
+syntactically valid target, scope, and metadata decorations without diagnostics
+({§send-wait-scope}). Their literal bodies begin below the header.
 
 §heading-inline-body Nonempty body text belongs below the fence header.
 The ingester tolerates body text after horizontal whitespace on the header,
@@ -511,7 +511,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | none; the matcher is the `pattern` option |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
-| WAIT | none | none | explanation of the wait |
+| WAIT | ignored | ignored | explanation of the wait |
 
 §operation-code-polymorphism Operation-result statuses and turn dispositions are
 distinct facts. WAIT requests yielding to live work;
@@ -554,9 +554,13 @@ settle. End-of-program adjudication owns continuation, joining and completion
 under {§wait-obligation-matrix}; no terminal verb or synthetic receipt is required.
 SEND delivers messages and NOTE retains memory, neither declaring an outcome.
 
-§send-wait-scope Lifecycle operations take no scope; the dispatcher refuses one
-(`scope-unsupported`, 400). WAIT joins live work
-({§park-202-only}); a wake later with nothing in flight is a schedule rule.
+§send-wait-scope WAIT decorations do not select obligations or schedule wakes.
+The parser discards syntactically valid target, scope, and metadata slots;
+canonical statements contain nulls in their place. Structured WAIT scopes are
+likewise ignored. No warning, Problem, strike, or receipt detail is added for
+discarded decorations. The body, aside, and exact submitted program remain intact.
+WAIT joins live work ({§park-202-only}); a wake later with nothing in flight is a
+schedule rule. Ordinary malformed-header and duplicate-WAIT rules still apply.
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its
@@ -827,7 +831,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| WAIT                  | None                                   | A scope is refused ({§send-wait-scope}) |
+| WAIT                  | None                                   | Decorations are ignored ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a

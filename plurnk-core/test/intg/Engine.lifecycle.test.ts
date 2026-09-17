@@ -18,7 +18,8 @@ for (const [name, first, detail] of [
     ["note-only continuation", frame("NOTE", "Consider the next step."), null],
     ["empty wait", frame("WAIT", ""), "Nothing is in flight. Continuing."],
     ["empty note", frame("NOTE", ""), null],
-    ["scoped wait", frame("WAIT <60>", ""), "WAIT takes no scope; scheduled delivery uses the schedule family."],
+    ["scoped wait", frame("WAIT <60>", ""), "Nothing is in flight. Continuing."],
+    ["decorated wait", frame("WAIT (sh:///missing) <60,60> [{\"timeout\":42}]", ""), "Nothing is in flight. Continuing."],
 ] as const) {
     test(`{§wait-obligation-matrix} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();

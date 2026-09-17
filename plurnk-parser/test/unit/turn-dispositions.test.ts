@@ -20,19 +20,37 @@ for (const [op, status] of [["WAIT", 202]] as const) {
         }
     });
 
-    test(`{§send-wait-scope} ${op} scope reaches runtime admission, but target and metadata are not slots`, () => {
-        const result = PlurnkParser.parseStatements(PlurnkParser.frame(`${op} <5,1>`, null));
-        assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-        const item = result.items[0];
-        assert.ok(item?.kind === "statement" && TurnDisposition.is(item.statement));
-        assert.deepEqual(item.statement.lineMarker, { marks: [5, 1] });
-        assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
-        for (const operand of ["(notes.md)", "[{\"trace\":true}]"]) {
-            const invalid = PlurnkParser.parseStatements(PlurnkParser.frame(`${op} ${operand}`, null));
-            assert.ok(invalid.items.some((entry) => entry.kind === "error"), operand);
+    test(`{§send-wait-scope} ${op} silently discards valid header decorations in every program tier`, () => {
+        const body = "Let the verification suite finish.";
+        const bare = PlurnkParser.parse(PlurnkParser.frame(`${op} <!-- suite -->`, body));
+        for (const decoration of [
+            "<5,1>", "(notes.md)", "(sh:///56d607dc)", "[{\"trace\":true}]",
+            "(worker://missing) <60,60> [{\"timeout\":42}]", "<1> (sh:///missing)",
+            "(sh:///missing)[{\"trace\":true}]<0>",
+        ]) {
+            const source = PlurnkParser.frame(`${op} ${decoration} <!-- suite -->`, body);
+            for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+                const result = parse(source);
+                assert.deepEqual(result, bare, source);
+                const item = result.items[0];
+                assert.ok(item?.kind === "statement" && TurnDisposition.is(item.statement));
+                assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
+                assert.equal(PlurnkParser.stringify([item.statement]), PlurnkParser.frame(`${op} <!-- suite -->`, body));
+            }
         }
     });
 }
+
+test("{§turn-shape} tolerating WAIT decorations does not admit duplicate waits or unclosed slots", () => {
+    for (const source of [
+        `${PlurnkParser.frame("WAIT (sh:///one)", null)}\n${PlurnkParser.frame("WAIT (sh:///two)", null)}`,
+        "````WAIT (sh:///unfinished",
+        "````WAIT [{\"unfinished\":",
+    ]) {
+        const result = PlurnkParser.parse(source);
+        assert.ok(result.items.some((item) => item.kind === "error" && item.error.severity === "error") || result.unparsedTail !== undefined, source);
+    }
+});
 
 test("{§turn-shape} SEND does not conclude a turn or manufacture a disposition", () => {
     const result = PlurnkParser.parse(PlurnkParser.frame("SEND (worker://peer)", "hello"));

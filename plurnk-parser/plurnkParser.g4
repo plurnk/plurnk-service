@@ -69,7 +69,7 @@ copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
 dispositionStatement
-    : OPEN_WAIT lineMarker? opAside? statementEnd
+    : OPEN_WAIT execModifiers? opAside? statementEnd
     ;
 noteStatement : OPEN_NOTE opAside? statementEnd ;
 sendStatement : OPEN_SEND (resourceSelection | metadata+)? opAside? statementEnd ;

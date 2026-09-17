@@ -209,7 +209,7 @@ export default class Dispatcher {
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
-        this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure });
+        this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this) });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
@@ -539,7 +539,7 @@ export default class Dispatcher {
                     const workerName = await WorkerName.forId(this.#db, workerId);
                     result = { status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
-                    result = await this.#disposition.handle(statement, { workerId, loopId, turnId, origin });
+                    result = await this.#disposition.handle({ workerId, loopId, turnId, origin });
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {

@@ -818,7 +818,7 @@ all use that one definition.
 
 ### §worker-wait-timing Durable waits and wake ownership
 
-WAIT takes no timing. With live work, an open stream or a live child
+WAIT has no timing or target selection ({§send-wait-scope}). With live work, an open stream or a live child
 worker, the loop parks durably and wakes on that work's settlement, on a
 message, or on the inherited observation cadence of its open streams
 ({§exec-poll}); without live work it continues at once, told so. A wake
