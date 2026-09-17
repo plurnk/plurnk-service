@@ -379,12 +379,13 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const op = (ctx.start?.text ?? "").replace(/^`+[0-9]*/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
+        const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position);
         return {
             op,
             aside: AstBuilder.#asideOf(ctx),
-            target: null,
+            target,
             metadata: null,
-            // {§send-wait-scope} — decorations never become scheduling inputs.
+            // {§send-wait-scope} Scope and metadata do not schedule wakes.
             lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
             position,

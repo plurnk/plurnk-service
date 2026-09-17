@@ -130,18 +130,9 @@ SET status = 100,
     wait_poll_at = NULL
 WHERE status = 202
   AND (observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
-  OR (NOT EXISTS (
-      SELECT 1
-      FROM subscriptions s
-      WHERE s.worker_id = loops.worker_id AND s.closed_at IS NULL
-  )
-  AND NOT EXISTS (
-      SELECT 1
-      FROM workers child
-      JOIN loops child_loop ON child_loop.worker_id = child.id
-      WHERE child.parent_worker_id = loops.worker_id
-        AND child_loop.status IN (100, 102, 202)
-  )));
+  OR EXISTS (SELECT 1 FROM awaited_events a WHERE a.loop_id = loops.id AND a.result IS NOT NULL AND a.observed = 0)
+  OR EXISTS (SELECT 1 FROM loop_obligations held WHERE held.loop_id = loops.id
+      AND held.streams = 0 AND held.workers = 0 AND held.events = 0));
 
 -- PREP: recovery_orphan_message_sources
 -- {§message-loop-containment}: finish an absent or partially staged orphan

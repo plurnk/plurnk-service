@@ -42,7 +42,8 @@
         "rrule-temporal": "2.2.5"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-contracts": "^1.18.0"
+        "@plurnk/plurnk-contracts": "^1.18.0",
+        "@plurnk/plurnk-schemes": "^1.18.0"
     },
     "keywords": [
         "plurnk",

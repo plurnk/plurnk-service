@@ -192,6 +192,11 @@ const makeCtx = () => {
     };
 
     const ctx: SchemeCtx = {
+        awaitedEvents: {
+            join: async () => failure("producer-unavailable", 503, "No event producer is registered."),
+            read: async () => null,
+            cancel: async () => failure("event-not-found", 404, "No awaited event exists."),
+        },
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
         resources: { capture: async () => { throw new Error("Resource capture is outside this fixture."); } },

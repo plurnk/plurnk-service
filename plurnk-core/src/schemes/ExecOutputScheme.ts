@@ -1,4 +1,4 @@
-import type { FindStatement, KillStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
+import type { DispositionStatement, FindStatement, KillStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type Exec from "./Exec.ts";
 import EntryFind, { type FindResult } from "./_entry-find.ts";
@@ -37,7 +37,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
 
     #claimedPath(statement: FindStatement): boolean {
         const target = statement.target;
-        return target?.kind === "url" && this.#facet?.claims(target.pathname ?? "") === true;
+        return target?.kind === "url" && this.claimsLiveResource(target);
     }
 
     async #facetContext(ctx: CoreSchemeCallContext): Promise<SchemeCtx> {
@@ -53,7 +53,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
     }
 
     claimsLiveResource(target: ParsedPath): boolean {
-        return target.kind === "url" && this.#facet?.claims(target.pathname) === true;
+        return target.kind === "url" && this.#facet?.claims(entryCoordinateOf(target, "namespace").pathname) === true;
     }
 
     resolveEntryAddress(target: ParsedPath): EntryAddress | null {
@@ -102,6 +102,17 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
 
     // {§scheme-operation-dispatch} The authored runtime address survives delegation.
     async kill(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        if (statement.target !== null && this.claimsLiveResource(statement.target)) {
+            return this.#facet?.kill?.(statement, await this.#facetContext(ctx))
+                ?? Results.failure("scheme:exec", "operation-not-implemented", 501, "This resource does not implement KILL.");
+        }
         return this.#exec.kill(statement, ctx);
+    }
+
+    async wait(statement: DispositionStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        if (statement.target !== null && this.claimsLiveResource(statement.target)) {
+            return this.#facet?.wait?.(statement, await this.#facetContext(ctx)) ?? { status: 200 };
+        }
+        return { status: 200 };
     }
 }

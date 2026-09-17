@@ -558,7 +558,7 @@
                     "type": "null"
                 },
                 "target": {
-                    "type": "null"
+                    "$ref": "#/$defs/PathOrNull"
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/LineMarkerOrNull"

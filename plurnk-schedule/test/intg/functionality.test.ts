@@ -180,6 +180,7 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
     assert.deepEqual(prepared.outcomes.get("beat"), {
         state: "active",
         detail: {
+            path: "schedule:///rules/beat",
             rule: BEAT.rule,
             zone: "UTC",
             text: "every hour for 2 times",
@@ -191,11 +192,11 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
     });
     assert.deepEqual(prepared.outcomes.get("heartbeat"), {
         state: "active",
-        detail: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY", zone: "UTC", text: "every hour", next: "2026-09-16T12:30:16+00:00[UTC]", exhausted: false, target: "worker://bot" },
+        detail: { path: "schedule:///rules/heartbeat", rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY", zone: "UTC", text: "every hour", next: "2026-09-16T12:30:16+00:00[UTC]", exhausted: false, target: "worker://bot" },
     });
     assert.deepEqual(prepared.outcomes.get("once"), {
         state: "active",
-        detail: { rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time", next: null, exhausted: true, target: "worker://bot" },
+        detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time", next: null, exhausted: true, target: "worker://bot" },
     });
     assert.deepEqual(adapter.scheduler.armed(1), [], "nothing arms before commit");
     await prepared.commit();
@@ -248,7 +249,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     assert.deepEqual(adapter.scheduler.armed(3), [], "the rule is exhausted");
     const done = await adapter.prepare(preparation(3, { beat: BEAT }));
     assert.deepEqual((done.outcomes.get("beat") as { detail: { next: null; exhausted: boolean } }).detail, {
-        rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times", next: null, exhausted: true, target: "worker://bot", policy: { proposals: "accept" },
+        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times", next: null, exhausted: true, target: "worker://bot", policy: { proposals: "accept" },
     });
     await adapter.scheduler.close();
 });

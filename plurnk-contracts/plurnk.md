@@ -31,7 +31,7 @@
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)
 * BARE: deploy an isolated inference query (no log or tools)
-* WAIT: yield while workers or streams are running
+* WAIT: yield while awaiting workers, streams, or scheduled events
 
 ## Workflow Management
 
@@ -98,7 +98,7 @@
 > `SEND (worker://name)` messages a live worker. The packet's `## Delegation` lists your live workers and streams.
 
 > [!TIP]
-> WAIT yields while workers or streams are running; explaining the purpose in the body is optional.
+> WAIT (path) permits yielding for a pending scheduled event.
 
 ## Context Curation
 

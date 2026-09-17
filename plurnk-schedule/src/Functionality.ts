@@ -15,6 +15,7 @@ import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefini
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
 import { isoString, zoned } from "./temporal.ts";
+import ScheduleResources from "./ScheduleResources.ts";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
@@ -111,6 +112,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
 export default class ScheduleFunctionality {
+    readonly scheme: ScheduleResources;
     readonly family = SCHEDULE_FAMILY;
     readonly namespaceOwner = SCHEDULE_OWNER;
     readonly summary = "Manage scheduled messages";
@@ -141,6 +143,11 @@ export default class ScheduleFunctionality {
         this.#env = env;
         this.#report = options.report ?? ((message, cause) => { console.error(`${message}:`, cause); });
         this.#scheduler = new Scheduler({ ...options, report: this.#report, settled: (workspaceId) => { this.#settled(workspaceId); } });
+        this.scheme = new ScheduleResources(this.#scheduler, async (workspaceId) => {
+            if (this.#handle === null) throw new Error("schedule family is not attached");
+            const listing = await this.#handle.invoke("list", {}, { workspaceId });
+            return (listing.body as { definitions: Array<{ alias: string; state: string }> }).definitions;
+        });
         const zone = env.TZ;
         if (zone === undefined || zone.length === 0) throw new Error("TZ is unset; @plurnk/plurnk-schedule declares its default in .env.defaults.");
         const enabled = serviceEnabled(env);
@@ -253,6 +260,7 @@ export default class ScheduleFunctionality {
             outcomes.set(alias, {
                 state: "active",
                 detail: {
+                    path: `schedule:///rules/${encodeURIComponent(alias)}`,
                     rule: parsed.text,
                     zone: parsed.zone,
                     text: describeRule(parsed),
@@ -268,7 +276,7 @@ export default class ScheduleFunctionality {
             documents: [],
             outcomes,
             snapshot,
-            commit: async () => { this.#scheduler.sync(workspaceId, rules); },
+            commit: async () => { await this.#scheduler.sync(workspaceId, rules); },
             abort: async () => {},
         };
     }

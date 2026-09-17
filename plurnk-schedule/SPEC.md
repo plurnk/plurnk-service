@@ -69,6 +69,27 @@ rule and lists it `unavailable` with the Problem; `enable` retries. After
 every delivery attempt the family's outcomes are refreshed where the workspace
 is resident.
 
+## §schedule-await Awaiting one occurrence
+
+`schedule:///rules/<alias>` is the readable rule resource. WAIT on it attaches
+its currently armed occurrence under {§awaited-event}; WAIT does not create,
+retarget, enable or change the schedule. A missing, disabled, exhausted or
+unavailable rule returns its factual failure and creates no attachment.
+
+The attachment resource `schedule:///waits/<id>` is independently readable and
+cancellable. KILL there withdraws the attachment, not the rule. A successful
+delivery settles all attachments to that exact occurrence after message
+admission, not after the recipient finishes answering. Later recurrences are
+independent. Repeated WAIT before delivery reuses the same loop attachment.
+
+Rule replacement, disablement and removal settle the affected attachments;
+re-enabling does not revive them. Registration, delivery and rule publication
+are serialized by the producer so completion cannot fall between resolving
+an occurrence and recording its attachment. A future occurrence survives
+restart only when the restored rule still identifies it. An overdue occurrence
+whose delivery was not recorded is reported as uncertain, not replayed or
+silently replaced with the next recurrence.
+
 ## §schedule-residency Residency
 
 A schedule is an obligation, not a runtime. Cooling a workspace leaves its

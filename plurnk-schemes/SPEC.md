@@ -502,7 +502,7 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus capability namespaces replacing raw `db`:
 
 §scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
 
@@ -525,7 +525,7 @@ its implementation.
   instead. In particular, a handler with `find()` owns FIND; one without it
   receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
-- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
+- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. Wake delivery belongs to stream or awaited-event settlement, not notification.
 - `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - §scheme-interactions `interactions` — `request(ClientInteractionRequest, signal?)`
   awaits the contracts-owned interaction and returns its
@@ -553,6 +553,24 @@ An override names an existing channel and is itself an exact
 This permits one multi-channel producer to preserve successful evidence beside
 an independently failed representation without inventing another settlement
 path or reducing a result to a state label.
+
+§scheme-awaited-events `awaitedEvents` attaches finite producer-owned events
+under {§awaited-event}. A scheme's optional `wait(statement, ctx)` resolves an
+exact event and calls `join({ event, source, dueAt? })`; Core returns the
+attachment resource `<scheme>:///waits/<id>`. `read(pathname)` and
+`cancel(pathname)` expose that same durable record through the scheme's resource
+facet. These capabilities are operation-bound, not retainable.
+
+The module setup seam registers a scheme-bound producer with `pending()` and
+`settle(workspaceId, event, result)`. Settlement preserves the universal result,
+is idempotent and notifies only the attached live loops. A producer serializes
+resolution/registration against settlement and reconciles retained pending
+identities at startup. Core settles attachments whose producer is absent at
+boot as unavailable. This is independent of process-owned stream subscriptions.
+
+`EntryCoordinates.resolve(target, authority)` supplies the same canonical
+coordinate Core binds ({§scheme-address}); handlers do not invent another
+interpretation of namespace authorities.
 
 The consumer passes exactly this public context to every handler. Bundled
 adapters that also implement daemon-owned lifecycle behavior receive those

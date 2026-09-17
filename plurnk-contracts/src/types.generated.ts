@@ -574,7 +574,7 @@ export interface DispositionStatement {
 op: "WAIT"
 aside: (string | null)
 metadata: null
-target: null
+target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (string | null)
 position: Position

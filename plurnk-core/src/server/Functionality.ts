@@ -699,6 +699,7 @@ export default class Functionality {
                     inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
                 }),
                 availability: { available: true, detail: "workspace Functionality manager" },
+                ...(adapter.scheme === undefined ? {} : { scheme: adapter.scheme }),
             };
             runtimes = [manager, ...(prepared.runtimes ?? [])];
         } catch (cause) {

@@ -56,6 +56,25 @@ or `exhausted` once it has run out. A rule that could not deliver, because its
 worker is gone, is `unavailable` with the exact Problem; `enable` retries it.
 `disable` disarms without forgetting; `remove` forgets.
 
+## Await an occurrence
+
+`list` includes each active rule's resource path. READ it to inspect the rule;
+WAIT on it to await its currently pending occurrence:
+
+````WAIT (schedule:///rules/standup)
+````
+
+The receipt and Delegation name a `schedule:///waits/<id>` attachment with its
+source and due time. It remains held across other arrivals and later bare WAITs,
+until this occurrence delivers or is withdrawn. Later recurrences are not
+automatically awaited. Delivery means the message was accepted, not that the
+recipient finished answering.
+
+READ the attachment for its result. KILL it to stop awaiting that occurrence
+without changing the rule. Disabling, removing or replacing the rule settles
+its pending attachments. A loop with no attachment is free to finish while
+the schedule remains active.
+
 ## Receiving a scheduled message
 
 It arrives as an open message from `schedule://<alias>`, in the loop you are

@@ -127,6 +127,7 @@ export default class Dispatcher {
     #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
+    readonly #awaitedEventNotify: import("./AwaitedEvents.ts").AwaitedEventNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     readonly #operationSettledNotify: OperationSettledNotify | undefined;
@@ -143,7 +144,7 @@ export default class Dispatcher {
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
-    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, liveSubscriptions, entryAddresses }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, awaitedEventNotify, injectWorker, cancelWorker, operationSettledNotify, liveSubscriptions, entryAddresses }: {
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -157,6 +158,7 @@ export default class Dispatcher {
         settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
+        awaitedEventNotify?: import("./AwaitedEvents.ts").AwaitedEventNotify;
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
         operationSettledNotify?: OperationSettledNotify;
@@ -175,6 +177,7 @@ export default class Dispatcher {
         this.#settleDerivations = settleDerivations;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
+        this.#awaitedEventNotify = awaitedEventNotify;
         this.#injectWorker = injectWorker;
         this.#cancelWorker = cancelWorker;
         this.#operationSettledNotify = operationSettledNotify;
@@ -539,7 +542,13 @@ export default class Dispatcher {
                     const workerName = await WorkerName.forId(this.#db, workerId);
                     result = { status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
-                    result = await this.#disposition.handle({ workerId, loopId, turnId, origin });
+                    const scheme = schemeNameOf(statement.target);
+                    const handler = scheme === null ? undefined : this.#schemes.get(scheme, workspaceId) as { wait?: unknown } | undefined;
+                    const attachment = typeof handler?.wait === "function"
+                        ? await this.#dataRun.run(scheme, statement, schemeCtx)
+                        : null;
+                    result = attachment !== null && attachment.status >= 400 ? attachment
+                        : { ...attachment, ...await this.#disposition.handle({ workerId, loopId, turnId, origin }) };
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
@@ -934,6 +943,7 @@ export default class Dispatcher {
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
+            awaitedEventNotify: this.#awaitedEventNotify,
             injectWorker: this.#injectWorker,
             mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
@@ -1273,13 +1283,15 @@ export default class Dispatcher {
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
-    async #pendingSet(workerId: number, turnId: number): Promise<CompletionEvidence> {
+    async #pendingSet(workerId: number, turnId: number, loopId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
-        // {§worker-obligations} — the stream and child legs are one durable row.
-        const held = await this.#db.worker_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ worker_id: workerId });
-        if (held === undefined) throw new Error(`worker ${workerId} does not exist`);
+        // {§worker-obligations} — all held work shares one durable projection.
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; events: 0 | 1 }>({ loop_id: loopId });
+        if (held === undefined) throw new Error(`loop ${loopId} does not exist`);
         if (held.streams === 1) pending.push("streams");
         if (held.workers === 1) pending.push("workers");
+        if (held.events === 1) pending.push("events");
+        if (await this.#db.awaited_event_unobserved.get({ loop_id: loopId }) !== undefined) pending.push("event-results");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
         const receipts = [...new Set(boundaries.operations
             .filter(({ op }) => op !== "KILL")
@@ -1317,12 +1329,10 @@ export default class Dispatcher {
         return failedRows.length;
     }
 
-    // A live obligation to wait on: a spawned child or an open stream (not retrievals, which land
-    // next turn regardless). The wait-side twin of #pendingSet's stream+child legs ({§wait-obligation-matrix}).
-    async hasLiveWork(workerId: number): Promise<boolean> {
-        // {§worker-obligations} — one durable row answers both legs.
-        const held = await this.#db.worker_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ worker_id: workerId });
-        return held !== undefined && (held.streams === 1 || held.workers === 1);
+    // {§wait-obligation-matrix}: retrievals land next turn; only held work permits parking.
+    async hasLiveWork(loopId: number): Promise<boolean> {
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; events: 0 | 1 }>({ loop_id: loopId });
+        return held !== undefined && (held.streams === 1 || held.workers === 1 || held.events === 1);
     }
 
     async #runLogCuration(

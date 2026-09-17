@@ -11,7 +11,7 @@ export interface PacketBoundaries {
 }
 
 export interface CompletionEvidence {
-    pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">;
+    pending: Array<"streams" | "workers" | "events" | "event-results" | "receipts" | "failed-stream-results" | "worker-results">;
     receipts: string[];
 }
 
@@ -21,15 +21,15 @@ export default class TurnDispositionHandler {
     readonly #db: Db;
     readonly #lifecycle: LoopLifecycle;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
-    readonly #pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
-    readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
+    readonly #pendingSet: (workerId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
+    readonly #hasLiveWork: (loopId: number) => Promise<boolean>;
 
     constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork }: {
         db: Db;
         lifecycle: LoopLifecycle;
         unobservedFailureCount: (turnId: number) => Promise<number>;
-        pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
-        hasLiveWork: (workerId: number) => Promise<boolean>;
+        pendingSet: (workerId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
+        hasLiveWork: (loopId: number) => Promise<boolean>;
     }) {
         this.#db = db;
         this.#lifecycle = lifecycle;
@@ -40,7 +40,7 @@ export default class TurnDispositionHandler {
 
     async handle(ctx: TurnContext): Promise<DispatchResult> {
         // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
-        return await this.#hasLiveWork(ctx.workerId)
+        return await this.#hasLiveWork(ctx.loopId)
             ? { status: 202, attrs: { waiting: -1 } }
             : { status: 102, detail: "Nothing is in flight. Continuing." };
     }
@@ -55,8 +55,8 @@ export default class TurnDispositionHandler {
         if (arrivals.length > 0) return 102;
         const unanswered = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
         if (unanswered === undefined) throw new Error("The loop has no message count.");
-        const { pending } = await this.#pendingSet(workerId, turnId);
-        const live = pending.some((kind) => kind === "streams" || kind === "workers");
+        const { pending } = await this.#pendingSet(workerId, turnId, loopId);
+        const live = pending.some((kind) => kind === "streams" || kind === "workers" || kind === "events");
         if (live && (wait || unanswered.count === 0)) {
             return await this.#lifecycle.park(loopId) ? 202 : this.#lifecycle.status(loopId);
         }

@@ -20,9 +20,8 @@ for (const [op, status] of [["WAIT", 202]] as const) {
         }
     });
 
-    test(`{§send-wait-scope} ${op} silently discards valid header decorations in every program tier`, () => {
+    test(`{§send-wait-scope} ${op} retains its optional path and discards scope and metadata in every program tier`, () => {
         const body = "Let the verification suite finish.";
-        const bare = PlurnkParser.parse(PlurnkParser.frame(`${op} <!-- suite -->`, body));
         for (const decoration of [
             "<5,1>", "(notes.md)", "(sh:///56d607dc)", "[{\"trace\":true}]",
             "(worker://missing) <60,60> [{\"timeout\":42}]", "<1> (sh:///missing)",
@@ -31,11 +30,15 @@ for (const [op, status] of [["WAIT", 202]] as const) {
             const source = PlurnkParser.frame(`${op} ${decoration} <!-- suite -->`, body);
             for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
                 const result = parse(source);
-                assert.deepEqual(result, bare, source);
+                assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], source);
                 const item = result.items[0];
                 assert.ok(item?.kind === "statement" && TurnDisposition.is(item.statement));
+                const path = decoration.match(/\(([^)]+)\)/u)?.[1] ?? null;
+                assert.equal(item.statement.target?.raw ?? null, path, source);
+                assert.equal(item.statement.lineMarker, null);
+                assert.equal(item.statement.metadata, null);
                 assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
-                assert.equal(PlurnkParser.stringify([item.statement]), PlurnkParser.frame(`${op} <!-- suite -->`, body));
+                assert.equal(PlurnkParser.stringify([item.statement]), PlurnkParser.frame(`${op}${path === null ? "" : ` (${path})`} <!-- suite -->`, body));
             }
         }
     });

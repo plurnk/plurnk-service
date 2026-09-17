@@ -28,7 +28,7 @@ for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]
         const wait = rows.find(({ op }) => op === "WAIT");
         assert.ok(wait);
         const tx = JSON.parse(wait.tx);
-        assert.equal(tx.target, null);
+        assert.equal(tx.target?.raw ?? null, header === "WAIT" ? null : "sh:///missing");
         assert.equal(tx.lineMarker, null);
         assert.equal(tx.metadata, null);
         assert.equal(tx.body, "Await results.");

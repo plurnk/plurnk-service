@@ -41,6 +41,7 @@ export interface PlurnkSchemeContext {
     readonly signal: AbortSignal | undefined;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeWorkerNotify?: WakeWorkerNotify;
+    readonly awaitedEventNotify?: import("./AwaitedEvents.ts").AwaitedEventNotify;
     // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
     // (spawn/fork/irc). Engine-populated (daemon-wired to Daemon.inject); absent
     // in bare test fixtures. The worker scheme handler fail-hards if absent rather

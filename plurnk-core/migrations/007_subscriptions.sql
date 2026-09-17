@@ -1,5 +1,5 @@
 -- MIGRATE: 7 subscriptions
--- Chapter 7 of the schema baseline ({§db-schema-baseline}): Subscriptions to streams and their publication cursors.
+-- Chapter 7 of the schema baseline ({§db-schema-baseline}): held streams, events and their observation cursors.
 -- Version numbers order the chapters on a fresh database; they are not history. A shape
 -- change edits the chapter in place; existing development databases are recreated.
 
@@ -140,14 +140,52 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription channel result violates the channel producer contract');
 END;
 
--- One durable publication cursor per selected subscription channel. Log rows
--- are curated model context and therefore cannot own this lifecycle fact.
--- The row survives KILLing any generated observation and disappears only with
--- its subscription. {§exec-stream}
--- {§worker-obligations}: what a worker still holds — an open stream that is not detached, or a
--- child with an unresolved loop (the same liveness the Delegation section shows, so the 409 gate
--- and the section the model reads never disagree, {§child-orientation}). The one definition the
--- completion gate, the wait matrix, and the drain's wake settlement all read.
+-- {§awaited-event}: a loop's attachment to one producer-owned occurrence.
+CREATE TABLE IF NOT EXISTS awaited_events (
+    id INTEGER NOT NULL PRIMARY KEY,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    name TEXT NOT NULL CHECK (length(name) = 8),
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    loop_id INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
+    scheme TEXT NOT NULL CHECK (length(scheme) > 0),
+    event TEXT NOT NULL CHECK (length(event) > 0),
+    source TEXT NOT NULL CHECK (length(source) > 0),
+    due_at TEXT,
+    result TEXT CHECK (result IS NULL OR (json_valid(result)
+        AND json_type(result, '$.status') IS 'integer'
+        AND json_extract(result, '$.status') BETWEEN 200 AND 599
+        AND json_extract(result, '$.status') != 202
+        AND ((json_extract(result, '$.status') < 400 AND json_type(result, '$.problem') IS NULL)
+          OR (json_extract(result, '$.status') >= 400
+            AND json_type(result, '$.problem') IS 'object'
+            AND json_extract(result, '$.problem.status') IS json_extract(result, '$.status'))))),
+    observed INTEGER NOT NULL DEFAULT 0 CHECK (observed IN (0, 1)),
+    UNIQUE (workspace_id, scheme, name)
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS awaited_events_pending_identity
+    ON awaited_events(loop_id, scheme, event) WHERE result IS NULL;
+CREATE INDEX IF NOT EXISTS awaited_events_loop ON awaited_events(loop_id);
+CREATE INDEX IF NOT EXISTS awaited_events_source ON awaited_events(workspace_id, scheme, event) WHERE result IS NULL;
+
+CREATE TRIGGER IF NOT EXISTS awaited_events_identity
+BEFORE UPDATE OF name, workspace_id, loop_id, scheme, event, source, due_at, result ON awaited_events
+WHEN NEW.name != OLD.name OR NEW.workspace_id != OLD.workspace_id OR NEW.loop_id != OLD.loop_id
+  OR NEW.scheme != OLD.scheme OR NEW.event != OLD.event OR NEW.source != OLD.source
+  OR NEW.due_at IS NOT OLD.due_at OR (OLD.result IS NOT NULL AND NEW.result IS NOT OLD.result)
+BEGIN
+    SELECT RAISE(ABORT, 'awaited event identity and terminal result are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS awaited_events_workspace
+BEFORE INSERT ON awaited_events
+WHEN NOT EXISTS (SELECT 1 FROM loops l JOIN workers w ON w.id = l.worker_id
+    WHERE l.id = NEW.loop_id AND w.workspace_id = NEW.workspace_id)
+BEGIN
+    SELECT RAISE(ABORT, 'awaited event and loop must share a workspace');
+END;
+
+-- {§worker-obligations}: shared worker work plus each loop's explicit event attachments.
 CREATE VIEW IF NOT EXISTS worker_obligations AS
 SELECT w.id AS worker_id,
        EXISTS (
@@ -160,6 +198,12 @@ SELECT w.id AS worker_id,
        ) AS workers
 FROM workers w;
 
+CREATE VIEW IF NOT EXISTS loop_obligations AS
+SELECT l.id AS loop_id, held.streams, held.workers,
+    EXISTS (SELECT 1 FROM awaited_events a WHERE a.loop_id = l.id AND a.result IS NULL) AS events
+FROM loops l JOIN worker_obligations held ON held.worker_id = l.worker_id;
+
+-- {§exec-stream}: publication cursors survive curation of generated observations.
 CREATE TABLE IF NOT EXISTS subscription_publications (
     id                 INTEGER NOT NULL PRIMARY KEY,
     version            INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),

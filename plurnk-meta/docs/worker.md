@@ -141,13 +141,19 @@ Find the capital of France from a primary source
 Await capital-checker's answer.
 ````
 
-WAIT ignores target, scope, and metadata decorations. It continues the same loop: with live
-work, a child or an open stream, the loop parks and wakes when that work
+WAIT continues the same loop: with live work—a child, an open stream, or an
+explicitly awaited event—the loop parks and wakes when that work
 settles, when a message arrives, or on an open stream's observation cadence;
 without live work it continues at once. To wake later with nothing in flight,
 add a rule with the `schedule` family targeting yourself.
 
-A wake ends that wait. Submit WAIT to wait again. Waking
+WAIT on `schedule:///rules/<alias>` attaches its pending occurrence to this
+loop. The attachment remains held across wakes and later bare WAITs; delivery
+or withdrawal settles it. See `schedule.md` for the rule and attachment resources.
+WAIT on other targets behaves as bare WAIT unless their scheme supports awaiting
+an event. Scope and metadata decorations are ignored.
+
+A wake ends the suspension, not its held work. Submit WAIT to wait again. Waking
 retains the loop's messages, turn allowance, and remaining execution time;
 parked time does not consume execution time. Conclude by observing the work's
 results and answering every Open Message with SEND. A later observation turn

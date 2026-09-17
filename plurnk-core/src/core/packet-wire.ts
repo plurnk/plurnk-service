@@ -234,8 +234,8 @@ export default class PacketWire {
     // word the teaching uses for handing work out: its unconcluded workers and its open streams. The
     // model SEES them each turn and reasons for itself (READ / SEND / KILL via the path). Orienting
     // state, never an instruction; both lists render every turn, `[]` when empty ({§packet-empty-sections}).
-    static renderDelegation(workers: unknown, streams: unknown): string {
-        return `{"workers":${PacketWire.#pointers(workers)},\n"streams":${PacketWire.#pointers(streams)}}`;
+    static renderDelegation(workers: unknown, streams: unknown, events: readonly object[] = []): string {
+        return `{"workers":${PacketWire.#pointers(workers)},\n"streams":${PacketWire.#pointers(streams)}${events.length === 0 ? "" : `,\n"events":${JSON.stringify(events)}`}}`;
     }
 
     static #pointers(rows: unknown): string {

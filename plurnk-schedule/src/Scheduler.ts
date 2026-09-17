@@ -4,6 +4,8 @@
 // occurrence arms from now: a late fire delivers once and skips what it missed, never a backlog.
 // A delivery failure disarms the rule and holds its Problem for the outcome; `enable` retries.
 import { Problems, type LoopPolicy, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { createHash } from "node:crypto";
+import type { AwaitedEventCaps, AwaitedEventProducer, SchemeResult } from "@plurnk/plurnk-schemes";
 import { targetWorkerName, type ScheduleDefinition } from "./definition.ts";
 import { nextOccurrence, type ParsedRule } from "./rules.ts";
 
@@ -45,7 +47,10 @@ export interface ScheduleFailure {
 interface Armed {
     readonly workspaceId: number;
     readonly rule: ScheduledRule;
-    readonly handle: unknown;
+    readonly dueMs: number;
+    readonly event: string;
+    handle: unknown | null;
+    delivering: boolean;
 }
 
 export class ScheduleDeliveryError extends Error {
@@ -85,6 +90,10 @@ export default class Scheduler {
     readonly #failures = new Map<string, ScheduleFailure>();
     readonly #pending = new Set<Promise<void>>();
     #port: DeliveryPort | null = null;
+    #events: AwaitedEventProducer | null = null;
+    #serial: Promise<void> = Promise.resolve();
+    #closing = false;
+    readonly #settlementErrors: unknown[] = [];
 
     constructor(options: SchedulerOptions = {}) {
         this.#clock = options.clock ?? Date.now;
@@ -100,32 +109,78 @@ export default class Scheduler {
     start(port: DeliveryPort): void {
         if (this.#port !== null) throw new Error("schedule Scheduler already started");
         this.#port = port;
+        this.#closing = false;
+    }
+
+    attach(events: AwaitedEventProducer): void {
+        this.#events = events;
+    }
+
+    #exclusive<T>(run: () => Promise<T>): Promise<T> {
+        const result = this.#serial.then(run);
+        this.#serial = result.then(() => {}, () => {});
+        return result;
     }
 
     async close(): Promise<void> {
-        for (const { handle } of this.#armed.values()) this.#timers.clear(handle);
+        this.#closing = true;
+        await this.#serial;
+        for (const { handle } of this.#armed.values()) if (handle !== null) this.#timers.clear(handle);
         this.#armed.clear();
         await Promise.all(this.#pending);
         this.#port = null;
+        if (this.#settlementErrors.length > 0) throw new AggregateError(this.#settlementErrors, "Scheduled occurrence settlement failed.");
     }
 
     // {§schedule-residency} — a workspace's rule set as published: aliases absent from it disarm,
-    // present ones re-arm from now. A held failure clears when its rule leaves the set or changes.
-    sync(workspaceId: number, rules: ReadonlyMap<string, ScheduledRule>): void {
-        for (const [entryKey, armed] of this.#armed) {
-            if (armed.workspaceId !== workspaceId || rules.has(armed.rule.alias)) continue;
-            this.#timers.clear(armed.handle);
-            this.#armed.delete(entryKey);
-        }
-        for (const [entryKey, failed] of this.#failures) {
-            if (!entryKey.startsWith(`${workspaceId}:`)) continue;
-            const rule = rules.get(entryKey.slice(entryKey.indexOf(":") + 1));
-            if (rule === undefined || rule.parsed.text !== failed.text) this.#failures.delete(entryKey);
-        }
-        for (const rule of rules.values()) {
-            if (this.#failures.has(key(workspaceId, rule.alias))) continue;
-            this.#arm(workspaceId, rule);
-        }
+    // unchanged occurrences retain identity. A held failure clears when its rule leaves the set or changes.
+    sync(workspaceId: number, rules: ReadonlyMap<string, ScheduledRule>): Promise<void> {
+        return this.#exclusive(async () => {
+            for (const [entryKey, armed] of this.#armed) {
+                if (armed.workspaceId !== workspaceId) continue;
+                const replacement = rules.get(armed.rule.alias);
+                if (replacement !== undefined && JSON.stringify(replacement.definition) === JSON.stringify(armed.rule.definition)) continue;
+                if (armed.handle !== null) this.#timers.clear(armed.handle);
+                this.#armed.delete(entryKey);
+                await this.#settle(armed, { status: 410, problem: problem("occurrence-withdrawn", 410, "The scheduled occurrence is no longer active.") });
+            }
+            for (const [entryKey, failed] of this.#failures) {
+                if (!entryKey.startsWith(`${workspaceId}:`)) continue;
+                const rule = rules.get(entryKey.slice(entryKey.indexOf(":") + 1));
+                if (rule === undefined || rule.parsed.text !== failed.text) this.#failures.delete(entryKey);
+            }
+            for (const rule of rules.values()) {
+                if (this.#failures.has(key(workspaceId, rule.alias))) continue;
+                if (this.#armed.has(key(workspaceId, rule.alias))) continue;
+                this.#arm(workspaceId, rule);
+            }
+        });
+    }
+
+    wait(workspaceId: number, alias: string, events: AwaitedEventCaps): Promise<SchemeResult> {
+        return this.#exclusive(async () => {
+            const armed = this.#armed.get(key(workspaceId, alias));
+            if (armed === undefined || this.#closing) return {
+                status: 409, problem: problem("occurrence-unavailable", 409, `Schedule '${alias}' has no pending occurrence.`),
+            };
+            return events.join({ event: armed.event, source: `schedule:///rules/${encodeURIComponent(alias)}`, dueAt: new Date(armed.dueMs).toISOString() });
+        });
+    }
+
+    async reconcile(): Promise<void> {
+        const events = this.#events;
+        if (events === null) return;
+        await this.#exclusive(async () => {
+            const pending = await events.pending();
+            for (const record of pending) {
+                if ([...this.#armed.values()].some((armed) => armed.workspaceId === record.workspaceId && armed.event === record.event)) continue;
+                const overdue = record.dueAt !== undefined && Date.parse(record.dueAt) <= this.#clock();
+                const result = overdue
+                    ? { status: 504, problem: problem("occurrence-uncertain", 504, "The occurrence elapsed while delivery was not durably settled; its delivery outcome is unknown.") }
+                    : { status: 410, problem: problem("occurrence-unavailable", 410, "The awaited occurrence is not active in the restored schedule.") };
+                await events.settle(record.workspaceId, record.event, result);
+            }
+        });
     }
 
     failure(workspaceId: number, alias: string): ScheduleFailure | undefined {
@@ -141,33 +196,65 @@ export default class Scheduler {
     }
 
     #arm(workspaceId: number, rule: ScheduledRule): void {
+        if (this.#closing) return;
         const entryKey = key(workspaceId, rule.alias);
         const existing = this.#armed.get(entryKey);
         if (existing !== undefined) {
-            this.#timers.clear(existing.handle);
+            if (existing.handle !== null) this.#timers.clear(existing.handle);
             this.#armed.delete(entryKey);
         }
         const now = this.#clock();
         const due = nextOccurrence(rule.parsed, now);
         if (due === null) return;
         const dueMs = due.epochMilliseconds;
-        const handle = this.#timers.set(() => { this.#fire(workspaceId, rule, dueMs); }, Math.min(dueMs - now, MAX_DELAY_MS));
-        this.#armed.set(entryKey, { workspaceId, rule, handle });
+        const fingerprint = createHash("sha256").update(JSON.stringify(rule.definition)).digest("hex");
+        const armed: Armed = { workspaceId, rule, dueMs, event: `${rule.alias}/${fingerprint}/${dueMs}`, handle: null, delivering: false };
+        this.#armed.set(entryKey, armed);
+        this.#setTimer(armed);
     }
 
-    #fire(workspaceId: number, rule: ScheduledRule, dueMs: number): void {
+    #setTimer(armed: Armed): void {
+        armed.handle = this.#timers.set(() => { this.#fire(armed); }, Math.max(0, Math.min(armed.dueMs - this.#clock(), MAX_DELAY_MS)));
+    }
+
+    #settle(armed: Armed, result: SchemeResult): Promise<void> {
+        return this.#events?.settle(armed.workspaceId, armed.event, result) ?? Promise.resolve();
+    }
+
+    #fire(armed: Armed): void {
+        const { workspaceId, rule } = armed;
         const entryKey = key(workspaceId, rule.alias);
-        if (this.#armed.get(entryKey)?.rule !== rule) return;
-        this.#armed.delete(entryKey);
-        if (this.#clock() < dueMs) {
-            this.#arm(workspaceId, rule);
-            return;
-        }
-        const delivery: Promise<void> = this.#deliver(workspaceId, rule)
-            .then(() => { this.#arm(workspaceId, rule); })
-            .catch((cause: unknown) => {
-                this.#failures.set(entryKey, { text: rule.parsed.text, problem: problemOf(rule.alias, cause) });
+        const delivery = (async () => {
+            const admitted = await this.#exclusive(async () => {
+                if (this.#closing || this.#armed.get(entryKey) !== armed || armed.delivering) return false;
+                if (this.#clock() < armed.dueMs) { this.#setTimer(armed); return false; }
+                armed.handle = null;
+                armed.delivering = true;
+                return true;
+            });
+            if (!admitted) return;
+            // Admission may demand workspace capabilities. Never hold the producer's
+            // mutation queue across that exterior call ({§schedule-await}).
+            let result: SchemeResult;
+            try {
+                await this.#deliver(workspaceId, rule);
+                result = { status: 200 };
+            } catch (cause) {
+                const failed = problemOf(rule.alias, cause);
+                result = { status: failed.status, problem: failed };
                 this.#report(`scheduled message '${rule.alias}' was not delivered in workspace ${workspaceId}`, cause);
+            }
+            await this.#exclusive(async () => {
+                await this.#settle(armed, result);
+                if (this.#armed.get(entryKey) !== armed) return;
+                this.#armed.delete(entryKey);
+                if (result.status >= 400) this.#failures.set(entryKey, { text: rule.parsed.text, problem: result.problem! });
+                else this.#arm(workspaceId, rule);
+            });
+        })()
+            .catch((cause: unknown) => {
+                this.#settlementErrors.push(cause);
+                this.#report(`scheduled occurrence '${rule.alias}' could not settle in workspace ${workspaceId}`, cause);
             })
             .finally(() => {
                 this.#pending.delete(delivery);

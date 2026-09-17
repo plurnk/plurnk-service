@@ -3,7 +3,7 @@
 // Network schemes instead restore the stored host to the authority slot.
 
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
-import { NetworkAddress, type EntryCoordinate, type SchemeAuthority } from "@plurnk/plurnk-schemes";
+import { EntryCoordinates, NetworkAddress, type EntryCoordinate } from "@plurnk/plurnk-schemes";
 
 export interface RenderTargetParts {
     readonly scheme: string | null | undefined;
@@ -33,29 +33,8 @@ export function routedSchemeName(addressedScheme: string): string {
     return addressedScheme;
 }
 
-export function foldAuthorityIntoPath(hostname: string | null, pathname: string): string {
-    return hostname ? `/${hostname}${pathname}` : pathname;
-}
-
-export function entryCoordinateOf(path: ParsedPath, authority: SchemeAuthority): EntryCoordinate {
-    if (path.kind === "local") {
-        return { authority: "", pathname: PathSyntax.decodeParens(path.raw) };
-    }
-    if (authority === "resource") {
-        const canonicalAuthority = path.hostname === null
-            ? ""
-            : `${path.hostname}${path.port === null ? "" : `:${path.port}`}`;
-        const query = path.query === null ? "" : `?${path.query}`;
-        return {
-            authority: canonicalAuthority,
-            pathname: PathSyntax.decodeParens(path.pathname) + query,
-        };
-    }
-    return {
-        authority: "",
-        pathname: PathSyntax.decodeParens(foldAuthorityIntoPath(path.hostname, path.pathname)),
-    };
-}
+export const foldAuthorityIntoPath = EntryCoordinates.foldAuthority;
+export const entryCoordinateOf = EntryCoordinates.resolve;
 
 export function authorityParts(authority: string): { hostname: string | null; port: number | null } {
     if (authority.length === 0) return { hostname: null, port: null };

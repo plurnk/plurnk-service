@@ -3,6 +3,8 @@ import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
     FindStatement,
+    DispositionStatement,
+    KillStatement,
     FunctionalityCandidate,
     FunctionalityDiscoverQuery,
     JsonSchema,
@@ -45,6 +47,8 @@ export interface RuntimeSchemeFacet {
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    wait?(statement: DispositionStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 
 export interface RuntimeRegistration {
@@ -154,6 +158,7 @@ export interface FunctionalityPrepared {
 }
 
 export interface FunctionalityAdapter {
+    readonly scheme?: RuntimeSchemeFacet;
     // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
     // worker-scoped family) and the runtime family tag.
     readonly family: string;
@@ -212,6 +217,7 @@ export interface WorkspaceCapabilityPublication {
 }
 
 export interface ModuleSetupSeam {
+    awaitedEvents(scheme: string): import("@plurnk/plurnk-schemes").AwaitedEventProducer;
     // {§workspace-env} Apply the workspace layer to admitted ambient values, or to
     // a provider's own reference-resolution environment. Never includes worker overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;

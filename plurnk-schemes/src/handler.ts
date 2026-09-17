@@ -24,6 +24,7 @@ import type {
     SendStatement,
     ExecStatement,
     KillStatement,
+    DispositionStatement,
     ParsedPath,
 } from "@plurnk/plurnk-contracts";
 import type { PluginAttributionSource } from "@plurnk/plurnk-meta";
@@ -88,4 +89,5 @@ export interface SchemeHandler extends PluginAttributionSource {
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    wait?(statement: DispositionStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }

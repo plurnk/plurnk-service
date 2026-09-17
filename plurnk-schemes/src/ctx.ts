@@ -157,12 +157,8 @@ export interface ChannelCaps {
 // the next boundary (service SPEC: between-turn notify). `streamEvent` is metadata-only (never
 // content).
 //
-// There is no `wakeWorker` here. The worker wake carries subscription-close
-// context (entryId / subscriptionId / exact result / scheme / summary) that
-// only exists at stream completion, so it belongs to `subscriptions.close`,
-// which already composites it (channel state + registry close + worker wake).
-// Only streaming schemes wake a worker, and always via close; synchronous entry
-// schemes return their turn and never wake ({§scheme-subscriptions}).
+// Wake delivery belongs to lifecycle settlement, not this metadata notification:
+// subscriptions.close for streams; the module's awaited-event producer for finite events.
 export interface NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void;
 }
@@ -268,6 +264,7 @@ export interface SchemeAddressCtx {
 }
 
 export interface SchemeCtx extends SchemeAddressCtx {
+    readonly awaitedEvents: import("./awaited-events.ts").AwaitedEventCaps;
 
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;

@@ -16,6 +16,7 @@ export type {
 // ── Behavior classes ─────────────────────────────────────────────────────
 export { default as Manifest } from "./Manifest.ts";
 export { default as NetworkAddress } from "./NetworkAddress.ts";
+export { default as EntryCoordinates } from "./EntryCoordinates.ts";
 export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 export { default as Slicer } from "./Slicer.ts";
 export type {
@@ -142,6 +143,7 @@ export type {
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 export type { WindowResult } from "./Slicer.ts";
+export type { AwaitedEvent, AwaitedEventRecord, AwaitedEventCaps, AwaitedEventProducer } from "./awaited-events.ts";
 export type { ByteSource } from "./ByteSource.ts";
 export { default as FileByteSource } from "./FileByteSource.ts";
 export { default as GeneratedByteSource } from "./GeneratedByteSource.ts";

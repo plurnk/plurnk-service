@@ -54,6 +54,7 @@ import WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
 import type { DaemonModule, FunctionalityAdapter, FunctionalityFamilyHandle, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkspaceCapabilityProvider, WorkspaceCapabilityReplacement } from "./DaemonModule.ts";
+import AwaitedEvents from "../core/AwaitedEvents.ts";
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
@@ -106,6 +107,7 @@ export default class Daemon implements ApplicationPort {
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
     #modules: Array<DaemonModule<ApplicationPort>> = [];
+    readonly #awaitedEventSchemes = new Set<string>();
     #moduleClosers: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #residency: WorkspaceResidency;
@@ -204,6 +206,7 @@ export default class Daemon implements ApplicationPort {
             operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
+            awaitedEventNotify: (workspaceId, workerId, loopId) => this.#drains.notifyAwaitedEvent(workspaceId, workerId, loopId),
             // worker:// loop-start primitive — spawn/fork/irc deliver through
             // Daemon.inject (active sister → fold; idle → enqueue + drain). The
             // daemon owns provider + the law-file system prompt; the worker scheme
@@ -1291,6 +1294,13 @@ export default class Daemon implements ApplicationPort {
         await this.#residency.rematerializeActive();
     }
 
+    awaitedEvents(scheme: string): import("@plurnk/plurnk-schemes").AwaitedEventProducer {
+        this.#awaitedEventSchemes.add(scheme);
+        return new AwaitedEvents(this.#db, (workspaceId, workerId, loopId) => {
+            this.#drains.notifyAwaitedEvent(workspaceId, workerId, loopId);
+        }).producer(scheme);
+    }
+
     #normalizeRuntime({ namespaceOwner, decl, executor, availability, scheme }: RuntimeRegistration): {
         tag: string;
         entry: RegistryEntry;
@@ -1520,6 +1530,7 @@ export default class Daemon implements ApplicationPort {
         await this.#db.recovery_remove_ownerless_client_interactions.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
+        await new AwaitedEvents(this.#db).reconcileProducers([...this.#awaitedEventSchemes]);
         await this.#db.recovery_resume_unblocked_parks.run({});
 
         const orphanSources = await this.#db.recovery_orphan_message_sources.all<{

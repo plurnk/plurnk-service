@@ -12,6 +12,7 @@ import DbNotifyCaps from "./DbNotifyCaps.ts";
 import DbSubscriptionCaps from "./DbSubscriptionCaps.ts";
 import DbProjectionCaps from "./DbProjectionCaps.ts";
 import CoreInteractionCaps from "./CoreInteractionCaps.ts";
+import AwaitedEvents from "../AwaitedEvents.ts";
 import type LiveSubscriptions from "../LiveSubscriptions.ts";
 import type { LineAnchorPrecondition } from "../../content/index.ts";
 
@@ -37,6 +38,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly subscriptions: SubscriptionCaps;
     readonly resources: ResourceCaps;
     readonly messages: MessageCaps;
+    readonly awaitedEvents: import("@plurnk/plurnk-schemes").AwaitedEventCaps;
     constructor(
         ctx: PlurnkSchemeContext,
         scheme: string,
@@ -54,6 +56,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
+        this.awaitedEvents = new AwaitedEvents(ctx.db, ctx.awaitedEventNotify).operation(scheme, ctx);
         this.interactions = new CoreInteractionCaps(ctx);
         this.resources = ctx.resources ?? {
             capture: async (targets) => {
