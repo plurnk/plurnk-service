@@ -10,7 +10,7 @@
 > YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services).
 
 > [!IMPORTANT]
-> YOU MUST include the OP and its parameters on the opening fence line.
+> YOU MUST emit fenced OPs, with the OP and its parameters on the opening fence line.
 
 * `[metadata]`: optional one-line JSON array of option objects.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
@@ -81,8 +81,8 @@
 
 ## Messaging
 
-    ````SEND (node:///c4e56789) <!-- SEND with a (path) sends the message to the path -->
-    With a running node script, SEND passes this message to stdin.
+    ````SEND <!-- reply to Open Messages -->
+    Updated the configuration and verified the tests pass.
     ````
 
 ## Delegation

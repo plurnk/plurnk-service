@@ -717,7 +717,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) {
             initializationStatements.push({
                 op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
-                body: "This turn exposes tooling and environment.", position: UNKNOWN_POSITION,
+                body: `This turn surveys tooling and environment. The log records results; ops:///${loopSequence}/${initializationTurn.sequence} contains the submitted OPs.`, position: UNKNOWN_POSITION,
             });
             const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
@@ -916,13 +916,13 @@ export default class TurnRunner {
                 position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: "shared worker Extended Context",
+                op: "FIND", aside: "workspace knowledgebase entries",
                 target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: "private worker Extended Context",
+                op: "FIND", aside: "worker knowledgebase entries",
                 target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,

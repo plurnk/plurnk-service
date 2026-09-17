@@ -242,7 +242,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 ], "the eight surveys execute in their taught order");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, null, null, null, "project root member files", "shared worker Extended Context", "private worker Extended Context"],
+                    [null, null, null, null, null, "project root member files", "workspace knowledgebase entries", "worker knowledgebase entries"],
                     "asides name what each namespace is; the program echo shows them verbatim",
                 );
                 const orientations = [

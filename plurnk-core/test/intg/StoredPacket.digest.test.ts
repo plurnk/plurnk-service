@@ -202,7 +202,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
-        assert.match(initializationSource, /^````NOTE\nThis turn exposes tooling and environment\.\n````\n\n````READ \(reasoning:/);
+        assert.match(initializationSource, /^````NOTE\nThis turn surveys tooling and environment\. The log records results; ops:\/\/\/1\/1 contains the submitted OPs\.\n````\n\n````READ \(reasoning:/);
         assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
     } finally {
         await db.close();

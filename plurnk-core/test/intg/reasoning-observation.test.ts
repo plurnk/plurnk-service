@@ -41,7 +41,8 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         }
         const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops:///3/1) <1,-1>", null)) });
         assert.ok("content" in source && typeof source.content === "string");
-        assert.ok(source.content.startsWith(PlurnkParser.frame("NOTE", "This turn exposes tooling and environment.")));
+        const orientation = "This turn surveys tooling and environment. The log records results; ops:///3/1 contains the submitted OPs.";
+        assert.ok(source.content.startsWith(PlurnkParser.frame("NOTE", orientation)));
         if (limit !== 0) assert.match(source.content, /READ \(reasoning:\/\/\/3\/1\)/);
         assert.match(source.content, /READ \(ops:\/\/\/3\/1\)/);
         assert.doesNotMatch(source.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
@@ -49,7 +50,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         assert.deepEqual(notes.map((row) => row.resource), ["note:///3/1/1", "note:///3/1/2"]);
         const bodies = [
             "Within reasoning, NOTE (and only NOTE) is persisted for the next turn.",
-            "This turn exposes tooling and environment.",
+            orientation,
         ];
         for (const [index, note] of notes.entries()) {
             assert.equal(note.origin, "_plurnk");
