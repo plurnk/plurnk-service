@@ -2533,7 +2533,7 @@ accounting and model-visible failure evidence remain separately owned by
   guessing which one was intended. A scheme that does not implement SEND
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-response-receipt **A reply records exactly which messages it answers.** A successful
-  reply carries `recipients`, the immutable message addresses it answered. Targetless SEND
+  reply carries `answers`, the immutable message addresses it answered, not recipient actors. Targetless SEND
   answers this loop's published, unanswered messages, oldest first. SEND to an exact message
   address answers only that message; SEND to an actor endpoint remains ordinary communication
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
@@ -4532,7 +4532,7 @@ READ and FIND own their range or pagination before packet rendering; the packet 
 |---|---|---|
 | Accepted body, attachments, address and causal source | Durable inbox message | None; ordinary READ/FIND/COPY can recover the source. |
 | Arrival seen at a turn boundary | One inbound SEND log row, `origin="_plurnk"`, `attrs.kind="message"` | Ordinary KILL can trim or remove this observation. |
-| Answered recipients | Successful executed reply, {§send-response-receipt} | None; curation cannot retract delivery. |
+| Answered messages | Successful executed reply, {§send-response-receipt} | None; curation cannot retract delivery. |
 
 Every accepted message enters its recipient loop's inbox in arrival order, with its selected
 paths, and publishes exactly once at the next turn boundary. **Open Messages** lists the

@@ -176,7 +176,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
             ["KILL", 200], ["READ", 200], ["COPY", 201], ["SEND", 200], ["NOTE", 200],
         ], "curation does not destroy the source and observation completes without another reply");
         assert.equal(JSON.parse(model.find(({ op }) => op === "READ")!.rx).content, "Name your sender.");
-        assert.deepEqual(JSON.parse(model.find(({ op }) => op === "SEND")!.rx).recipients, [expected]);
+        assert.deepEqual(JSON.parse(model.find(({ op }) => op === "SEND")!.rx).answers, [expected]);
         assert.equal(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta).join(""), "Named.");
 
         const replay = await post(port, {

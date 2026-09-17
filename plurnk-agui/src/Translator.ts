@@ -408,11 +408,11 @@ export default class Translator {
         if (Translator.#txBody(entry.tx).length === 0) return false;
         const rx: unknown = typeof entry.rx === "string" ? JSON.parse(entry.rx) : entry.rx;
         if (rx === null || typeof rx !== "object") return false;
-        const recipients = (rx as { recipients?: unknown }).recipients;
-        if (!Array.isArray(recipients)) return false;
+        const answers = (rx as { answers?: unknown }).answers;
+        if (!Array.isArray(answers)) return false;
         if (threadId === undefined) return true;
-        return !deliveredReply && entry.origin === "model" && recipients.length === 0
-            || recipients.some((address) => MessageAddress.messageId(address, threadId) !== null);
+        return !deliveredReply && entry.origin === "model" && answers.length === 0
+            || answers.some((address) => MessageAddress.messageId(address, threadId) !== null);
     }
 
     // The model-facing textual statement body out of the tx. The real

@@ -124,18 +124,18 @@ FROM log_entries le
       AND le.op = 'SEND' AND le.status_rx BETWEEN 200 AND 299
       AND le.source IS NULL AND le.inherited_history = 0
       AND json_valid(le.tx)
-      AND json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.recipients') = 'array'
+      AND json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.answers') = 'array'
       AND typeof(content) = 'text';
 
 CREATE VIEW IF NOT EXISTS message_responses AS
 SELECT DISTINCT r.id, m.loop_id, m.worker_id, r.source, r.content, r.rx
 FROM log_responses r
 JOIN workers producer ON producer.id = r.worker_id
-JOIN json_each(r.rx, '$.recipients') recipient
-JOIN message_sources m ON m.path = recipient.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.answers') answer
+JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 UNION ALL
 SELECT r.id, r.loop_id, r.worker_id, r.source, r.content, r.rx
-FROM log_responses r WHERE json_array_length(r.rx, '$.recipients') = 0;
+FROM log_responses r WHERE json_array_length(r.rx, '$.answers') = 0;
 
 CREATE VIEW IF NOT EXISTS loop_responses AS
 SELECT loop_id, content FROM (
@@ -148,8 +148,8 @@ CREATE VIEW IF NOT EXISTS unanswered_messages AS
 SELECT m.* FROM message_sources m
 WHERE NOT EXISTS (
     SELECT 1 FROM log_responses r
-    JOIN workers w ON w.id = r.worker_id, json_each(r.rx, '$.recipients') recipient
-    WHERE w.workspace_id = m.workspace_id AND recipient.value = m.path
+    JOIN workers w ON w.id = r.worker_id, json_each(r.rx, '$.answers') answer
+    WHERE w.workspace_id = m.workspace_id AND answer.value = m.path
 );
 
 -- {§message-reply-delivery}: notify the sender and the assigned conversation.
@@ -159,14 +159,14 @@ SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
        r.worker_id AS producer_worker_id, m.worker_id AS recipient_worker_id
 FROM log_responses r
 JOIN workers producer ON producer.id = r.worker_id
-JOIN json_each(r.rx, '$.recipients') recipient
-JOIN message_sources m ON m.path = recipient.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.answers') answer
+JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 UNION
 SELECT r.id, r.loop_id, m.workspace_id, r.worker_id, sender.id
 FROM log_responses r
 JOIN workers producer ON producer.id = r.worker_id
-JOIN json_each(r.rx, '$.recipients') recipient
-JOIN message_sources m ON m.path = recipient.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.answers') answer
+JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 JOIN workers sender ON sender.workspace_id = m.workspace_id AND m.source = 'worker://' || sender.name;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id

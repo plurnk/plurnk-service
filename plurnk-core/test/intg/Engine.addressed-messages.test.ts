@@ -228,6 +228,15 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         const replies = logEntries(packet).filter(({ body }) => String(body).includes("Distinct answer from Bob."));
         assert.equal(replies.length, 1, "one reply, not repeated as activity and terminal deliverable");
         assert.equal(replies[0]!.source, "worker://bob");
+        const answers = replies[0]!.answers;
+        assert.ok(Array.isArray(answers), "the parent packet names answered messages as answers");
+        assert.equal(answers.length, 1);
+        const answered = await db.message_source_by_address.get<{ body: string; source: string }>({
+            workspace_id: workspaceId, path: answers[0],
+        });
+        assert.equal(answered?.body, "What did you find?", "answers identifies the original request, not its recipient actor");
+        assert.equal(answered?.source, "worker://alice");
+        assert.equal(Object.hasOwn(replies[0]!, "recipients"), false);
         const inbox = await db.test_messages_by_loop.all({ loop_id: loopId });
         assert.equal(inbox.length, 1, "reply never becomes a request to reply back to Bob");
     } finally { await db.close(); }

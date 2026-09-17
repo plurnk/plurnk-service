@@ -104,12 +104,15 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
             assert.equal(send?.status_rx, 200);
-            const { recipients } = JSON.parse(send!.rx) as { recipients: string[] };
+            const receipt = JSON.parse(send!.rx) as { answers: string[]; recipients?: unknown };
+            assert.ok(Array.isArray(receipt.answers), "a reply names answered message addresses in answers");
+            assert.equal(Object.hasOwn(receipt, "recipients"), false, "answered messages are not mislabeled as recipient actors");
+            const { answers } = receipt;
             assert.ok(modelWorkerId !== undefined);
             const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
             assert.equal(arrivals.length, 1, "one message in the loop");
-            assert.equal(recipients.length, 1, "the receipt names the one open message");
-            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: recipients[0]! });
+            assert.equal(answers.length, 1, "the receipt names the one open message");
+            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: answers[0]! });
             assert.equal(source?.body, "answer me", "the receipt names the durable message source");
         } finally { ws.close(); }
     });

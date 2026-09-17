@@ -1226,9 +1226,9 @@ export default class Dispatcher {
         const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
         const target = statement.target;
-        let recipients: string[];
+        let answers: string[];
         if (target === null) {
-            recipients = await this.#openMessages(loopId);
+            answers = await this.#openMessages(loopId);
         } else {
             const message = await this.#db.message_source_by_address.get<{ path: string }>({
                 workspace_id: schemeCtx.workspaceId, path: target.raw,
@@ -1236,9 +1236,9 @@ export default class Dispatcher {
             if (message === undefined) return Dispatcher.#failure(
                 "message-not-found", 404, `No accepted message exists at ${target.raw}.`, {}, { retryable: false },
             );
-            recipients = [message.path];
+            answers = [message.path];
         }
-        return { status: 200, recipients,
+        return { status: 200, answers,
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 

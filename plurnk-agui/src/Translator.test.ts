@@ -16,7 +16,7 @@ import { loopUsage } from "../test/accounting-fixture.ts";
 const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
     const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
-    const rx = over.op === "SEND" && tx?.target == null ? { recipients: [] } : { status: 200 };
+    const rx = over.op === "SEND" && tx?.target == null ? { answers: [] } : { status: 200 };
     return { entry: { id: 7, worker_id: 10, loop_id: 1, op: "READ", origin: "model", status_rx: 200,
         tx: { target: null, body: { raw: "message" } }, rx, coordinate: "1/1/3/READ", turn_id: 1, ...over } };
 };
@@ -94,7 +94,7 @@ test("{§agui-projection} addressed replies project by conversation, including a
         const record = entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", origin,
             source: origin === "_plurnk" ? "worker://peer" : null,
             attrs: origin === "_plurnk" ? { kind: "reply" } : {},
-            tx: { target: { raw: address }, body: { raw: native } }, status_rx: 200, rx: { recipients: [address] } });
+            tx: { target: { raw: address }, body: { raw: native } }, status_rx: 200, rx: { answers: [address] } });
         const events = t().logEntry(record);
         const expected = thread === "th-1" ? [native] : [];
         assert.deepEqual(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => event.delta), expected);
@@ -351,7 +351,7 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
-        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
+        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
     ]);
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
@@ -490,7 +490,7 @@ test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "WAIT", origin: "model", turn_id: 1, tx: JSON.stringify({ body: plan("mine") }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "CUSTOM" && e.name === "plurnk.send"), "the thread's own lifecycle signal projects");
-    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
+    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's conversation");
@@ -510,10 +510,10 @@ test("the newest-first workspace log replays user prompts, WAIT and SEND chronol
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
-        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
+        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 4, op: "WAIT", origin: "model", coordinate: "1/2/1/WAIT", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
         { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "emissionAttempt" } },
-        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
+        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 1, op: "WAIT", origin: "model", coordinate: "1/1/1/WAIT", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
         { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, coordinate: "1/1/0/SEND", tx: { body: { raw: "What is the answer?" } } },
     ], { id: "current-user", role: "user", content: "Continue." });

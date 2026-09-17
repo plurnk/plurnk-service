@@ -62,7 +62,7 @@ interface RxView {
     resource?: unknown;
     matched?: unknown;
     channels?: unknown;
-    recipients?: unknown;
+    answers?: unknown;
     exitCode?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
@@ -894,8 +894,8 @@ export default class PacketWire {
             meta.channels = rx.channels;
         }
         // {§send-response-receipt} — a reply's row names the prompts it answered.
-        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
-            meta.recipients = rx.recipients;
+        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.answers)) {
+            meta.answers = rx.answers;
         }
         if (op === "READ" || op === "FIND") {
             if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {

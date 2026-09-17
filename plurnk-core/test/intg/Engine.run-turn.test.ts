@@ -886,7 +886,7 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         // EDIT and a SEND). Found by identity (an untargeted SEND without a reply receipt),
         // robust to the turn-0 initialization ({§worker-initialization-entry}) and a
         // catalog-preview foist that shift coordinates between the arrival and the model's ops.
-        assert.ok(log.find((e) => String(e.path).endsWith("/SEND") && !("target" in e) && !("recipients" in e)), "arrival row logged");
+        assert.ok(log.find((e) => String(e.path).endsWith("/SEND") && !("target" in e) && !("answers" in e)), "arrival row logged");
         const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
