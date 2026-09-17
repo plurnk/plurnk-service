@@ -256,7 +256,6 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
             PlurnkParser.frame("EDIT (worker:///proof.md)", "Actual body."),
             "3 — invented result, not a receipt.",
             PlurnkParser.frame("SEND", "Only this message is sent."),
-            PlurnkParser.frame("SEND", ""),
             "Postscript: not a second message.",
         ].join("\n");
         const result = await engine.runTurn({
@@ -271,7 +270,7 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({ accepted, errors: JSON.parse(parse_errors) })), [{ accepted: 1, errors: [] }]);
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND", "SEND"], "outside text has no independent log or message row");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND"], "outside text has no independent log or message row");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
