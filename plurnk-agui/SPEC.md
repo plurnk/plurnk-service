@@ -140,6 +140,10 @@ the client hops to a child rather than watching it).
 never recomputes the daemon's gauge or promotes accounting into application
 state paths that could be mistaken for standard AG-UI fields.
 
+§agui-state-patches Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s.
+Deltas use RFC 6902 `replace` on existing snapshot paths; replay yields the
+current gauge without clients inventing missing fields.
+
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |

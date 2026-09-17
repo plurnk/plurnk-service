@@ -21,6 +21,19 @@ import {
     statusState, aliveChildren } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
 import { DEFAULT_LOOP_POLICY, type ClientInteractionProjection } from "@plurnk/plurnk-contracts";
+import { replayState } from "../test/state-replay.ts";
+import { JSONPatchError } from "json-p3";
+
+test("{§agui-state-patches}: the replay witness refuses non-replace or undefined state paths", () => {
+    const snapshot = stateSnapshot({ status: statusState(null, null) });
+    for (const op of ["add", "remove"]) {
+        assert.throws(() => replayState([snapshot, stateDelta([{ op, path: "/budget/contextTokens", value: 12 }])]), /unexpected patch operation/u);
+    }
+    for (const path of ["/missing", "/plurnk/status/missing"]) {
+        assert.throws(() => replayState([snapshot, stateDelta([{ op: "replace", path, value: 12 }])]), JSONPatchError);
+    }
+    assert.throws(() => replayState([stateDelta([{ op: "replace", path: "/budget/contextTokens", value: 12 }])]), /preceding STATE_SNAPSHOT/u);
+});
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
     logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,

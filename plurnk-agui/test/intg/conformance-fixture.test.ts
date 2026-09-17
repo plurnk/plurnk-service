@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { HttpAgent } from "@ag-ui/client";
-import { EventType, type BaseEvent, type RunErrorEvent } from "@ag-ui/core";
+import { EventType, type RunErrorEvent } from "@ag-ui/core";
+import type { AguiEvent } from "../../src/types.ts";
+import { replayState } from "../state-replay.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import Module from "../../src/Module.ts";
 import { openTestDatabase, SERVICE } from "./_helpers.ts";
@@ -43,14 +45,14 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         const { host, port } = (await started.promise).address();
         const agent = new HttpAgent({ url: `http://${host}:${port}/`, threadId: "official-client" });
         agent.messages = [{ id: "m1", role: "user", content: "Exercise the installed one-shot interface." }];
-        const events: BaseEvent[] = [];
+        const events: AguiEvent[] = [];
         const errors: Error[] = [];
         const reasoning: string[] = [];
         let outcome: string | undefined;
         await agent.runAgent({
             forwardedProps: { plurnk: { workspace: "official-client", projectRoot: sandbox, maxTurns: 3 } },
         }, {
-            onEvent: ({ event }) => { events.push(event); },
+            onEvent: ({ event }) => { events.push(event as AguiEvent); },
             onRunFailed: ({ error }) => { errors.push(error); },
             onReasoningMessageContentEvent: ({ event }) => { reasoning.push(event.delta); },
             onRunFinishedEvent: (event) => { outcome = event.outcome; },
@@ -60,6 +62,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         assert.equal(types[0], "RUN_STARTED");
         assert.equal(types.at(-1), "RUN_FINISHED");
         assert.equal(outcome, "success");
+        assert.deepEqual(replayState(events), agent.state, "RFC 6902 replay agrees with the official client's reducer");
         assert.equal(reasoning.join(""), "I will complete the installed one-shot request through the shared protocol.");
         assert.equal(types.includes(EventType.RUN_ERROR), false);
         for (const type of [EventType.STATE_SNAPSHOT, EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_END, EventType.REASONING_MESSAGE_CONTENT]) {
