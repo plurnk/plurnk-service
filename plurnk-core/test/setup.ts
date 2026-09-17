@@ -7,8 +7,8 @@
 // --env-file, so it wins) — never in the real-model .env.test profile (it would collide with the
 // selected model's own reserves) and never hardcoded per-tier in package.json.
 //
-// The REAL models (turboderp, gbuild) carry their ONE real config as PLURNK_*_<alias> knobs in
-// operator env or the shell; the committed .env.test selects turboderp as its safe gate default.
+// Real-model routes and alias tuning come from the ordinary environment cascade;
+// the committed .env.test selects the real-model gate default.
 // This bootstrap is the Mock tier's parallel and overrides that selection with a fake `mocktest`
 // alias (Mocks are injected, so it's never dialed) whose fixture-scaled reserves no real model sees.
 const fixture = {
