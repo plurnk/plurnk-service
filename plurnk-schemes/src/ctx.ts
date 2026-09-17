@@ -276,6 +276,14 @@ export interface SchemeCtx extends SchemeAddressCtx {
     readonly interactions: InteractionCaps;
     readonly subscriptions: SubscriptionCaps;
     readonly resources: ResourceCaps;
+    readonly messages: MessageCaps;
+}
+
+export interface MessageCaps {
+    /** Materialize immutable accepted messages in this scheme; an exact target returns 404 if absent. */
+    prepare(target?: string): Promise<SchemeResult>;
+    /** Deliver a reply to one retained message, preserving normal SEND validation and receipts. */
+    reply(statement: SendStatement): Promise<SchemeResult>;
 }
 
 export interface ResourceCaps {

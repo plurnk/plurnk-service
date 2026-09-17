@@ -9,7 +9,7 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
     const mock = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on(\"data\", d => process.stdout.write(\"received:\" + d));\n````\n\n````NOTE\nDeliver input to the process.\n````", 10),
         makeMockResponse("````SEND ($STREAM) [{\"eof\": true}]\ninput-witness\n````\n\n````WAIT\nObserve the output.\n````", 10),
-        makeMockResponse("````SEND\nVerified the process response.\n````\n\n````DONE\n````", 10),
+        makeMockResponse("````SEND\nVerified the process response.\n````\n\n````SEND\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, address) => {
         const client = await connect(address);

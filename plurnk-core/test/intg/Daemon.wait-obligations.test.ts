@@ -4,24 +4,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import Dispatcher from "../../src/core/Dispatcher.ts";
+import { holdChild } from "./_helpers.ts";
 import Engine from "../../src/core/Engine.ts";
 import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
 
 test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async (t) => {
     // The waits park on live work the fixture holds; the message is what wakes one of them.
-    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({
         contextWindow: 65536,
         responses: [
             makeMockResponse("```WAIT\nFirst task waits.\n```"),
             makeMockResponse("```WAIT\nSecond task waits.\n```"),
-            makeMockResponse("```SEND\nEnd the receiving task.\n```\n```FAIL\n```"),
+            makeMockResponse("```NOTE\nThe new message reached the receiving task.\n```\n```WAIT\n```"),
         ],
     });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "two-parked-recipients" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
+        await holdChild(db, workspaceId, workerId);
         try {
             const common = {
                 workspaceId, workerId,
@@ -40,11 +40,10 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
             );
             const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "A new message." });
             assert.equal(delivered.loopId, accepted[0]?.loopId, "return and wake the same oldest unfinished loop that owns the message");
-            const received = await waitForDb(
-                () => db.test_get_loop_status.get<{ status: number }>({ id: delivered.loopId }),
-                (row) => row?.status === 499,
-            );
-            assert.equal(received?.status, 499);
+            await waitForDb(() => db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: delivered.loopId }),
+                (rows) => rows.some(({ op, tx }) => op === "NOTE" && tx.includes("new message reached")));
+            assert.equal(provider.received.length, 3);
+            assert.ok(JSON.stringify(provider.received[2]).includes("A new message."));
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: accepted[1]!.loopId }))?.status, 202,
                 "a message does not resume an unrelated wait");
         } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
@@ -52,14 +51,14 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
 });
 
 test("{§worker-lifecycle-no-resurrection}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
-    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse("```WAIT\nWait.\n```"),
-        makeMockResponse("```SEND\nMust not execute the cancelled follow-up.\n```\n```DONE\n```"),
+        makeMockResponse("```SEND\nMust not execute the cancelled follow-up.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
+        await holdChild(db, workspaceId, workerId);
         const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Original task." });
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);

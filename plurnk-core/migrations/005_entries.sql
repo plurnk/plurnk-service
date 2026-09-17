@@ -147,14 +147,21 @@ BEGIN
     DELETE FROM entry_channels WHERE entry_id = (
         SELECT id FROM entries WHERE workspace_id = NEW.workspace_id
           AND scheme = NEW.scheme AND authority = NEW.authority AND pathname = NEW.pathname
-    );
+    ) AND name NOT IN (SELECT key FROM json_each(NEW.channels));
     INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
     SELECT e.id, c.key, json_extract(c.value, '$.content'), json_extract(c.value, '$.mimetype'),
            json_extract(c.value, '$.weight'), json_extract(c.value, '$.content_hash'),
            json_extract(c.value, '$.state'), json_extract(c.value, '$.producer_result')
     FROM entries e, json_each(NEW.channels) c
     WHERE e.workspace_id = NEW.workspace_id AND e.scheme = NEW.scheme
-      AND e.authority = NEW.authority AND e.pathname = NEW.pathname;
+      AND e.authority = NEW.authority AND e.pathname = NEW.pathname
+    ON CONFLICT (entry_id, name) DO UPDATE SET
+        content = excluded.content,
+        mimetype = excluded.mimetype,
+        weight = excluded.weight,
+        content_hash = excluded.content_hash,
+        state = excluded.state,
+        producer_result = excluded.producer_result;
 END;
 
 -- symbol_defs

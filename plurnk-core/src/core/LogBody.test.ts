@@ -252,7 +252,7 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
         assert.equal(LogBody.resolve({ op, tx: { body: `${op} body` }, rx: null }).content, `${op} body`, op);
     }
 
-    for (const op of ["NOTE", "WAIT", "DONE", "FAIL"]) {
+    for (const op of ["NOTE", "WAIT"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: { body: "Retain this.\nAnd this." }, rx: null }),
             { content: "Retain this.\nAnd this.", mimetype: "text/plain", startLine: 1, provenance: "authored" },
@@ -304,7 +304,7 @@ test("LogBody derives loop-termination presentation from the exact result", () =
             mimetypeRx: "application/json",
         }),
         {
-            content: "[ cancelled from outside the worker ] The child provider failed.\n\nBranch receipt: `feature/x` failed.",
+            content: "[ worker cancelled ] The child provider failed.\n\nBranch receipt: `feature/x` failed.",
             provenance: "returned",
             mimetype: "text/markdown",
             startLine: 1,

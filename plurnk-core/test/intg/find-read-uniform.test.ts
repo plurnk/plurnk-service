@@ -172,9 +172,13 @@ test("broad &graph FIND reports each resource's location count without nesting c
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
+        // This low-level query owns explicit indexing, so prepare the catalog
+        // (including accepted message sources) before settling its index.
+        const catalog = await new Worker().find(parseOp<FindStatement>("```FIND (worker:///**)```", "FIND"), ctx);
+        assert.equal(catalog.status, 200);
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
         const r = await new Worker().find(parseOp<FindStatement>("```FIND (worker:///**) [{\"pattern\":\"&<foo\"}]```", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
-        assert.equal(r.status, 200);
+        assert.equal(r.status, 200, JSON.stringify(r));
         assert.ok(r.results.length >= 1);
         const rows = resourceGroups(r).map(([item]) => item);
         assert.ok(rows.every((item) => item.matchLocationCount !== undefined && item.matchLocationCount >= 1));

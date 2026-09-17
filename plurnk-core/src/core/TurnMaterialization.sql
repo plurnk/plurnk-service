@@ -41,4 +41,5 @@ INSERT INTO log_entries (
     $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', $source, NULL,
     $subscription_publication_id,
     'READ', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
-);
+)
+RETURNING id;

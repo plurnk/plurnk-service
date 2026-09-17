@@ -68,8 +68,8 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```SEND\nfirst composed result\n```\n```DONE\n```"),
-            makeMockResponse("```SEND\nsecond composed result\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nfirst composed result\n```"),
+            makeMockResponse("```SEND\nsecond composed result\n```"),
             makeMockResponse([
                 "```question",
                 "" + (JSON.stringify({
@@ -86,7 +86,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
                 "Waiting for the branch selection.",
                 "```",
             ].join("\n")),
-            makeMockResponse("```SEND\nselected branch\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nselected branch\n```"),
         ],
     });
     const daemon = new Daemon({ db, provider });
@@ -271,7 +271,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("```SEND\nlazy workspace result\n```\n```DONE\n```")],
+            responses: [makeMockResponse("```SEND\nlazy workspace result\n```")],
         }),
     });
     const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
@@ -348,7 +348,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("```SEND\nfirst durable result\n```\n```DONE\n```")],
+            responses: [makeMockResponse("```SEND\nfirst durable result\n```")],
         }),
     });
     const workspace = await daemon.createWorkspace({
@@ -388,7 +388,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             db,
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeMockResponse("```SEND\nsecond durable result\n```\n```DONE\n```")],
+                responses: [makeMockResponse("```SEND\nsecond durable result\n```")],
             }),
         });
         let secondListener: A2aModule | null = null;

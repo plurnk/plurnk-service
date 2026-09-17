@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import Dispatcher from "../../src/core/Dispatcher.ts";
+import { holdChild } from "./_helpers.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -10,7 +10,6 @@ import { makeMockResponse, withDaemon } from "./_rpc.ts";
 for (const wake of ["message", "same-drain", "restart"] as const) {
     test(`{§loop-execution-allowance}: ${wake} wake retains the task's remaining execution allowance`, async (t) => {
         // The wait parks on live work the fixture holds; a restart wakes it through recovery.
-        t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
         const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
         process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "60000";
         t.after(() => {
@@ -24,6 +23,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             let activeDaemon = daemon;
             const { workspaceId } = await daemon.createWorkspace({ name: `execution-${wake}` });
             const workerId = await daemon.ensureModelWorker(workspaceId);
+            await holdChild(db, workspaceId, workerId);
             const parked = Promise.withResolvers<void>();
             const resumed = Promise.withResolvers<AbortSignal>();
             const completed = Promise.withResolvers<number>();

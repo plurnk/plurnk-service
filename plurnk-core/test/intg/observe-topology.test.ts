@@ -23,7 +23,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "\n```SEND\nobserved.\n```\n```DONE\n```",
+                    content: "\n```SEND\nobserved.\n```",
                     reasoning: null,
                 },
             }],
@@ -82,12 +82,12 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         // The parse is synchronous and ends before model dispatch.
         const parse = turnChildren.find((s) => s.name === "contracts.parse");
         assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
-        assert.equal(parse.attributes.statements, 2, "parse records the emitted SEND and DONE");
+        assert.equal(parse.attributes.statements, 1, "parse records the emitted SEND");
 
         const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
         const ops = dispatches.map((s) => s.attributes.op);
         assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
-        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 1, "the inference dispatches its lifecycle declaration");
+        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
         assert.equal(ops.filter((op) => op === "NOTE").length, 2, "initialization executes its reasoning and program NOTEs through ordinary dispatch");
         assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's message has its own dispatch span");
         assert.ok(

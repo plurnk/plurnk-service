@@ -8,6 +8,7 @@ import type { Client } from "@a2a-js/sdk/client";
 import {
     PathSyntax,
     MessageAttachments,
+    MessageScheme,
     Results,
     type ProblemDetails,
     type PassthroughResult,
@@ -19,6 +20,9 @@ import {
     type SchemeResult,
     type SendStatement,
     type StreamSubscription,
+    type ParsedPath,
+    type SchemeAddressCtx,
+    type FindStatement,
 } from "@plurnk/plurnk-schemes";
 import A2aMessage from "./A2aMessage.ts";
 import A2aProjection, { type A2aEntryProjection, type A2aResource } from "./A2aProjection.ts";
@@ -45,6 +49,21 @@ type A2aClientResolution =
 
 /** Outbound A2A v1 resources and Task obligations over the ordinary scheme API. */
 export default class A2a implements SchemeHandler {
+    readonly #messages = new MessageScheme("a2a");
+
+    static #hostedMessage(target: ParsedPath | null): boolean {
+        return target?.kind === "url" && /^\/contexts\/[^/]+\/tasks\/[^/]+\/messages\/[^/]+$/.test(target.pathname);
+    }
+
+    async resolveEntryAddress(target: ParsedPath, ctx: SchemeAddressCtx, access: "read" | "write" = "read") {
+        if (A2a.#hostedMessage(target)) return this.#messages.resolveEntryAddress(target, ctx, access);
+        const resolved = A2a.#address(target);
+        return "problem" in resolved ? resolved.problem : resolved.address;
+    }
+
+    async prepareFind(_statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
+        return ctx.messages.prepare();
+    }
     static manifest: SchemeManifest = {
         name: "a2a",
         authority: "resource",
@@ -70,6 +89,7 @@ export default class A2a implements SchemeHandler {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
+        if (A2a.#hostedMessage(request.target)) return this.#messages.prepareRepresentation(request, ctx);
         if (request.metadata !== null) {
             return A2a.#problem("metadata-unsupported", 400, "A2A READ does not accept the [metadata] modifier.", {
                 retryable: false,
@@ -145,6 +165,7 @@ export default class A2a implements SchemeHandler {
     }
 
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (A2a.#hostedMessage(statement.target)) return A2a.#passthrough(await ctx.messages.reply(statement));
         const captured = await MessageAttachments.capture(statement.metadata, ctx.resources, OWNER);
         if ("failure" in captured) return A2a.#passthrough(captured.failure);
         const resolvedAddress = A2a.#address(statement.target);
@@ -362,7 +383,7 @@ export default class A2a implements SchemeHandler {
     static #address(target: SendStatement["target"]): A2aAddressResolution {
         if (target === null || target.kind !== "url" || target.scheme !== "a2a" || target.hostname === null) {
             return {
-                problem: A2a.#problem("bad-target", 400, "A2A SEND requires an a2a://<agent> target.", {
+                problem: A2a.#problem("bad-target", 400, "An A2A target uses a2a://<agent>.", {
                     stage: "target-validation",
                     retryable: false,
                 }),

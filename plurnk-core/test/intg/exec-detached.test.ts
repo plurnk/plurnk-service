@@ -40,8 +40,8 @@ ${heartbeat(file)}
 \`\`\`SEND
 the server stays up
 \`\`\`
-\`\`\`DONE
-\`\`\``), mockTurn("```DONE\n```")],
+\`\`\`SEND
+\`\`\``), mockTurn("```SEND\n```")],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

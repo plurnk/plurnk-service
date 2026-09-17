@@ -5,13 +5,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { InvalidNoticeError, type Notice } from "@plurnk/plurnk-contracts";
+import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
-import { execStmt, dispositionStmt } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { sendStmt, execStmt, dispositionStmt  } from "./_dsl.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { waitFor } from "./_rpc.ts";
 
 let wireN = 0;
@@ -46,7 +48,7 @@ const wire = async (run: Executor["run"]) => {
     const workspaceId = await insertWorkspace(db, `honesty-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "honesty test");
-    const turnId = await insertTurn(db, loopId, 1, 102);
+    const { id: turnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
     return { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
 };
 
@@ -245,18 +247,21 @@ for (const specimen of [
                 102,
                 "closed is not observed: the loop continues so the terminal stream observation can land next packet",
             );
-            const completed = await engine.dispatch({
-                statement: dispositionStmt("DONE"),
-                workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
+            const completed = await engine.executeAdmittedTurn({
+                statements: [sendStmt(null)], source: null,
+                workspaceId, workerId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
-            assert.equal(completed.problem, undefined);
-            assert.deepEqual((completed.attrs as { pending?: string[] }).pending, specimen.status === 200
-                ? ["receipts"] : ["receipts", "failed-stream-results"]);
-            if (specimen.status === 200) {
-                assert.equal(completed.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.`,
-                    "the executor's public name is used, not an internal operation name");
-            }
+            assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
+            const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
+                content: "```SEND\nObserved the actual execution result.\n```", reasoning: null,
+            } }] });
+            const observed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            assert.equal(observed.status, 200);
+            const packet = JSON.stringify(provider.received[0]);
+            assert.match(packet, /terminal/, "even an empty stream has an observable terminal result");
+            if (specimen.content.length > 0) assert.ok(packet.includes(specimen.content.trim()));
+            if (specimen.status === 500) assert.ok(packet.includes("expected-failure"));
         } finally { await db.close(); }
     });
 }
@@ -268,13 +273,13 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
             statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         })).status, 200);
         await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
-        const nextTurnId = await insertTurn(db, loopId, 2, 102);
-        const completed = await engine.dispatch({
-            statement: dispositionStmt("DONE"),
-            workspaceId, workerId, loopId, turnId: nextTurnId, sequence: 1, origin: "model",
+        await Turn.complete(db, turnId, 102);
+        const { id: nextTurnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        const completed = await engine.executeAdmittedTurn({
+            statements: [sendStmt(null)], source: null,
+            workspaceId, workerId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
-        assert.equal(completed.detail, "Completion deferred until stream completion reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
-        assert.deepEqual((completed.attrs as { pending?: string[] }).pending, ["receipts"]);
+        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "the earlier execution is not invented in this program");
     } finally { await db.close(); }
 });

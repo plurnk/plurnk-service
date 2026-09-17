@@ -11,7 +11,7 @@ import { waitForDb } from "./_rpc.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "```NOTE\nDeliver selected resources.\n```";
-const done = "```DONE\n```";
+const done = "```SEND\n```";
 
 test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async () => {
     const remote = await startDemoAgent("direct-message");
@@ -77,7 +77,7 @@ test("{§send-resource-attachments}: worker SEND carries a snapshot as a normal 
         assert.deepEqual(results.map(({ status }) => status), [201, 400, 200, 200], JSON.stringify(results));
         assert.match(JSON.stringify(results[1]), /attachments-invalid/u, "SEND metadata reaches its recipient for validation");
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), (loops) => loops.some((loop) => loop.status === 200));
-        const received = await daemon.readMessages({ workspaceId, workerId: receiver.workerId });
+        const received = (await daemon.readMessages({ workspaceId, workerId: receiver.workerId })).filter(({ direction }) => direction === "inbound");
         assert.equal(received.length, 1, "invalid SEND metadata is not discarded to deliver a different message");
         assert.equal(received[0]!.attachments.length, 1);
         assert.equal(Buffer.from(received[0]!.attachments[0]!.bytes).toString(), "original peer report");

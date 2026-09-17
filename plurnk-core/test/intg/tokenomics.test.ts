@@ -5,7 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { dispositionStmt, noteStmt } from "./_dsl.ts";
+import { sendStmt, noteStmt  } from "./_dsl.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 // {§tokenomics}: entry and log content-depth is stamped at write time in the
@@ -99,7 +99,7 @@ test("context token budget carries a populated active-total/maximum state", asyn
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
@@ -121,7 +121,7 @@ test("(#482) overflow tolerance is never advertised: the disclosed allowance sta
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const state = JSON.parse(budget) as { tokensResponseMax: number };
@@ -139,7 +139,7 @@ test("{§output-allowance-notice} tokensResponseMax is the output floor less the
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 130816, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 130816, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] });
         assert.equal(provider.outputBudget, 24576); assert.equal(provider.reasoningBudget, 16384);
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
@@ -158,7 +158,7 @@ test("context token budget carries active total and maximum without a percent", 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const state = JSON.parse(budget) as { logTokensTotal: number; logTokensMax: number };
@@ -184,7 +184,7 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
         // scaffolding alone blows past it and cannot be recovered by suppressing the owned boundary.
-        const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] });
+        const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
         const turn = await db.test_get_turn.get<{ packet: string | null; producer: string; kind: string }>({ id: result.turnId });
@@ -234,7 +234,7 @@ test("{§tokenomics-calibrated-readout} three reported prompt counts convert the
             { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] }, usage: charged },
             { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] }, usage: charged },
             { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] }, usage: charged },
-            { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] }, usage: charged },
+            { assistant: { content: "", reasoning: null, ops: [sendStmt(null)] }, usage: charged },
         ] });
         const messages = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "U" }];
         const shown: number[] = [];

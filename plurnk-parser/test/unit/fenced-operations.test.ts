@@ -152,7 +152,7 @@ test("fenced operations: closed malformed blocks do not discard later valid oper
 });
 
 test("fenced operations: a message may contain literal executable examples without dispatching them", () => {
-    const result = PlurnkParser.parse("````SEND\nRun this yourself:\n```bash\necho hello\n```\n````\n````DONE\n````");
+    const result = PlurnkParser.parse("````SEND\nRun this yourself:\n```bash\necho hello\n```\n````\n````WAIT\n````");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.length, 2);
     const item = result.items[0];

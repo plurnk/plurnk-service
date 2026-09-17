@@ -236,21 +236,16 @@ export default class PacketBuilder {
         const system_definition = compactDefinitionTables(byRole("system"));
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const workerName = await WorkerName.forId(this.#db, workerId);
-        // {§message-arrival} — the Open Messages section lists the loop's unanswered arrivals as
-        // pointers in Delegation's shape: the inbound SEND row's log coordinate and, when another
-        // actor caused it, that actor's source ({§message-causal-source}, #706). Bodies stay on the
-        // rows; the section is the index of what still owes an answer. Fallback: callers that
-        // bypass persistence (bare messages) still get their user text rendered directly.
+        // {§message-arrival}: source addresses survive curation of their log observations.
         const openMessages = await this.#db.engine_open_messages.all<{
-            id: number; loop_seq: number; turn_seq: number; seq: number; source: string | null;
+            id: number; path: string; source: string | null;
         }>({ loop_id: loopId });
-        const userText = byRole("user");
         const prompt = openMessages.length > 0
             ? `[${openMessages.map((m) => JSON.stringify({
-                path: `log:///${m.loop_seq}/${m.turn_seq}/${m.seq}/SEND`,
+                path: m.path,
                 ...(m.source === null ? {} : { source: m.source }),
             })).join(",\n")}]`
-            : userText.length > 0 ? userText : "[]";
+            : "[]";
         // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
         const recapContent = recap.length > 0
             ? recap

@@ -16,7 +16,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, schemeManifest } from "./_helpers.ts";
-import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, dispositionStmt, execStmt, sendStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
     discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
@@ -224,7 +224,7 @@ test("an operation with no external capability demand remains available under an
     try {
         await setPolicies(db, workspaceId, loopId, policies({ only: [] }));
         const result = await engine.dispatch({
-            statement: dispositionStmt("DONE"),
+            statement: sendStmt(null),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(result.status, 200);

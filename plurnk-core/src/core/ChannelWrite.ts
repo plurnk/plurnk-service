@@ -92,7 +92,6 @@ export type InjectWorkerNotify = (args: {
 // Sync; returns whether there was work. KILL routes through Dispatcher.#handleKill
 // (not a scheme handler), so this is an Engine field, never a ctx capability.
 export type CancelWorkerNotify = (workerId: number, reason: string) => Promise<void>;
-export type CancelDescendantsNotify = (workerId: number, reason: string) => Promise<void>;
 
 interface NoticePayload {
     workerId: number | null;

@@ -117,6 +117,7 @@ export class SqlRiteSync {
 	engine_list_workspace_entries: SqlRiteSyncPreparedStatements;
 	search_index_entry_candidates: SqlRiteSyncPreparedStatements;
 	search_index_entry_body: SqlRiteSyncPreparedStatements;
+	message_reply_recipients: SqlRiteSyncPreparedStatements;
 	engine_initialize_ambient_cursor: SqlRiteSyncPreparedStatements;
 	engine_pull_ambient_events: SqlRiteSyncPreparedStatements;
 	engine_insert_ambient_delta: SqlRiteSyncPreparedStatements;
@@ -255,6 +256,9 @@ export class SqlRiteSync {
 	engine_get_loop_policy: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
 	message_history: SqlRiteSyncPreparedStatements;
+	message_source_resources: SqlRiteSyncPreparedStatements;
+	message_source_by_address: SqlRiteSyncPreparedStatements;
+	message_unanswered_count: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -668,6 +672,7 @@ export default class SqlRite {
 	engine_list_workspace_entries: SqlRitePreparedStatements;
 	search_index_entry_candidates: SqlRitePreparedStatements;
 	search_index_entry_body: SqlRitePreparedStatements;
+	message_reply_recipients: SqlRitePreparedStatements;
 	engine_initialize_ambient_cursor: SqlRitePreparedStatements;
 	engine_pull_ambient_events: SqlRitePreparedStatements;
 	engine_insert_ambient_delta: SqlRitePreparedStatements;
@@ -806,6 +811,9 @@ export default class SqlRite {
 	engine_get_loop_policy: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
 	message_history: SqlRitePreparedStatements;
+	message_source_resources: SqlRitePreparedStatements;
+	message_source_by_address: SqlRitePreparedStatements;
+	message_unanswered_count: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;

@@ -5,10 +5,10 @@ import { PlurnkParser } from "../../src/index.ts";
 for (const [source, expected] of [
     ["````READ (notes.md)````", ["READ"]],
     ["````SEND\nProgress update.\n````", ["SEND"]],
-    ["````EDIT (notes.md)\n```DONE\nLiteral example.\n```\n````", ["EDIT"]],
+    ["````EDIT (notes.md)\n```WAIT\nLiteral example.\n```\n````", ["EDIT"]],
     ["````READ (notes.md)````\n\n````KILL (log:///**/READ) <17,-1>````", ["READ", "KILL"]],
 ] as const) {
-    test(`{§turn-shape} omitted DONE preserves only authored operations: ${expected.join(",")}`, () => {
+    test(`{§turn-shape} omitted WAIT preserves only authored operations: ${expected.join(",")}`, () => {
         const result = PlurnkParser.parse(source);
         assert.equal(result.unparsedTail, undefined);
         assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error] : []), []);
@@ -18,7 +18,7 @@ for (const [source, expected] of [
     });
 }
 
-test("{§turn-shape} omitted DONE does not hide a bounded malformed sibling", () => {
+test("{§turn-shape} omitted WAIT does not hide a bounded malformed sibling", () => {
     const result = PlurnkParser.parse("````READ (notes.md)````\n\n````FIND (*) [{\"pattern\": \"/broken/ trailing\"}]````");
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ"]);

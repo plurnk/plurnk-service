@@ -98,7 +98,7 @@ export default class ClientInteractions {
                     if (settlement.message !== undefined) {
                         const { body, source, envelope } = settlement.message;
                         const admitted = await this.#db.drain_enqueue_message.get<{ id: number }>({
-                            loop_id: ids.loopId, body, source, open_paths: "[]", evidence: JSON.stringify({ envelope }),
+                            loop_id: ids.loopId, body, source, open_paths: "[]", evidence: JSON.stringify({ envelope }), address: source,
                         });
                         if (admitted === undefined) throw new Error(`Interaction ${interactionId} accepted no message.`);
                     }

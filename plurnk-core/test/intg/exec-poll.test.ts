@@ -19,14 +19,15 @@ test("a polled execution <T,P> wakes a hibernating (202) loop every P minutes", 
         makeMockResponse("```sh <30,1>\nsleep 90\n```\n\n```WAIT\nhibernating; will poll\n```", 10),
         // Turn 2 only happens if something resumed the parked loop. The spawn is still running at ~60s,
         // so a stream conclusion did NOT wake it — the poll did. Abandon (499 reaps the live spawn).
-        makeMockResponse("```SEND\nwoke via poll; abandoning\n```\n```FAIL\n```", 10),
+        makeMockResponse("```SEND\nwoke via poll; abandoning\n```\n```KILL (worker://root)\n```", 10),
     ] });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "exec-poll" });
+            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "exec-poll" });
+            const { workerId } = await daemon.createConversationWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
             const t0 = Date.now();
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } }, { timeoutMs: 110_000 });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", workerId, policy: { proposals: "accept" } }, { timeoutMs: 110_000 });
             const elapsed = Date.now() - t0;
             assert.equal(finalStatus, 499, "the loop reached turn 2 and terminated — it was resumed from 202");
             // ~60s (poll) < 90s (conclusion). A non-polled 202 would hang (runLoopToTerminal would time out),
@@ -41,15 +42,16 @@ test("an execution without an explicit cadence wakes on the exponential-backoff 
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "1";
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```sh <30>\nsleep 30\n```\n\n```WAIT\nwaiting under backoff\n```", 10),
-        makeMockResponse("```SEND\nobserved the still-open stream on a backoff wake\n```\n```FAIL\n```", 10),
+        makeMockResponse("```SEND\nobserved the still-open stream on a backoff wake\n```\n```KILL (worker://root)\n```", 10),
     ] });
     try {
-        await withDaemon(mock, async (_db, _daemon, addr) => {
+        await withDaemon(mock, async (_db, daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-backoff" });
+                const workspace = await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-backoff" });
+                const { workerId } = await daemon.createConversationWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
                 const started = Date.now();
-                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", workerId, policy: { proposals: "accept" } });
                 assert.equal(finalStatus, 499);
                 assert.ok(Date.now() - started < 10_000, "the backoff wake preceded the 30-second stream conclusion");
                 assert.equal(mock.remaining, 0);
@@ -66,7 +68,7 @@ test("an explicit zero cadence stays blind while open but still wakes exactly on
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "0.1";
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```sh <10,0>\nsleep 3; echo closed\n```\n\n```WAIT\nwaiting blindly for closure\n```", 10),
-        makeMockResponse("```SEND\nobserved terminal closure\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\nobserved terminal closure\n```", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

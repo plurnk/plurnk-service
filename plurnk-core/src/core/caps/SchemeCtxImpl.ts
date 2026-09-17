@@ -2,10 +2,11 @@
 // daemon collaborators stay constructor-injected into core-owned adapters.
 
 import type {
-    SchemeAddressCtx, SchemeCtx, EntryCaps, ChannelCaps, NotifyCaps, ProjectionCaps, InteractionCaps, SubscriptionCaps, SchemeManifest, WriterTier, ResourceCaps,
+    SchemeAddressCtx, SchemeCtx, EntryCaps, ChannelCaps, NotifyCaps, ProjectionCaps, InteractionCaps, SubscriptionCaps, SchemeManifest, WriterTier, ResourceCaps, MessageCaps,
 } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import DbEntryCaps from "./DbEntryCaps.ts";
+import DbMessageCaps from "./DbMessageCaps.ts";
 import DbChannelCaps from "./DbChannelCaps.ts";
 import DbNotifyCaps from "./DbNotifyCaps.ts";
 import DbSubscriptionCaps from "./DbSubscriptionCaps.ts";
@@ -35,6 +36,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly interactions: InteractionCaps;
     readonly subscriptions: SubscriptionCaps;
     readonly resources: ResourceCaps;
+    readonly messages: MessageCaps;
     constructor(
         ctx: PlurnkSchemeContext,
         scheme: string,
@@ -51,6 +53,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.#editPrecondition = options.editPrecondition ?? null;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
+        this.messages = new DbMessageCaps(ctx, scheme);
         this.interactions = new CoreInteractionCaps(ctx);
         this.resources = ctx.resources ?? {
             capture: async (targets) => {

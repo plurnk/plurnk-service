@@ -42,7 +42,7 @@ class ProposingTest {
 }
 
 test("{§edit-execution}: each EDIT waits for its own proposal before preparing the next", async () => {
-    const dsl = "```EDIT (proposing-test://x) <1>\none\n```\n\n```EDIT (proposing-test://x) <3>\nthree\n```\n\n```SEND\ndone\n```\n```DONE\n```";
+    const dsl = "```EDIT (proposing-test://x) <1>\none\n```\n\n```EDIT (proposing-test://x) <3>\nthree\n```\n\n```SEND\ndone\n```";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const scheme = new ProposingTest();
@@ -77,7 +77,7 @@ test("{§edit-execution}: each EDIT waits for its own proposal before preparing 
 });
 
 test("loop.run persists a complete canonical policy and omission uses the complete default", async () => {
-    const response = "```SEND\ndone\n```\n```DONE\n```";
+    const response = "```SEND\ndone\n```";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(response, 0),
         makeMockResponse(response, 0),
@@ -109,10 +109,10 @@ test("loop.run persists a complete canonical policy and omission uses the comple
 });
 
 test("proposals=accept resolves through Core without a client resolver", async () => {
-    const first = "```EDIT (proposing-test://x)\ny\n```\n\n```SEND\ndone\n```\n```DONE\n```";
+    const first = "```EDIT (proposing-test://x)\ny\n```\n\n```SEND\ndone\n```";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 0),
+        makeMockResponse("```SEND\ndone\n```", 0),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -134,8 +134,8 @@ test("proposals=accept resolves through Core without a client resolver", async (
 
 test("proposals=reject settles the same admitted proposal without becoming a capability denial", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("```EDIT (proposing-test://x)\ny\n```\n\n```SEND\ndone\n```\n```DONE\n```", 50),
-        makeMockResponse("```SEND\nthe edit was declined; concluding\n```\n```DONE\n```", 50),
+        makeMockResponse("```EDIT (proposing-test://x)\ny\n```\n\n```SEND\ndone\n```", 50),
+        makeMockResponse("```SEND\nthe edit was declined; concluding\n```", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -167,7 +167,7 @@ test("proposals=reject settles the same admitted proposal without becoming a cap
 
 test("proposal notification projects the same durable policy and its derived disposition", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("```EDIT (proposing-test://x)\ny\n```\n\n```SEND\ndone\n```\n```DONE\n```", 50),
+        makeMockResponse("```EDIT (proposing-test://x)\ny\n```\n\n```SEND\ndone\n```", 50),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

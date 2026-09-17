@@ -76,12 +76,11 @@ const program = PlurnkParser.frame("NOTE", "smoke");
 assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
 assertClean("statement sequence", result);
-assertClean("turn log", PlurnkParser.parseLog(program));
 assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (known://foo)", null)));
 
 const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
     + "\\n3\\n" + program + "\\nPostscript.";
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseLog, PlurnkParser.parseClient]) {
+for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
     const parsed = parse(interstitial);
     assertClean("interstitial text", parsed);
     if (parsed.items.length !== 2 || parsed.items[0]?.statement?.body?.raw !== "Only this is a message."
@@ -117,7 +116,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    await writeFile(join(tempDir, "turn.plurnk"), "```DONE\n```\n");
+    await writeFile(join(tempDir, "turn.plurnk"), "```WAIT\n```\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };
     if (cliResult.items.some(({ kind }) => kind === "error")) throw new Error(`CLI reported parse errors: ${cliOut}`);

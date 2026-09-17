@@ -80,8 +80,8 @@ test("a child proposal traverses its controlling conversation without losing eit
                 + "```NOTE\nConfirming the write.\n```",
                 10,
             ),
-            makeMockResponse("```SEND\nChild work complete.\n```\n```DONE\n```", 10),
-            makeMockResponse("```SEND\nDelegated work confirmed.\n```\n```DONE\n```", 10),
+            makeMockResponse("```SEND\nChild work complete.\n```\n```SEND\n```", 10),
+            makeMockResponse("```SEND\nDelegated work confirmed.\n```\n```SEND\n```", 10),
         ],
     });
     const db = await openTestDatabase();

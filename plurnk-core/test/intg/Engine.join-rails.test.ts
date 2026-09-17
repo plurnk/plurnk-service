@@ -1,13 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import Dispatcher from "../../src/core/Dispatcher.ts";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import TerminalResult from "../../src/core/TerminalResult.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
 
 const response = (content: string) => ({
@@ -34,7 +33,7 @@ Await results.
             response(collect),
             response(collect),
             response(collect),
-            response("```SEND\n42\n```\n```DONE\n```"),
+            response("```SEND\n42\n```"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -92,24 +91,25 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
     assert.ok(rows.some(({ status_rx }) => status_rx === 400), "the unrelated invalid pattern survives");
 });
 
-test("{§join-blocking-collect} the daemon wakes a collecting parent on actual child completion without consuming a strike", async (t) => {
-    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
+test("{§join-blocking-collect} the daemon wakes a collecting parent on actual child completion without consuming a strike", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
         response("```WAIT\nAwait instructions.\n```"),
         response(collect),
-        response("```SEND\nChild answer: 42.\n```\n```DONE\n```"),
-        response("```SEND\nChild answer received: 42.\n```\n```DONE\n```"),
+        response("```SEND\nChild answer: 42.\n```"),
+        response("```SEND\nChild answer received: 42.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
         const parentId = await daemon.ensureModelWorker(workspaceId);
         const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
+        const held = await holdChild(db, workspaceId, childId);
         const lifecycle = new LoopLifecycle(db);
         try {
             const child = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Wait, then answer." });
             await waitForDb(() => lifecycle.status(child.loopId), (status) => status === 202);
             const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Collect the child's answer." });
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 202);
+            await lifecycle.finish(held, TerminalResult.success("The held dependency completed."));
             const resumed = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Answer now." });
             assert.equal(resumed.loopId, child.loopId);
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 200);

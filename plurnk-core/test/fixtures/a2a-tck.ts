@@ -22,7 +22,7 @@ class TckProvider extends Mock {
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
             const content = count === 0
                 ? ["```EDIT (worker:///output.txt)", "tck", "```", "```NOTE", "Send the file.", "```"].join("\n")
-                : ["```SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "```", "```DONE", "```"].join("\n");
+                : ["```SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "```", "```SEND", "```"].join("\n");
             return new Mock({ contextWindow: 1_000_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
         }
         const awaitingInput = scenario.startsWith("tck-input-required") && (count === 0
@@ -38,7 +38,7 @@ class TckProvider extends Mock {
             ].join("\n")
             : [
                 "```SEND", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "```",
-                "```DONE", "```",
+                "```SEND", "```",
             ].join("\n");
         return new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(content)] }).generate(args);
     }

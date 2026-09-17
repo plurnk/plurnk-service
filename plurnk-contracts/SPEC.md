@@ -414,7 +414,7 @@ adjacent slots and scope/metadata permutations within a selection without
 changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order.
 
-§lifecycle-slots NOTE, WAIT, DONE and FAIL accept no target or metadata. NOTE
+§lifecycle-slots NOTE and WAIT accept no target or metadata. NOTE
 accepts no scope; lifecycle scopes reach the ordinary refusal in {§send-wait-scope}.
 Their literal bodies begin below the header.
 
@@ -472,7 +472,7 @@ whose block left no metadata back bare when the bare form reads back identically
 
 | Element | Shape or role |
 |---|---|
-| Native OP | `FIND READ EDIT COPY MOVE SEND BARE WORK FORK KILL NOTE WAIT DONE FAIL` |
+| Native OP | `FIND READ EDIT COPY MOVE SEND BARE WORK FORK KILL NOTE WAIT` |
 | Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
 | Fence | Three or more backticks, matched by exact count |
 | `(path)` | Local path, URI, program or tool name; §5 |
@@ -500,18 +500,16 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
 | WAIT | none | none | explanation of the wait |
-| DONE | none | none | final response |
-| FAIL | none | none | explanation of abandonment |
 
 §operation-code-polymorphism Operation-result statuses and turn dispositions are
-distinct facts. WAIT, DONE and FAIL declare lifecycle intent;
+distinct facts. WAIT requests yielding to live work;
 SEND, NOTE and KILL carry no disposition operand.
 
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
 in ordinary log token accounting and model-driven curation; prior notes are not
-automatically hidden. NOTE-only turns continue under the ordinary repetition
-and strike rules.
+automatically hidden. A NOTE-only turn is subject to ordinary conclusion,
+repetition and strike rules.
 
 §reasoning-notes NOTE is the only operation admitted from exposed provider
 reasoning. The shared fence parser selects line-leading NOTE statements in a
@@ -537,15 +535,12 @@ shell examples name `sh` explicitly.
 The path names a program or tool and is never split. Metadata such as
 `[{"cwd": "…"}]` remains interpreted by the selected executor.
 
-§turn-disposition WAIT, DONE and FAIL declare wait, success and abandonment,
-respectively. Their literal bodies do not control scheduling. The AST has no
-independently settable lifecycle status, target or metadata. A turn admits at
-most one lifecycle declaration, deferred until its other operations settle.
-Without one it continues silently. DONE and FAIL bodies answer the open
-messages through the existing response path; SEND remains independent messaging.
-Standing alone is teaching, not an admission restriction. Existing observation,
-incoming-message, join and cancellation rules adjudicate the requested outcome
-under {§wait-obligation-matrix}. NOTE is local memory, not unobserved external work.
+§turn-disposition WAIT requests parking; its literal body does not control
+scheduling. The AST has no independently settable lifecycle status, target or
+metadata. A turn admits at most one WAIT, deferred until its other operations
+settle. End-of-program adjudication owns continuation, joining and completion
+under {§wait-obligation-matrix}; no terminal verb or synthetic receipt is required.
+SEND delivers messages and NOTE retains memory, neither declaring an outcome.
 
 §send-wait-scope Lifecycle operations take no scope; the dispatcher refuses one
 (`scope-unsupported`, 400). WAIT joins live work
@@ -662,7 +657,7 @@ Mutation semantics:
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |
-| NOTE / WAIT / DONE / FAIL | Literal memory or adjudicated lifecycle outcome                              |
+| NOTE / WAIT | Literal memory or wait explanation                              |
 
 §find-result-unit For FIND, authored target shape fixes the paginated result
 unit. An exact target with a matcher pages flat match locations; a glob or
@@ -820,7 +815,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| WAIT / DONE / FAIL     | None                                   | A scope is refused ({§send-wait-scope}) |
+| WAIT                  | None                                   | A scope is refused ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -878,28 +873,26 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. Turn dispositions
 
-Explicit lifecycle verbs retain the existing HTTP-shaped outcomes. The runtime
-adjudicates intent against actual results and live obligations:
+The runtime adjudicates the complete program against actual messages, results
+and live obligations ({§wait-obligation-matrix}):
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
-| No lifecycle verb | 102 | Continue silently, without a receipt or strike for omission |
+| Unanswered messages or unobserved results | 102 | Continue silently |
 | WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
-| DONE | 200 | Conclude once execution results permit completion |
-| FAIL | 499 | End unsuccessfully and cancel unresolved descendant scope |
+| All messages answered, live work remains | 202 | Join the held work |
+| All messages answered, results observed, no held work | 200 | Conclude without another operation or repeated response |
+| KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
 ### §waitpid-dispositions The terminal contract (waitpid)
 
-The model may supply one lifecycle declaration per turn. Without one,
-an operation-bearing turn continues silently.
-The engine verifies an explicit intention against the loop's actual
-obligations (spawned children, open streams, pending results); the grammar
-polices *shape* only. Asking
+The model may supply one WAIT per turn. The host, not the grammar, owns
+turn boundaries and adjudicates the loop's actual obligations. Asking
 the human is the native `question` executor tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
-- §send-mid-reservation WAIT, DONE and FAIL are reserved ({§turn-disposition}).
+- §send-mid-reservation WAIT is reserved ({§turn-disposition}).
   A turn admits at most one lifecycle declaration, anywhere among its operations
   ({§disposition-anywhere}); the runtime executes it last. A second
   disposition is a structural error, not a choice between competing outcomes.
@@ -913,8 +906,8 @@ disposition. The shape rules ARE structural:
 - §park-202-only WAIT joins live work: an open stream or a live
   child. With none, it continues. It takes no scope ({§send-wait-scope});
   a future message is scheduled through the schedule family.
-- §lifecycle-only-turn A WAIT-, DONE-, FAIL-, or NOTE-only turn is valid.
-  NOTE-only continuation does not imply parking.
+- §lifecycle-only-turn A WAIT-, SEND-, or NOTE-only turn is valid.
+  NOTE does not request parking or acknowledge messages.
   Ordinary repetition, strike and execution limits still apply.
 
 SEND with no `(path)` answers the open messages without ending the turn. SEND with
@@ -978,17 +971,15 @@ express. Consumers never receive ANTLR parse-tree or token types.
 operation is reported by one hard diagnostic (`no valid Plurnk operation was
 found.`), which the host may admit as an empty turn rather than reject
 (plurnk-core `§empty-turn`). An explicit disposition may sit anywhere in it
-({§disposition-anywhere}). An omitted lifecycle declaration
-means silent continuation: no synthesized statement, diagnostic, receipt,
+({§disposition-anywhere}). An omitted WAIT produces no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Unfinished blocks never receive inferred closers.
 Bounded operation errors retain valid siblings. Duplicate dispositions
 and failed document boundaries remain structural failures.
 
-`parseLog` reads consecutive saved turns separated by their dispositions and
-requires their dispositions; a saved turn is stored per turn, so a mid-turn
-disposition never needs splitting. There is no outer Markdown program wrapper;
-the executable blocks themselves are the program.
+The host records programs per turn; no operation acts as a separator between
+saved programs. There is no outer Markdown program wrapper; the executable
+blocks themselves are the program.
 
 §tier-entrypoints Each parser entry point owns one document tier:
 
@@ -996,7 +987,6 @@ the executable blocks themselves are the program.
 |--------------------------------|----------------------------------------------------------------|-----------------------|
 | `PlurnkParser.parse`           | One operation-bearing model turn; at most one lifecycle declaration, anywhere | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
-| `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including the read-shaped LOOK command        | `ClientStatement`     |
 
 Every entry point ignores outside text under {§whitespace-contract} and returns
@@ -1009,7 +999,7 @@ following supported consumer values. All other root exports are TypeScript types
 
 | Root value(s)                         | Consumer contract                                                   | Exact owner                                 |
 |---------------------------------------|---------------------------------------------------------------------|---------------------------------------------|
-| `PlurnkParser`                        | Four document-tier entry points listed above                        | {§parser-architecture}, {§tier-entrypoints} |
+| `PlurnkParser`                        | Three document-tier entry points listed above                        | {§parser-architecture}, {§tier-entrypoints} |
 | `PlurnkParseError`                    | JSON-serializable positioned parser diagnostic                      | {§parse-diagnostics}                        |
 | `parsePath`                           | Parser-equivalent target admission                                   | {§path-syntax}, {§tier-entrypoints}         |
 | `PathSyntax`                          | Target-slot spelling and exact-versus-glob classification           | {§path-parentheses}, {§path-glob}           |

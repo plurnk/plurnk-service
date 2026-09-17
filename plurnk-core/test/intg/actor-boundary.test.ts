@@ -102,9 +102,9 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
 test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("```SEND\nfirst done\n```\n```DONE\n```", 10),
-        makeMockResponse("```SEND\nwoke done\n```\n```DONE\n```", 10),
-        makeMockResponse("```SEND\nextra\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\nfirst done\n```", 10),
+        makeMockResponse("```SEND\nwoke done\n```", 10),
+        makeMockResponse("```SEND\nextra\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -146,7 +146,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -198,10 +198,10 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 const adminOps = adminRows.map(({ op }) => op);
                 assert.equal(adminOps[0], "EDIT");
                 assert.ok(adminOps.slice(0, -1).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-1), ["DONE"], "the program ends with its actual disposition and no source log row");
+                assert.deepEqual(adminOps.slice(-1), ["NOTE"], "the maintenance program records its purpose without inventing a terminal operation");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
-                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("````DONE")),
+                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("````NOTE")),
                     "maintenance retains its exact source independently of packet visibility");
 
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{

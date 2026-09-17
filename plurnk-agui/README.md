@@ -23,7 +23,7 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Daemon evidence | Client projection |
 | --- | --- |
 | NOTE | Ordinary operation row containing literal working memory. |
-| WAIT / DONE / FAIL | Lifecycle signal; delivered DONE/FAIL bodies are assistant speech. |
+| WAIT / loop conclusion | Lifecycle signals; delivered SEND replies are assistant speech. |
 | Live provider reasoning | Standard `REASONING_*` deltas, immediately. Retries have separate identities. |
 | SEND | Assistant text; already-streamed reasoning is not repeated. |
 | Other model operations | Standard tool calls and results. |

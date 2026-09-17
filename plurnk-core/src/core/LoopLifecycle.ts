@@ -110,7 +110,7 @@ export default class LoopLifecycle {
     async finish(
         loopId: number,
         result: SchemeResult,
-        options: { terminatedBy?: "cancel" | null } = {},
+        options: { terminatedBy?: "cancel" | null; requireAnswered?: boolean } = {},
     ): Promise<SchemeResult | null> {
         const exact = structuredClone(Results.assert(result));
         if (exact.problem !== undefined && exact.problem.instance === undefined) {
@@ -119,12 +119,14 @@ export default class LoopLifecycle {
         const status = LoopLifecycle.projectStatus(exact.status);
         const row = await this.#db.lifecycle_finish_loop.get<{ terminal_result: string }>({
             loop_id: loopId,
-            elapsed_ms: this.#stopExecution(loopId),
+            elapsed_ms: null,
             status,
             result: JSON.stringify(exact),
             terminated_by: options.terminatedBy ?? null,
+            require_answered: options.requireAnswered === true ? 1 : 0,
         });
         if (row === undefined) return null;
+        await this.endExecution(loopId);
         return Results.assert(JSON.parse(row.terminal_result) as SchemeResult);
     }
 

@@ -46,7 +46,7 @@ test("TurnOps: internal source preserves trailing body newlines across a section
     const statements: [EditStatement, DispositionStatement] = [
         edit,
         {
-            op: "DONE", aside: null, target: null, metadata: null,
+            op: "WAIT", aside: null, target: null, metadata: null,
             lineMarker: null, body: "Edit applied.", position: UNKNOWN_POSITION,
         },
     ];

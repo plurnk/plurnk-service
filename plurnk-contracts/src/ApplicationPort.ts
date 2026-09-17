@@ -126,6 +126,7 @@ export interface ApplicationPort {
         readonly workerId: number;
         readonly prompt: string;
         readonly source?: string;
+        readonly messageAddress?: string;
         readonly attachments?: readonly MessageResource[];
         readonly envelope?: Readonly<Record<string, unknown>>;
         readonly maxTurns?: number;

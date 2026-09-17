@@ -69,6 +69,10 @@ export default class MemorySchemeContext {
             writer: "model",
             signal: undefined,
             entries,
+            messages: {
+                async prepare() { throw new Error("Hosted messages are outside the outbound memory scheme specimen."); },
+                async reply() { throw new Error("Hosted replies are outside the outbound memory scheme specimen."); },
+            },
             resources: { async capture() { throw new Error("resource capture is outside the memory scheme specimen"); } },
             channels: {
                 append: async (pathname, channel, content) => {

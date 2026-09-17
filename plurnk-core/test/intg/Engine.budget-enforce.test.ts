@@ -14,11 +14,11 @@ import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
-import { dispositionStmt, noteStmt } from "./_dsl.ts";
+import { sendStmt, noteStmt  } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([dispositionStmt("DONE", "ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(null, "ok")]));
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 
@@ -168,7 +168,7 @@ test("an exact provider overflow remains distinct from curation admission", asyn
         const capacity = Math.floor((probe.weight + exactChars) / 2);
         assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");
 
-        const provider = exactCharAt(capacity, [response([dispositionStmt("DONE", "unreachable")])]);
+        const provider = exactCharAt(capacity, [response([sendStmt(null, "unreachable")])]);
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(result.status, 413);
         assert.equal(result.capacityHardStop, true);
@@ -223,7 +223,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         );
         const provider = new UpstreamPromptCapacityMock({
             contextWindow: 100_000,
-            responses: [response([dispositionStmt("DONE", "recovered")])],
+            responses: [response([sendStmt(null, "recovered")])],
         });
         const result = await plainEngine(db).runTurn({
             provider,
@@ -241,7 +241,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.ok(requestChars(provider.requests[0]) > UpstreamPromptCapacityMock.maxRequestChars);
         assert.ok(requestChars(provider.requests[1]) <= UpstreamPromptCapacityMock.maxRequestChars, "withholding the automatic prompt body makes the request fit");
         assert.ok(!provider.requests[1].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the withheld prompt body is absent from the changed request");
-        assert.ok(provider.requests[1].some((message) => /"path":"log:\/\/\/\d+\/\d+\/\d+\/SEND"/.test(chatMessageText(message))), "the Open Messages pointer still names the row the model can READ");
+        assert.ok(provider.requests[1].some((message) => /"path":"worker:\/\/[^/]+\/\?message=[0-9a-f]{8}"/.test(chatMessageText(message))), "the Open Messages pointer retains the immutable message source the model can READ");
 
         const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
@@ -303,7 +303,7 @@ test("a proven request-token upper bound can authorize provider admission", asyn
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const mock = Object.assign(mockAt(199_998, [response([dispositionStmt("DONE", "recovered")])], 200_000), {
+        const mock = Object.assign(mockAt(199_998, [response([sendStmt(null, "recovered")])], 200_000), {
             countPromptTokens: async () => ({
                 kind: "upper_bound" as const,
                 tokens: 1,

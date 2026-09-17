@@ -35,7 +35,7 @@ const setup = async (
 ) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
-        makeMockResponse(`\`\`\`SEND\nMCP result observed.\n\`\`\`\n\n${step("DONE")}`),
+        makeMockResponse(`\`\`\`SEND\nMCP result observed.\n\`\`\`\n\n${step("SEND")}`),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });

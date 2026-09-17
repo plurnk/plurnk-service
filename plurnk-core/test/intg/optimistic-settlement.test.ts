@@ -138,7 +138,7 @@ class ControlledWorkerProvider implements Provider {
         return response(`\`\`\`SEND
 child ${index + 1} done
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 \`\`\``, capacity, grammar);
     }
 
@@ -160,7 +160,7 @@ test("near-simultaneous child conclusions share one parent provider turn", async
             "```WORK (worker://first)\nfinish first\n\n```\n"
             + "```WORK (worker://second)\nfinish second\n\n```\n"
             + "```WAIT\nwaiting for both\n```",
-            "```SEND\nboth children landed\n```\n```DONE\n```",
+            "```SEND\nboth children landed\n```",
         ],
     });
     try {
@@ -223,7 +223,7 @@ test("a lone child conclusion resumes immediately without paying the settlement 
         childCount: 1,
         parentTurns: [
             "```WORK (worker://only)\nfinish the only job\n```\n\n```WAIT\nwaiting\n```",
-            "```SEND\nonly child landed\n```\n```DONE\n```",
+            "```SEND\nonly child landed\n```",
         ],
     });
     try {
@@ -278,7 +278,7 @@ test("stream conclusions coalesce across the same worker-local settlement window
                 + "```sh\nsleep 0.40; echo second-stream\n\n```\n"
                 + "```WAIT\nwaiting for both streams\n```",
             ),
-            makeMockResponse("```SEND\nboth streams landed\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nboth streams landed\n```"),
         ],
     });
     try {
@@ -311,7 +311,7 @@ test("a child and stream conclusion share the same settlement window", async () 
             "```WORK (worker://child)\nfinish independently\n\n```\n"
             + "```sh\nsleep 0.50; echo stream-done\n\n```\n"
             + "```WAIT\nwaiting for child and stream\n```",
-            "```SEND\nchild and stream landed\n```\n```DONE\n```",
+            "```SEND\nchild and stream landed\n```",
         ],
     });
     try {
@@ -364,7 +364,7 @@ test("the settlement deadline is bounded and does not slide on later conclusions
             + "```WORK (worker://third)\nfinish third\n\n```\n"
             + "```WAIT\nwaiting for all three\n```",
             "```WAIT\ntwo landed; still waiting\n```",
-            "```SEND\nall three landed\n```\n```DONE\n```",
+            "```SEND\nall three landed\n```",
         ],
     });
     try {

@@ -367,7 +367,7 @@ test("a read-only management Run does not duplicate its conversation's model set
                 worker_id: 20,
                 loop_id: 9,
                 origin: "model",
-                op: "SEND", status_rx: 200,
+                op: "SEND", status_rx: 200, rx: { recipients: [] },
                 coordinate: "1/1/1/SEND",
                 tx: { body: "one answer" },
                 turn_id: 1,
@@ -1672,7 +1672,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     loop_id: 9,
                     turn_id: 12,
                     coordinate: "1/12/3/SEND",
-                    op: "SEND", status_rx: 200,
+                    op: "SEND", status_rx: 200, rx: { recipients: [] },
                     origin: "model",
                     tx: { body: "Command approved." },
                 },
@@ -1761,7 +1761,7 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
     seam.readLog = async () => [
         { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
         { id: 1, coordinate: "1/1/1/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 1, tx: { body: "Inspect, repair, and verify." } },
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
         { id: 3, coordinate: "1/1/3/attempt", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "emissionAttempt" } },
     ];
     seam.runLoop = async (args) => {
@@ -1780,7 +1780,7 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
         assert.deepEqual(snapshot?.messages, [
             { id: "1/1/0/SEND", role: "user", content: "original question" },
             { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
-            { id: "reattach-1/user", role: "user", content: "continue" },
+            { id: "current-user", role: "user", content: "continue" },
         ]);
     } finally { await mod.close(); }
 });
@@ -1801,7 +1801,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         return [
             { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
             { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answered the prior question." } },
-            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         ];
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1938,7 +1938,7 @@ test("the official AG-UI client keeps the accepted current user message after au
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
-        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answer the prior question." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ];
@@ -1953,17 +1953,25 @@ test("the official AG-UI client keeps the accepted current user message after au
             threadId: "replay-client",
         });
         agent.messages = [{ id: "current-user", role: "user", content: "Current question." }];
-
+        const snapshots: Array<Array<{ id: string; content?: unknown }>> = [];
         await agent.runAgent({
             runId: "replay-run",
             forwardedProps: { plurnk: { workspace: "replay-client" } },
+        }, {
+            onMessagesSnapshotEvent: ({ event }) => { snapshots.push(event.messages); },
         });
-
+        assert.deepEqual(snapshots[0]?.filter(({ id }) => ["1/1/1/SEND", "current-user"].includes(id))
+            .map(({ id, content }) => ({ id, content })), [
+            { id: "1/1/1/SEND", content: "Prior question." },
+            { id: "current-user", content: "Current question." },
+        ], "the wire snapshot is chronological and retains the accepted message identity");
+        // The SDK's snapshot merge retains existing IDs in their old positions (#721).
+        // That display-order limitation must not be repaired by renaming accepted messages.
         assert.deepEqual(
             agent.messages.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
             [
+                { id: "current-user", content: "Current question." },
                 { id: "1/1/1/SEND", content: "Prior question." },
-                { id: "replay-run/user", content: "Current question." },
             ],
         );
     } finally {
@@ -1976,7 +1984,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ];
     seam.runLoop = async (args) => {

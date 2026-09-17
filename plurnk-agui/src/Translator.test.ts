@@ -14,12 +14,15 @@ import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 
 const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
-const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => ({
-    entry: { id: 7, worker_id: 10, loop_id: 1, op: "READ", origin: "model", status_rx: 200, tx: { target: null, body: { raw: "message" } }, coordinate: "1/1/3/READ", turn_id: 1, ...over },
-});
+const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
+    const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
+    const rx = over.op === "SEND" && tx?.target == null ? { recipients: [] } : { status: 200 };
+    return { entry: { id: 7, worker_id: 10, loop_id: 1, op: "READ", origin: "model", status_rx: 200,
+        tx: { target: null, body: { raw: "message" } }, rx, coordinate: "1/1/3/READ", turn_id: 1, ...over } };
+};
 const plan = (content: string) => content;
 
-test("{§agui-replay} only successful targetless SENDs are assistant responses in live and replay", () => {
+test("{§agui-replay} successful conversation replies are assistant responses in live and replay", () => {
     const tr = t();
     const messages = [
         entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, tx: { target: null, body: { raw: "First." } } }),
@@ -84,21 +87,32 @@ test("{§agui-row-channel} NOTE remains literal in live rows; no task inventory 
     assert.equal(ambientRow.value?.tx?.body, native);
 });
 
-test("{§agui-projection} delivered DONE and FAIL bodies are speech even when disposition is deferred", () => {
-    for (const op of ["DONE", "FAIL"]) for (const status of [102, 202, op === "DONE" ? 200 : 499]) {
+test("{§agui-projection} addressed replies project by conversation, including answers delivered by another worker", () => {
+    for (const origin of ["model", "client", "plugin", "_plurnk"] as const) for (const thread of ["th-1", "another-thread"]) {
         const native = "Verification.";
-        const record = entry({ id: 1, coordinate: `1/1/1/${op}`, op, tx: { body: native }, status_rx: status, rx: { recipients: [] } });
+        const address = `agui://anonymous/threads/${thread}/messages/user-message`;
+        const record = entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", origin,
+            source: origin === "_plurnk" ? "worker://peer" : null,
+            attrs: origin === "_plurnk" ? { kind: "reply" } : {},
+            tx: { target: { raw: address }, body: { raw: native } }, status_rx: 200, rx: { recipients: [address] } });
         const events = t().logEntry(record);
-        assert.deepEqual(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => event.delta), [native]);
+        const expected = thread === "th-1" ? [native] : [];
+        assert.deepEqual(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => event.delta), expected);
         const row = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
-        assert.equal(row?.value.tx.body, native);
+        assert.equal(row?.value.tx.body.raw, native);
         const [snapshot] = t().replay([record.entry]);
         assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
-        if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages, [{
-            id: `1/1/1/${op}`, role: "assistant", content: native,
-        }]);
-        assert.deepEqual(record.entry.tx, { body: native });
+        if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages.map((message) => message.content), expected);
     }
+});
+
+test("{§agui-replay} an arrival retains the AG-UI message id across reconnects", () => {
+    const source = "agui://anonymous/threads/th-1/messages/user%20one";
+    const record = entry({ op: "SEND", origin: "_plurnk", source, attrs: { kind: "message" },
+        tx: { body: { raw: "Question." } }, rx: { status: 200 }, coordinate: "1/1/1/SEND" });
+    const [snapshot] = t().replay([record.entry]);
+    assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
+    if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages, [{ id: "user one", role: "user", name: source, content: "Question." }]);
 });
 
 test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
@@ -337,7 +351,7 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
-        { id: 8, op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
+        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
     ]);
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
@@ -476,7 +490,7 @@ test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "WAIT", origin: "model", turn_id: 1, tx: JSON.stringify({ body: plan("mine") }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "CUSTOM" && e.name === "plurnk.send"), "the thread's own lifecycle signal projects");
-    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
+    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's conversation");
@@ -496,10 +510,10 @@ test("the newest-first workspace log replays user prompts, WAIT and SEND chronol
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
-        { id: 5, op: "SEND", status_rx: 200, origin: "model", coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
+        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 4, op: "WAIT", origin: "model", coordinate: "1/2/1/WAIT", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
         { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "emissionAttempt" } },
-        { id: 2, op: "SEND", status_rx: 200, origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
+        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { recipients: [] }, coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 1, op: "WAIT", origin: "model", coordinate: "1/1/1/WAIT", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
         { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, coordinate: "1/1/0/SEND", tx: { body: { raw: "What is the answer?" } } },
     ], { id: "current-user", role: "user", content: "Continue." });

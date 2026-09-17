@@ -42,7 +42,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
             assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
         } finally {
             clearTimeout(timer);
-            send("</think>```SEND\nDone.\n```\n```DONE\n```", "stop");
+            send("</think>```SEND\nDone.\n```", "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -119,7 +119,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`SEND
 ONLY_${name}
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 \`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
             });
@@ -135,7 +135,7 @@ ONLY_${name}
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
             assert.equal(response.assistant.content, `\`\`\`SEND\nONLY_${name}
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 \`\`\``);
             for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");

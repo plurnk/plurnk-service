@@ -18,7 +18,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const source = "```SEND\ndone\n```\n```DONE\n```";
+    const source = "```SEND\ndone\n```";
     try {
         const workspaceId = await insertWorkspace(db, "unknown-source");
         const workerId = await insertWorker(db, workspaceId);
@@ -158,7 +158,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const inferenceSource = "```SEND\ndone\n```\n```DONE\n```";
+    const inferenceSource = "```SEND\ndone\n```";
     let initializationSource = "";
     try {
         const workspaceId = await insertWorkspace(db, "turn-artifacts");

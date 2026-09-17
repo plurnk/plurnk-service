@@ -39,6 +39,7 @@ export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as Results } from "./Results.ts";
 export { default as MetadataOptions } from "./MetadataOptions.ts";
 export { default as MessageAttachments } from "./MessageAttachments.ts";
+export { default as MessageScheme } from "./MessageScheme.ts";
 export type { MetadataOptionsParsed } from "./MetadataOptions.ts";
 export { default as PacketSections } from "./PacketSections.ts";
 export { InvalidOperationResultError } from "./Results.ts";
@@ -103,6 +104,7 @@ export type {
     SchemeAddressCtx,
     SchemeCtx,
     ResourceCaps,
+    MessageCaps,
     SubscriptionCaps,
     SubscriptionHandle,
 } from "./ctx.ts";

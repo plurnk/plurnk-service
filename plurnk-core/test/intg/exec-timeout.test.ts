@@ -13,7 +13,7 @@ test("execution <T> kills the spawn after T minutes and closes the stream 504", 
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
         makeMockResponse("```sh <1>\nsleep 120\n```\n\n```WAIT\nwaiting for the reap\n```", 10),
-        makeMockResponse("```SEND\nthe spawn timed out; done\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\nthe spawn timed out; done\n```", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

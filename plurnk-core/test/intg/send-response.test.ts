@@ -8,19 +8,17 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
-const DONE = "```DONE\n```";
-
-// The 2026-09-11 dogfood, verbatim in shape: every operation on the line after its fence.
+// Every operation is on the line after its fence.
 const MISFENCED = [
     "````\nsh <!-- brand presence -->\nprintf plurnk\n````",
     "````\nREAD (https://example.invalid/) <!-- retry; 530 was marked retryable after 120s -->\n````",
-    "````\nDONE\n[{\"content\": \"Research positioning\", \"status\": \"in_progress\"}]\n````",
+    "````\nWAIT\nResearch positioning.\n````",
 ].join("\n\n");
 
 test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
-        makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
+        makeMockResponse("```SEND\nthe answer\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -31,7 +29,7 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["SEND", "DONE"], "only the corrected turn produced operations");
+            assert.deepEqual(model.map(({ op }) => op), ["SEND"], "only the corrected turn produced operations");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");
@@ -47,7 +45,6 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
 test("{§send-looks-like-operation}: prose that merely starts with an operation word, and an unregistered name, are ordinary replies", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
-        makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -58,14 +55,14 @@ test("{§send-looks-like-operation}: prose that merely starts with an operation 
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.origin === "model" && r.op === "SEND");
-            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200, 200], "a first line that does not parse alone as a known operation's heading is a reply");
+            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200], "a first line that does not parse alone as a known operation's heading is a reply");
         } finally { ws.close(); }
     });
 });
 
 test("{§send-response-receipt}: a delivered reply names the open messages it answered", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse(`\`\`\`SEND\nthe answer\n\`\`\`\n${DONE}`, 10),
+        makeMockResponse("```SEND\nthe answer\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -82,7 +79,8 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
             assert.equal(arrivals.length, 1, "one message in the loop");
             assert.equal(recipients.length, 1, "the receipt names the one open message");
-            assert.match(recipients[0]!, /^log:\/\/\/1\/\d+\/1\/SEND$/u, "the receipt names the arrival row's log coordinate, as the packet listed it");
+            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: recipients[0]! });
+            assert.equal(source?.body, "answer me", "the receipt names the durable message source");
         } finally { ws.close(); }
     });
 });

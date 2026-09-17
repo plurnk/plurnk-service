@@ -13,7 +13,7 @@ for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: a
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-budget-${mode}`);
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Inspect the reasoning across successive turns.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId, messages: [] };
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "overflow" ? 100 : 2)}`).join("\n");

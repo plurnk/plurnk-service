@@ -8,7 +8,7 @@
 import {
     UNKNOWN_POSITION,
     type PlurnkStatement,
-    type DispositionStatement,
+    type NoteStatement,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
@@ -45,14 +45,14 @@ export default class DispatchAsPlurnk {
         const program: PlurnkStatement[] = [
             ...statements,
             {
-                op: "DONE",
+                op: "NOTE",
                 aside: null,
                 target: null,
                 metadata: null,
                 lineMarker: null,
                 body: summary,
                 position: UNKNOWN_POSITION,
-            } satisfies DispositionStatement,
+            } satisfies NoteStatement,
         ];
         const source = TurnOps.renderInternal(program);
         const admitted = TurnOps.parseInternal(source);

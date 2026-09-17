@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS loop_messages (
     id           INTEGER NOT NULL PRIMARY KEY,
     loop_id      INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
     ordinal      INTEGER NOT NULL CHECK (ordinal >= 1),
+    message_key  TEXT NOT NULL DEFAULT (lower(hex(randomblob(4)))),
+    address      TEXT CHECK (address IS NULL OR length(address) > 0),
     -- {§message-causal-source}: NULL means the owning worker itself.
     source       TEXT CHECK (source IS NULL OR length(source) > 0),
     body         TEXT NOT NULL CHECK (length(body) > 0),
@@ -119,6 +121,44 @@ CREATE TABLE IF NOT EXISTS loop_messages (
     UNIQUE (loop_id, ordinal)
 );
 CREATE INDEX IF NOT EXISTS loop_messages_unpublished ON loop_messages (loop_id) WHERE log_entry_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS loop_messages_key ON loop_messages (message_key);
+CREATE INDEX IF NOT EXISTS loop_messages_address ON loop_messages (address) WHERE address IS NOT NULL;
+
+-- {§message-source-scheme}: an address identifies exactly one accepted source in its workspace.
+CREATE TRIGGER IF NOT EXISTS loop_messages_address_unique
+BEFORE INSERT ON loop_messages
+WHEN NEW.address IS NOT NULL AND EXISTS (
+    SELECT 1 FROM loop_messages m
+    JOIN loops l ON l.id = m.loop_id
+    JOIN workers w ON w.id = l.worker_id
+    WHERE m.address = NEW.address AND w.workspace_id = (
+        SELECT w2.workspace_id FROM loops l2 JOIN workers w2 ON w2.id = l2.worker_id
+        WHERE l2.id = NEW.loop_id
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'message address already accepted in this workspace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS loop_messages_immutable_source
+BEFORE UPDATE OF message_key, address, source, body, evidence, open_paths ON loop_messages
+BEGIN
+    SELECT RAISE(ABORT, 'accepted message source is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS loop_messages_delete_with_history_only
+BEFORE DELETE ON loop_messages
+WHEN EXISTS (SELECT 1 FROM loops WHERE id = OLD.loop_id)
+BEGIN
+    SELECT RAISE(ABORT, 'accepted messages can only be removed with their containing history');
+END;
+
+CREATE VIEW IF NOT EXISTS message_sources AS
+SELECT m.*, w.workspace_id, w.id AS worker_id,
+       COALESCE(m.address, 'worker://' || w.name || '/?message=' || m.message_key) AS path
+FROM loop_messages m
+JOIN loops l ON l.id = m.loop_id
+JOIN workers w ON w.id = l.worker_id;
 
 -- turns
 -- finish_reason / model: accepted provider-call metadata from the provider

@@ -100,7 +100,7 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
     || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
     throw new Error("PathSyntax target escape failed");
 }
-if (!["NOTE", "WAIT", "DONE", "FAIL"].every((op) => PLURNK_OPS.includes(op)) || PLURNK_OPS.includes("TASK") || PLURNK_OPS.includes("PLAN")) throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
+if (!["NOTE", "WAIT", "SEND"].every((op) => PLURNK_OPS.includes(op)) || ["TASK", "PLAN", "DONE", "FAIL"].some((op) => PLURNK_OPS.includes(op))) throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
 if (!WORKER_NAME.test("worker-1")) throw new Error("WORKER_NAME rejects a legal worker name");
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
     throw new Error("unknown position sentinel is not intact");

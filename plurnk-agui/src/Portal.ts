@@ -13,7 +13,6 @@ import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.
 import type {
     ApplicationPort,
     ApplicationWorkerProjection,
-    LoopPolicy,
 } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type UserMessage } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
@@ -485,7 +484,7 @@ export default class Portal {
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
-    async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; source?: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<{ loopId: number } | null> {
+    async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
         const bound = thread as Thread;
         if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
         const ack = await this.#seam.runLoop(args);

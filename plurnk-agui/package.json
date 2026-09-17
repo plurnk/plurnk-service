@@ -66,6 +66,7 @@
         "@ag-ui/core": "^0.0.59",
         "@opentelemetry/api": "^1.9.1",
         "@plurnk/plurnk-contracts": "1.18.0",
-        "@plurnk/plurnk-parser": "1.18.0"
+        "@plurnk/plurnk-parser": "1.18.0",
+        "@plurnk/plurnk-schemes": "1.18.0"
     }
 }

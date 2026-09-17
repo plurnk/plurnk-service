@@ -37,7 +37,7 @@ test("{§engine-cycle-evidence} source decoration does not disguise a cycle", ()
 });
 
 test("{§engine-cycle-evidence} note content and lifecycle changes distinguish authored activity", () => {
-    assert.notEqual(fingerprint(PlurnkParser.frame("WAIT", "Inspect.")), fingerprint(PlurnkParser.frame("DONE", "Inspect.")));
+    assert.notEqual(fingerprint(PlurnkParser.frame("WAIT", "Inspect.")), fingerprint(PlurnkParser.frame("NOTE", "Inspect.")));
     assert.notEqual(fingerprint(PlurnkParser.frame("NOTE", "Inspect.")), fingerprint(PlurnkParser.frame("NOTE", "Implement.")));
 });
 

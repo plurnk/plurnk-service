@@ -11,7 +11,7 @@ import { connect, withDaemon, rpcCall, rpcProblem, makeMockResponse, runLoopToTe
 // Run a loop against a provider whose generate() is shadowed, with the workspace created carrying
 // settings.client, and report whether any `client` field reached the provider call.
 const captureClient = async (clientId: string | null): Promise<string | undefined> => {
-    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 5)] });
+    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```", 5)] });
     let captured: string | undefined;
     let seen = false;
     const real = mock.generate.bind(mock);

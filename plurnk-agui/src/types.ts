@@ -36,6 +36,8 @@ export interface LogEntryNotification {
         turn_id?: number;
         attrs?: unknown;
         tags?: string[];
+        source?: string | null;
+        inherited_history?: number;
         reasoning?: string;
     };
 }

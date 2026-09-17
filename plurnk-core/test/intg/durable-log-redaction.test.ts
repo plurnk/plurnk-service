@@ -18,7 +18,7 @@ import Digest from "../../src/digest/Digest.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
-import { dispositionStmt } from "./_dsl.ts";
+import { sendStmt  } from "./_dsl.ts";
 
 const REDACTED = "__redacted__";
 const STRUCTURAL_SECRETS = [
@@ -151,7 +151,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }],
         });
         const nextTurn = await engine.runTurn({
             provider,

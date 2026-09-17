@@ -49,13 +49,13 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
                 "```",
             ].join("\n")),
             makeMockResponse("```WAIT\nWaiting for the remote A2A Task.\n```"),
-            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```"),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```"),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();
@@ -182,18 +182,18 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         responses: [
             delegate("mangoes and pineapples"),
             makeMockResponse("```WAIT\nWaiting for the remote A2A Task.\n```"),
-            makeMockResponse("```SEND\nFirst delegation done.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nFirst delegation done.\n```"),
             delegate("plums and cherries"),
             makeMockResponse("```WAIT\nWaiting for the second remote A2A Task.\n```"),
-            makeMockResponse("```SEND\nSecond delegation done.\n```\n```DONE\n```"),
-            makeMockResponse("```SEND\nBystander observed nothing remote.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nSecond delegation done.\n```"),
+            makeMockResponse("```SEND\nBystander observed nothing remote.\n```"),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```\n```DONE\n```"),
-            makeMockResponse("```SEND\nPlums and cherries are both drupes.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nMangoes are drupes; pineapples are aggregate fruits.\n```"),
+            makeMockResponse("```SEND\nPlums and cherries are both drupes.\n```"),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();

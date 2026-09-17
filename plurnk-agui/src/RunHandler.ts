@@ -3,6 +3,7 @@ import { Problems } from "@plurnk/plurnk-contracts";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import Portal from "./Portal.ts";
 import Translator from "./Translator.ts";
+import MessageAddress from "./MessageAddress.ts";
 import { stateDelta, stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
@@ -259,14 +260,14 @@ export default class RunHandler {
         if (reattached) {
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
             if (history !== null && !RunHandler.#isOriented(input, history)) {
-                const replayUser = currentUser === null
-                    ? undefined
-                    : { ...currentUser, id: `${input.runId}/user` };
+                const replayUser = currentUser ?? undefined;
                 emit(this.#portal().replay(boundRun, history, replayUser));
             }
         }
         const started = await this.#portal().run(boundRun, {
             workspaceId, workerId, prompt, source: RunHandler.#source(input, currentUser),
+            messageAddress: RunHandler.#source(input, currentUser),
+            envelope: { threadId: input.threadId, runId: input.runId, message: currentUser },
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),
@@ -329,14 +330,12 @@ export default class RunHandler {
     // ({§message-causal-source}), named under the authenticated principal the way the A2A adapter
     // names its messages; `anonymous` until the authorization layer names principals.
     static #source(input: RunAgentInput, message: UserMessage): string {
-        return `agui://anonymous/threads/${encodeURIComponent(input.threadId)}`
-            + `/runs/${encodeURIComponent(input.runId)}`
-            + `/messages/${encodeURIComponent(message.id)}`;
+        return MessageAddress.render(input.threadId, message.id);
     }
 
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {
         const durableMessageIds = new Set(history.flatMap((entry) =>
-            Translator.isResponse(entry)
+            Translator.isResponse(entry, input.threadId)
                     ? [String(entry.coordinate ?? entry.id)]
                 : []));
         return input.messages.some(({ id }) => durableMessageIds.has(id));

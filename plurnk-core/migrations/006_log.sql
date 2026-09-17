@@ -116,26 +116,58 @@ CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (d
 -- executed evidence so curation cannot retract it. This projection is also used inside
 -- atomic cancellation; no second response projection exists.
 CREATE VIEW IF NOT EXISTS log_responses AS
-SELECT le.id, le.loop_id, le.turn_id, le.worker_id, le.sequence, le.source, le.origin, le.rx,
-       COALESCE(CASE WHEN le.op = 'SEND' THEN json_extract(le.tx, '$.body.raw') ELSE json_extract(le.tx, '$.body') END, '') AS content
+SELECT le.id, le.loop_id, le.turn_id, le.worker_id, le.sequence, le.source, le.origin,
+       CASE WHEN json_valid(le.rx) THEN le.rx END AS rx,
+       CASE WHEN json_valid(le.tx) THEN COALESCE(json_extract(le.tx, '$.body.raw'), '') END AS content
 FROM log_entries le
     WHERE le.state = 'resolved'
-      AND ((le.op = 'SEND' AND le.status_rx BETWEEN 200 AND 299)
-        OR (le.op IN ('DONE', 'FAIL') AND json_type(le.rx, '$.recipients') = 'array'))
+      AND le.op = 'SEND' AND le.status_rx BETWEEN 200 AND 299
       AND le.source IS NULL AND le.inherited_history = 0
       AND json_valid(le.tx)
-      AND le.origin != '_plurnk'
-      AND json_type(le.tx, '$.target') = 'null'
+      AND json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.recipients') = 'array'
       AND typeof(content) = 'text';
+
+CREATE VIEW IF NOT EXISTS message_responses AS
+SELECT DISTINCT r.id, m.loop_id, m.worker_id, r.source, r.content, r.rx
+FROM log_responses r
+JOIN workers producer ON producer.id = r.worker_id
+JOIN json_each(r.rx, '$.recipients') recipient
+JOIN message_sources m ON m.path = recipient.value AND m.workspace_id = producer.workspace_id
+UNION ALL
+SELECT r.id, r.loop_id, r.worker_id, r.source, r.content, r.rx
+FROM log_responses r WHERE json_array_length(r.rx, '$.recipients') = 0;
 
 CREATE VIEW IF NOT EXISTS loop_responses AS
 SELECT loop_id, content FROM (
-    SELECT r.loop_id, r.content,
-        ROW_NUMBER() OVER (PARTITION BY r.loop_id ORDER BY t.sequence DESC, r.sequence DESC) AS recency
-    FROM log_responses r JOIN turns t ON t.id = r.turn_id
-    WHERE r.origin = 'model' AND length(r.content) > 0
-)
-WHERE recency = 1;
+    SELECT loop_id, content,
+        ROW_NUMBER() OVER (PARTITION BY loop_id ORDER BY id DESC) AS recency
+    FROM message_responses WHERE length(content) > 0
+) WHERE recency = 1;
+
+CREATE VIEW IF NOT EXISTS unanswered_messages AS
+SELECT m.* FROM message_sources m
+WHERE NOT EXISTS (
+    SELECT 1 FROM log_responses r
+    JOIN workers w ON w.id = r.worker_id, json_each(r.rx, '$.recipients') recipient
+    WHERE w.workspace_id = m.workspace_id AND recipient.value = m.path
+);
+
+-- {§message-reply-delivery}: notify the sender and the assigned conversation.
+-- UNION prevents duplicate delivery when both roles belong to the same worker.
+CREATE VIEW IF NOT EXISTS message_reply_deliveries AS
+SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
+       r.worker_id AS producer_worker_id, m.worker_id AS recipient_worker_id
+FROM log_responses r
+JOIN workers producer ON producer.id = r.worker_id
+JOIN json_each(r.rx, '$.recipients') recipient
+JOIN message_sources m ON m.path = recipient.value AND m.workspace_id = producer.workspace_id
+UNION
+SELECT r.id, r.loop_id, m.workspace_id, r.worker_id, sender.id
+FROM log_responses r
+JOIN workers producer ON producer.id = r.worker_id
+JOIN json_each(r.rx, '$.recipients') recipient
+JOIN message_sources m ON m.path = recipient.value AND m.workspace_id = producer.workspace_id
+JOIN workers sender ON sender.workspace_id = m.workspace_id AND m.source = 'worker://' || sender.name;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
     ON log_entries (model_call_id)
@@ -522,8 +554,12 @@ FROM (
            -- private to the worker it serves and never crosses to the parent.
            CASE
                WHEN t.producer = '_plurnk' AND t.kind IN ('operation', 'initialization', 'maintenance') THEN NULL
+               WHEN EXISTS (
+                   SELECT 1 FROM message_reply_deliveries d
+                   WHERE d.source_record_id = le.id AND d.recipient_worker_id = w.parent_worker_id
+               ) THEN NULL
                ELSE w.parent_worker_id
-           END AS target_parent_worker_id,
+           END AS recipient_worker_id,
            CASE
                WHEN le.state = 'resolved'
                 AND NOT (t.producer = '_plurnk' AND t.kind = 'maintenance')
@@ -579,8 +615,8 @@ FROM (
       AND le.op IS NOT NULL
       AND le.state != 'proposed'
       AND NOT (
-          le.op IN ('NEXT', 'WAIT', 'DONE', 'FAIL')
+          le.op = 'WAIT'
           AND l.status IN (200, 413, 429, 499, 500, 504, 508)
       )
 ) candidate
-WHERE target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1;
+WHERE recipient_worker_id IS NOT NULL OR workspace_broadcast = 1;

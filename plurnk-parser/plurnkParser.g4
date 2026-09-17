@@ -3,20 +3,9 @@ parser grammar plurnkParser;
 options { tokenVocab = plurnkLexer; }
 
 // One model turn: at least one operation; outside text is hidden by the lexer.
-// Model admission continues silently without a lifecycle declaration. Concatenated saved programs
-// require an explicit disposition per turn. {§turn-shape}
+// The host owns turn boundaries and conclusion; WAIT is the optional park request. {§turn-shape}
 document
     : modelTurn EOF
-    ;
-
-// Each disposition ends one saved turn.
-log
-    : turn+ EOF
-    ;
-
-// {§turn-shape} — a saved turn's operations followed by its disposition (parseLog).
-turn
-    : midStatement* dispositionStatement
     ;
 
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
@@ -80,7 +69,7 @@ copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
 dispositionStatement
-    : (OPEN_WAIT | OPEN_DONE | OPEN_FAIL) lineMarker? opAside? statementEnd
+    : OPEN_WAIT lineMarker? opAside? statementEnd
     ;
 noteStatement : OPEN_NOTE opAside? statementEnd ;
 sendStatement : OPEN_SEND (resourceSelection | metadata+)? opAside? statementEnd ;

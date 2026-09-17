@@ -6,11 +6,35 @@
 DROP TRIGGER IF EXISTS ambient_child_wake_revision;
 CREATE TRIGGER ambient_child_wake_revision
 AFTER INSERT ON ambient_events
-WHEN NEW.kind = 'loop_termination'
+WHEN NEW.kind IN ('loop_termination', 'reply')
 BEGIN
     UPDATE workers SET wake_revision = wake_revision + 1
-    WHERE id = NEW.target_parent_worker_id;
+    WHERE id = NEW.recipient_worker_id;
 END;
+
+-- INIT: log_entries_deliver_replies
+-- {§message-reply-delivery}: the reply and its addressed occurrence commit together.
+DROP TRIGGER IF EXISTS log_entries_deliver_replies;
+CREATE TRIGGER log_entries_deliver_replies
+AFTER INSERT ON log_entries
+WHEN NEW.op = 'SEND' AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
+  AND NEW.source IS NULL AND NEW.inherited_history = 0
+  AND json_type(CASE WHEN json_valid(NEW.rx) THEN NEW.rx END, '$.recipients') = 'array'
+BEGIN
+    INSERT INTO ambient_events (
+        workspace_id, producer_worker_id, recipient_worker_id,
+        kind, source_record_id, source, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, state, attrs
+    )
+    SELECT d.workspace_id, NEW.worker_id, d.recipient_worker_id,
+        'reply', NEW.id, NULL, 'SEND', NEW.tx, NEW.mimetype_tx, NEW.rx, NEW.mimetype_rx,
+        NEW.status_rx, 'resolved', '{"kind":"reply"}'
+    FROM message_reply_deliveries d
+    WHERE d.source_record_id = NEW.id AND d.recipient_worker_id != NEW.worker_id;
+END;
+
+-- PREP: message_reply_recipients
+SELECT recipient_worker_id AS worker_id FROM ambient_events
+WHERE kind = 'reply' AND source_record_id = $log_entry_id;
 
 -- INIT: workers_capture_ambient_baseline
 -- A worker begins after the history that predates its existence. This trigger
@@ -41,16 +65,22 @@ AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, target_parent_worker_id,
+        workspace_id, producer_worker_id, recipient_worker_id,
         workspace_broadcast, kind, source_record_id, source,
         op, scheme, pathname,
-        tx, mimetype_tx, rx, mimetype_rx, status_rx, state, terminated_by
+        tx, mimetype_tx, rx, mimetype_rx, status_rx, state, terminated_by, attrs
     )
     SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
            0, 'loop_termination', NEW.id, NULL,
            'SEND', NULL, NULL,
            '', 'text/plain', NEW.terminal_result, 'application/json',
-           json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by
+           json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by,
+           CASE WHEN EXISTS (
+               SELECT 1 FROM message_reply_deliveries d
+               JOIN log_responses r ON r.id = d.source_record_id
+               WHERE d.loop_id = NEW.id AND d.recipient_worker_id = w.parent_worker_id
+                 AND r.content = json_extract(NEW.terminal_result, '$.content')
+           ) THEN '{"replyDelivered":true}' ELSE '{}' END
     FROM workers w
     WHERE w.id = NEW.worker_id
       AND w.parent_worker_id IS NOT NULL
@@ -77,14 +107,14 @@ AFTER INSERT ON log_entries
 WHEN NEW.state != 'proposed'
 BEGIN
     INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, target_parent_worker_id,
+        workspace_id, producer_worker_id, recipient_worker_id,
         workspace_broadcast, kind, source_record_id, at, source,
         op, signal,
         scheme, username, password, hostname, port, pathname, query, fragment,
         line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
         state, outcome, attrs
     )
-    SELECT workspace_id, producer_worker_id, target_parent_worker_id,
+    SELECT workspace_id, producer_worker_id, recipient_worker_id,
            workspace_broadcast, 'activity', source_record_id, at, source,
            op, signal,
            scheme, username, password, hostname, port, pathname, query, fragment,
@@ -117,14 +147,14 @@ AFTER UPDATE OF state, status_rx, rx, outcome ON log_entries
 WHEN OLD.state = 'proposed' AND NEW.state != 'proposed'
 BEGIN
     INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, target_parent_worker_id,
+        workspace_id, producer_worker_id, recipient_worker_id,
         workspace_broadcast, kind, source_record_id, at, source,
         op, signal,
         scheme, username, password, hostname, port, pathname, query, fragment,
         line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
         state, outcome, attrs
     )
-    SELECT workspace_id, producer_worker_id, target_parent_worker_id,
+    SELECT workspace_id, producer_worker_id, recipient_worker_id,
            workspace_broadcast, 'activity', source_record_id, at, source,
            op, signal,
            scheme, username, password, hostname, port, pathname, query, fragment,
@@ -188,11 +218,11 @@ LEFT JOIN ambient_events ae
  AND ae.id <= o.boundary
  AND ae.producer_worker_id != $worker_id
  AND (
-     ae.target_parent_worker_id = $worker_id
+     ae.recipient_worker_id = $worker_id
      OR ae.workspace_broadcast = 1
      OR (
          o.fork_event_boundary IS NOT NULL
-         AND ae.target_parent_worker_id = o.parent_worker_id
+         AND ae.recipient_worker_id = o.parent_worker_id
          AND ae.id <= o.fork_event_boundary
      )
  )

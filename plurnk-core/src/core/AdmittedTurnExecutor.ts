@@ -111,8 +111,7 @@ export default class AdmittedTurnExecutor {
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
             return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintTurn([]), emptyTurn: true };
         }
-        const dispositionSignal = finalOp === undefined ? TURN_STATUS_IMPLICIT_CONTINUE : TurnDisposition.status(finalOp);
-        let turnStatus: number = dispositionSignal;
+        let wait = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
         const admitted = statements.filter((statement) => statement === finalOp
@@ -299,8 +298,7 @@ export default class AdmittedTurnExecutor {
                 });
             }
             if (scheduledStatement === finalOp) {
-                turnStatus = result.status >= 400 && result.status !== 499
-                    ? TURN_STATUS_IMPLICIT_CONTINUE : result.status;
+                wait = result.status < 400;
             }
         }
         if (finalOp === undefined) await settleTurn();
@@ -331,6 +329,7 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
+        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait);
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

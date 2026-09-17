@@ -17,9 +17,8 @@ const response = (content: string, reasoning: string | null = null) => ({
 for (const [name, first, detail] of [
     ["note-only continuation", frame("NOTE", "Consider the next step."), null],
     ["empty wait", frame("WAIT", ""), "Nothing is in flight. Continuing."],
-    ["message-only continuation", frame("SEND", "First message."), null],
     ["empty note", frame("NOTE", ""), null],
-    ["scoped wait", frame("WAIT <60>", ""), "WAIT takes no scope. WAIT joins live work; to wake later with nothing in flight, add a rule with the schedule family."],
+    ["scoped wait", frame("WAIT <60>", ""), "WAIT takes no scope; scheduled delivery uses the schedule family."],
 ] as const) {
     test(`{§wait-obligation-matrix} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();
@@ -27,7 +26,7 @@ for (const [name, first, detail] of [
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Answer.");
-        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("DONE", "Answer."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("SEND", "Answer."))] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
@@ -43,7 +42,8 @@ for (const [name, first, detail] of [
             }).length, 1, "one durable correction, not duplicated grammar and runtime errors");
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }
-        assert.equal(rows.filter(({ op }) => op === "DONE").length, 1, "no disposition is invented for initialization or omission");
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "SEND").length, 1);
+        assert.ok(rows.every(({ op }) => !["DONE", "FAIL"].includes(op)), "no terminal operation is invented");
     });
 }
 
@@ -67,25 +67,26 @@ test("{§join-blocking-collect} a not-ready READ continues until an explicit WAI
     assert.equal(await new LoopLifecycle(db).status(loopId), 202);
 });
 
-for (const [op, status] of [["DONE", 200], ["FAIL", 499]] as const) {
-    test(`{§loop-response-messages} ${op} keeps the last delivered message despite its curation`, async (t) => {
+for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
+    test(`{§loop-response-messages} ${cancel ? "cancellation" : "completion"} keeps the last delivered message despite its curation`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "response-evidence");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1, "Answer, then tidy up.");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(frame("SEND", "The answer.")),
-            response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${frame(op, "")}`),
+            response(`${frame("FIND (worker:///*)", "")}\n${frame("SEND", "The answer.")}`),
+            response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${cancel ? frame("KILL (worker://alice)", "") : frame("NOTE", "Result observed.")}`),
         ] });
-        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
+        const lifecycle = new LoopLifecycle(db);
+        const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
         assert.equal(result.result.status, status);
         assert.equal(result.result.content, "The answer.");
         assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "The answer.");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
         assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200));
         assert.equal(provider.received.length, 2, "final housekeeping requires no extra inference");
-        if (op === "FAIL") assert.equal(result.result.problem?.detail, "The model abandoned the work.");
+        if (cancel) assert.match(result.result.problem?.detail ?? "", /killed via worker/);
         else assert.equal(result.result.problem, undefined);
     });
 }
@@ -97,8 +98,7 @@ test("{§loop-response-messages} a terminal response supersedes earlier delivere
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "What is the codename?");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("SEND", "The codename is Bumblebee.")),
-        response(frame("DONE", "The codename is phoenix.")),
+        response(`${frame("SEND", "The codename is Bumblebee.")}\n${frame("SEND", "The codename is phoenix.")}`),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -116,17 +116,16 @@ test("{§completion-defers-to-results} an observed cleanup failure does not inva
     const loopId = await insertLoop(db, workerId, 1, "Deliver the project brief.");
     const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("SEND", brief), "The requested project brief is ready."),
-        response(`${frame("KILL (reasoning:///1/2) <1,-1>", "")}\n${frame("DONE", "")}`),
-        response(frame("DONE", "")),
+        response(`${frame("SEND", brief)}\n${frame("KILL (reasoning:///1/2) <1,-1>", "")}`, "The requested project brief is ready."),
+        response(frame("NOTE", "The read-only source cannot be removed; the brief is unchanged.")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
     const denied = rows.find(({ op }) => op === "KILL");
     assert.equal(denied?.status_rx, 403);
     assert.equal(JSON.parse(denied!.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
-    assert.equal(rows.find(({ op, rx }) => op === "DONE" && /failed in the same turn/.test(rx))?.status_rx, 102);
-    assert.equal(provider.received.length, 3);
+    assert.ok(JSON.stringify(provider.received[1]).includes("writer-forbidden"), "the failed cleanup reaches a later packet");
+    assert.equal(provider.received.length, 2);
     assert.equal(result.result.status, 200);
     assert.equal(result.result.problem, undefined);
     assert.equal(result.result.content, brief);
@@ -153,18 +152,18 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     assert.equal(own.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
 });
 
-for (const [op, parentStatus, childStatus] of [["DONE", 202, 102], ["FAIL", 499, 499]] as const) {
-    test(`{§completion-joins-live-work} ${op} ${op === "DONE" ? "joins" : "cancels"} a live child`, async (t) => {
+for (const [cancel, parentStatus, childStatus] of [[false, 202, 102], [true, 499, 499]] as const) {
+    test(`{§completion-joins-live-work} ${cancel ? "scope cancellation cancels" : "answered work joins"} a live child`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "live-child");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1, "Wait for the delegated result.");
         const childId = await insertWorker(db, workspaceId, workerId, "child");
         const childLoopId = await insertLoop(db, childId, 1, "Finish delegated work.");
         const lifecycle = new LoopLifecycle(db);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelDescendants: async () => { await lifecycle.cancelTree(workerId, "parent failed", false); } });
-        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(op, ""))] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (worker://alice)" : "SEND", ""))] });
         const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
         assert.equal(result.status, parentStatus);
         assert.equal(await lifecycle.status(loopId), parentStatus);
@@ -172,13 +171,13 @@ for (const [op, parentStatus, childStatus] of [["DONE", 202, 102], ["FAIL", 499,
     });
 }
 
-test("{§loop-response-messages} blank DONE completes silently", async (t) => {
+test("{§loop-response-messages} an empty reply still answers the open message", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "silent-completion");
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "Do the work.");
-    const provider = new Mock({ contextWindow: 100000, responses: [response(frame("DONE", ""))] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(frame("SEND", ""))] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2 });
     assert.equal(result.result.status, 200);
     assert.equal(result.result.content ?? null, null);
@@ -192,7 +191,7 @@ test("{§note-value} writing about failure in NOTE does not declare failure", as
     const loopId = await insertLoop(db, workerId, 1, "Try both approaches.");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("NOTE", "First approach failed.\nTry the second approach.")),
-        response(frame("DONE", "Second approach succeeded.")),
+        response(frame("SEND", "Second approach succeeded.")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);

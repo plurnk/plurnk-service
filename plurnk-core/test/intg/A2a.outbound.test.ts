@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { DEFAULT_MIMETYPES, openMigrated, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
-import { sendStmt, dispositionStmt } from "./_dsl.ts";
+import { sendStmt } from "./_dsl.ts";
 import { waitFor } from "./_rpc.ts";
 
 const target = (pathname = ""): UrlPath => ({
@@ -104,7 +104,7 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
             assistant: {
                 content: "",
                 reasoning: null,
-                ops: [dispositionStmt("DONE", "Task observed")],
+                ops: [sendStmt(null, "Task observed")],
             },
         }],
     });

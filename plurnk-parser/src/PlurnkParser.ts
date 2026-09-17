@@ -30,7 +30,6 @@ const STATEMENT_RULES = new Set<number>([
 // One-turn containers, flattened in source order for model and saved programs.
 const CONTAINER_RULES = new Set<number>([
     plurnkParser.RULE_modelTurn,
-    plurnkParser.RULE_turn,
 ]);
 
 // {§fence-heading-in-body} — the host names its registered executors so their fence tags end an
@@ -170,12 +169,6 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, options);
     }
 
-    // Parse saved turns in source order; dispositions separate them. Each turn
-    // requires a disposition, including when ordinary operations follow it.
-    static parseLog(input: string, options: ParseOptions = {}): ParseResult {
-        return PlurnkParser.#run(input, (parser) => parser.log(), undefined, options);
-    }
-
     // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
     // op LOOK. The topmost subset (one above Script); never used for model output. The
     // protocol entry points reject LOOK, so a client op only parses here.
@@ -290,7 +283,7 @@ export default class PlurnkParser {
     // {§bare-heading-advisory} — an operation heading written outside any fence is prose, and prose
     // is silent; one warning names the fence form so the loss is never quiet ({§interstitial-fence}).
     static #adviseBareHeadings(input: string, items: ParseItem<PlurnkStatement>[], executors: readonly string[]): void {
-        const names = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT", "DONE", "FAIL", ...executors]
+        const names = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT", ...executors]
             .map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
         const headingShape = new RegExp(`^[ \\t]*(${names.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, "u");
         const covered = new Set<number>();

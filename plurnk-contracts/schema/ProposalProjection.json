@@ -25,10 +25,10 @@
         "op": {
             "description": "An operation keyword, or a runtime tag: an execution's operation is its runtime.",
             "anyOf": [
-                { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL", "NOTE", "WAIT", "DONE", "FAIL"] },
+                { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL", "NOTE", "WAIT"] },
                 { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" }
             ],
-            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | \"NOTE\" | \"WAIT\" | \"DONE\" | \"FAIL\" | Lowercase<string>"
+            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | \"NOTE\" | \"WAIT\" | Lowercase<string>"
         },
         "target": {
             "type": "object",

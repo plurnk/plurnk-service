@@ -22,11 +22,14 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
-import { MessageAttachments } from "@plurnk/plurnk-schemes";
+import { MessageAttachments, MessageScheme } from "@plurnk/plurnk-schemes";
+import DbMessageCaps from "../core/caps/DbMessageCaps.ts";
 
 // {§worker-scheme} Named and shared scratch are workspace resources; pathless
 // addresses target actors through the ordinary delegation and messaging lifecycle.
 export default class Worker extends CoreSchemeAdapterBase {
+    readonly #messages = new MessageScheme("worker");
+
     static manifest: SchemeManifest = {
         name: "worker",
         authority: "resource",
@@ -70,6 +73,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         _ctx: CoreSchemeCallContext,
         access: "read" | "write" = "read",
     ): Promise<EntryAddress | SchemeResultBase | null> {
+        if (WorkerControlAddress.isMessage(target)) return this.#messages.resolveEntryAddress(target, _ctx, access);
         const authority = Worker.#authority(target);
         return authority === null ? null
             : Worker.#entryAddress(authority, Worker.#entryPath(target), access);
@@ -79,6 +83,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
+        if (WorkerControlAddress.isMessage(request.target)) return this.#messages.prepareRepresentation(request, ctx);
         if (request.metadata !== null) {
             return Results.failure(
                 "scheme:worker",
@@ -287,6 +292,8 @@ export default class Worker extends CoreSchemeAdapterBase {
     // {§worker-read-scope} The requested namespace scopes discovery, not access.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
+        const prepared = await new DbMessageCaps(core, "worker").prepare();
+        if (prepared.status >= 400) throw new Error("Worker message preparation failed.", { cause: prepared });
         const authority = Worker.#authority(statement.target);
         if (authority === null) {
             return Results.failure("scheme:worker", "worker-target-required", 400, "FIND requires a worker:// target.", {
@@ -330,6 +337,11 @@ export default class Worker extends CoreSchemeAdapterBase {
     }
 
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        if (WorkerControlAddress.isMessage(statement.target)) {
+            return "messages" in ctx
+                ? ctx.messages.reply(statement)
+                : new DbMessageCaps(this.coreContext(ctx), "worker").reply(statement);
+        }
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) {

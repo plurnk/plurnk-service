@@ -23,7 +23,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
         makeMockResponse(`\`\`\`${runtime}\nidentityneedle\n\`\`\`\n${task}`, 10),
         makeMockResponse(`\`\`\`READ (${path})\`\`\`\n\`\`\`FIND (log:///**/${runtime}) [{"pattern":"~identityneedle"}]\`\`\`\n${task}`, 10),
         makeMockResponse(`\`\`\`KILL (log:///**/${runtime})\`\`\`\n${task}`, 10),
-        makeMockResponse("```SEND\nReviewed.\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\nReviewed.\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -59,7 +59,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
 test("{§log-coordinate-hierarchy}: rejected executor proposals use the same receipt identity as immediate failures", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```sh\nprintf rejected\n```\n```NOTE\nInspect the decision.\n```", 10),
-        makeMockResponse("```SEND\nThe command was not run.\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\nThe command was not run.\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -82,7 +82,7 @@ test("regression: a model's execution result surfaces visibly in the next turn w
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```sh\necho plurnk-index-probe\n```\n\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -119,7 +119,7 @@ test("a generated JSON result publishes its first page with the extent through t
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```sqlite\n" + query + "\n```\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -168,7 +168,7 @@ test("a generated JSON result publishes its first page with the extent through t
 test("a failed execution reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n```\n\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```SEND\nfailure observed\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\nfailure observed\n```", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -248,7 +248,7 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
         makeMockResponse("```sh\necho burst-payload && sleep 2\n```\n\n```NOTE\nspawned\n```", 10),
         makeMockResponse("```NOTE\nwaiting\n```", 10),
         makeMockResponse("```NOTE\nchecking\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -277,7 +277,7 @@ test("a command that prints nothing on any channel lands exactly one bodyless co
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("```sh\ntrue\n```\n\n```NOTE\nspawned\n```", 10),
         makeMockResponse("```NOTE\nchecking\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -204,7 +204,7 @@ interfaces remain remote protocol authority.
 declare the local Loop's intent under {§turn-disposition}. A Task-backed SEND
 creates an ordinary live obligation. Ordinary operations continue work;
 WAIT joins that obligation. Subscription settlement wakes the
-same Loop with its terminal READ, and a later DONE or FAIL concludes
+same Loop with its terminal READ, and an answered, observed and settled loop concludes
 under {§wait-obligation-matrix}. KILL cancels through that same subscription.
 No adapter-authored turn or alternate disposition path fills any step.
 

@@ -1,14 +1,9 @@
-import { TurnDisposition, type DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { DispositionStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
-import { type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import TerminalResult from "./TerminalResult.ts";
-import Results from "./results.ts";
-import ErrorDetail from "./ErrorDetail.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
-
-const observedResultsGuidance = "If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.";
 
 export interface PacketBoundaries {
     operations: Array<{ op: string; tx: string | null }>;
@@ -21,214 +16,59 @@ export interface CompletionEvidence {
     receipts: string[];
 }
 
+type TurnContext = { workerId: number; loopId: number; turnId: number; origin: WriterTier };
+
 export default class TurnDispositionHandler {
     readonly #db: Db;
-    readonly #cancelDescendants: CancelDescendantsNotify | undefined;
     readonly #lifecycle: LoopLifecycle;
-    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<PacketBoundaries>;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
     readonly #pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
     readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
-    readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
-    readonly #statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
+    readonly #failure: (code: string, status: number, detail: string) => DispatchResult;
 
-    constructor({ db, cancelDescendants, lifecycle, nextPacketBoundaries, unobservedFailureCount, pendingSet, hasLiveWork, failure, statusResult }: {
+    constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork, failure }: {
         db: Db;
-        cancelDescendants: CancelDescendantsNotify | undefined;
         lifecycle: LoopLifecycle;
-        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<PacketBoundaries>;
         unobservedFailureCount: (turnId: number) => Promise<number>;
         pendingSet: (workerId: number, turnId: number) => Promise<CompletionEvidence>;
         hasLiveWork: (workerId: number) => Promise<boolean>;
-        failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
-        statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
+        failure: (code: string, status: number, detail: string) => DispatchResult;
     }) {
         this.#db = db;
-        this.#cancelDescendants = cancelDescendants;
         this.#lifecycle = lifecycle;
-        this.#nextPacketBoundaries = nextPacketBoundaries;
         this.#unobservedFailureCount = unobservedFailureCount;
         this.#pendingSet = pendingSet;
         this.#hasLiveWork = hasLiveWork;
         this.#failure = failure;
-        this.#statusResult = statusResult;
     }
 
-    async handle(statement: DispositionStatement, ctx: {
-        workspaceId: number;
-        workerId: number;
-        loopId: number;
-        turnId: number;
-        sequence: number;
-        origin: WriterTier;
-    }): Promise<DispatchResult> {
-        const { workerId, loopId, turnId } = ctx;
-        const intent = TurnDisposition.intent(statement);
-        const status = TurnDisposition.status(statement);
-        // {§send-wait-scope} — lifecycle declarations take no scope: a wait joins live work, and a wake later with
-        // nothing in flight is a schedule rule.
-        if (statement.lineMarker !== null) {
-            return this.#failure("scope-unsupported", 400,
-                `${statement.op} takes no scope. WAIT joins live work; to wake later with nothing in flight, add a rule with the schedule family.`);
-        }
-
-        // {§wait-obligation-matrix} decides a join: live work parks the loop, nothing in flight continues.
-        if (intent === "wait") {
-            if (await this.#hasLiveWork(workerId)) {
-                if (!await this.#lifecycle.park(loopId)) {
-                    return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when WAIT attempted to wait.");
-                }
-                return { status: 202, attrs: { waiting: -1 } };
-            }
-            // Retrievals, fast stream conclusions, and child conclusions are
-            // all complete-but-unobserved. Their wake edge may already have
-            // fired, so do not park; continue directly to the packet that
-            // materializes them.
-            const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-            if (boundaries.operations.length > 0 || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
-                return { status: 102 };
-            }
-            const failCount = await this.#unobservedFailureCount(turnId);
-            if (failCount > 0) return { status: 102 };
-            return { status: 102, detail: "Nothing is in flight. Continuing." };
-        }
-
-        // Both terminals cross the observation barrier ({§completion-defers-to-results}): a
-        // model's claim over prompts the loop has not published, failures this turn has not
-        // seen, or settled results the next packet carries is deferred one packet and never
-        // struck. A completion over live work is the join a scope's exit implies: the loop parks
-        // until the work settles ({§completion-joins-live-work}); an abandonment cancels it. A
-        // `_plurnk` maintenance program closes only its own administrative loop; it must not
-        // claim, consume, or be blocked by model work elsewhere in the same Worker.
-        if ((status === 200 || status === 499) && ctx.origin === "model") {
-            const deferred = await this.#barrier(ctx, status === 200 ? "Completion" : "Abandonment");
-            if (deferred !== null) return deferred;
-        }
-        // [200] — terminate. A refused attempt is recorded faithfully (status_rx=409, never
-        // erased); the loop stays a continue; the strike couples in runTurn. [499] abandons and
-        // cancels the descendant scope.
-        if (status === 200) {
-            const finished = await this.#lifecycle.finish(
-                loopId,
-                TerminalResult.success(statement.body),
-            );
-            return this.#statusResult(
-                finished !== null ? 200 : await this.#lifecycle.status(loopId),
-                "loop-already-terminal",
-                "The loop was already terminal when DONE attempted to conclude it.",
-            );
-        }
-        if (status === 499) {
-            const reason = ErrorDetail.preview(statement.body ?? "");
-            const failure = this.#failure(
-                "scope-abandoned",
-                499,
-                "The model abandoned the work.",
-                statement.body === null || statement.body.length === 0 ? {} : { content: statement.body, mimetype: "text/markdown" },
-                {
-                    ...(reason.length === 0 ? {} : { reason }),
-                    retryable: false,
-                },
-            );
-            const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
-                loop_id: loopId,
-                turn_id: turnId,
-            });
-            if (seqs === undefined) {
-                throw new Error(`FAIL: no coordinate for loop=${loopId} turn=${turnId}`);
-            }
-            Results.attachInstance(
-                failure,
-                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/FAIL`,
-            );
-            const finished = await this.#lifecycle.finish(loopId, failure);
-            if (finished === null) return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when FAIL attempted to abandon it.");
-            await this.#cancelDescendants?.(workerId, reason || "the parent abandoned the work");
-            return failure;
-        }
-        return { status };
+    async handle(statement: DispositionStatement, ctx: TurnContext): Promise<DispatchResult> {
+        if (statement.lineMarker !== null) return this.#failure("scope-unsupported", 400,
+            "WAIT takes no scope; scheduled delivery uses the schedule family.");
+        // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
+        return await this.#hasLiveWork(ctx.workerId)
+            ? { status: 202, attrs: { waiting: -1 } }
+            : { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
-    // {§completion-defers-to-messages} Messages that arrived after the loop began and are not yet
-    // published (the next turn boundary publishes them, {§message-loop-containment}).
-    async #unpublishedMessageCount(loopId: number): Promise<number> {
-        const rows = await this.#db.drain_unpublished_arrivals_for_loop.all<{ id: number }>({ loop_id: loopId });
-        return rows.length;
-    }
-
-    // {§completion-defers-to-results} — the observation barrier, in the order the graph demands:
-    // a prompt the loop has not published; then, for a completion, live work, which parks the
-    // loop as a join; then this turn's unseen failures; then the
-    // settled results the next packet carries. Every deferral is 102 with the read-time receipt
-    // and its pending facts in `attrs`; null means the claim may conclude now.
-    async #barrier(
-        { workerId, loopId, turnId }: { workerId: number; loopId: number; turnId: number },
-        verb: "Completion" | "Abandonment",
-    ): Promise<DispatchResult | null> {
-        // {§completion-defers-to-messages} — a message that arrived during this turn is published
-        // by the next packet; concluding over it would answer a conversation the model has not
-        // seen. Not the model's fault, so a deferral, never a strike.
-        const undelivered = await this.#unpublishedMessageCount(loopId);
-        if (undelivered > 0) {
-            return {
-                status: 102,
-                detail: `${verb} deferred: ${undelivered} new message${undelivered === 1 ? "" : "s"} arrived during this turn. `
-                    + `${undelivered === 1 ? "It is" : "They are"} in this packet; address ${undelivered === 1 ? "it" : "them"} before concluding.`,
-            };
+    async settle(ctx: TurnContext, wait: boolean): Promise<number> {
+        const { workerId, loopId, turnId, origin } = ctx;
+        const status = await this.#lifecycle.status(loopId);
+        if (![100, 102, 202].includes(status)) return status;
+        // Administrative programs do not conclude the worker's model loop (including turn0).
+        if (origin !== "model") return 200;
+        const arrivals = await this.#db.drain_unpublished_messages_for_loop.all({ loop_id: loopId });
+        if (arrivals.length > 0) return 102;
+        const unanswered = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
+        if (unanswered === undefined) throw new Error("The loop has no message count.");
+        const { pending } = await this.#pendingSet(workerId, turnId);
+        const live = pending.some((kind) => kind === "streams" || kind === "workers");
+        if (live && (wait || unanswered.count === 0)) {
+            return await this.#lifecycle.park(loopId) ? 202 : this.#lifecycle.status(loopId);
         }
-        const { pending, receipts } = await this.#pendingSet(workerId, turnId);
-        const live = pending.filter((kind) => kind === "streams" || kind === "workers");
-        if (verb === "Completion" && live.length > 0) {
-            // {§completion-joins-live-work} — a completion over live work is the join a scope's
-            // exit implies: the loop parks until the work settles, the wake carries what concluded,
-            // and the next disposition decides with it in the packet. Never a strike.
-            if (!await this.#lifecycle.park(loopId)) {
-                return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when DONE attempted to conclude it.");
-            }
-            return { status: 202, detail: TurnDispositionHandler.joinDetail(live), attrs: { waiting: -1, pending: [...pending] } };
-        }
-        // A failed operation is also an unobserved result: it does not enter the model's Log
-        // until the next packet.
-        const failCount = await this.#unobservedFailureCount(turnId);
-        if (failCount > 0) {
-            return {
-                status: 102,
-                detail: `${verb} deferred: ${failCount} operation${failCount === 1 ? "" : "s"} failed in the same turn. `
-                    + `The failure${failCount === 1 ? " is" : "s are"} in this packet. ${observedResultsGuidance}`,
-                attrs: { failures: failCount },
-            };
-        }
-        const settled = pending.filter((kind) => kind !== "streams" && kind !== "workers");
-        if (settled.length === 0) return null;
-        // The receipt is read one packet later, beside the results it names, so it speaks from
-        // that moment. The model decides whether the results change its work or response.
-        const detail = settled.every((kind) => kind === "receipts")
-            ? TurnDispositionHandler.deferredReceiptsDetail(receipts, verb)
-            : TurnDispositionHandler.deferredWorkDetail(settled, verb);
-        return { status: 102, detail, attrs: { pending: settled } };
+        if (wait || unanswered.count > 0 || pending.length > 0 || await this.#unobservedFailureCount(turnId) > 0) return 102;
+        // {§completion-defers-to-messages}: recheck unanswered arrivals atomically with conclusion.
+        const finished = await this.#lifecycle.finish(loopId, TerminalResult.success(null), { requireAnswered: true });
+        return finished === null ? this.#lifecycle.status(loopId) : 200;
     }
-
-    // {§completion-defers-to-results} Receipts-only deferral, worded at read time.
-    static deferredReceiptsDetail(receipts: readonly string[], verb: "Completion" | "Abandonment" = "Completion"): string {
-        const plural = receipts.length > 1;
-        return `${verb} deferred until ${ErrorDetail.preview(receipts.join(", "))} reached a packet. ${plural ? "They are" : "It is"} in this packet. ${observedResultsGuidance}`;
-    }
-
-    // {§completion-joins-live-work} The join receipt, read when the wake lands.
-    static joinDetail(live: readonly string[]): string {
-        const parts: string[] = [];
-        if (live.includes("workers")) parts.push("child workers were still running");
-        if (live.includes("streams")) parts.push("an execution was still running");
-        return `Completion joined: ${parts.join(" and ")}. The loop waited, and what concluded is in this packet. ${observedResultsGuidance}`;
-    }
-
-    // {§completion-defers-to-results} Observed-now results name the packet.
-    static deferredWorkDetail(pending: readonly string[], verb: "Completion" | "Abandonment" = "Completion"): string {
-        const landed: string[] = [];
-        if (pending.includes("worker-results")) landed.push("a child worker's result");
-        if (pending.includes("failed-stream-results")) landed.push("a failed execution result");
-        if (pending.includes("receipts")) landed.push("operation receipts");
-        return `${verb} deferred until ${landed.join(" and ")} reached a packet. ${landed.length > 1 ? "They are" : "It is"} in this packet. ${observedResultsGuidance}`;
-    }
-
 }

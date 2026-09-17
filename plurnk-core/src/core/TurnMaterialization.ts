@@ -28,7 +28,7 @@ export default class TurnMaterialization {
 
     async materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
-    }): Promise<number> {
+    }): Promise<number[]> {
         const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
         const rows = await this.#db.engine_pull_ambient_events.all<{
             cursor: number;
@@ -36,7 +36,7 @@ export default class TurnMaterialization {
             event_id: number | null;
             producer_worker_id: number | null;
             producer_worker_name: string | null;
-            kind: "activity" | "loop_termination" | null;
+            kind: "activity" | "loop_termination" | "reply" | null;
             source: string | null;
             at: string | null;
             op: string | null;
@@ -62,7 +62,7 @@ export default class TurnMaterialization {
         }>({ workspace_id: workspaceId, worker_id: workerId });
         const window = rows[0];
         if (window === undefined) throw new Error(`ambient pull: worker ${workerId} has no observation window`);
-        let written = 0;
+        const entryIds: number[] = [];
         for (const r of rows) {
             if (r.event_id === null || r.producer_worker_id === null || r.producer_worker_name === null || r.kind === null
                 || r.at === null || r.op === null || r.tx === null || r.mimetype_tx === null
@@ -75,11 +75,13 @@ export default class TurnMaterialization {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
             }
             let attrs = r.attrs ?? "{}";
+            let replyDelivered = false;
             if (terminal !== null) {
                 const inherited = JSON.parse(attrs) as unknown;
                 if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
                     throw new TypeError(`ambient loop-termination event ${r.event_id} attrs must be an object`);
                 }
+                replyDelivered = (inherited as { replyDelivered?: unknown }).replyDelivered === true;
                 attrs = JSON.stringify({
                     ...inherited,
                     kind: "loop_termination",
@@ -87,7 +89,7 @@ export default class TurnMaterialization {
                 });
             }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + entryIds.length,
                 at: r.at,
                 event_id: r.event_id,
                 source: WorkerControlAddress.render(r.producer_worker_name),
@@ -117,9 +119,9 @@ export default class TurnMaterialization {
                 }, this.#weighContent),
                 state: r.state,
                 outcome: r.outcome,
-                // {§worker-scheme-collect} — every conclusion is born visible, whatever its status;
-                // a child's activity rows fold.
-                folded: LogVisibility.serialize(terminal !== null ? LogVisibility.OPEN : LogVisibility.FOLDED),
+                // {§message-reply-delivery}: retain the exact conclusion, but do
+                // not repeat a reply already delivered to this recipient.
+                folded: LogVisibility.serialize((terminal !== null && !replyDelivered) || r.kind === "reply" ? LogVisibility.OPEN : LogVisibility.FOLDED),
                 attrs,
             });
             const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({
@@ -127,7 +129,7 @@ export default class TurnMaterialization {
                 event_id: r.event_id,
             });
             if (materialized === undefined) throw new Error(`ambient event ${r.event_id} has no observer log row after materialization`);
-            if (inserted !== undefined) written++;
+            if (inserted !== undefined) entryIds.push(inserted.id);
         }
         await this.#db.engine_advance_ambient_cursor.get({
             workspace_id: workspaceId,
@@ -135,13 +137,13 @@ export default class TurnMaterialization {
             cursor: window.cursor,
             boundary: window.boundary,
         });
-        return written;
+        return entryIds;
     }
 
 
     async materializeStreamDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
-    }): Promise<number> {
+    }): Promise<number[]> {
         const { workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; publication_id: number; published_end: number;
@@ -149,7 +151,7 @@ export default class TurnMaterialization {
             mimetype: string; state: string; producer_result: string | null; published_channel: string | null;
             source: string | null; default_channel: string;
         }>({ worker_id: workerId });
-        let written = 0;
+        const entryIds: number[] = [];
         // {§exec-stream} — a concluded stream lands one row per channel that has content; an empty
         // sibling channel is a fact on that row (`channels`), never a row of its own, and only a
         // stream that printed nothing at all lands one bodyless row on its default channel
@@ -192,7 +194,7 @@ export default class TurnMaterialization {
             if (ch.state !== "closed" && ch.state !== "errored") continue;
             if (skipped.has(ch.publication_id)) continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
-            const sequence = fromSequence + written;
+            const sequence = fromSequence + entryIds.length;
             const source = ch.source;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const emptySiblings = siblings.get(ch.publication_id) ?? {};
@@ -215,7 +217,7 @@ export default class TurnMaterialization {
                 Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/READ`);
             }
             const rx = JSON.stringify(result);
-            await this.#db.engine_insert_stream_delta.run({
+            const inserted = await this.#db.engine_insert_stream_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 subscription_publication_id: ch.publication_id,
                 source,
@@ -234,9 +236,10 @@ export default class TurnMaterialization {
                 attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
                 folded: LogVisibility.serialize(LogVisibility.OPEN), // {§exec-stream} — the conclusion is initially visible
             });
-            written++;
+            if (inserted === undefined) throw new Error(`stream publication ${ch.publication_id} produced no log row`);
+            entryIds.push(inserted.id);
         }
-        return written;
+        return entryIds;
     }
 
 
@@ -327,6 +330,7 @@ export default class TurnMaterialization {
         sequence,
         body,
         source,
+        resource,
     }: {
         workerId: number;
         loopId: number;
@@ -334,9 +338,10 @@ export default class TurnMaterialization {
         sequence: number;
         body: string;
         source: string | null;
+        resource: string;
     }): Promise<number> {
         const tx = JSON.stringify({ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, matcher: null, body: { raw: body } });
-        const rx = JSON.stringify({ status: 200 });
+        const rx = JSON.stringify({ status: 200, resource });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId,
             loop_id: loopId,

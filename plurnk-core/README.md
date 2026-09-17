@@ -18,7 +18,7 @@ The exact model-facing language and operation set are owned by
 
 ## Lifecycle model
 
-Workspace = the shared world (one filesystem + membership overlay). Worker = one actor and its history over that world. Loop = one queued-to-terminal unit of work within a worker. Its turns continue until WAIT joins live work, DONE completes, or FAIL abandons it. NOTE retains working memory independently of lifecycle. Workers fork and message each other — many clients, many workers, one workspace.
+Workspace = the shared world (one filesystem + membership overlay). Worker = one actor and its history over that world. Loop = one queued-to-terminal unit of work within a worker. Turns continue until messages are answered, results observed, and held work settled; WAIT yields while work remains. NOTE retains working memory independently of lifecycle. Workers fork and message each other — many clients, many workers, one workspace.
 
 ## Integration
 

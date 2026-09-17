@@ -48,7 +48,7 @@ export default class TerminalResult {
         const hasReceipt = options.receipt !== undefined && options.receipt !== null;
         let content = resultContent ?? problemContent ?? (hasReceipt ? "" : options.fallback ?? "");
         if (options.terminatedBy === "cancel") {
-            content = `[ cancelled from outside the worker ]${content.length === 0 ? "" : ` ${content}`}`;
+            content = `[ worker cancelled ]${content.length === 0 ? "" : ` ${content}`}`;
         }
         if (options.receipt !== undefined && options.receipt !== null) {
             content = content.length === 0 ? options.receipt : `${content}\n\n${options.receipt}`;

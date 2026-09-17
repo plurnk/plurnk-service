@@ -12,7 +12,7 @@ import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; tx: string | null; rx: string | null; status_rx: number };
 
@@ -79,7 +79,7 @@ test("a jumbo message renders an adaptive chunk and Open Messages points to its 
             assert.ok(promptSection, "the messages section exists");
             assert.equal(promptSection!.slot, "user", "the open-message pointers close the user-slot status clump");
             assert.equal(promptSection!.header, "Open Messages");
-            assert.match(promptSection!.content, /^\[\{"path":"log:\/\/\/1\/\d+\/1\/SEND"\}\]$/, "a pointer with the row's log coordinate and no source: the owner caused the message");
+            assert.match(promptSection!.content, /^\[\{"path":"worker:\/\/[^/]+\/\?message=[0-9a-f]{8}"\}\]$/, "an immutable message address without a causal source for the owner's own request");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

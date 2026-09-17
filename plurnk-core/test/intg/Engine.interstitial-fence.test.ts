@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
-const task = PlurnkParser.frame("DONE", "");
+const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
 
 // {§interstitial-fence} — an unlabeled fence is prose and protects nothing: an operation fenced
 // inside it is that operation. Quoting is a delimited SEND's job ({§numeric-delimiter}).
@@ -23,7 +23,7 @@ test("{§interstitial-fence}: an unlabeled fence is transparent; a fenced operat
             "````\n```KILL (worker:///notes.md)```\n````",
             "A delimited SEND is how an example is quoted:",
             "````42SEND\n````KILL (worker:///quoted.md)````\n````42",
-            task,
+            memory,
         ].join("\n\n");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({
@@ -37,7 +37,7 @@ test("{§interstitial-fence}: an unlabeled fence is transparent; a fenced operat
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["KILL", 200], ["SEND", 200], ["DONE", 200]]);
+        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["KILL", 200], ["SEND", 200], ["NOTE", 200]]);
         assert.equal(JSON.parse(model[1]!.tx).body.raw, "````KILL (worker:///quoted.md)````", "the quoted heading stayed body under the delimiter");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
@@ -59,7 +59,7 @@ test("{§bare-heading-advisory}: a heading outside any fence draws a parse_advis
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; message?: string }> = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        const source = ["KILL (worker:///notes.md)", PlurnkParser.frame("SEND", "Explained."), task].join("\n\n");
+        const source = ["KILL (worker:///notes.md)", PlurnkParser.frame("SEND", "Explained."), memory].join("\n\n");
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
             workspaceId, workerId, loopId, maxTurns: 2,
@@ -84,7 +84,7 @@ test("{§empty-turn}: a prose-only response is an admitted turn with a turn_no_o
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "The findings give me precise integration points. Now I'll implement it.", reasoning: "thinking about it" } },
-            { assistant: { content: PlurnkParser.frame("SEND", "Done.") + "\n" + task, reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("SEND", "Done.") + "\n" + memory, reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({
@@ -116,7 +116,7 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; message?: string }> = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        const source = ['````READ (worker:///notes.md) [{"lines": "1-2"}]', "````", task].join("\n");
+        const source = ['````READ (worker:///notes.md) [{"lines": "1-2"}]', "````", memory].join("\n");
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
             workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read the note." }],

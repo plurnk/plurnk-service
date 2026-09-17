@@ -10,6 +10,7 @@ an entry rather than controlling that worker.
 | Address | Meaning | Model access |
 | --- | --- | --- |
 | `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
+| `worker://reviewer/?message=ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
 | `worker://reviewer/notes.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///notes.md` | Shared commons entry | Read and write. |
 
@@ -27,7 +28,8 @@ console.log(greet("world"));
 ````
 
 Control addresses contain only scheme and authority: no trailing slash,
-userinfo, port, query, or fragment.
+userinfo, port, query, or fragment. A `?message=` address selects a retained
+message instead of controlling the worker.
 
 An entry whose source has a readable projection (HTML, a notebook) carries it
 beside the source as `#readable`, text/markdown, in its own line coordinates;
@@ -71,6 +73,13 @@ READable, including after log curation or a FORK.
 ````
 
 ## Delegation
+
+Open Messages names unanswered messages; an arrival receipt's `resource` links
+to the same source. SEND to that address answers that message. A targetless SEND
+answers your observed Open Messages; SEND to a worker control address gives it
+new work instead. Curation of a message's log occurrences never deletes the
+source or changes whether it was answered. Another worker may answer it;
+the assigned worker and original sender receive that reply without a new request.
 
 **WORK to delegate, FORK to branch.** WORK starts a fresh log with your task
 prompt; FORK copies your history and named scratch into its new name, then
@@ -130,12 +139,13 @@ add a rule with the `schedule` family targeting yourself.
 
 A wake ends that wait. Submit WAIT to wait again. Waking
 retains the loop's messages, turn allowance, and remaining execution time;
-parked time does not consume execution time. DONE claims success; FAIL claims
-failure. Their optional bodies answer the open messages. Blank DONE or FAIL
-retains any previously delivered response without repeating it.
+parked time does not consume execution time. Conclude by observing the work's
+results and answering every Open Message with SEND. A later observation turn
+can conclude without repeating a response already delivered.
 
 Each child task's conclusion reaches its parent as a message from
-`worker://capital-checker`, waking a waiting parent. Success includes the body;
+`worker://capital-checker`, waking a waiting parent. An answer already delivered
+is not repeated at conclusion; success otherwise includes the body;
 failure preserves its status and Problem. `READ (worker://capital-checker)`
 collects the same result explicitly. While the child is running it returns
 `425`; ordinary operations continue and WAIT explicitly joins.

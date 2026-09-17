@@ -121,6 +121,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                         bytes: part.content.value,
                     }] : []),
                     source: PlurnkAgentExecutor.#source(request),
+                    messageAddress: PlurnkAgentExecutor.#source(request),
                     policy: { proposals: "reject" },
                 });
             }, workspaceId, () => {

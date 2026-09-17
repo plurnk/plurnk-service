@@ -894,7 +894,7 @@ export default class PacketWire {
             meta.channels = rx.channels;
         }
         // {§send-response-receipt} — a reply's row names the prompts it answered.
-        if ((op === "SEND" || typeof op === "string" && TurnDisposition.isTerminalOp(op)) && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
+        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
             meta.recipients = rx.recipients;
         }
         if (op === "READ" || op === "FIND") {

@@ -27,7 +27,7 @@ Continue the task.
 Continue the task.
 \`\`\``, 10),
                 makeMockResponse("```NOTE\ncontinue\n```", 10),
-                makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+                makeMockResponse("```SEND\ndone\n```", 10),
             ] });
             await withDaemon(mock, async (db, daemon, addr) => {
                 const generate = mock.generate.bind(mock);
@@ -87,7 +87,7 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("```EDIT (worker:///doomed)\ncontent\n```\n```NOTE\nContinue the task.\n```", 10),
         makeMockResponse("```KILL (worker:///doomed)```\n```NOTE\nContinue the task.\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

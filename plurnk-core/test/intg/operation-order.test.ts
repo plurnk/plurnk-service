@@ -93,7 +93,7 @@ created
 \`\`\`NOTE
 verify
 \`\`\``, 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -132,7 +132,7 @@ TWO
                 fromSequence: 1, failOnOperationError,
             });
             if (failOnOperationError) await assert.rejects(execution, OperationFailureError);
-            else assert.equal((await execution).status, 102);
+            else assert.equal((await execution).status, 200, "the administrative program finished without ending a model loop");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
                 failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", ...(hasNote ? ["NOTE"] : [])]);

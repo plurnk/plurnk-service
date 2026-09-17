@@ -9,7 +9,7 @@ import TokenCalibration from "../../src/core/TokenCalibration.ts";
 import StoredPacket, { type RequestPacket } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace, logEntries, openMigrated, packetSection } from "./_helpers.ts";
-import { editStmt, findStmt, killStmt, readStmt, dispositionStmt, urlPath } from "./_dsl.ts";
+import { sendStmt, editStmt, findStmt, killStmt, readStmt, urlPath  } from "./_dsl.ts";
 
 const messages = [{ role: "system" as const, content: "S" }, { role: "user" as const, content: "review" }];
 const outputBudget = Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
@@ -19,7 +19,7 @@ const providerAt = (capacity: number | null, responses: MockResponse[] = [], mod
         responses,
     });
 const response = (reported = 0): MockResponse => ({
-    assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE", "done")] },
+    assistant: { content: "", reasoning: null, ops: [sendStmt(null, "done")] },
     usage: { inputTokens: reported, totalTokens: reported },
 });
 

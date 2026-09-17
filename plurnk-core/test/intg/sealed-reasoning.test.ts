@@ -34,11 +34,14 @@ test("core preserves opaque state only in provider evidence while readable reaso
     try {
         const workspaceId = await insertWorkspace(db, `sealed-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const loopId = await insertLoop(db, workerId, 1);
+        await db.drain_enqueue_message.get({ loop_id: loopId,
+            address: "agui://anonymous/threads/xlane/messages/request", source: "agui://anonymous/threads/xlane/messages/request",
+            body: "go", open_paths: "[]", evidence: "{}" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\nProgress.\n```\n```NOTE\none\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
-            { assistant: { content: "```SEND\ndone\n```\n```DONE\n```", reasoning: null } },
+            { assistant: { content: "```SEND\nProgress.\n```\n```READ (ops:///1/1)\n```\n```NOTE\none\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
+            { assistant: { content: "```SEND\ndone\n```", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
@@ -71,7 +74,7 @@ test("core preserves opaque state only in provider evidence while readable reaso
         const readable = events.find((e) => e.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
         assert.equal(readable?.delta, "readable provider reasoning", "admitted readable reasoning reaches AG-UI through the derived SEND projection");
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 1,
-            "the same turn's SEND and DONE do not duplicate its reasoning");
+            "the same turn's SEND and NOTE do not duplicate its reasoning");
         assert.ok(events.findIndex(({ type }) => type === "REASONING_MESSAGE_CONTENT")
             < events.findIndex(({ type }) => type === "TEXT_MESSAGE_START"), "reasoning precedes the first speech");
 
@@ -93,7 +96,7 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const A = `${BLOB}-A`, B = `${BLOB}-B`;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\ndone\n```\n```DONE\n```", reasoning: null, reasoningEncrypted: [
+            { assistant: { content: "```SEND\ndone\n```", reasoning: null, reasoningEncrypted: [
                 { id: "rs_a", subtype: "message", encrypted: [{ data: A, format: "openai-responses-v1" }] },
                 { id: "rs_b", subtype: "message", encrypted: [{ data: B, format: "openai-responses-v1" }] },
             ] } },

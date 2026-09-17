@@ -17,7 +17,7 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
         contextWindow: 100_000,
         responses: [
             makeMockResponse("```sh\nfail {\"message\":\"boom\"}\n```\n\n```WAIT\nwaiting on the shell\n```", 10),
-            makeMockResponse("```SEND\nseen\n```\n```DONE\n```", 10),
+            makeMockResponse("```SEND\nseen\n```", 10),
         ],
     });
     const db = await openMigrated();
@@ -64,7 +64,7 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
         contextWindow: 100_000,
         responses: [
             makeMockResponse("```sh\nno_such_program_zq --help\n```\n\n```WAIT\nwaiting\n```", 10),
-            makeMockResponse("```SEND\nseen\n```\n```DONE\n```", 10),
+            makeMockResponse("```SEND\nseen\n```", 10),
         ],
     });
     const db = await openMigrated();

@@ -539,7 +539,7 @@ test("a same-turn BARE response is unseen retrieval work and defers completion",
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nquestion\n```\n\n```SEND\ndone\n```\n```DONE\n```")],
+            responses: [mainResponse("```BARE\nquestion\n```\n\n```SEND\ndone\n```")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
@@ -551,14 +551,17 @@ test("a same-turn BARE response is unseen retrieval work and defers completion",
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "DONE"), [{ op: "DONE", status: 102, problemType: null }], "deferred, never refused ({§completion-defers-to-results})");
+        assert.deepEqual(result.outcomes, [
+            { op: "BARE", status: 200, problemType: null },
+            { op: "SEND", status: 200, problemType: null },
+        ], "delivery succeeds while the unseen BARE result keeps the loop continuing");
     } finally {
         await db.close();
     }
 });
 
-for (const state of ["WAIT", "DONE", "FAIL"] as const) {
-    test(`{§bare-inference} {§disposition-anywhere}: BARE after ${state} runs before the disposition`, async () => {
+for (const state of ["WAIT", "SEND"] as const) {
+    test(`{§bare-inference} {§disposition-anywhere}: BARE after ${state} preserves the operation's scheduling contract`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
@@ -578,11 +581,10 @@ question
                 messages: [],
             });
             assert.equal(result.status, 102);
-            assert.deepEqual(child.completions, ["question"], "the isolated call was made although BARE was authored after the disposition");
-            assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", state], "the disposition is scheduled last");
-            // A completion over the unseen BARE result defers ({§completion-defers-to-results}); the
-            // wait also continues: every state answers 102 without a Problem.
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === state), [{ op: state, status: 102, problemType: null }]);
+            assert.deepEqual(child.completions, ["question"], "the isolated call was made");
+            assert.deepEqual(result.outcomes.map(({ op }) => op), state === "WAIT" ? ["BARE", "WAIT"] : ["SEND", "BARE"],
+                "only WAIT is deferred; SEND retains its authored order");
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === state), [{ op: state, status: state === "WAIT" ? 102 : 200, problemType: null }]);
         } finally {
             await db.close();
         }

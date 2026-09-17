@@ -2,7 +2,7 @@ import test from "node:test";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import assert from "node:assert/strict";
 import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, NoteStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
-import { dispositionStmt } from "./_dsl.ts";
+import { sendStmt  } from "./_dsl.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
@@ -240,24 +240,20 @@ test("{§completion-defers-to-results}: retiring a failed receipt does not make 
             ...env, sequence: 1, origin: "model",
         });
         assert.equal(failed.status, 404);
-        const retired = await engine.dispatch({
-            statement: killStmt({ target: urlPath("log", "/1/1/1/READ") }),
-            ...env, sequence: 2, origin: "model",
+        const result = await engine.executeAdmittedTurn({
+            statements: [killStmt({ target: urlPath("log", "/1/1/1/READ") }), sendStmt(null)],
+            source: null, ...env, fromSequence: 2, origin: "model",
         });
-        assert.equal(retired.status, 200);
+        assert.equal(result.status, 102, "retiring the receipt cannot remove the observation barrier");
+        assert.deepEqual(result.outcomes, [
+            { op: "KILL", status: 200, problemType: null },
+            { op: "SEND", status: 200, problemType: null },
+        ], "curation and delivery succeed independently of continuation");
         const history = await db.test_log_entries_by_turn.all<{ sequence: number; active: number; status_rx: number }>({ turn_id: env.turnId });
         const receipt = history.find(({ sequence }) => sequence === 1);
         assert.equal(receipt?.active, 0, "the failed receipt was actually removed from the model's curated view");
         assert.equal(receipt?.status_rx, 404, "execution evidence retains the failure");
 
-        const result = await engine.dispatch({
-            statement: dispositionStmt("DONE"),
-            ...env, sequence: 3, origin: "model",
-        });
-        assert.equal(result.status, 102, "the unseen failure defers the completion; it does not refuse it");
-        assert.equal(result.problem, undefined, "a deferral carries no Problem and no strike");
-        assert.deepEqual(result.attrs, { failures: 1 });
-        assert.equal(result.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
     } finally { await db.close(); }
 });
 

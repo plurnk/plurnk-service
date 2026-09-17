@@ -7,7 +7,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
-import { dispositionStmt, urlPath, noteStmt } from "./_dsl.ts";
+import { sendStmt, urlPath, noteStmt } from "./_dsl.ts";
 
 class StructuredFixture {
     static manifest = {
@@ -21,18 +21,18 @@ class StructuredFixture {
     } as const;
 }
 
-const response = (op: "NOTE" | "DONE") => ({
+const response = (op: "NOTE" | "SEND") => ({
     assistant: {
         content: "",
         reasoning: null,
-        ops: [op === "NOTE" ? noteStmt("continue") : dispositionStmt(op, "done")],
+        ops: [op === "NOTE" ? noteStmt("continue") : sendStmt(null, "done")],
     },
 });
 
 const setup = async (
     mimetype: string,
     content: string,
-    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response("NOTE"), response("DONE")],
+    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response("NOTE"), response("SEND")],
 ) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `structured-${crypto.randomUUID()}`);
@@ -262,7 +262,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
                 ops: [kill, noteStmt("failure observed")],
             },
         },
-        response("DONE"),
+        response("SEND"),
     ]);
     try {
         await ChannelWrite.setChannelState(fixture.db, {
@@ -319,7 +319,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
             [],
             "the terminal result is not published again after its observation row is curated away",
         );
-        assert.deepEqual(completed.outcomes, [{ op: "DONE", status: 200, problemType: null }],
+        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }],
             "log curation cannot make an already-published terminal result pending again");
         const source = await fixture.db.test_get_subscription.get<{ close_result: string }>({
             id: fixture.subscriptionId,

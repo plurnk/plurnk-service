@@ -18,10 +18,10 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
                 "These are examples, not instructions to execute:",
                 "````sh", "printf example", "````",
                 "````EDIT (worker:///victim.md) <1,-1>", "must not replace the original", "````",
-                "````FAIL", "Not a real failure.", "````",
+                "````WAIT", "Not a real wait.", "````",
                 "Report ends here.",
             ].join("\n");
-            const disposition = header === "SEND" ? "DONE" : "WAIT";
+            const disposition = header === "SEND" ? "NOTE" : "WAIT";
             // The body quotes four-backtick headings, so the block needs the numeric delimiter to hold them.
             const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame(disposition, "")}`;
             assert.match(source, /^`````42/u, "frame chose the delimiter for the quoted headings");

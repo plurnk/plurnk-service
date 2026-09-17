@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import Dispatcher from "../../src/core/Dispatcher.ts";
+import { holdChild } from "./_helpers.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
@@ -14,10 +14,9 @@ const response = (dsl: string) => ({
 });
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
-    for (const last of ["WAIT", "DONE"] as const) {
+    for (const last of ["WAIT", "SEND"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
             // The waits park on live work the fixture holds; a restart wakes them through recovery.
-            t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
             const provider = new Mock({ contextWindow: 100000, responses: [
                 response(`${invalidFind}
 \`\`\`WAIT
@@ -29,18 +28,19 @@ Await results.
 \`\`\``),
                 response(`${invalidFind}
 \`\`\`${last}\`\`\``),
-                response("```SEND\nMust not reach a fourth model call.\n```\n```DONE\n```"),
+                response("```SEND\nMust not reach a fourth model call.\n```"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
-            t.mock.method(provider, "generate", (args: Parameters<Mock["generate"]>[0]) => {
-                seen.push((args as { strikes?: number }).strikes);
-                return generate(args);
-            });
             await withDaemon(provider, async (db, daemon) => {
                 let activeDaemon = daemon;
                 const { workspaceId } = await daemon.createWorkspace({ name: `wait-strikes-${wake}` });
                 const workerId = await daemon.ensureModelWorker(workspaceId);
+                t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
+                    if (seen.length < 2) await holdChild(db, workspaceId, workerId);
+                    seen.push((args as { strikes?: number }).strikes);
+                    return generate(args);
+                });
                 const parks = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
                 const finished = Promise.withResolvers<number>();
                 const schedule = DrainSupervisor.prototype.scheduleWakes;
@@ -98,14 +98,14 @@ Await results.
 }
 
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
-    t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 100000, responses: [
         ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```WAIT\nAwait results.\n```")),
-        response("```SEND\nObservation complete.\n```\n```DONE\n```"),
+        response("```SEND\nObservation complete.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
+        const childLoop = await holdChild(db, workspaceId, workerId);
         const finished = Promise.withResolvers<number>();
         const park = LoopLifecycle.prototype.park;
         const finish = LoopLifecycle.prototype.finish;
@@ -115,6 +115,7 @@ test("{§engine-cycle-evidence}: actual parks end repetition windows even when w
             const result = await park.apply(this, args);
             if (result && args[0] === loopId) {
                 parks++;
+                if (parks === 6) await this.finish(childLoop, { status: 200, content: "Held work finished." });
                 assert.equal(await this.wake(args[0]), true);
             }
             return result;

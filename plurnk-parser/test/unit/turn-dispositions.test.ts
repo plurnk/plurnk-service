@@ -3,7 +3,7 @@ import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
 import { TurnDisposition, Validator } from "@plurnk/plurnk-contracts";
 
-for (const [op, intent, status] of [["WAIT", "wait", 202], ["DONE", "complete", 200], ["FAIL", "fail", 499]] as const) {
+for (const [op, status] of [["WAIT", 202]] as const) {
     test(`{§turn-disposition} ${op} determines lifecycle independently of its literal body`, () => {
         for (const body of [null, "Inspect the evidence.", "{broken JSON", "[]"]) {
             const result = PlurnkParser.parse(PlurnkParser.frame(op, body));
@@ -13,7 +13,6 @@ for (const [op, intent, status] of [["WAIT", "wait", 202], ["DONE", "complete", 
             const value = statement.statement;
             assert.equal(value.op, op);
             assert.equal(value.body, body);
-            assert.equal(TurnDisposition.intent(value), intent);
             assert.equal(TurnDisposition.status(value), status);
             assert.equal(Validator.validatePlurnkStatement(value).valid, true);
             const again = PlurnkParser.parseStatements(PlurnkParser.stringify([value]));
@@ -41,9 +40,9 @@ test("{§turn-shape} SEND does not conclude a turn or manufacture a disposition"
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§interstitial-fence} an unlabeled fence between operations does not hide DONE", () => {
-    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```DONE\nDone.\n```");
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "DONE"]);
+test("{§interstitial-fence} an unlabeled fence between operations does not hide WAIT", () => {
+    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```WAIT\nDone.\n```");
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "WAIT"]);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });

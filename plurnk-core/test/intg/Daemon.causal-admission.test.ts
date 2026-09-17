@@ -1,12 +1,11 @@
 import test from "node:test";
-import Dispatcher from "../../src/core/Dispatcher.ts";
+import { holdChild } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import WorkerCap from "../../src/core/worker-cap.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 
 for (const op of ["WORK", "FORK"]) {
@@ -62,24 +61,21 @@ Wait for the child.
     });
 }
 
-test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread arrivals on a completed task across restart", async (t) => {
+test("{§worker-lifecycle-no-resurrection}: cancellation wins over completion with an unread arrival and survives restart", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```SEND\nFinished the original request.\n```\n```DONE\n```"),
-        makeMockResponse("```SEND\nIndependent new request completed.\n```\n```DONE\n```"),
+        makeMockResponse("```SEND\nFinished the original request.\n```"),
+        makeMockResponse("```SEND\nIndependent new request completed.\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
         const concluding = Promise.withResolvers<void>();
         const conclude = Promise.withResolvers<void>();
-        const promoting = Promise.withResolvers<void>();
-        const promote = Promise.withResolvers<void>();
-        const reconciled = Promise.withResolvers<void>();
+        const finished = Promise.withResolvers<void>();
         const finish = LoopLifecycle.prototype.finish;
-        const reconcile = DrainSupervisor.prototype.reconcileOrphanedMessages;
+        const run = LoopDriver.prototype.runLoop;
         let taskLoopId: number | undefined;
         let firstConclusion = true;
-        let firstPromotion = true;
         t.mock.method(LoopLifecycle.prototype, "finish", async function (this: LoopLifecycle, ...args: Parameters<typeof finish>) {
             if (args[0] === taskLoopId && args[1].status === 200 && firstConclusion) {
                 firstConclusion = false;
@@ -88,13 +84,9 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
             }
             return finish.apply(this, args);
         });
-        t.mock.method(DrainSupervisor.prototype, "reconcileOrphanedMessages", async function (this: DrainSupervisor, ...args: Parameters<typeof reconcile>) {
-            if (!firstPromotion) return reconcile.apply(this, args);
-            firstPromotion = false;
-            promoting.resolve();
-            await promote.promise;
-            try { return await reconcile.apply(this, args); }
-            finally { reconciled.resolve(); }
+        t.mock.method(LoopDriver.prototype, "runLoop", async function (this: LoopDriver, ...args: Parameters<typeof run>) {
+            try { return await run.apply(this, args); }
+            finally { if (args[0].workerId === workerId) finished.resolve(); }
         });
         try {
             const task = await daemon.runLoop({ workspaceId, workerId, prompt: "Finish the original request." });
@@ -103,14 +95,11 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
             const arrival = await daemon.runLoop({ workspaceId, workerId, prompt: "A now-cancelled follow-up request." });
             assert.equal(arrival.loopId, task.loopId);
             assert.equal(arrival.action, "injected_next_turn");
-            conclude.resolve();
-            await promoting.promise;
-            assert.equal((await db.test_get_loop_status.get({ id: task.loopId }))?.status, 200);
             await daemon.cancelWorker({ workspaceId, workerId });
-            promote.resolve();
-            await reconciled.promise;
-            assert.equal((await db.test_get_loop_status.get({ id: task.loopId }))?.status, 200,
-                "cancellation does not rewrite a completed result");
+            conclude.resolve();
+            await finished.promise;
+            assert.equal((await db.test_get_loop_status.get({ id: task.loopId }))?.status, 499,
+                "the pending completion cannot overwrite cancellation");
             assert.equal((await db.test_loop_queue_by_worker.all<{ status: number }>({ worker_id: workerId }))
                 .some(({ status }) => [100, 102, 202].includes(status)), false, "cancelled unread work was not promoted");
             assert.deepEqual(await db.recovery_orphan_message_sources.all({}), [], "boot cannot resurrect the cancelled arrival");
@@ -127,24 +116,23 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
             } finally { await restarted.stop(); }
         } finally {
             conclude.resolve();
-            promote.resolve();
         }
     });
 });
 
 for (const recipientState of ["idle", "parked"]) {
     test(`{§worker-lifecycle-no-resurrection}: cancelled SEND cannot deliver to a ${recipientState} recipient`, async (t) => {
-        t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
         const wait = makeMockResponse("```WAIT\nWaiting for a message.\n```");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(recipientState === "parked" ? [wait] : []),
-            makeMockResponse("```SEND (worker://recipient)\nThis message must not escape cancellation.\n```\n```SEND\nSent.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND (worker://recipient)\nThis message must not escape cancellation.\n```\n```SEND\nSent.\n```"),
             wait,
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-send-${recipientState}` });
             const sourceWorkerId = await daemon.ensureModelWorker(workspaceId);
             const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "recipient" });
+            await holdChild(db, workspaceId, workerId);
             if (recipientState === "parked") {
                 const task = await daemon.runLoop({ workspaceId, workerId, prompt: "Await instructions." });
                 await waitForDb(async () => (await db.test_get_loop_status.get({ id: task.loopId }))?.status, (status) => status === 202);

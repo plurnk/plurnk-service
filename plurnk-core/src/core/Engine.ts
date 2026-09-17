@@ -9,7 +9,7 @@ import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { contentWeight } from "./content-weight.ts";
@@ -28,7 +28,7 @@ import ClientInteractions, { type ClientInteractionPendingEvent } from "./Client
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
-import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
+import type { DispatchContext, DispatchResult, OperationSettledNotify, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import TurnRunner from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
 import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "./provider-accounting.ts";
@@ -257,7 +257,7 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
+    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -268,7 +268,7 @@ export default class Engine {
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
-        cancelDescendants?: CancelDescendantsNotify;
+        operationSettledNotify?: OperationSettledNotify;
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
         workspaceTurnStarting?: WorkspaceTurnStarting;
         noticeNotify?: NoticeNotify;
@@ -317,7 +317,7 @@ export default class Engine {
             interactions: this.#interactions,
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
-            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
+            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify,
             liveSubscriptions: this.#liveSubscriptions,
             entryAddresses });
         this.#turnRunner = new TurnRunner({
@@ -629,13 +629,13 @@ export default class Engine {
     //
     // The admission owner selects the exact loop before checking its policy.
     // This writer never reselects a recipient across an asynchronous boundary.
-    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string, evidence: MessageEvidence = {}): Promise<
+    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string, evidence: MessageEvidence = {}, messageAddress?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         if (source !== undefined && source.length === 0) {
             throw new TypeError("Engine.injectIntoLoop: source must be a non-empty string when present");
         }
-        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source, evidence));
+        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source, evidence, messageAddress));
     }
 
     #withPromptWriteLock<T>(loopId: number, write: () => Promise<T>): Promise<T> {
@@ -649,7 +649,7 @@ export default class Engine {
         return run;
     }
 
-    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string, evidence: MessageEvidence = {}): Promise<
+    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string, evidence: MessageEvidence = {}, messageAddress?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         const loopRow = await this.#db.drain_injection_target.get<{ worker_id: number; sequence: number }>({ loop_id: loopId });
@@ -660,22 +660,11 @@ export default class Engine {
         const appended = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
             loop_id: loopId, source: source ?? null, body: prompt, open_paths: JSON.stringify(openPaths),
             evidence: JSON.stringify(evidence),
+            address: messageAddress ?? null,
         });
         if (appended === undefined) throw new Error(`Engine.injectIntoLoop: loop ${loopId} accepted no message`);
         return { loopId, turnSeq };
     }
-
-    //  — can this op open a wake edge mid-turn? The grounding scan for a
-    // same-turn spawn-then-hibernate: an execution (stream conclusion / poll cadence wakes), a COPY to
-    // worker:// (child-conclusion wake, {§worker-lifecycle-child-wake}), a directed SEND to worker:// (irc — the
-    // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
-    // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a
-    // false REFUSE breaks legitimate hibernation.
-
-    // A worker "holds a live thing" iff it has an open stream/spawn (subscription registry or an
-    // exec spawn) OR a non-terminal child worker — the structured-concurrency invariant a terminal
-    // SEND must respect ({§send-premature-terminate}, {§worker-loop-lifecycle}:
-    // children and streams are the same kind of live thing a worker holds).
 
     async runLoop(...args: Parameters<LoopDriver["runLoop"]>): ReturnType<LoopDriver["runLoop"]> {
         return this.#loopDriver.runLoop(...args);

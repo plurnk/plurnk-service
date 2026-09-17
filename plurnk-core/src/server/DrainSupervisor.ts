@@ -37,6 +37,7 @@ export type DrainInjectionArgs = {
     workerId: number;
     prompt: string;
     source?: string;
+    messageAddress?: string;
     evidence?: MessageEvidence;
     // Absent for an independent exterior arrival, required for operation-caused delivery.
     sourceLoopId?: number;
@@ -97,6 +98,7 @@ type InjectPrompt = (
     openPaths: readonly string[],
     source?: string,
     evidence?: MessageEvidence,
+    messageAddress?: string,
 ) => Promise<{ loopId: number; turnSeq: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 type ReconcileMessages = (workerId: number, endedLoopId: number) => Promise<void>;
@@ -217,6 +219,16 @@ export default class DrainSupervisor {
         const { workspaceId, workerId, prompt } = args;
         const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(workerId, async () => {
             if (!this.#acceptingWork) throw new Error("The daemon is not accepting work.");
+            if (args.messageAddress !== undefined) {
+                const accepted = await this.#db.message_source_by_address.get<{ loop_id: number }>({
+                    workspace_id: workspaceId, path: args.messageAddress,
+                });
+                if (accepted !== undefined) throw new OperationFailureError(Results.failure(
+                    "daemon:admission", "message-already-accepted", 409,
+                    "This message address has already been accepted in this workspace.",
+                    {}, { address: args.messageAddress, loopId: accepted.loop_id, retryable: false },
+                ));
+            }
             if (args.sourceLoopId !== undefined) {
                 const source = await this.#db.drain_message_source.get<{ workspace_id: number; status: number }>({
                     loop_id: args.sourceLoopId,
@@ -246,7 +258,7 @@ export default class DrainSupervisor {
                 });
             }
             const result = active === undefined ? null
-                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source, args.evidence);
+                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress);
             if (result !== null) {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
@@ -265,6 +277,7 @@ export default class DrainSupervisor {
                 policy: args.policy ?? args.freshLoopPolicy,
                 openPaths: args.openPaths,
                 evidence: args.evidence,
+                messageAddress: args.messageAddress,
             });
             return { action: "enqueued_new_loop", ...accepted } as const;
         }));
@@ -276,6 +289,7 @@ export default class DrainSupervisor {
         workerId: number;
         prompt: string;
         source?: string;
+        messageAddress?: string;
         evidence?: MessageEvidence;
         providerSpec: ProviderSpec;
         reasoningPolicy: ReasoningPolicy;
@@ -304,6 +318,7 @@ export default class DrainSupervisor {
         const seeded = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
             loop_id: loopRow.id, source: args.source ?? null, body: args.prompt, open_paths: JSON.stringify(args.openPaths ?? []),
             evidence: JSON.stringify(args.evidence ?? {}),
+            address: args.messageAddress ?? null,
         });
         if (seeded === undefined) throw new Error("enqueueFreshLoop: message enqueue returned no row");
         return { loopId: loopRow.id };
@@ -725,6 +740,17 @@ export default class DrainSupervisor {
     // supervisor owns the asynchronous scheduler work and its shutdown truth.
     notifyWakeWorker(payload: WakeWorkerPayload): void {
         this.#trackSettlement(this.#handleWakeWorker(payload), "wake-on-completion");
+    }
+
+    async operationSettled(workspaceId: number, logEntryId: number): Promise<void> {
+        const recipients = await this.#db.message_reply_recipients.all<{ worker_id: number }>({ log_entry_id: logEntryId });
+        if (recipients.length === 0) return;
+        const systemPrompt = await this.#readSystemPrompt();
+        for (const { worker_id: workerId } of recipients) {
+            // {§worker-optimistic-settlement}: the sender must finish its own
+            // program while the recipient coalesces replies and conclusions.
+            this.#trackSettlement(this.settleCompletionWake(workspaceId, workerId, systemPrompt), "wake-on-reply");
+        }
     }
 
     #trackSettlement(task: Promise<void>, label: string): Promise<void> {

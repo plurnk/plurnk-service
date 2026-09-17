@@ -9,7 +9,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_help
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
 // {§disposition-anywhere} {§emission-admission}
-test("a KILL after DONE executes before the disposition: the curation lands and completion proceeds", async () => {
+test("a KILL after SEND executes before completion: the curation lands and the reply is retained", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
@@ -28,17 +28,15 @@ test("a KILL after DONE executes before the disposition: the curation lands and 
         const source = `\`\`\`SEND
 Answer.
 \`\`\`
-\`\`\`DONE
-\`\`\`
 \`\`\`KILL (log:///1/${turn.sequence}/${plan.sequence}/NOTE)\`\`\``;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
         });
         assert.equal(result.status, 200, "nothing was dropped, nothing failed unseen, so the completion stands");
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200], ["DONE", 200]]);
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200]]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["SEND", "KILL", "DONE"]);
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["SEND", "KILL"]);
         const send = rows.find(({ op }) => op === "SEND");
         assert.ok(send);
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");
@@ -46,22 +44,22 @@ Answer.
         assert.ok(packet);
         assert.equal(JSON.parse(packet.packet).assistant.content, source);
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
-        assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after DONE curated the earlier inventory");
+        assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
     } finally { await db.close(); }
 });
 
-test("DONE authored first: every later operation runs in authored order and the disposition settles last", async () => {
+test("SEND authored first: later operations run in authored order and completion waits for their results", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "```DONE\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
+        const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["EDIT", 201], ["READ", 200], [null, 400], ["DONE", 102]],
-            "EDIT then READ in authored order, the malformed FIND as its bounded diagnostic, the disposition last");
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], [null, 400]],
+            "the reply, mutations, retrieval, and bounded diagnostic retain authored order");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
         const read = rows.find(({ op }) => op === "READ");
         assert.ok(read);
@@ -70,7 +68,7 @@ test("DONE authored first: every later operation runs in authored order and the 
 });
 
 test("duplicate dispositions and unclosed trailing targets dispatch no part of the rejected attempt", async () => {
-    for (const tail of ["```SEND\nContradiction.\n```\n```DONE\n```", "```READ (unfinished"]) {
+    for (const tail of ["```WAIT\nContradiction.\n```", "```READ (unfinished"]) {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "rejected-disposition");
@@ -86,7 +84,7 @@ No effect.
 Continue.
 \`\`\`
 ${tail}`),
-                    response("```SEND\nRecovered.\n```\n```DONE\n```"),
+                    response("```SEND\nRecovered.\n```"),
                 ] }), workspaceId, workerId, loopId, messages: [],
             });
             assert.equal(result.status, 200);

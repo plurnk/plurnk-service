@@ -7,6 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
 import type {
@@ -939,18 +940,20 @@ test("{§join-blocking-collect} READ of a running child does not override a cont
         const workspaceId = await insertWorkspace(db, `join-collect-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
-        const { id: parentTurn } = await Turn.open(db, { loopId: parentLoop, producer: "model", kind: "inference" });
         const worker = await insertWorker(db, workspaceId, parent, "worker"); // a worker still running (live loop 102),
         await insertLoop(db, worker, 1, "count");                     // nothing delivered yet
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const read = await engine.dispatch({ statement: readStmt(workerPath("worker")), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
-        assert.equal(read.status, 425, "the worker hasn't delivered — 425 still-running");
-        const send = await engine.dispatch({ statement: noteStmt(null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
-        assert.equal(send.status, 200);
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "```READ (worker://worker)\n```\n```NOTE\nKeep working.\n```", reasoning: null } },
+            { assistant: { content: "```WAIT\nAwait the child.\n```", reasoning: null } },
+        ] });
+        const run = () => engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
+        const continued = await run();
+        assert.deepEqual(continued.outcomes.map(({ op, status }) => [op, status]), [["READ", 425], ["NOTE", 200]]);
+        assert.equal(continued.status, 102);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop }))?.status, 102, "actionable work remains runnable");
-        const nextTurn = await insertTurn(db, parentLoop, 2, 102);
-        const waiting = await engine.dispatch({ statement: dispositionStmt("WAIT", "Await the child"), workspaceId, workerId: parent, loopId: parentLoop, turnId: nextTurn, sequence: 1, origin: "model" });
+        const waiting = await run();
         assert.equal(waiting.status, 202);
         const parked = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
         assert.equal(parked?.status, 202, "the explicit waiting inventory parks on the live child");
@@ -997,7 +1000,7 @@ test("{§op-synchronous} KILL(worker) settles before same-turn completion", asyn
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
-        const send = await engine.dispatch({ statement: dispositionStmt("DONE", "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        const send = await engine.dispatch({ statement: sendStmt(null, "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.equal(send.status, 200, "the stopped worker is no longer live pending work and KILL permits completion");
     } finally { await db.close(); }
 });
@@ -1009,11 +1012,11 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         const s1 = await insertWorkspace(db, `wait-J-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, s1);
         const pLoop = await insertLoop(db, parent, 1, "orchestrate");
-        const pTurn = await insertTurn(db, pLoop, 1, 200);
         const child = await insertWorker(db, s1, parent, "worker");
         await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
-        const blocked = await eng1.dispatch({ statement: dispositionStmt("WAIT", "awaiting worker"), workspaceId: s1, workerId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```WAIT\nAwait the child.\n```", reasoning: null } }] });
+        const blocked = await eng1.runTurn({ provider, workspaceId: s1, workerId: parent, loopId: pLoop, messages: [] });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
@@ -1056,8 +1059,8 @@ test("an empty join cannot manufacture a terminal deliverable from its inventory
         const reader = await insertWorker(db, workspaceId);
         const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 425);
-        const nextTurn = await insertTurn(db, wLoop, 2, 102);
-        const completed = await engine.dispatch({ statement: dispositionStmt("DONE"), workspaceId, workerId: worker, loopId: wLoop, turnId: nextTurn, sequence: 1, origin: "model" });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```SEND\n```", reasoning: null } }] });
+        const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
         assert.equal(completed.status, 200);
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(done.status, 200);

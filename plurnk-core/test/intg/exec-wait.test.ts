@@ -9,17 +9,16 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { execStmt, dispositionStmt } from "./_dsl.ts";
+import { execStmt, dispositionStmt, noteStmt, sendStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
-import type { DispositionStatement } from "@plurnk/plurnk-contracts";
 
 let runtimeSequence = 0;
 
-const response = (tag: string, disposition: DispositionStatement["op"]) => ({
+const response = (tag: string, disposition: "WAIT" | "SEND") => ({
     assistant: {
         content: "",
         reasoning: null,
-        ops: [execStmt(tag, "go"), dispositionStmt(disposition)],
+        ops: [execStmt(tag, "go"), disposition === "WAIT" ? dispositionStmt("WAIT") : sendStmt(null, "The execution failed.")],
     },
 });
 
@@ -135,7 +134,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
 });
 
 // {§send-premature-terminate}: a fast failure must settle before strike exhaustion reaps work.
-test("strike settlement cannot reap a fast current-turn failed stream before its optimistic opportunity", async () => {
+test("a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     const fixture = await wire(async () => {
@@ -144,19 +143,22 @@ test("strike settlement cannot reap a fast current-turn failed stream before its
     });
     try {
         const result = await fixture.engine.runLoop({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "DONE")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "SEND"), {
+                assistant: { content: "", reasoning: null, ops: [noteStmt("The failed execution has been observed.")] },
+            }] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,
             maxStrikes: 1,
             messages: [],
         });
-        assert.equal(result.result.status, 500, "completion past the unseen failure exhausts the strike allowance");
+        assert.equal(result.result.status, 200, "a handled executor failure does not manufacture a loop failure");
+        assert.equal(result.turnIds.length, 3, "initialization, execution, and observation");
         await idle(fixture.schemes);
         const subscription = await fixture.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
             worker_id: fixture.workerId,
         });
-        assert.equal(subscription?.close_status, 500, "the rail terminates only after the fast operation settled naturally: its own failure, never a 499 reap");
+        assert.equal(subscription?.close_status, 500, "the stream retains its own failure, never a cancellation");
     } finally {
         await idle(fixture.schemes);
         await fixture.db.close();

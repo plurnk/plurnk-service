@@ -98,7 +98,7 @@ export default class SeamSocket {
             }
             case "loop.run": {
                 const s = this.#attached();
-                const modelWorkerId = this.#modelWorkerId ?? await daemon.ensureModelWorker(s.workspaceId);
+                const modelWorkerId = p.workerId as number | undefined ?? this.#modelWorkerId ?? await daemon.ensureModelWorker(s.workspaceId);
                 this.#modelWorkerId = modelWorkerId;
                 const loop = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: modelWorkerId, prompt: p.prompt as string,

@@ -38,13 +38,13 @@ for (const c of CASES) {
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("```WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n```\n\n```WAIT\nwaiting\n```", 10),
             makeMockResponse("```EDIT (count.txt)\n3\n```\n\n```NOTE\nwrote\n```", 10),
-            makeMockResponse("```SEND\nwritten\n```\n```DONE\n```", 10),
+            makeMockResponse("```SEND\nwritten\n```", 10),
             makeMockResponse(`${c.read}
 
 \`\`\`NOTE
 reading
 \`\`\``, 10),
-            makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+            makeMockResponse("```SEND\ndone\n```", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -66,20 +66,16 @@ reading
                     assert.equal(read.status_rx, 200, `the parent reads the child's file by bare path, got ${read.status_rx}: ${read.rx.slice(0, 220)}`);
                     assert.match(read.rx, /"content":"3"/, "the parent sees the child's content");
                     assert.equal(finalStatus, 200);
-                    // {§env-delta-child-termination} (#567) — the parent's next packet carries the child's
-                    // conclusion as the engine's SEND attributed to `worker://counter`: status and body ride,
-                    // no target is invented (a commons `worker:///counter` would name nothing the child wrote).
+                    // {§message-reply-delivery} {§env-delta-child-termination}
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
                     const messages = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
                         .filter((entry) => entry.source === "worker://counter" && entry.origin === "_plurnk" && String(entry.path).endsWith("/SEND") && entry.status === 200));
-                    const conclusions = messages.filter((entry) => "body" in entry);
-                    assert.equal(new Set(messages.filter((entry) => !("body" in entry)).map(({ path }) => path)).size, 1, "the child's SEND activity is a separate suppressed observation");
-                    assert.equal(new Set(conclusions.map(({ path }) => path)).size, 1, `one durable child conclusion row reaches the parent's packets: ${JSON.stringify(conclusions)}`);
-                    const [conclusion] = conclusions;
-                    assert.equal(conclusion!.origin, "_plurnk", "the conclusion is the engine's narration");
-                    assert.equal(conclusion!.status, 200, "the child's terminal status rides");
-                    assert.equal("target" in conclusion!, false, `the conclusion reports the child's result without inventing a target: ${JSON.stringify(conclusion)}`);
-                    assert.match(String(conclusion!.body ?? ""), /written/, "a 2xx conclusion arrives with its body visible");
+                    const replies = messages.filter((entry) => "body" in entry);
+                    const conclusions = messages.filter((entry) => !("body" in entry));
+                    assert.equal(new Set(conclusions.map(({ path }) => path)).size, 1, "one bodyless terminal observation avoids repeating the reply");
+                    assert.equal(new Set(replies.map(({ path }) => path)).size, 1, `one durable child reply reaches the parent's packets: ${JSON.stringify(replies)}`);
+                    assert.match(String(replies[0]!.body ?? ""), /written/, "the delivered reply remains visible");
+                    assert.equal("target" in conclusions[0]!, false, "a terminal observation does not invent an entry target");
                 } finally { ws.close(); }
             });
         } finally { await rm(root, { recursive: true, force: true }); }
@@ -92,8 +88,8 @@ reading
 test("a child's packet names its parent worker; the root's packet does not", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("```WORK (worker://counter)\nReply with the number 3.\n```\n\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```SEND\n3\n```\n```DONE\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\n3\n```", 10),
+        makeMockResponse("```SEND\ndone\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

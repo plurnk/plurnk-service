@@ -606,3 +606,13 @@ A scheme handler is discovered and registered with **zero first-party involvemen
 - **The framework stays contract-only.** `@plurnk/plurnk-schemes` does not depend on scheme plugins. The daemon declares its bundled plugins as direct dependencies, and additional plugins are installed at the application root. Plugins declare the framework as a peer dependency using the repository's normal same-minor compatibility range; the framework itself is ignored by discovery because it has no `plurnk.kind`.
 - **The default bundle is the daemon's own `dependencies`**, not an aggregator package (the `-all` metapackages are retired). Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
 - **Trust.** The scanner enforces the shared predicate before attribution or scheme-field validation and returns withheld package names in `skipped`; the host owns presentation ({§plugin-trust-boundary}).
+
+## Message sources
+
+§message-source-scheme Protocol modules register `MessageScheme` or compose its hooks into
+their existing scheme. Core's `SchemeCtx.messages` materializes retained messages in that
+scheme for ordinary READ/FIND/COPY and delivers exact-address SEND replies under
+{§send-response-receipt}. The materialization is a derived representation, never the source
+of message body or reply state. The protocol module owns URI identity; Core owns durable
+admission and correlation. Message representations reject mutation while remaining SEND
+recipients. Scratch entries and protocol artifacts retain their own existing write contracts.

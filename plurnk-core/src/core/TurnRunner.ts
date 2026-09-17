@@ -851,8 +851,8 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-            throw new Error(`initialization returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+        if (result.status !== 200) {
+            throw new Error(`initialization returned ${result.status}; expected 200`);
         }
     }
 
@@ -981,8 +981,16 @@ export default class TurnRunner {
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
-        nextActionIndex += await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        const ambientEntries = await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += ambientEntries.length;
+        const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += streamEntries.length;
+        // {§notifications-log-entry-notify}: materialized observations are
+        // ordinary committed log rows, not packet-only content.
+        for (const id of [...ambientEntries, ...streamEntries]) {
+            args.onDispatch?.(id);
+            await args.onSettled?.(id);
+        }
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.
         // Notices are non-terminal observations, never operation-failure truth.
@@ -1013,12 +1021,12 @@ export default class TurnRunner {
         let nextActionIndex = 1;
         const openPaths: string[] = [];
         const unpublished = await this.#db.drain_unpublished_messages_for_loop.all<{
-            id: number; ordinal: number; source: string | null; body: string; open_paths: string;
+            id: number; ordinal: number; source: string | null; body: string; open_paths: string; path: string;
         }>({ loop_id: loopId });
         for (const message of unpublished) {
             openPaths.push(...assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
             const logEntryId = await this.#materialization.writeArrivalLog({
-                workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source,
+                workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
             });
             const published = await this.#db.drain_publish_message.get<{ id: number }>({ id: message.id, log_entry_id: logEntryId });
             if (published === undefined) throw new Error(`TurnRunner.#publishMessages: message ${message.id} was already published`);

@@ -10,9 +10,9 @@ const ops = (result: ReturnType<typeof PlurnkParser.parse>) =>
 const errors = (result: ReturnType<typeof PlurnkParser.parse>) =>
     result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 const frame = PlurnkParser.frame;
-const task = (content: string, op: DispositionStatement["op"] = "DONE") => frame(op, content);
+const task = (content: string, op: DispositionStatement["op"] = "WAIT") => frame(op, content);
 
-for (const entrypoint of ["parse", "parseStatements", "parseClient", "parseLog"] as const) {
+for (const entrypoint of ["parse", "parseStatements", "parseClient"] as const) {
     test(`{§executor-js-spelling}: ${entrypoint} canonicalizes js without shadowing a registered executor`, () => {
         for (const { executors, tag, runtime } of [
             { executors: ["node"], tag: "js", runtime: "node" },
@@ -32,7 +32,7 @@ for (const entrypoint of ["parse", "parseStatements", "parseClient", "parseLog"]
             }] : []);
             assert.equal(parsed.unparsedTail, undefined);
             const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-            assert.deepEqual(statements.map(writtenOp), runtime === null ? ["DONE"] : [runtime, "DONE"]);
+            assert.deepEqual(statements.map(writtenOp), runtime === null ? ["WAIT"] : [runtime, "WAIT"]);
             if (runtime === null) continue;
             const execution = statements[0];
             assert.ok(isExecution(execution));
@@ -46,7 +46,7 @@ test("{§executor-js-spelling}: a nested js example remains a literal message bo
     const body = frame("js", "console.log(42);");
     const parsed = PlurnkParser.parse(frame("SEND", body) + "\n" + task("Explained."), { executors: ["node"] });
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "DONE"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "WAIT"]);
     const send = ops(parsed)[0];
     assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
 });
@@ -62,10 +62,10 @@ test("independent fenced operations retain exact bodies and typed fields", () =>
     assert.deepEqual(errors(parsed), []);
     assert.equal(parsed.unparsedTail, undefined);
     const statements = ops(parsed);
-    assert.deepEqual(statements.map(writtenOp), ["EDIT", "READ", "DONE"]);
+    assert.deepEqual(statements.map(writtenOp), ["EDIT", "READ", "WAIT"]);
     assert.equal(statements[0].op === "EDIT" ? statements[0].body : null, "alpha\nbeta");
     assert.equal(statements[1].op === "READ" ? statements[1].body : "wrong op", null);
-    assert.equal(statements[2].op === "DONE" ? statements[2].body : null, "Waiting for the read result.");
+    assert.equal(statements[2].op === "WAIT" ? statements[2].body : null, "Waiting for the read result.");
 });
 
 // {§section-boundary}
@@ -97,7 +97,7 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
             const parsed = PlurnkParser.parse((source + "\n" + task("Done.")).replaceAll("\n", newline));
             assert.equal(parsed.unparsedTail, undefined);
             assert.deepEqual(errors(parsed), []);
-            assert.deepEqual(ops(parsed).map(writtenOp), [...names, "DONE"]);
+            assert.deepEqual(ops(parsed).map(writtenOp), [...names, "WAIT"]);
             assert.deepEqual(ops(parsed).slice(0, -1).map((op) => isExecution(op) ? op.body : op.op === "SEND" ? op.body?.raw : null), bodies.map((body) => body?.replaceAll("\n", newline) ?? null));
         }
     }
@@ -108,7 +108,7 @@ test("{§fence-closer}: a same-width bare fence closes its SEND, and the numeric
         const bare = PlurnkParser.parse("```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```\n".replaceAll("\n", newline) + task("Done."));
         assert.equal(bare.unparsedTail, undefined);
         assert.deepEqual(errors(bare), []);
-        assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "DONE"]);
+        assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "WAIT"]);
         const bareSend = ops(bare)[0];
         assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;".replaceAll("\n", newline), "the first same-width bare fence is the closer");
         const delimited = PlurnkParser.parse("```42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```42\n".replaceAll("\n", newline) + task("Done."));
@@ -125,17 +125,17 @@ test("{§whitespace-contract}: a text-only statement list is empty", () => {
 });
 
 // {§tier-entrypoints}
-test("parseLog retains consecutive turns with independently chosen fence lengths", () => {
-    const source = "```SEND\nOne.\n```\n```DONE\n```\n\n`````SEND\nTwo.\n`````\n`````DONE\n`````";
-    const parsed = PlurnkParser.parseLog(source);
+test("parseStatements retains consecutive turns with independently chosen fence lengths", () => {
+    const source = "```SEND\nOne.\n```\n```WAIT\n```\n\n`````SEND\nTwo.\n`````\n`````WAIT\n`````";
+    const parsed = PlurnkParser.parseStatements(source);
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "DONE", "SEND", "DONE"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "WAIT", "SEND", "WAIT"]);
     assert.deepEqual(ops(parsed).flatMap((op) => op.op === "SEND" ? [op.body?.raw] : []), ["One.", "Two."]);
 });
 
 // {§disposition-anywhere}
 test("operations after a disposition are admitted in authored order without a diagnostic", () => {
-    for (const op of ["WAIT", "DONE", "FAIL"] as const) {
+    for (const op of ["WAIT"] as const) {
         for (const precedingRead of [false, true]) {
             const input = [
                 ...(precedingRead ? [frame("READ (early.md)", null)] : []),
@@ -156,23 +156,33 @@ test("operations after a disposition are admitted in authored order without a di
 });
 
 // {§fence-boundary} {§disposition-anywhere}
-test("literal examples inside a SEND stay literal while a KILL after DONE is admitted", () => {
+test("literal examples inside a SEND stay literal while a KILL after WAIT is admitted", () => {
     const body = "Example:\n" + frame("KILL (notes.md)", null);
     const parsed = PlurnkParser.parse([frame("SEND", body), task("Explained."), frame("KILL (log:///1/2/3/READ)", null)].join("\n"));
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "DONE", "KILL"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "WAIT", "KILL"]);
     const send = ops(parsed)[0];
     assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
 });
 
 // {§tier-entrypoints}
-test("saved turns end at each disposition and retain operations in execution order", () => {
+test("statement lists retain source order without inventing turn boundaries", () => {
     const turn = [frame("KILL (log:///1/1/1/READ)", null), task("Continue.")].join("\n");
-    const parsed = PlurnkParser.parseLog(turn + "\n" + turn);
+    const parsed = PlurnkParser.parseStatements(turn + "\n" + turn);
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["KILL", "DONE", "KILL", "DONE"]);
-    const unfinished = PlurnkParser.parseLog(turn + "\n" + frame("READ (unfinished.md)", null));
-    assert.ok(errors(unfinished).length > 0 || unfinished.unparsedTail !== undefined);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["KILL", "WAIT", "KILL", "WAIT"]);
+    const unfinished = PlurnkParser.parseStatements(turn + "\n" + frame("READ (unfinished.md)", null));
+    assert.deepEqual(errors(unfinished), []);
+    assert.deepEqual(ops(unfinished).map(writtenOp), ["KILL", "WAIT", "READ"]);
+});
+
+test("former terminal names are not reserved operations", () => {
+    for (const name of ["DONE", "FAIL"]) {
+        const parsed = PlurnkParser.parse(frame(name, "Not an operation.") + "\n\n" + frame("SEND", "The answer."));
+        assert.deepEqual(ops(parsed).map(writtenOp), ["SEND"]);
+        assert.deepEqual(errors(parsed).map(({ severity }) => severity), ["warning"]);
+        assert.match(errors(parsed)[0].message, /not an operation or a known executor/);
+    }
 });
 
 test("client-only operations use the same fences", () => {

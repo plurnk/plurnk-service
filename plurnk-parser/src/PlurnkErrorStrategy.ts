@@ -31,8 +31,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_SEND]: "operation fence header",
         [plurnkParser.OPEN_NOTE]: "operation fence header",
         [plurnkParser.OPEN_WAIT]: "operation fence header",
-        [plurnkParser.OPEN_DONE]: "operation fence header",
-        [plurnkParser.OPEN_FAIL]: "operation fence header",
         [plurnkParser.OPEN_EXEC]: "operation fence header",
         [plurnkParser.OPEN_BARE]: "operation fence header",
         [plurnkParser.OPEN_WORK]: "operation fence header",
@@ -56,7 +54,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const context = PlurnkErrorStrategy.#LEXER_MODE_CONTEXT[modeName] ?? "between statements";
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
         if (modeName === "SLOTS" && ch.startsWith("'[")) {
-            return ["NOTE", "WAIT", "DONE", "FAIL"].includes(lexer.getOpenOp())
+            return ["NOTE", "WAIT"].includes(lexer.getOpenOp())
                 ? `${lexer.getOpenOp()}'s body begins below the header`
                 : "unexpected bracket modifier; the fence name selects the executor";
         }
@@ -196,7 +194,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
         plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
         plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE,
-        plurnkParser.OPEN_SEND, plurnkParser.OPEN_NOTE, plurnkParser.OPEN_WAIT, plurnkParser.OPEN_DONE, plurnkParser.OPEN_FAIL,
+        plurnkParser.OPEN_SEND, plurnkParser.OPEN_NOTE, plurnkParser.OPEN_WAIT,
         plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
         plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK,
     ]);

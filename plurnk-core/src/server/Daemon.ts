@@ -201,6 +201,7 @@ export default class Daemon implements ApplicationPort {
             // model-independent. Request-shaped token facts stay provider-owned.
             weigh: contentWeight,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
+            operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
             // worker:// loop-start primitive — spawn/fork/irc deliver through
@@ -277,7 +278,6 @@ export default class Daemon implements ApplicationPort {
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
             cancelWorker: async (workerId, reason) => this.#drains.cancelWorkerTree(workerId, reason),
-            cancelDescendants: async (workerId, reason) => this.#drains.cancelDescendants(workerId, reason),
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
             loopPacketNotify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "loop/packet", payload);
@@ -286,7 +286,7 @@ export default class Daemon implements ApplicationPort {
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
-            injectPrompt: (loopId, prompt, openPaths, source, evidence) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence),
+            injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress),
             assertInjectionCompatibility: async ({
                 workerId,
                 loopId,
@@ -448,13 +448,14 @@ export default class Daemon implements ApplicationPort {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
         const attachments = ClientInput.assertMessageResources("runLoop", args.attachments);
         const body = ClientInput.assertPrompt("runLoop", args.prompt, attachments.length > 0);
         const source = ClientInput.assertOptionalSource("runLoop", args.source);
+        const messageAddress = ClientInput.assertOptionalSource("runLoop", args.messageAddress);
         const requestedMaxTurns = ClientInput.assertMaxTurns("runLoop", args.maxTurns);
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
@@ -499,6 +500,7 @@ export default class Daemon implements ApplicationPort {
             workerId,
             prompt: delivered.body,
             evidence: delivered.evidence,
+            ...(messageAddress === undefined ? {} : { messageAddress }),
             ...(source === undefined ? {} : { source }),
             ...(policy !== undefined ? { policy } : {}),
             ...(openPaths !== undefined ? { openPaths } : {}),

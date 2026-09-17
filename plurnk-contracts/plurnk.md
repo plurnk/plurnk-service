@@ -17,31 +17,32 @@
 
 ## Helper Operations
 
+* NOTE: retain conclusions, decisions, and working memory
+
 * FIND: list matching paths, or the match locations inside one path
 * READ: read files, entries, streams, or only the lines a pattern selects
 * EDIT: create a file or entry; replace existing text by scope or by pattern
 * COPY (from) (to): copy files, entries, streams, or text regions
 * MOVE (from) (to): move files, entries, streams, or text regions
-* SEND: message workers and endpoints
+* KILL: delete, terminate, or curate the log
+
+* SEND: message clients, workers, and endpoints
+
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)
 * BARE: deploy an isolated inference query (no log or tools)
-* KILL: delete, terminate, or curate the log
-* NOTE: retain conclusions, decisions, and working memory
-* WAIT: wait for running workers or streams
-* DONE: finish successfully, with the final response
-* FAIL: stop unsuccessfully, with an explanation
+* WAIT: yield while workers or streams are running
 
 ## Workflow Management
 
 > [!IMPORTANT]
-> The final turn contains only DONE with the final response, or FAIL with an explanation.
+> To conclude, complete the work, observe its results, and SEND responses to all Open Messages.
+
+> [!CAUTION]
+> To cancel all unfinished work in your worker and its descendants, KILL your own worker address.
 
 > [!TIP]
-> For client messages, format the DONE body as GFM (tables, lists, or prose).
-
-> [!IMPORTANT]
-> YOU MAY NOT use DONE while work, a worker, or a stream is unfinished.
+> Format the SEND responses to Open Messages from clients as GFM (tables, lists, or prose).
 
 ## Workspace Navigation
 
@@ -95,6 +96,9 @@
 
 > [!TIP]
 > `SEND (worker://name)` messages a live worker. The packet's `## Delegation` lists your live workers and streams.
+
+> [!TIP]
+> WAIT yields while workers or streams are running; explaining the purpose in the body is optional.
 
 ## Context Curation
 

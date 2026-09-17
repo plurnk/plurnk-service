@@ -1,4 +1,4 @@
--- Dispatcher: the pending set a disposition is judged against, and the turn's own failures.
+-- Dispatcher: whole-program observation boundaries and the turn's own failures.
 
 -- PREP: engine_log_selection_high_water
 -- An admitted program resolves log curation against the event journal as it
@@ -16,7 +16,7 @@ WHERE turn_id = $turn_id
   AND origin = 'model'
   AND source IS NULL
   AND inherited_history = 0
-  AND op NOT IN ('SEND', 'NOTE', 'WAIT', 'DONE', 'FAIL')
+  AND op NOT IN ('SEND', 'NOTE', 'WAIT')
 ORDER BY sequence, id;
 
 -- PREP: engine_worker_has_undelivered_stream_term
@@ -27,8 +27,7 @@ ORDER BY sequence, id;
 -- join cannot conclude over unseen work.
 -- Completion is information independently of payload: an empty success and especially
 -- an empty failure must receive the same terminal observation as a non-empty stream.
--- Success and failure both require observation. The close status also prevents
--- the final-strike allowance from discarding an unseen failure.
+-- Success and failure both require observation.
 SELECT DISTINCT s.close_status AS closeStatus
 FROM subscriptions s
 JOIN subscription_publications sp ON sp.subscription_id = s.id
@@ -37,15 +36,9 @@ WHERE s.worker_id = $worker_id
   AND sp.terminal_published = 0;
 
 -- PREP: engine_turn_failures
--- {§send-premature-terminate} — THIS turn's failed op results (the model's own ops, status >= 400), whose
--- errors the model cannot have seen (they land next packet). A [200] or already-drained [202] over
--- them concludes blind past a failure — refused 409; [499] abandons regardless (declaring failure
--- IS weighing it).
--- Actionless engine errors are excluded because only model-authored failures can make
--- the model's concluding disposition blind. A model-authored statement that
--- failed grammar parsing is different: source='grammar' records a bounded operation failure
--- from the accepted emission, unseen until the next packet, so it gates completion like every
--- other failed model operation.
+-- {§send-premature-terminate}: model-authored failures require observation before
+-- ordinary completion. This includes bounded grammar failures in admitted programs;
+-- actionless runtime evidence is handled by its owning recovery rail.
 SELECT id FROM log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
@@ -60,7 +53,7 @@ SELECT 1 AS pending
 FROM ambient_events ae
 JOIN workers parent ON parent.id = $worker_id
 WHERE ae.workspace_id = parent.workspace_id
-  AND ae.kind = 'loop_termination'
-  AND ae.target_parent_worker_id = parent.id
+  AND ae.kind IN ('loop_termination', 'reply')
+  AND ae.recipient_worker_id = parent.id
   AND ae.id > COALESCE(parent.ambient_event_cursor, 0)
 LIMIT 1;

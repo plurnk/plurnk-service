@@ -24,10 +24,12 @@ import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions from "./BuiltinActions.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 import RunHandler from "./RunHandler.ts";
+import { MessageScheme } from "@plurnk/plurnk-schemes";
 
 export type { ModuleOptions } from "./config.ts";
 
 export interface ModuleRegistration {
+    setup(seam: { registerScheme(name: string, handler: object): Promise<void> }): Promise<void>;
     start(seam: ApplicationPort): Promise<Module>;
 }
 
@@ -125,6 +127,7 @@ export default class Module {
 
     static init(opts: ModuleOptions): ModuleRegistration {
         return {
+            setup: Module.setup,
             start: async (seam) => {
                 const module = await Module.bind(opts);
                 try { return await module.start(seam); }
@@ -134,6 +137,14 @@ export default class Module {
                 }
             },
         };
+    }
+
+    static async setup(seam: { registerScheme(name: string, handler: object): Promise<void> }): Promise<void> {
+        await seam.registerScheme("agui", new MessageScheme("agui"));
+    }
+
+    async setup(seam: { registerScheme(name: string, handler: object): Promise<void> }): Promise<void> {
+        await Module.setup(seam);
     }
 
     // {§agui-listener-admission} Bind the process's client identity without

@@ -6,7 +6,7 @@ import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type ResourceBindings from "./ResourceBindings.ts";
-import type { ResourceCaps } from "@plurnk/plurnk-schemes";
+import type { ResourceCaps, MessageCaps } from "@plurnk/plurnk-schemes";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type {
@@ -34,6 +34,7 @@ export interface PlurnkSchemeContext {
     readonly workerId: number;
     readonly resourceBindings?: ResourceBindings;
     readonly resources?: ResourceCaps;
+    readonly replyToMessage?: MessageCaps["reply"];
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;

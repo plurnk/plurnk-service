@@ -195,6 +195,10 @@ const makeCtx = () => {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
         resources: { capture: async () => { throw new Error("Resource capture is outside this fixture."); } },
+        messages: {
+            prepare: async () => { throw new Error("Message preparation is outside this fixture."); },
+            reply: async () => { throw new Error("Message delivery is outside this fixture."); },
+        },
         interactions: { request: async () => ({ status: "cancelled" }) },
         subscriptions,
     };

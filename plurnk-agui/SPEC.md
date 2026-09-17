@@ -64,9 +64,9 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `forwardedProps.plurnk.mode = "sync"`      | Durable conversation `MESSAGES_SNAPSHOT`, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-conversation-sync} |
 | `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
-| `log/entry` WAIT or blank DONE/FAIL (model) | `CUSTOM plurnk.send` with the actual lifecycle result; no invented plan or assistant speech |
-| Successful targetless model SEND or delivered DONE/FAIL body | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
-| Directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
+| `log/entry` WAIT (model) | `CUSTOM plurnk.send` with the actual wait result; no invented plan or assistant speech |
+| Successful SEND replying to this conversation, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
+| Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning:///…` or `ops:///…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
@@ -87,8 +87,8 @@ or ACP plan is inferred from prose.
 | ---------- | ----------------------- |
 | NOTE | Ordinary tool-call operation and durable row, not assistant speech, PLAN activity, or a substitute reasoning stream |
 | WAIT | Durable row and lifecycle signal; its text does not become a response |
-| DONE/FAIL with delivered body | Assistant message through {§loop-response-messages}, even when completion defers; status remains independent |
-| Blank DONE/FAIL | Lifecycle signal without an invented answer |
+| SEND response | Assistant message through {§loop-response-messages}; delivery and completion remain independent |
+| Completion | Standard run lifecycle without an invented message |
 | Replay | Delivered messages in chronological order; no synthetic latest-plan replacement |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
@@ -549,11 +549,17 @@ disposition remains Core policy; the module forwards it without reinterpretation
 
 §agui-run-source The run's user message is the causal actor behind its inbound SEND
 ({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
-`agui://<principal>/threads/<threadId>/runs/<runId>/messages/<messageId>`, every segment
+`agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment
 URI-encoded, the principal `anonymous` until the authorization layer names one. The frontend's
 self-identification never enters the address ({§client-metadata}). The arrival row renders that
 source, so a model tells an operator's message from a worker's or a schedule's by address
-rather than by absence (#706).
+rather than by absence. Message identity belongs to the conversation, not a transport run;
+the run ID remains envelope provenance. Accepted text remains available through ordinary
+READ, FIND and COPY after log curation, run conclusion, disconnect and daemon restart.
+The source is immutable: EDIT, MOVE and KILL cannot mutate an accepted message.
+SEND to this exact address answers this message under {§send-response-receipt}; it does
+not create another inbound request. Standard AG-UI assistant messages and history replay
+carry the reply, independently of whether the loop can yet conclude.
 
 §agui-http-authorization When `PLURNK_AGUI_TOKEN` is non-empty, every
 non-preflight request must carry that exact value as an

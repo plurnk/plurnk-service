@@ -19,17 +19,17 @@ import Log from "../../src/schemes/Log.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { DispositionStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, logEntries, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
-import { killStmt } from "./_dsl.ts";
+import { killStmt, noteStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);
 
 const okSend = (): MockResponse => ({
     assistant: {
         content: "",
-        ops: [{ op: "DONE", aside: null, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } } as DispositionStatement],
+        ops: [noteStmt("Observed the workspace activity.")],
         reasoning: null,
     },
 });

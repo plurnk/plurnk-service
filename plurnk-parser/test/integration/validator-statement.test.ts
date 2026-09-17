@@ -71,7 +71,7 @@ test("PlurnkStatement: MOVE with destination resource selection", () => {
 });
 
 test("PlurnkStatement: SEND with integer signal and JSON body", () => {
-    const r = validateRoundTrip("```SEND\n{\"answer\":\"Paris\"}\n```\n```DONE\n```");
+    const r = validateRoundTrip("```SEND\n{\"answer\":\"Paris\"}\n```\n```WAIT\n```");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -114,10 +114,10 @@ test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: DONE retains its literal body", () => {
-    const parsed = PlurnkParser.parseStatements("```DONE\nDecompose the prompt; discover, record, deliver.\n```");
+test("PlurnkStatement: WAIT retains its literal body", () => {
+    const parsed = PlurnkParser.parseStatements("```WAIT\nDecompose the prompt; discover, record, deliver.\n```");
     const item = parsed.items.find((item) => item.kind === "statement");
-    assert.ok(item?.kind === "statement" && item.statement.op === "DONE");
+    assert.ok(item?.kind === "statement" && item.statement.op === "WAIT");
     assert.equal(item.statement.body, "Decompose the prompt; discover, record, deliver.");
     assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
 });
@@ -191,8 +191,8 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: DONE preserves a numeric scope for runtime refusal", () => {
-    const stmt = { ...baseFields("DONE"), body: null, lineMarker: { marks: [30] } };
+test("PlurnkStatement: WAIT preserves a numeric scope for runtime refusal", () => {
+    const stmt = { ...baseFields("WAIT"), body: null, lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });
@@ -208,14 +208,14 @@ test("PlurnkStatement: an execution accepts a lineMarker (timeout,poll)", () => 
     assert.equal(valid, true);
 });
 
-test("PlurnkStatement: DONE rejects numeric signal", () => {
-    const stmt = { ...baseFields("DONE"), body: null, signal: 42 };
+test("PlurnkStatement: WAIT rejects numeric signal", () => {
+    const stmt = { ...baseFields("WAIT"), body: null, signal: 42 };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
 
-test("{§turn-disposition} PlurnkStatement: DONE carries scope for runtime admission, not targets or metadata", () => {
-    const task = { ...baseFields("DONE"), body: null };
+test("{§turn-disposition} PlurnkStatement: WAIT carries scope for runtime admission, not targets or metadata", () => {
+    const task = { ...baseFields("WAIT"), body: null };
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...task, lineMarker: { marks: [1] } }).valid, true);
     for (const patch of [

@@ -124,7 +124,7 @@ export default class KillHandler {
         if (schemeName === "worker") {
             // {§worker-scheme}: an entry path deletes scratch; a pathless target cancels an actor.
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
-            if (entryPath !== "" && entryPath !== "/") {
+            if (entryPath !== "" && entryPath !== "/" || WorkerControlAddress.isMessage(path)) {
                 const workerHandler = this.#schemes.get("worker") as SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
                 if (manifest?.category !== "data") {
                     throw new InvalidOperationResultError("Registered scheme 'worker' is not entry-bearing.");
@@ -151,7 +151,6 @@ export default class KillHandler {
             }
             const address = WorkerControlAddress.resolve(path, "KILL");
             if (!address.ok) return address.result;
-            // `~` is the sole current-worker sigil; every other authority is a literal name.
             // An idle worker is a no-op 200; a missing named worker is 404. {§worker-control-addressing}
             const name = address.authority;
                 const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });

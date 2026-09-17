@@ -3,18 +3,20 @@
 // for the next packet. Both dispositions must preserve that completed-but-unobserved result.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import Turn from "../../src/core/Turn.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { dispositionStmt } from "./_dsl.ts";
+import { sendStmt, dispositionStmt  } from "./_dsl.ts";
 
 async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workspaceId = await insertWorkspace(db, `race-${crypto.randomUUID()}`);
     const parent = await insertWorker(db, workspaceId);
     const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
-    const parentTurn = await insertTurn(db, parentLoop, 1, 102);
+    const { id: parentTurn } = await Turn.open(db, { loopId: parentLoop, producer: "model", kind: "inference" });
     // A child spawned by the parent concludes after the parent's turn opened.
     const child = await insertWorker(db, workspaceId, parent, "worker-x");
     const childLoop = await insertLoop(db, child, 1, "fetch the value");
@@ -67,14 +69,16 @@ test("a child refused before its first turn still announces its death to the par
     } finally { await db.close(); }
 });
 
-test("completion over a just-concluded child is refused with the steer", async () => {
+test("a delivered answer cannot complete before the just-concluded child is observed", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.dispatch({ statement: dispositionStmt("DONE", "done"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.executeAdmittedTurn({ statements: [sendStmt(null, "done")], source: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
-        assert.equal(r.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
-        assert.equal(r.problem, undefined, "a deferral carries no Problem and no strike");
-        assert.deepEqual((r.attrs as { pending?: string[] }).pending, ["worker-results"], "the structured fact names the pending kind");
+        assert.deepEqual(r.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```SEND\nThe observed value is 42.\n```", reasoning: null } }] });
+        const observed = await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
+        assert.equal(observed.status, 200);
+        assert.match(JSON.stringify(provider.received[0]), /the value is 42/);
     } finally { await db.close(); }
 });

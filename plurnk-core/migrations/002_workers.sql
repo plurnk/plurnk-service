@@ -98,7 +98,7 @@ END;
 
 -- {§env-delta-log-pull}: one append-only occurrence journal gives every
 -- producer a shared monotonic order. Audience is structural: direct parent,
--- explicit workspace broadcast, or their union. The event snapshots exactly
+-- addressed reply, explicit workspace broadcast, or their union. The event snapshots exactly
 -- what an observer row needs because source-log curation cannot erase history.
 -- source_record_id is forensic identity for the originating log/loop row, not a
 -- foreign key: model log curation must not erase an already-recorded occurrence.
@@ -106,9 +106,9 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     id                      INTEGER NOT NULL PRIMARY KEY,
     workspace_id            INTEGER NOT NULL,
     producer_worker_id      INTEGER NOT NULL,
-    target_parent_worker_id INTEGER,
+    recipient_worker_id     INTEGER,
     workspace_broadcast     INTEGER NOT NULL DEFAULT 0 CHECK (workspace_broadcast IN (0, 1)),
-    kind                    TEXT    NOT NULL CHECK (kind IN ('activity', 'loop_termination')),
+    kind                    TEXT    NOT NULL CHECK (kind IN ('activity', 'loop_termination', 'reply')),
     source_record_id        INTEGER NOT NULL CHECK (source_record_id >= 1),
     at                      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     source                  TEXT,
@@ -132,9 +132,9 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     outcome                 TEXT,
     attrs                   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
     terminated_by           TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
-    CHECK (target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1),
+    CHECK (recipient_worker_id IS NOT NULL OR workspace_broadcast = 1),
     CHECK (
-        (kind = 'activity' AND terminated_by IS NULL)
+        (kind IN ('activity', 'reply') AND terminated_by IS NULL)
         OR
         (kind = 'loop_termination'
             AND op = 'SEND'
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     ),
     FOREIGN KEY (workspace_id)            REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (producer_worker_id)      REFERENCES workers(id)    ON DELETE CASCADE,
-    FOREIGN KEY (target_parent_worker_id) REFERENCES workers(id)    ON DELETE CASCADE
+    FOREIGN KEY (recipient_worker_id)    REFERENCES workers(id)    ON DELETE CASCADE
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS ambient_events_workspace_id_id
@@ -160,11 +160,14 @@ CREATE INDEX IF NOT EXISTS ambient_events_producer_kind_id
     ON ambient_events (producer_worker_id, kind, id);
 
 CREATE INDEX IF NOT EXISTS ambient_events_parent_id
-    ON ambient_events (target_parent_worker_id, id)
-    WHERE target_parent_worker_id IS NOT NULL;
+    ON ambient_events (recipient_worker_id, id)
+    WHERE recipient_worker_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ambient_events_source_identity
-    ON ambient_events (producer_worker_id, kind, source_record_id);
+    ON ambient_events (producer_worker_id, kind, source_record_id) WHERE kind != 'reply';
+
+CREATE UNIQUE INDEX IF NOT EXISTS ambient_reply_recipient
+    ON ambient_events (source_record_id, recipient_worker_id) WHERE kind = 'reply';
 
 CREATE TRIGGER IF NOT EXISTS ambient_events_structural_audience
 BEFORE INSERT ON ambient_events
@@ -174,12 +177,16 @@ WHEN NOT EXISTS (
     WHERE producer.id = NEW.producer_worker_id
       AND producer.workspace_id = NEW.workspace_id
       AND (
-          NEW.target_parent_worker_id IS NULL
-          OR NEW.target_parent_worker_id = producer.parent_worker_id
+          NEW.recipient_worker_id IS NULL
+          OR NEW.recipient_worker_id = producer.parent_worker_id
+          OR (NEW.kind = 'reply' AND EXISTS (
+              SELECT 1 FROM workers recipient WHERE recipient.id = NEW.recipient_worker_id
+                AND recipient.workspace_id = NEW.workspace_id
+          ))
       )
 )
 BEGIN
-    SELECT RAISE(ABORT, 'ambient event audience must be the producer direct parent in the same workspace');
+    SELECT RAISE(ABORT, 'ambient event audience must be in the producer workspace; non-reply recipients must be its direct parent');
 END;
 
 -- {§module-workspace-state}: the same provider-validated snapshot, owned by a WORKER rather

@@ -577,7 +577,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "enum": ["WAIT", "DONE", "FAIL"]
+                    "enum": ["WAIT"]
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"

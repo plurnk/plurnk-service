@@ -1,4 +1,4 @@
-import { dispositionStmt, noteStmt } from "./_dsl.ts";
+import { sendStmt, noteStmt  } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -126,7 +126,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
                 // The pending set ({§send-premature-terminate}) forbids READ + [200] in one turn —
                 // the retrieval's result arrives next packet. Read, continue, THEN conclude.
                 response([readStmt("/state"), noteStmt("reading")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([sendStmt(null, "done")]),
             ],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -153,7 +153,7 @@ test("e2e: Mock queue exhaustion throws after the expected provider call", async
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-exhaust");
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/only", "x"), dispositionStmt("DONE", "")])],
+            responses: [response([editStmt("/only", "x"), sendStmt(null, "")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await dispatchTurn(engine, provider, db, env);

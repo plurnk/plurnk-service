@@ -18,7 +18,7 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
         "```EDIT (worker:///note)\nfirst line\nsecond line\n```\n\n```READ (worker:///note)```\n```NOTE\nwrote\n```",
         "```KILL (log:///1/**/READ) <2,-1>```\n```KILL (log:///1/**/EDIT)```\n```KILL (log:///9/9/9)```\n```NOTE\ncurated\n```",
         "```KILL (log:///1/**/EDIT)```\n```READ (log:///1/3/1/KILL)```\n```READ (worker:///note)```\n```KILL (worker:///note)```\n```NOTE\nverified\n```",
-        "```SEND\ndone\n```\n```DONE\n```",
+        "```SEND\ndone\n```",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

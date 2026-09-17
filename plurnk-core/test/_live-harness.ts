@@ -126,7 +126,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
-    params: { prompt: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[] },
+    params: { prompt: string; workerId?: number; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[] },
     opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? liveTimeoutMs();
@@ -135,6 +135,7 @@ export const liveLoop = async (
     try {
         term = await runLoopToTerminal(s.ws, id, {
             prompt: params.prompt,
+            ...(params.workerId !== undefined ? { workerId: params.workerId } : {}),
             policy: {
                 proposals: params.policy?.proposals ?? "accept",
             },

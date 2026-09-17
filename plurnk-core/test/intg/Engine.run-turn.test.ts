@@ -1,4 +1,4 @@
-import { dispositionStmt, noteStmt } from "./_dsl.ts";
+import { sendStmt, dispositionStmt, noteStmt  } from "./_dsl.ts";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import test from "node:test";
@@ -114,7 +114,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const source = "```SEND\ndone\n```\n```DONE\n```";
+        const source = "```SEND\ndone\n```";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [contentResp(source)],
@@ -167,7 +167,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
         assert.ok(!inferenceRows.some(({ op }) => op === null));
         assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
-        assert.ok(inferenceRows.some(({ op }) => op === "DONE"));
+        assert.ok(inferenceRows.some(({ op }) => op === "SEND"));
     } finally { await db.close(); }
 });
 
@@ -184,7 +184,7 @@ test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pri
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{
-                assistant: { content: "", ops: [dispositionStmt("DONE", "done")], reasoning: "deliberated at length" },
+                assistant: { content: "", ops: [sendStmt(null, "done")], reasoning: "deliberated at length" },
                 usage,
                 cost: {
                     kind: "estimated",
@@ -254,7 +254,7 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
                     reasoning: acceptedReasoning,
                     finishReason: "stop",
                     model: provider.model,
-                    ops: [dispositionStmt("DONE", "done")],
+                    ops: [sendStmt(null, "done")],
                 },
                 assistantRaw: null,
                 accounting: [failed, succeeded],
@@ -285,10 +285,7 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: packet stores system + user content from messages when the loop prompt is empty", async () => {
-    // The messages section lists the loop's open arrivals; it falls back to
-    // messages.user when the loop has none. Test the fallback explicitly by
-    // using a loop with an empty prompt.
+test("Engine.runTurn: only accepted durable messages enter Open Messages", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -309,7 +306,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         const packet = JSON.parse(row.packet) as { assistant: unknown };
         const definition = packetSection(packet, "definition");
         assert.equal(definition, "system prompt body");
-        assert.equal(packetSection(packet, "messages"), "first user msg\n\nsecond user msg");
+        assert.equal(packetSection(packet, "messages"), "[]", "provider-message scaffolding is not an accepted source");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
 });
@@ -319,7 +316,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("DONE", "ok")], "a deliberately non-empty admitted response")],
+            responses: [response([sendStmt(null, "ok")], "a deliberately non-empty admitted response")],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -395,7 +392,7 @@ test("Engine.runTurn: an empty trusted batch fails without leaving a producer tu
         assert.deepEqual(
             turns.map(({ producer, kind, status }) => ({ producer, kind, status })),
             [
-                { producer: "_plurnk", kind: "initialization", status: 102 },
+                { producer: "_plurnk", kind: "initialization", status: 200 },
                 { producer: "model", kind: "inference", status: 500 },
             ],
         );
@@ -428,18 +425,17 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overf
                         dispositionStmt("WAIT", "Observe the admitted edits."),
                     ]),
                     // Turn 2 clean — gives us a packet carrying turn 1's failure pointer.
-                    response([editStmt("/z", "z"), dispositionStmt("DONE", "ok")]),
+                    response([editStmt("/z", "z"), sendStmt(null, "ok")]),
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(t1.outcomes.length, 4, "3 actions plus the disposition dispatched");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
-            // Count the created worker entries independently of other schemes.
-            const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
-                workspace_id: workspaceId, scheme: "worker",
-            });
-            assert.equal(workerEntries?.n, 3, "3 worker:/// entries; overflow ops never reached schemes");
+            for (const [index, pathname] of ["/a", "/b", "/c", "/d", "/e"].entries()) {
+                const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "worker", pathname, name: "body" });
+                assert.equal(entry?.content, index < 3 ? String(index + 1) : undefined, "overflow operations never reach schemes");
+            }
 
             // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
             // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
@@ -474,15 +470,15 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the action
                         editStmt("/d", "4"), editStmt("/e", "5"),
                         noteStmt("continue"),
                     ]),
-                    response([editStmt("/z", "z"), dispositionStmt("DONE", "ok")]),
+                    response([editStmt("/z", "z"), sendStmt(null, "ok")]),
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            assert.equal(t1.outcomes.length, 6, "all 5 actions and the disposition dispatched — no cap");
-            const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
-                workspace_id: workspaceId, scheme: "worker",
-            });
-            assert.equal(workerEntries?.n, 5, "5 worker:/// entries; nothing dropped");
+            assert.equal(t1.outcomes.length, 6, "all five edits and the note dispatched — no cap");
+            for (const [index, pathname] of ["/a", "/b", "/c", "/d", "/e"].entries()) {
+                const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "worker", pathname, name: "body" });
+                assert.equal(entry?.content, String(index + 1), "every authored edit landed");
+            }
 
             // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -564,7 +560,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
                 response([readMissing("d"), noteStmt("4")]),
                 // Complete on a clean turn; a READ plus same-turn completion requires observation.
                 // ({§send-premature-terminate}), which would confound this 404-soft-failure assertion.
-                response([dispositionStmt("DONE", "done")]),
+                response([sendStmt(null, "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -630,7 +626,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
             responses: [
                 response([denied(), noteStmt("1")]),
                 response([denied(), noteStmt("2")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([sendStmt(null, "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -681,8 +677,8 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
                 response([editStmt("/b", "2"), noteStmt("2")]),
                 response([editStmt("/c", "3"), noteStmt("3")]),
                 response([editStmt("/d", "4"), noteStmt("4")]),
-                response([editStmt("/e", "5"), dispositionStmt("DONE", "done")]),
-                response([dispositionStmt("DONE", "done")]), // {§send-premature-terminate} — the last edit's observation turn
+                response([editStmt("/e", "5"), sendStmt(null, "done")]),
+                response([sendStmt(null, "done")]), // {§send-premature-terminate} — the last edit's observation turn
             ],
         });
         const result = await engine.runLoop({
@@ -761,7 +757,7 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
             responses: [
                 response([denied(), noteStmt("1")]),                // turn 1: 403 action_failure
                 response([editStmt("/b", "2"), noteStmt("go")]),   // turn 2: clean (drains buffer)
-                response([editStmt("/c", "3"), dispositionStmt("DONE", "ok")]),   // turn 3: clean
+                response([editStmt("/c", "3"), sendStmt(null, "ok")]),   // turn 3: clean
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -792,7 +788,7 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{
-                assistant: { content: "", ops: [dispositionStmt("DONE", "")], reasoning: null },
+                assistant: { content: "", ops: [sendStmt(null, "")], reasoning: null },
                 assistantRaw: raw,
             }],
         });
@@ -812,7 +808,7 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
             responses: [
                 response([noteStmt("1")]),
                 response([noteStmt("2")]),
-                response([dispositionStmt("DONE", "3")]),
+                response([sendStmt(null, "3")]),
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -832,7 +828,7 @@ test("Engine.runTurn: a trusted batch with competing dispositions fails before d
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("WAIT", "first"), dispositionStmt("DONE", "last")])],
+            responses: [response([dispositionStmt("WAIT", "first"), dispositionStmt("WAIT", "last")])],
         });
         await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
             message: "an admitted operation batch must contain operations and at most one disposition",
@@ -852,7 +848,7 @@ test("Engine.runTurn: the first turn's log section contains the arrival row", as
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/x", "y"), dispositionStmt("DONE", "done")])],
+            responses: [response([editStmt("/x", "y"), sendStmt(null, "done")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -879,7 +875,7 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
             contextWindow: 100000,
             responses: [
                 response([editStmt("/a", "1"), noteStmt("keep going")]),
-                response([editStmt("/b", "2"), dispositionStmt("DONE", "done")]),
+                response([editStmt("/b", "2"), sendStmt(null, "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -908,7 +904,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
             contextWindow: 100000,
             responses: [
                 response([editStmt("/x", "v"), noteStmt("more")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([sendStmt(null, "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -935,7 +931,7 @@ test("Engine.runTurn: Errors is empty on a clean first turn", async () => {
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/x", "y"), dispositionStmt("DONE", "done")])],
+            responses: [response([editStmt("/x", "y"), sendStmt(null, "done")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -979,7 +975,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
             contextWindow: 100000,
             responses: [
                 response([denied, noteStmt("keep going")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([sendStmt(null, "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -1008,7 +1004,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
             responses: [
                 response([denied, noteStmt("t1 had a failure")]),
                 response([editStmt("/ok", "v"), noteStmt("t2 was clean")]),
-                response([dispositionStmt("DONE", "done")]),
+                response([sendStmt(null, "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t1: 1 failure
@@ -1024,10 +1020,10 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // The parser tolerates free text before a statement. The prose is
-        // non-executable, while the DONE after it still parses and dispatches.
+        // non-executable, while the SEND after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "Just thinking out loud here.\n\n```SEND\ndone\n```\n```DONE\n```", reasoning: null } }],
+            responses: [{ assistant: { content: "Just thinking out loud here.\n\n```SEND\ndone\n```", reasoning: null } }],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -1035,8 +1031,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         });
         assert.deepEqual(result.outcomes, [
             { op: "SEND", status: 200, problemType: null },
-            { op: "DONE", status: 200, problemType: null },
-        ], "the message and inventory after the prose parse and dispatch");
+        ], "the message after the prose parses and dispatches");
         assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
     } finally { await db.close(); }
 });

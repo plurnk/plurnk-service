@@ -124,8 +124,6 @@ export default class CapabilityResolver {
             }
             case "NOTE":
             case "WAIT":
-            case "DONE":
-            case "FAIL":
                 return [];
             case "SEND": {
                 if (statement.target === null) return [];

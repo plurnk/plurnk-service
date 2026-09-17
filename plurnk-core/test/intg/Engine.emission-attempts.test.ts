@@ -42,8 +42,7 @@ const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
 \`\`\`SEND
 ${body}
 \`\`\`
-\`\`\`DONE
-\`\`\``,
+`,
         reasoning: null,
     },
     ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
@@ -147,7 +146,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
                         },
                     );
                 }
-                const content = "\n```SEND\nrecovered\n```\n```DONE\n```";
+                const content = "\n```SEND\nrecovered\n```";
                 const body = [
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
@@ -220,7 +219,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
 test("separator-free provider preamble does not reject a complete model turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "harmless status.```SEND\ndone\n```\n```DONE\n```";
+        const content = "harmless status.```SEND\ndone\n```";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(content)],
@@ -257,7 +256,7 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
             PlurnkParser.frame("EDIT (worker:///proof.md)", "Actual body."),
             "3 — invented result, not a receipt.",
             PlurnkParser.frame("SEND", "Only this message is sent."),
-            PlurnkParser.frame("DONE", ""),
+            PlurnkParser.frame("SEND", ""),
             "Postscript: not a second message.",
         ].join("\n");
         const result = await engine.runTurn({
@@ -272,7 +271,7 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({ accepted, errors: JSON.parse(parse_errors) })), [{ accepted: 1, errors: [] }]);
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND", "DONE"], "outside text has no independent log or message row");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND", "SEND"], "outside text has no independent log or message row");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
@@ -355,7 +354,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "\n```SEND\naccepted\n```\n```DONE\n```");
+        assert.equal(packet.assistant?.content, "\n```SEND\naccepted\n```\n");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|worker:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
@@ -428,7 +427,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
 });
 
 // {§turn-shape} {§parse-diagnostics}
-test("a literal nested DONE remains data and the next packet receives only the authored operation's receipt", async () => {
+test("a literal nested NOTE remains data and the next packet receives only the authored operation's receipt", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = "````EDIT (worker:///example.md)\nExample for later:\n```READ (package.json)```\n```NOTE\ninspect\n```\n````";
@@ -447,7 +446,7 @@ test("a literal nested DONE remains data and the next packet receives only the a
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; rx: string }>({ turn_id: first.turnId });
         assert.equal(rows.some(({ op }) => op === "READ"), false, "shorter nested fences remain literal data");
-        assert.equal(rows.some(({ op }) => op === "DONE"), false, "no real DONE was submitted");
+        assert.equal(rows.some(({ op }) => op === "NOTE"), false, "no nested NOTE was dispatched");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);
         const second = await engine.runTurn({
@@ -518,7 +517,7 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
             "```READ (worker:///missing)```",
             "```EDIT (worker:///notes.md",
         ].join("\n");
-        const accepted = "\n```SEND\ndone\n```\n```DONE\n```";
+        const accepted = "\n```SEND\ndone\n```";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -633,7 +632,7 @@ test("a syntactically legal $fC matcher failure is bounded, admitted once, and m
             contextWindow: 100_000,
             responses: [
                 invalid(malformed),
-                invalid("\n```SEND\nthe matcher was malformed\n```\n```FAIL\n```"),
+                invalid("\n```SEND\nthe matcher was malformed\n```"),
             ],
         });
 
@@ -732,7 +731,7 @@ ${renderedRead}
 \`\`\``,
                     "```NOTE\ninspect the result\n```",
                 ].join("\n\n")),
-                invalid("\n```SEND\ndone\n```\n```FAIL\n```"),
+                invalid("\n```SEND\ndone\n```"),
             ],
         });
 
@@ -794,7 +793,7 @@ test("a bounded malformed operation defers same-turn completion until the model 
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("\n```FIND (**) [{\"pattern\":\"/unterminated[\"}]```\n\n```SEND\ndone\n```\n```DONE\n```"),
+                invalid("\n```FIND (**) [{\"pattern\":\"/unterminated[\"}]```\n\n```SEND\ndone\n```"),
             ],
         });
 
@@ -807,14 +806,14 @@ test("a bounded malformed operation defers same-turn completion until the model 
         });
 
         assert.equal(result.emissionAttempts, 1);
-        assert.equal(result.status, 102, "the refused SEND keeps the turn non-terminal");
+        assert.equal(result.status, 102, "the malformed operation's result keeps the turn non-terminal");
         assert.ok(
             result.outcomes.some(({ op, status }) => op === null && status === 400),
             "the syntax failure participates in strike accounting",
         );
         assert.ok(
-            result.outcomes.some(({ op, status }) => op === "DONE" && status === 102),
-            "DONE defers past the unseen failure ({§completion-defers-to-results})",
+            result.outcomes.some(({ op, status }) => op === "SEND" && status === 200),
+            "delivery is independent of the unseen failure ({§completion-defers-to-results})",
         );
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
@@ -822,13 +821,13 @@ test("a bounded malformed operation defers same-turn completion until the model 
             op: string;
             origin: string;
         }>({ turn_id: result.turnId });
-        const authored = rows.filter(({ origin, op }) =>
-            origin === "model" && (op === "PLAN" || op === "error" || op === "DONE"));
+        const authored = rows.filter(({ origin }) =>
+            origin === "model");
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
+                { op: "SEND", status_rx: 200 },
                 { op: "error", status_rx: 400 },
-                { op: "DONE", status_rx: 102 },
             ],
         );
     } finally {
@@ -895,8 +894,8 @@ test("duplicate dispositions destroy the single-turn boundary and retry wholesal
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("```SEND\ndone\n```\n```DONE\n```\n```WAIT\nContinue the task.\n```\n\n```EDIT (worker:///must-not-exist)\nvalue\n```"),
-                invalid("```READ (worker:///anything)```\n```SEND\ndone\n```\n```DONE\n```\n```WAIT\nAnother turn cannot begin here.\n```\n```EDIT (worker:///must-not-exist)\nvalue\n```"),
+                invalid("```WAIT\nWait.\n```\n```WAIT\nContinue the task.\n```\n\n```EDIT (worker:///must-not-exist)\nvalue\n```"),
+                invalid("```READ (worker:///anything)```\n```WAIT\nWait.\n```\n```WAIT\nAnother turn cannot begin here.\n```\n```EDIT (worker:///must-not-exist)\nvalue\n```"),
                 valid("accepted retry"),
             ],
         });
@@ -931,14 +930,13 @@ test("{§error-shape}: informed fence recovery explains the boundary, preserves 
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
-        const task = PlurnkParser.frame("DONE", "");
         // {§unparsed-tail-boundary} — an unfinished target slot at the end of the input is the one
         // boundary loss left; a missing or mismatched closer no longer is ({§closer-fallback}).
         const rejected = [
             PlurnkParser.frame("EDIT (worker:///must-not-exist)", "never write"),
             "````SEND (worker://reviewer",
         ].join("\n");
-        const corrected = [PlurnkParser.frame("SEND", body), task].join("\n");
+        const corrected = PlurnkParser.frame("SEND", body);
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(rejected), invalid(rejected), invalid(rejected), invalid(corrected)],
@@ -1083,7 +1081,7 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "\n```SEND\ndone\n```\n```DONE\n```", reasoning: null } },
+            { assistant: { content: "\n```SEND\ndone\n```", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1099,7 +1097,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "\n```SEND\nnever reached\n```\n```DONE\n```", reasoning: null } },
+            { assistant: { content: "\n```SEND\nnever reached\n```", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1122,7 +1120,7 @@ test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike
 \`\`\`NOTE
 ${body}
 \`\`\``, reasoning: null } });
-        const done = { assistant: { content: "\n```SEND\nfinished\n```\n```DONE\n```", reasoning: null } };
+        const done = { assistant: { content: "\n```SEND\nfinished\n```", reasoning: null } };
         // Two exhaustions (3 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
@@ -1222,7 +1220,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         );
         assert.equal(
             await readFile(join(digestDir, "packet001.assistant.md"), "utf8"),
-            "\n```SEND\naccepted bytes\n```\n```DONE\n```",
+            "\n```SEND\naccepted bytes\n```\n",
         );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /rejected-emissions=1\/2/);
@@ -1450,7 +1448,7 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
 test("#161 {§provider-recovery}: a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "\n```SEND\nmust never dispatch\n```\n```DONE\n```";
+        const content = "\n```SEND\nmust never dispatch\n```";
         const requestAccounting: ProviderRequestAccounting = {
             provider: "provider:mock",
             model: "interrupted-model",
@@ -1561,11 +1559,11 @@ test("#161 {§provider-recovery}: a complete-looking resource-interrupted attemp
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string | null }>({ turn_id: turn!.id });
         assert.equal(
-            rows.some(({ origin, op, tx }) => origin === "model" && (op === "PLAN" || op === "DONE") && (tx ?? "").includes(content)),
+            rows.some(({ origin, tx }) => origin === "model" && (tx ?? "").includes("must never dispatch")),
             false,
             "no operation from the interrupted response dispatches",
         );
-        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "DONE").length, 1, "the re-issued call's emission is the one that dispatches");
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "SEND").length, 1, "the re-issued call's emission is the one that dispatches");
         assert.equal(rows.filter(({ op }) => op === "error").length, 1, "the ProviderError remains one durable failure");
     } finally {
         await db.close();
@@ -1637,13 +1635,13 @@ test("a valid turn with a failed operation remains recoverable and model-visible
             responses: [
                 {
                     assistant: {
-                        content: "\n```EDIT (sealed:///x)\nvalue\n```\n\n```SEND\ndone\n```\n```DONE\n```",
+                        content: "\n```EDIT (sealed:///x)\nvalue\n```\n\n```SEND\ndone\n```",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "\n```SEND\ncannot write that resource\n```\n```FAIL\n```",
+                        content: "\n```SEND\ncannot write that resource\n```",
                         reasoning: null,
                     },
                 },
@@ -1675,7 +1673,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
             contextWindow: 100_000,
             responses: [
                 { assistant: { content: "```SEND\nbig write, cut mid-wo\n```", reasoning: null, finishReason: "length" } },
-                { assistant: { content: "\n```SEND\ndone\n```\n```DONE\n```", reasoning: null, finishReason: "stop" } },
+                { assistant: { content: "\n```SEND\ndone\n```", reasoning: null, finishReason: "stop" } },
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] });

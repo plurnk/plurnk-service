@@ -301,10 +301,17 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     if (prompt.length > 0) {
-        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]", evidence: "{}" });
+        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, address: null, source: null, body: prompt, open_paths: "[]", evidence: "{}" });
         if (message === undefined) throw new Error("insertLoop: message enqueue returned no row");
     }
     return row.id;
+};
+
+// {§worker-obligations}: a fixture-controlled child holds its parent without a
+// provider drain. Restart recovery settles the vanished child like any other owner.
+export const holdChild = async (db: Db, workspaceId: number, workerId: number): Promise<number> => {
+    const childId = await insertWorker(db, workspaceId, workerId);
+    return insertLoop(db, childId, 1, "Fixture-controlled work.");
 };
 
 // {§packet-items} — the stored bag carries no sections; an empty composition reads back as [].

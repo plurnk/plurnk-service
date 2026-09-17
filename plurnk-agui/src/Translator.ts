@@ -26,6 +26,7 @@ import {
     type UserMessage,
 } from "./types.ts";
 import { derivationActivity } from "./AguiPlus.ts";
+import MessageAddress from "./MessageAddress.ts";
 import { Validator, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 export interface TranslatorContinuation {
@@ -140,13 +141,13 @@ export default class Translator {
         // A family client renders the SEND from plurnk.row rather than duplicating
         // TEXT_MESSAGE. Delay that one mirror until after the standard reasoning
         // lifecycle so both generic and family clients observe reasoning before speech.
-        const response = Translator.isResponse(e);
+        const response = Translator.isResponse(e, this.#threadId);
         const lifecycle = typeof e.op === "string" && TurnDisposition.isOp(e.op);
         const reasoningRow = response || lifecycle || e.op === "NOTE";
         const delayedSendRow = e.origin === "model" && reasoningRow;
         if (!delayedSendRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
-        if (e.origin !== "model") {
+        if (e.origin !== "model" && !response) {
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
@@ -155,7 +156,7 @@ export default class Translator {
             const text = Translator.#txBody(e.tx);
             events.push(...Translator.#readableReasoningEvents(id,
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
-            events.push(row);
+            if (delayedSendRow) events.push(row);
             if (response) {
                 events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
                 events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
@@ -290,16 +291,18 @@ export default class Translator {
             // {§message-arrival} — an arrival replays as a user message; another actor's arrival
             // carries its source as the message name ({§message-causal-source}).
             if (e.origin === "_plurnk" && e.op === "SEND" && Translator.#attrKind(e.attrs) === "message") {
-                messages.push({ id, role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}) });
+                messages.push({ id: MessageAddress.messageId(e.source, this.#threadId) ?? id,
+                    role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}) });
                 continue;
             }
-            if (e.origin !== "model") continue;
+            const response = Translator.isResponse(e, this.#threadId);
+            if (e.origin !== "model" && !response) continue;
             const text = Translator.#txBody(e.tx);
             if (e.op === "SEND" || e.op === "NOTE" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
                 const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
                 if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
             }
-            if (Translator.isResponse(e)) {
+            if (response) {
                 const message: AssistantMessage = { id, role: "assistant", content: text };
                 messages.push(message);
             }
@@ -395,16 +398,21 @@ export default class Translator {
     }
 
     // {§loop-response-messages}: share admission with reattach orientation.
-    static isResponse(entry: Record<string, unknown>): boolean {
-        if (entry.op !== "SEND" && entry.op !== "DONE" && entry.op !== "FAIL") return false;
-        if (entry.origin !== "model" || entry.source != null || entry.inherited_history === 1) return false;
+    static isResponse(entry: Record<string, unknown>, threadId?: string): boolean {
+        if (entry.op !== "SEND") return false;
+        const deliveredReply = Translator.#attrKind(entry.attrs) === "reply";
+        if ((!deliveredReply && entry.source != null) || entry.inherited_history === 1) return false;
         const tx: unknown = typeof entry.tx === "string" ? JSON.parse(entry.tx) : entry.tx;
-        if (tx === null || typeof tx !== "object" || (tx as { target?: unknown }).target != null) return false;
-        if (entry.op === "SEND") return typeof entry.status_rx === "number" && entry.status_rx >= 200 && entry.status_rx < 300;
+        if (tx === null || typeof tx !== "object") return false;
+        if (!(typeof entry.status_rx === "number" && entry.status_rx >= 200 && entry.status_rx < 300)) return false;
         if (Translator.#txBody(entry.tx).length === 0) return false;
-        if (typeof entry.op !== "string" || !TurnDisposition.isTerminalOp(entry.op)) return false;
         const rx: unknown = typeof entry.rx === "string" ? JSON.parse(entry.rx) : entry.rx;
-        return rx !== null && typeof rx === "object" && Array.isArray((rx as { recipients?: unknown }).recipients);
+        if (rx === null || typeof rx !== "object") return false;
+        const recipients = (rx as { recipients?: unknown }).recipients;
+        if (!Array.isArray(recipients)) return false;
+        if (threadId === undefined) return true;
+        return !deliveredReply && entry.origin === "model" && recipients.length === 0
+            || recipients.some((address) => MessageAddress.messageId(address, threadId) !== null);
     }
 
     // The model-facing textual statement body out of the tx. The real

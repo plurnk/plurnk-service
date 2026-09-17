@@ -14,7 +14,7 @@ test("{§methods-loop-run-open-paths}: one oversized attachment is previewed wit
         makeMockResponse(`\`\`\`SEND
 ${fixture.answer}
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 \`\`\``),
     ] });
     try {
@@ -53,7 +53,7 @@ for (const retire of [false, true]) test(`the recovery demo preserves overflow e
             makeMockResponse(`${retire ? "```KILL (log:///**/READ)```\n" : ""}\`\`\`SEND
 ${fixture.answer}
 \`\`\`
-\`\`\`DONE
+\`\`\`SEND
 \`\`\``),
         ],
     });

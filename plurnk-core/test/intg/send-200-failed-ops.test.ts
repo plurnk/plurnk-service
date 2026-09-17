@@ -1,53 +1,31 @@
-// {§completion-defers-to-results}: same-turn failures are unobserved pending results, so a
-// completion or an abandonment over them defers one packet, never strikes, and the same DONE
-// concludes once the packet has shown the failure.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
+import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
-test("{§completion-defers-to-results}: a failed op defers same-turn 200 until the next packet observes it", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [
-        // KILL of a nonexistent entry → 404 (a failure that is NOT a retrieval, isolating this gate
-        // from the retrievals leg); the same-turn [200] defers.
-        makeMockResponse("\n```KILL (worker:///no-such-entry)```\n```SEND\ndone\n```\n```DONE\n```", 10),
-        // Next turn: the 404 is in-log and weighed; concluding now is legitimate.
-        makeMockResponse("\n```SEND\ndone\n```\n```DONE\n```", 10),
-    ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "failgate" });
-            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
-            assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, failures weighed");
-            assert.equal(turnIds.length, 3, "initialization plus two model turns — the deferral cost one observation turn, no more");
-            await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const sends = (rows ?? []).filter((r) => ["WAIT", "DONE", "FAIL"].includes(r.op ?? "") && r.origin === "model");
-            assert.equal(sends[0]?.status_rx, 102, "the first [200] was deferred over the unseen failure");
-            assert.match(sends[0]?.rx ?? "", /operation failed in the same turn/, "the deferral names the failure, not a generic error");
-            assert.doesNotMatch(sends[0]?.rx ?? "", /"problem"/, "a deferral carries no Problem and no strike");
-        } finally { ws.close(); }
+for (const cancel of [false, true]) {
+    test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "automatic completion"}`, async () => {
+        const mock = new Mock({ contextWindow: 16384, responses: [
+            makeMockResponse("\n```KILL (worker:///no-such-entry)\n```\n```SEND\nThe requested entry does not exist.\n```"),
+            makeMockResponse(cancel ? "```KILL (worker://alice)\n```" : "```NOTE\nThe missing entry was observed.\n```"),
+        ] });
+        await withDaemon(mock, async (db, daemon) => {
+            const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });
+            const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "alice" });
+                const result = await daemon.runLoop({ workspaceId, workerId, prompt: "go", policy: { proposals: "accept" } });
+                const lifecycle = new LoopLifecycle(db);
+                await waitForDb(() => lifecycle.status(result.loopId), (status) => status === (cancel ? 499 : 200));
+                assert.equal((await lifecycle.result(result.loopId))?.content, "The requested entry does not exist.");
+                assert.equal(mock.received.length, 2);
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
+                assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [
+                    ["KILL", 404], ["SEND", 200], [cancel ? "KILL" : "NOTE", 200],
+                ]);
+                const failure = rows.find(({ op, status_rx }) => op === "KILL" && status_rx === 404)!;
+                const problem = JSON.parse(failure.rx).problem;
+                assert.match(problem.type, /entry-not-found$/);
+                assert.ok(JSON.stringify(mock.received[1]).includes(problem.type), "the actual failure reaches the observation packet");
+        });
     });
-});
-
-test("{§completion-defers-to-results}: FAIL over a same-turn failure takes the same look, then abandons", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n```KILL (worker:///no-such-entry)```\n```SEND\ngiving up\n```\n```FAIL\n```", 10),
-        makeMockResponse("\n```FAIL\n```", 10),
-    ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "abandon" });
-            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
-            assert.equal(finalStatus, 499, "the abandon lands on the packet after the failure was shown");
-            assert.equal(turnIds.length, 3, "packetless initialization, the deferred abandonment, then the abandoning turn");
-            await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const tasks = rows.filter((r) => ["WAIT", "DONE", "FAIL"].includes(r.op ?? "") && r.origin === "model");
-            assert.deepEqual(tasks.map((r) => r.status_rx), [102, 499]);
-            assert.match(tasks[0]?.rx ?? "", /^\{"status":102,"detail":"Abandonment deferred: 1 operation failed in the same turn\./, "the deferral speaks in the abandonment's own voice");
-        } finally { ws.close(); }
-    });
-});
+}

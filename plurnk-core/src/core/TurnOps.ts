@@ -8,7 +8,7 @@ export type InternalTurnStatement = PlurnkStatement;
 export default class TurnOps {
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
         if (statements.length === 0 || statements.some((statement, index) => TurnDisposition.is(statement) && index !== statements.length - 1)) {
-            throw new TypeError("An internal turnOps program must contain operations; WAIT, DONE, or FAIL, when present, must be last.");
+            throw new TypeError("An internal turnOps program must contain operations; WAIT, when present, must be last.");
         }
         return PlurnkParser.stringify(statements);
     }

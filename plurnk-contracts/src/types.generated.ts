@@ -571,7 +571,7 @@ position: Position
 }
 
 export interface DispositionStatement {
-op: ("WAIT" | "DONE" | "FAIL")
+op: "WAIT"
 aside: (string | null)
 metadata: null
 target: null
@@ -1134,7 +1134,7 @@ turnId: number
 /**
  * An operation keyword, or a runtime tag: an execution's operation is its runtime.
  */
-op: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | "NOTE" | "WAIT" | "DONE" | "FAIL" | Lowercase<string>
+op: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | "NOTE" | "WAIT" | Lowercase<string>
 target: {
 scheme: (string | null)
 authority: (string | null)

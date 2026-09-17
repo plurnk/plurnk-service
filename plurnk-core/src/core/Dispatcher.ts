@@ -17,7 +17,7 @@ import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
-import { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
+import { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -74,6 +74,7 @@ export type DispatchContext = {
 };
 
 export type DispatchResult = SchemeResult;
+export type OperationSettledNotify = (workspaceId: number, logEntryId: number) => Promise<void>;
 
 export interface ResolvedClientEntryAddress {
     readonly scheme: string;
@@ -109,17 +110,6 @@ export default class Dispatcher {
         return Results.failure("engine:dispatcher", code, status, detail, fields, extensions);
     }
 
-    static #statusResult(
-        status: number,
-        code: string,
-        detail: string,
-        fields: Readonly<Record<string, unknown>> = {},
-    ): DispatchResult {
-        return status >= 400
-            ? Dispatcher.#failure(code, status, detail, fields, { retryable: false })
-            : { ...fields, status };
-    }
-
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
@@ -138,7 +128,7 @@ export default class Dispatcher {
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
-    #cancelDescendants: CancelDescendantsNotify | undefined;
+    readonly #operationSettledNotify: OperationSettledNotify | undefined;
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
@@ -152,7 +142,7 @@ export default class Dispatcher {
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
-    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, liveSubscriptions, entryAddresses }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, liveSubscriptions, entryAddresses }: {
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -168,7 +158,7 @@ export default class Dispatcher {
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
-        cancelDescendants?: CancelDescendantsNotify;
+        operationSettledNotify?: OperationSettledNotify;
         liveSubscriptions: LiveSubscriptions;
         entryAddresses: EntryAddressBinding;
     }) {
@@ -186,7 +176,7 @@ export default class Dispatcher {
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#injectWorker = injectWorker;
         this.#cancelWorker = cancelWorker;
-        this.#cancelDescendants = cancelDescendants;
+        this.#operationSettledNotify = operationSettledNotify;
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
@@ -218,7 +208,7 @@ export default class Dispatcher {
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
-        this.#disposition = new TurnDispositionHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult });
+        this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
@@ -491,6 +481,7 @@ export default class Dispatcher {
                 turnId: context.turnId, sequence: context.sequence, origin: context.origin, curationPlan: null, modelCallId: null,
             });
             context.onDispatch?.(logEntryId);
+            await this.#notifySettled(context, logEntryId);
             return result;
         }
         const matchingPathCount = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
@@ -522,7 +513,6 @@ export default class Dispatcher {
             sequence,
             origin,
             onDispatch,
-            onSettled,
         } = context;
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
@@ -547,12 +537,7 @@ export default class Dispatcher {
                     if (coordinate === undefined) throw new Error(`NOTE has no turn coordinate for ${turnId}`);
                     result = { status: 200, resource: `note:///${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` };
                 } else if (TurnDisposition.is(statement)) {
-                    const response = TurnDisposition.isTerminalOp(statement.op) && statement.lineMarker === null && (statement.body?.length ?? 0) > 0
-                        ? await this.#respond(statement, schemeCtx, origin, workerId, loopId) : null;
-                    result = response !== null && response.status >= 400 ? response : {
-                        ...response,
-                        ...await this.#disposition.handle(statement, { workspaceId, workerId, loopId, turnId, sequence, origin }),
-                    };
+                    result = await this.#disposition.handle(statement, { workerId, loopId, turnId, origin });
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
@@ -660,7 +645,7 @@ export default class Dispatcher {
                     ids: { workspaceId, workerId, loopId, turnId },
                 });
                 const post = await this.#proposals.applyResolution(logEntryId, effective);
-                await onSettled?.(logEntryId);
+                await this.#notifySettled(context, logEntryId);
                 return post;
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
@@ -680,7 +665,7 @@ export default class Dispatcher {
                 this.#proposals.notifyPending(event);
             } catch (cause) {
                 await this.#proposals.failPreparation(logEntryId, cause);
-                await onSettled?.(logEntryId);
+                await this.#notifySettled(context, logEntryId);
                 throw cause;
             }
             const resolution = await resolutionPromise;
@@ -702,11 +687,16 @@ export default class Dispatcher {
                 ids: { workspaceId, workerId, loopId, turnId },
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
-            await onSettled?.(logEntryId);
+            await this.#notifySettled(context, logEntryId);
             return post;
         }
-        await onSettled?.(logEntryId);
+        await this.#notifySettled(context, logEntryId);
         return result;
+    }
+
+    async #notifySettled(context: DispatchContext, logEntryId: number): Promise<void> {
+        await context.onSettled?.(logEntryId);
+        await this.#operationSettledNotify?.(context.workspaceId, logEntryId);
     }
 
     // {§op-look}: resolve a READ and return its content without writing a
@@ -938,6 +928,7 @@ export default class Dispatcher {
             writer: origin,
             resources: { capture: (targets) => ResourceBindings.using(this.#schemes, context,
                 (bound) => this.#resourceSelector.capture(targets, bound)) },
+            replyToMessage: (statement) => this.#respond(statement, context, origin, workerId, loopId),
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
@@ -1208,17 +1199,13 @@ export default class Dispatcher {
             modelCallId,
         });
         context.onDispatch?.(logEntryId);
-        await context.onSettled?.(logEntryId);
+        await this.#notifySettled(context, logEntryId);
         return result;
     }
 
 
-    // {§send-response-receipt} — a response names the open messages it answers, so the receipt
-    // says where the text went. {§send-looks-like-operation} — a model response whose first
-    // line is an operation heading is a mis-fenced operation, not a reply: the 2026-09-11
-    // dogfood put four operations on the line after their fences, delivered all four to the
-    // user as 200 replies, then waited fifteen minutes for receipts that could never come.
-    async #respond(statement: SendStatement | import("@plurnk/plurnk-contracts").DispositionStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
+    // {§send-response-receipt} {§send-looks-like-operation}
+    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
         if (origin === "model") {
             const heading = this.#operationHeading(typeof statement.body === "string" ? statement.body : statement.body?.raw ?? "", schemeCtx);
             if (heading !== null) {
@@ -1238,7 +1225,20 @@ export default class Dispatcher {
         }
         const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
-        return { status: 200, recipients: await this.#openMessages(loopId),
+        const target = statement.target;
+        let recipients: string[];
+        if (target === null) {
+            recipients = await this.#openMessages(loopId);
+        } else {
+            const message = await this.#db.message_source_by_address.get<{ path: string }>({
+                workspace_id: schemeCtx.workspaceId, path: target.raw,
+            });
+            if (message === undefined) return Dispatcher.#failure(
+                "message-not-found", 404, `No accepted message exists at ${target.raw}.`, {}, { retryable: false },
+            );
+            recipients = [message.path];
+        }
+        return { status: 200, recipients,
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 
@@ -1260,16 +1260,17 @@ export default class Dispatcher {
         return line;
     }
 
-    // {§send-response-receipt} — the loop's open messages, oldest first, by the log coordinate the
-    // packet lists them under ({§message-arrival}).
+    // {§send-response-receipt}: published unanswered source addresses, oldest first.
     async #openMessages(loopId: number): Promise<string[]> {
-        const rows = await this.#db.engine_open_messages.all<{ loop_seq: number; turn_seq: number; seq: number }>({ loop_id: loopId });
-        return rows.map((row) => `log:///${row.loop_seq}/${row.turn_seq}/${row.seq}/SEND`);
+        const rows = await this.#db.engine_open_messages.all<{ path: string }>({ loop_id: loopId });
+        return rows.map((row) => row.path);
     }
 
-    // {§send-premature-terminate} The pending set is judged at the disposition's dispatch point,
-    // after earlier operations have executed. Every non-SEND/NOTE/lifecycle/KILL model operation
-    // requires a new packet, independently of its result or log visibility.
+    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean): Promise<number> {
+        return this.#disposition.settle(ctx, wait);
+    }
+
+    // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
     async #pendingSet(workerId: number, turnId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
         // {§worker-obligations} — the stream and child legs are one durable row.
@@ -1283,7 +1284,7 @@ export default class Dispatcher {
             .map((row) => LogEntryProjection.leaf(row)))];
         if (boundaries.streamTerminations.length > 0) receipts.push("stream completion");
         if (receipts.length > 0) pending.push("receipts");
-        // The final-strike escape hatch cannot discard an unobserved failure.
+        // A failed stream result is still owed to the model before ordinary completion.
         if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
         if (boundaries.childTerminations) pending.push("worker-results");
         return { pending, receipts };

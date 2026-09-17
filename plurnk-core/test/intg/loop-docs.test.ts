@@ -10,7 +10,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import Results from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
-import { dispositionStmt } from "./_dsl.ts";
+import { sendStmt  } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors, fixtureExecutors } from "./_helpers.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
@@ -91,7 +91,7 @@ test("{§env-delta-child-termination} generated child documentation is durable w
             "housekeeping is not an unobserved child result that can wake waiting work or refuse completion");
 
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] }),
             workspaceId, workerId: parentId, loopId: parentLoopId,
             messages: [{ role: "system", content: "Observe the child." }, { role: "user", content: "continue" }],
         });
