@@ -125,6 +125,28 @@ test("parsePath: absent and explicitly empty queries remain distinct", () => {
     assert.equal(empty.query, "");
 });
 
+test("parsePath: a question mark in a fragment does not create a query", () => {
+    for (const raw of ["https://host/path#fragment?text", "worker:///path#fragment?text"]) {
+        const parsed = AstBuilder.parsePath(raw);
+        assert.equal(parsed?.kind, "url");
+        if (parsed?.kind !== "url") return;
+        assert.equal(parsed.query, null);
+        assert.equal(parsed.fragment, "fragment?text");
+    }
+});
+
+test("parsePath: brace glob protection never rewrites query or fragment slashes", () => {
+    for (const raw of ["https://host?x=/{a,b}", "https://host#/{a,b}", "worker://host?x=/{a,b}#/{c,d}", "https://host/{path}?x=/{a,b}#/{c,d}"]) {
+        const expected = new URL(raw);
+        const parsed = AstBuilder.parsePath(raw);
+        assert.equal(parsed?.kind, "url");
+        if (parsed?.kind !== "url") return;
+        assert.equal(parsed.query, expected.search ? expected.search.slice(1) : null);
+        assert.equal(parsed.fragment, expected.hash ? expected.hash.slice(1) : null);
+        assert.equal(parsed.pathname, expected.pathname.replaceAll("%7B", "{").replaceAll("%7D", "}"));
+    }
+});
+
 test("parsePath: hash-leading spellings are ordinary local paths", () => {
     for (const raw of ["#stdout", "#draft.*#i", "#issue\\#42#"]) {
         const p = AstBuilder.parsePath(raw);

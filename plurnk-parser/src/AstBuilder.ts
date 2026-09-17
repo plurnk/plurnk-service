@@ -763,10 +763,11 @@ export default class AstBuilder {
         const authorityStart = target.indexOf("://") + 3;
         const pathStart = target.indexOf("/", authorityStart);
         if (pathStart < 0) return { value: target, restore: (pathname) => pathname };
-        const queryStart = target.indexOf("?", pathStart);
-        const fragmentStart = target.indexOf("#", pathStart);
+        const queryStart = target.indexOf("?", authorityStart);
+        const fragmentStart = target.indexOf("#", authorityStart);
         const endings = [queryStart, fragmentStart].filter((index) => index >= 0);
         const pathEnd = endings.length === 0 ? target.length : Math.min(...endings);
+        if (pathStart >= pathEnd) return { value: target, restore: (pathname) => pathname };
         const rawPath = target.slice(pathStart, pathEnd);
         if (!/[{}]/u.test(rawPath)) return { value: target, restore: (pathname) => pathname };
 
@@ -787,7 +788,8 @@ export default class AstBuilder {
     static #queryFrom(url: URL): string | null {
         const queryStart = url.href.indexOf("?");
         if (queryStart === -1) return null;
-        const fragmentStart = url.href.indexOf("#", queryStart);
+        const fragmentStart = url.href.indexOf("#");
+        if (fragmentStart !== -1 && fragmentStart < queryStart) return null;
         return url.href.slice(queryStart + 1, fragmentStart === -1 ? undefined : fragmentStart);
     }
 
