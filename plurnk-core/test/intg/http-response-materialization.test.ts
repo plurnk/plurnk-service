@@ -5,6 +5,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type ReadStatement, type SendStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Http from "@plurnk/plurnk-schemes-http";
@@ -65,6 +67,49 @@ acquisition pending
     }
     return item.statement;
 };
+
+test("{§http-channel-outcomes} finite origin statuses never become nonterminal channel states", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const server = createServer((request, response) => {
+        const status = Number(request.url?.slice(1)) || 404;
+        response.writeHead(status, { "Content-Type": "text/plain", "Cache-Control": "max-age=60" });
+        response.end(status === 204 ? undefined : `origin ${status}`);
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    t.after(() => {
+        server.closeAllConnections();
+        return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    });
+    const address = server.address();
+    assert.ok(address !== null && typeof address !== "string");
+    const authority = `127.0.0.1:${address.port}`;
+    const workspaceId = await insertWorkspace(db, `http-status-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+    const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "http" }, authority);
+    const http = new Http();
+    for (const status of [200, 201, 202, 203, 204, 206, 299, 300, 302, 307, 400, 404, 503, 599, 600, 999]) {
+        await t.test(`HTTP ${status}`, async () => {
+            const read = parsedRead(`http://${authority}/${status}`);
+            const expected = status === 204 ? 204 : status > 599 ? 502 : status >= 400 ? status : 200;
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const result = await readHttp(http, read, ctx);
+                assert.equal(result.status, expected, JSON.stringify(result));
+                assert.equal(result.content, status === 204 ? "" : `origin ${status}`);
+                const entry = (await stored.entries.read(`/${status}`)).entry;
+                assert.ok(entry);
+                assert.match(entry.channels.header.content, new RegExp(`^HTTP ${status} `));
+                assert.equal(entry.channels.body.state, status >= 400 ? "errored" : "static");
+                if (status >= 400) {
+                    assert.equal(result.problem?.originStatus, status);
+                    assert.equal(result.problem?.type, `https://problems.plurnk.xyz/scheme/http/${status > 599 ? "invalid-response-status" : "http-response-status"}`);
+                }
+            }
+        });
+    }
+});
 
 // Minimal valid one-page PDF whose content stream contains "Hello, world!".
 const readablePdf = () => new Uint8Array(Buffer.from(
@@ -154,14 +199,14 @@ const legacyTextStatement = (): ReadStatement => ({
     position: { line: 1, column: 0 },
 });
 
-for (const status of [200, 404]) {
+for (const status of [200, 202, 404]) {
 for (const size of [0, 3]) {
     test(`{§http-binary-source} a ${status} binary response with ${size} bytes preserves its source outcome`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const bytes = Uint8Array.from([1, 2, 3].slice(0, size));
         t.mock.method(globalThis, "fetch", async () => new Response(bytes, {
-            status, statusText: status === 200 ? "OK" : "Not Found", headers: { "content-type": "application/octet-stream" },
+            status, statusText: status === 200 ? "OK" : status === 202 ? "Accepted" : "Not Found", headers: { "content-type": "application/octet-stream" },
         }));
         const workspaceId = await insertWorkspace(db, `http-outcome-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);

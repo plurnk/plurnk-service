@@ -101,8 +101,8 @@ forms therefore have identical selection and scope semantics.
 An unavailable channel returns `404 channel-not-found` with the available
 channels; it does not mean that the containing URL is missing.
 
-Request headers are ordered `[{"Key": "value"}]` metadata blocks after the complete
-target, one header per block:
+Request headers share one `[{"Key": "value", ...}]` metadata block after the
+target and any scope:
 
 ````READ (https://api.example.com/v1/me) [{"Authorization": "Bearer TOKEN", "Accept": "application/json"}]
 ````
@@ -115,7 +115,7 @@ target, one header per block:
 {"query":"plurnk"}
 ````
 
-Metadata stays on one line; nested braces are preserved as content.
+Metadata stays on one line; option objects in the array merge left to right.
 An exact FIND forwards these headers when it must acquire the URL, but the
 result remains intentionally ineligible for later cache reuse. Request headers
 are never forwarded to the materializer, so HTML requests carrying any explicit
@@ -128,7 +128,7 @@ identity. POST, PUT, and DELETE never use that rewrite.
 
 A `KILL` of an https:// address never reaches the remote unless it carries the `[{"remote": true}]`
 block: while an acquisition is in flight it cancels that acquisition, otherwise it forgets
-the stored response so the next READ must acquire it again. With `[{"remote": true}]`, any other
-metadata blocks are the DELETE request's headers.
+the stored response so the next READ must acquire it again. With `[{"remote": true}]`, the other
+options in that same block are the DELETE request's headers.
 
 For a persistent bidirectional connection, use `wss://`.

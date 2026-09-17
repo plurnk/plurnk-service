@@ -449,11 +449,12 @@ export default class WebFetcher {
         fetched: Pick<WebFetchResult, "url" | "status" | "statusText">,
     ): WebChannelOutcome {
         const status = fetched.status ?? 200;
-        if (status < 400) return success(status);
+        if (status >= 200 && status < 400) return success();
         const statusText = fetched.statusText?.trim() ?? "";
+        const invalidStatus = status < 200 || status > 599;
         return failure(
-            status,
-            "http-response-status",
+            invalidStatus ? 502 : status,
+            invalidStatus ? "invalid-response-status" : "http-response-status",
             `HTTP GET ${fetched.url} returned ${status}${statusText === "" ? "" : ` ${statusText}`}.`,
             status === 408 || status === 425 || status === 429 || status >= 500,
             {

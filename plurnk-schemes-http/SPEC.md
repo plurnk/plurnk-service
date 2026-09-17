@@ -47,14 +47,14 @@ preserved exactly.
 | ```` ```SEND (url) ```` with body                 | POST                                  | Stream and persist the response under the addressed URL                                 |
 | ```` ```EDIT (url) ```` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
 | ```` ```KILL (url) ````                           | None                                  | {§http-kill}: cancel the workspace's live acquisitions of the URL, else delete the local stored entry |
-| ```` ```KILL (url) [{"remote": true}] ````                  | DELETE                                | Delete the remote resource and stream its response; other metadata blocks are its headers |
+| ```` ```KILL (url) [{"remote": true}] ````                  | DELETE                                | Delete the remote resource and stream its response; other options in the same metadata block are its headers |
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
-headers are ordered scheme metadata: one `[{"Key": "value"}]` block after the target
-per header. HTTP alone parses those opaque blocks; the resource target remains
-pure. A loop SEND signal is never the remote HTTP status; remote status and
-headers are persisted in `header`.
+headers are options in one `[{"Key": "value", ...}]` metadata block under
+{§scheme-metadata-modifier}. HTTP interprets the merged options; the resource
+target remains pure. Remote status and headers are persisted in `header`, not
+interpreted as Plurnk operation or loop lifecycle signals.
 Exact-versus-pattern FIND preparation uses the shared
 `PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
 path-pattern grammar.
@@ -220,10 +220,15 @@ shows that `#readable` exists before the model has ever listed the page.
 Exact READ, exact FIND, and executor materialization preserve the same channel
 representation. A missing source variant is an explicit empty `errored`
 channel, never an absent fact that later cache use can reinterpret as successful
-empty content. A direct non-success HTTP response likewise remains available as
-evidence, while each origin-backed channel carries an exact
-`http-response-status` producer Problem. A materializer-produced `readable` and the
-acquisition `header` remain independent of an unavailable origin source.
+empty content. A finite origin `2xx` or `3xx` response completes ordinary local
+production, independently of the origin's status meaning; `202` does not leave
+an acquisition pending, and origin `203` is not a materializer recovery. Origin
+`4xx`/`5xx` content remains available as evidence while origin-backed channels
+carry the exact `http-response-status` producer Problem. A final status outside
+`200`–`599` instead produces `502 invalid-response-status` with `originStatus`,
+preserving the received content and header. A materializer-produced `readable`
+and the acquisition `header` remain independent of an unavailable origin source.
+Conditional `304` correspondence is checked before production under {§revalidation}.
 
 §http-llms-txt **Origin llms.txt companions.** After a successful generic GET
 materialization, the scheme opportunistically acquires `<origin>/llms.txt`
@@ -239,10 +244,11 @@ an origin is first being read.
 
 | Outcome                                                       | Operation status                                         |
 | ------------------------------------------------------------- | -------------------------------------------------------- |
-| Finite exact READ after preparation                           | Universal selected-channel result (`200`, `204`, or producer status) |
+| Finite origin `2xx`/`3xx` exact READ after preparation          | Universal selected-channel result (`200` or `204`); origin status remains in `header` |
 | Exact FIND after preparation                                  | Exact universal query result                             |
 | Exact acquisition returns no WebFetcher value                 | `404` (`not-materialized`)                               |
 | Selected origin-backed channel received HTTP `4xx`/`5xx`      | Exact durable `http-response-status` Problem             |
+| Selected origin-backed channel received an invalid final status | `502` (`invalid-response-status`) with `originStatus` |
 | Selected HTML-page channel fails                              | That channel's exact durable producer Problem            |
 | Local HTML projection is absent                               | `422` (`no-readable-projection`)                         |
 | Recoverable materializer failure uses local projection        | `readable` with durable status `203`                     |
@@ -437,7 +443,7 @@ later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
 stored GET remain visible to universal FIND as durable evidence; exact HTTP
 preparation applies the policy above. A metadata-less `KILL` deletes the stored entry ({§http-kill}).
 
-§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** ```` ```KILL (url) ```` cancels all live acquisitions of that exact URL within the workspace — GET, SSE, or mutations — by aborting their registered controllers; each initiating operation settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only ```` ```KILL (url) [{"remote": true}] ```` sends the HTTP DELETE, and its remaining metadata blocks are that request's headers. A KILL never reaches the remote by accident.
+§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** ```` ```KILL (url) ```` cancels all live acquisitions of that exact URL within the workspace — GET, SSE, or mutations — by aborting their registered controllers; each initiating operation settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only ```` ```KILL (url) [{"remote": true}] ```` sends the HTTP DELETE, and the other options in that metadata block are the request's headers. A KILL never reaches the remote by accident.
 
 ### §sse Server-sent events
 
