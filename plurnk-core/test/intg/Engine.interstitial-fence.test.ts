@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 
 const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
 
@@ -105,6 +105,39 @@ test("{§empty-turn}: a prose-only response is an admitted turn with a turn_no_o
         assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "the packet says the turn emitted no operations");
     } finally { await db.close(); }
 });
+
+for (const finishReason of [undefined, "stop", "length"] as const) {
+    test(`{§empty-turn}: reasoning without operations does not conclude settled work (finish=${finishReason ?? "absent"})`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `reasoning-only-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "Read the note and answer.");
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Recorded." });
+            const reasoning = "I still need to work out the next action.";
+            const notices: Array<{ kind: string }> = [];
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: PlurnkParser.frame("READ (worker:///notes.md)", "") + "\n" + PlurnkParser.frame("SEND", "Recorded."), reasoning: null } },
+                { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
+                { assistant: { content: memory, reasoning: null } },
+            ] });
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
+            const result = await engine.runLoop({
+                provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
+                messages: [{ role: "user", content: "Read the note and answer." }],
+            });
+            assert.equal(result.result.status, 200);
+            assert.equal(provider.received.length, 3, "the empty turn does not infer completion; a recovery request follows");
+            const emptyTurn = result.turnIds[2]!;
+            const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
+            assert.equal(turn?.status, 102);
+            assert.equal(packetSection(JSON.parse(turn!.packet), "messages"), "[]", "the original message is already answered");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
+            assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 1);
+        } finally { await db.close(); }
+    });
+}
 
 // {§metadata-ignored} — an option a scheme does not take is dropped with one notice; the operation runs.
 test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and the READ still runs", async () => {

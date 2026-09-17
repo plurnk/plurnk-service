@@ -889,15 +889,16 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. Turn dispositions
 
-The runtime adjudicates the complete program against actual messages, results
-and live obligations ({§wait-obligation-matrix}):
+The runtime adjudicates a nonempty admitted program against actual messages,
+results and live obligations ({§wait-obligation-matrix}). A response with no
+operation receives empty-turn recovery, not successful completion ({§empty-turn}).
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
 | Unanswered messages or unobserved results | 102 | Continue silently |
 | WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
 | All messages answered, live work remains | 202 | Join the held work |
-| All messages answered, results observed, no held work | 200 | Conclude without another operation or repeated response |
+| All messages answered, results observed, no held work | 200 | The admitted program concludes; no repeated response is required |
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
