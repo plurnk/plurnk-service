@@ -468,7 +468,7 @@ or membership overlay requires a new workspace.
 
 §worker-name-minting **URI ingestion is permissive; worker minting is not.**
 Every model/client worker-creation door applies the contracts-owned
-`WORKER_NAME` predicate through one core admission path. Generic URL parsing
+`WORKER_NAME` predicate ({§worker-name}) through one core admission path. Generic URL parsing
 continues to decompose other authorities without treating them as mintable.
 
 | Candidate                                      | Minting result                                                        |

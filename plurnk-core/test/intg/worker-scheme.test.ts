@@ -503,8 +503,8 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         for (const [sequence, statement] of [
-            [1, spawnedWorker("bad_name", "spawn")],
-            [2, forkWorker("bad_name", "fork")],
+            [1, spawnedWorker("_invalid", "spawn")],
+            [2, forkWorker("_invalid", "fork")],
         ] as const) {
             const result = await engine.dispatch({
                 statement,
@@ -517,13 +517,15 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
             });
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-invalid");
-            assert.equal(result.problem?.worker, "bad_name");
+            assert.equal(result.problem?.worker, "_invalid");
+            assert.equal(result.problem?.detail, "Worker name '_invalid' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}.");
+            assert.equal(result.problem?.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit.");
             assert.equal(result.problem?.retryable, false);
         }
 
         assert.equal(calls.length, 0, "invalid names never reach the child-start seam");
         assert.equal(
-            await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: "bad_name" }),
+            await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: "_invalid" }),
             undefined,
             "invalid names never reach the worker registry",
         );
@@ -548,26 +550,26 @@ test("{§op-execution-order}: one model program creates workers before cancellin
             cancelWorker: async (child, reason) => { await lifecycle.cancelTree(child, reason, true); },
         });
         const content = [
-            PlurnkParser.frame("WORK (worker://approach-a)", "Consider approach A."),
-            PlurnkParser.frame("WORK (worker://approach-b)", "Consider approach B."),
-            PlurnkParser.frame("WORK (worker://approach-c)", "Consider approach C."),
-            PlurnkParser.frame("KILL (worker://approach-a)", null),
-            PlurnkParser.frame("KILL (worker://approach-c)", null),
+            PlurnkParser.frame("WORK (worker://approach_a)", "Consider approach A."),
+            PlurnkParser.frame("WORK (worker://approach_b)", "Consider approach B."),
+            PlurnkParser.frame("WORK (worker://approach_c)", "Consider approach C."),
+            PlurnkParser.frame("KILL (worker://approach_a)", null),
+            PlurnkParser.frame("KILL (worker://approach_c)", null),
         ].join("\n\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] });
         const turn = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; hostname: string | null; origin: string; status_rx: number }>({ turn_id: turn.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, hostname, status_rx }) => [op, hostname, status_rx]), [
-            ["WORK", "approach-a", 200],
-            ["WORK", "approach-b", 200],
-            ["WORK", "approach-c", 200],
-            ["KILL", "approach-a", 200],
-            ["KILL", "approach-c", 200],
+            ["WORK", "approach_a", 200],
+            ["WORK", "approach_b", 200],
+            ["WORK", "approach_c", 200],
+            ["KILL", "approach_a", 200],
+            ["KILL", "approach_c", 200],
         ], "every operation sees the preceding operation's durable effects");
-        assert.deepEqual([...children.keys()], ["approach-a", "approach-b", "approach-c"]);
-        assert.equal(await lifecycle.status(children.get("approach-a")!), 499);
-        assert.equal(await lifecycle.status(children.get("approach-b")!), 102);
-        assert.equal(await lifecycle.status(children.get("approach-c")!), 499);
+        assert.deepEqual([...children.keys()], ["approach_a", "approach_b", "approach_c"]);
+        assert.equal(await lifecycle.status(children.get("approach_a")!), 499);
+        assert.equal(await lifecycle.status(children.get("approach_b")!), 102);
+        assert.equal(await lifecycle.status(children.get("approach_c")!), 499);
     } finally { await db.close(); }
 });
 
@@ -824,13 +826,13 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
-        const forkStmt = forkWorker("recheck", "take the other branch");
+        const forkStmt = forkWorker("Recheck_A", "take the other branch");
         const result = await engine.dispatch({
             statement: forkStmt, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "fork returns 200");
         const branchName = (result as { body?: string }).body ?? "";
-        assert.equal(branchName, "recheck", "the branch carries the explicit name FORK gave it");
+        assert.equal(branchName, "Recheck_A", "the branch carries the explicit name FORK gave it");
 
         const branch = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");

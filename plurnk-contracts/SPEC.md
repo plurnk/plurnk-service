@@ -742,8 +742,9 @@ never target content. Glob metacharacters remain legal path data.
 Matching and folder-scope semantics remain runtime concerns.
 
 §worker-name The exported `WORKER_NAME` contract governs names minted for URI
-authority slots: a lowercase DNS label matching
-`[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?`. There is no reserved-name list: the
+authority slots: `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` (1–63 ASCII characters,
+starting with a letter or digit). Case is preserved and significant;
+`Approach_A` and `approach_a` are distinct names. There is no reserved-name list: the
 runtime's own actor is named `_plurnk`, a spelling the predicate never admits.
 Every matching value, including `self` and `plurnk`, is an ordinary
 literal worker name. This is a minting and registry invariant, not an

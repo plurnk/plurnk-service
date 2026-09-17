@@ -87,6 +87,8 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
                 "```",
             ].join("\n")),
             makeMockResponse("```SEND\nselected branch\n```"),
+            makeMockResponse("```SEND\nuppercase context result\n```"),
+            makeMockResponse("```SEND\nlowercase context result\n```"),
         ],
     });
     const daemon = new Daemon({ db, provider });
@@ -160,6 +162,9 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         );
 
         const first = await runTask(client, "produce the first result");
+        for (const id of [first.task.contextId, first.task.id]) {
+            assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, "SDK UUIDs remain directly addressable worker names");
+        }
         assert.deepEqual(first.events.map((event) => payload(event).$case), [
             "task",
             "statusUpdate",
@@ -258,6 +263,24 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             secondLog.some((row) => row.source === `worker://${first.task.id}` && row.op === "SEND"),
             "the later Task inherits the first Task's pending terminal evidence through the Context snapshot",
         );
+        const namedContexts: number[] = [];
+        for (const [contextId, result] of [
+            ["Approach_A", "uppercase context result"],
+            ["approach_a", "lowercase context result"],
+        ] as const) {
+            const named = await runTask(client, "produce a named context result", { contextId });
+            assert.equal(named.task.contextId, contextId);
+            const stored = await client.getTask({ tenant: "", id: named.task.id, historyLength: 1 });
+            assert.equal(stored.status?.state, TaskState.TASK_STATE_COMPLETED);
+            assert.equal(stored.artifacts[0]?.parts[0]?.content?.value, result);
+            const context = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: contextId } });
+            const task = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: named.task.id } });
+            assert.ok(context !== null);
+            assert.equal(context.name, contextId);
+            assert.equal(task?.parentWorkerId, context.id, "the protocol Context and Task identities are the worker names verbatim");
+            namedContexts.push(context.id);
+        }
+        assert.notEqual(namedContexts[0], namedContexts[1], "A2A Context identities remain case-sensitive");
         assert.equal(provider.remaining, 0);
     } finally {
         await daemon.stop();

@@ -1277,15 +1277,14 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
 
-        // attach — core's namespace invariant admits plurnk as an ordinary worker name and refuses
-        // non-mintable spellings; a plain attach returns an envelope.
-        const plurnkAttach = await daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" });
-        assert.equal(plurnkAttach.workerName, "plurnk", "attachWorkspace admits plurnk as an ordinary worker name");
+        // {§worker-name-minting}: attachment preserves case and underscores; invalid names fail.
+        const namedAttach = await daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "Approach_A" });
+        assert.equal(namedAttach.workerName, "Approach_A", "attachment preserves the exact worker name");
         const invalidWorkerName = await rejectedProblem(() =>
-            daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "bad_name" }));
+            daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "_invalid" }));
         assert.equal(invalidWorkerName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
         assert.equal(invalidWorkerName.status, 400);
-        assert.equal(invalidWorkerName.name, "bad_name");
+        assert.equal(invalidWorkerName.name, "_invalid");
         assert.equal(invalidWorkerName.retryable, false);
         const attached = await daemon.attachWorkspace({ workspaceId: env.workspaceId });
         assert.equal(attached.workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
@@ -1387,10 +1386,10 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
             const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
             await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "branch me" }) });
 
-            const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "mybranch" });
+            const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "My_branch" });
             assert.ok(branch.workerId > 0 && branch.workerId !== clientWorker.id, "forkWorker created a new worker");
             assert.equal(branch.parentWorkerId, clientWorker.id, "the branch is lineaged to its parent");
-            assert.equal(branch.workerName, "mybranch");
+            assert.equal(branch.workerName, "My_branch");
             // {§application-worker-observation} — the directory says how it was minted (#523).
             const observed = await daemon.readWorker({ workspaceId: created.id, identity: { id: branch.workerId } });
             assert.equal(observed?.kind, "fork");
@@ -1400,15 +1399,15 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
             assert.equal(parent?.kind, "conversation");
 
             // invariants: the runtime actor's name and a foreign worker are both refused.
-            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "_plurnk" }), /DNS-label/);
+            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "_plurnk" }), /must match \[A-Za-z0-9\]\[A-Za-z0-9_-\]\{0,62\}/);
             const invalidName = await rejectedProblem(() => daemon.forkWorker({
                 workspaceId: created.id,
                 workerId: clientWorker.id,
-                name: "bad_name",
+                name: "_invalid",
             }));
             assert.equal(invalidName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
             assert.equal(invalidName.status, 400);
-            assert.equal(invalidName.name, "bad_name");
+            assert.equal(invalidName.name, "_invalid");
             assert.equal(invalidName.retryable, false);
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-fork-other" })).result as { id: number };
             const otherWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: other.id }))!;

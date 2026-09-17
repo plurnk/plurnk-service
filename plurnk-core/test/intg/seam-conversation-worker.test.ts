@@ -15,9 +15,9 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
             const stable = await daemon.ensureModelWorker(workspaceId);
 
             // The fresh door: named, empty, model-origin root.
-            const conv = await daemon.createConversationWorker({ workspaceId, name: "thread-2" });
+            const conv = await daemon.createConversationWorker({ workspaceId, name: "Thread_2" });
             assert.notEqual(conv.workerId, stable, "a fresh conversation, not the default");
-            assert.equal(conv.workerName, "thread-2", "the client's name IS the worker name");
+            assert.equal(conv.workerName, "Thread_2", "the client's name IS the worker name");
             assert.equal((await daemon.readLog({ workspaceId, workerId: conv.workerId })).length, 0, "an EMPTY log — fork copies history, this must not");
 
             // runLoop accepts it (model-origin), and the full loop settles on that conversation.
@@ -45,28 +45,28 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
                     assert.equal(error.result.problem.name, "_plurnk");
-                    assert.equal(error.result.problem.recovery, "Choose a lowercase DNS-label worker name.");
+                    assert.equal(error.result.problem.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit.");
                     return true;
                 },
             );
             await assert.rejects(
-                () => daemon.createConversationWorker({ workspaceId, name: "bad_name" }),
+                () => daemon.createConversationWorker({ workspaceId, name: "_invalid" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
                     assert.equal(error.result.problem.status, 400);
-                    assert.equal(error.result.problem.name, "bad_name");
+                    assert.equal(error.result.problem.name, "_invalid");
                     assert.equal(error.result.problem.retryable, false);
                     return true;
                 },
             );
             await assert.rejects(
-                () => daemon.createConversationWorker({ workspaceId, name: "thread-2" }),
+                () => daemon.createConversationWorker({ workspaceId, name: "Thread_2" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-conflict");
                     assert.equal(error.result.problem.workspaceId, workspaceId);
-                    assert.equal(error.result.problem.name, "thread-2");
+                    assert.equal(error.result.problem.name, "Thread_2");
                     assert.equal(error.result.problem.recovery, "Choose another worker name.");
                     return true;
                 },

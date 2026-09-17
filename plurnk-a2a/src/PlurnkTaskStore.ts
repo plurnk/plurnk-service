@@ -109,7 +109,7 @@ export default class PlurnkTaskStore implements TaskStore {
     }
 
     async binding(taskId: string): Promise<PlurnkTaskBinding | null> {
-        // This exposure only mints DNS-label identities. Other opaque A2A IDs
+        // This exposure only mints {§worker-name} identities. Other opaque A2A IDs
         // cannot identify one of its Tasks; they are not malformed Core calls.
         if (!WORKER_NAME.test(taskId)) return null;
         const workspaceId = await this.#workspace.existingId();

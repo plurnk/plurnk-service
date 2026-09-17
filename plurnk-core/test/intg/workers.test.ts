@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { openMigrated, insertWorkspace } from "./_helpers.ts";
 import Envelope from "../../src/server/envelope.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import { WorkerNameError } from "../../src/core/WorkerName.ts";
 
 let nameCounter = 0;
 const n = (suffix: string): string => `worker-${suffix}-${++nameCounter}`;
@@ -15,8 +16,14 @@ test("{§worker-name-minting}: 'plurnk' is an ordinary worker name; the runtime 
         const plurnk = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" });
         assert.equal(plurnk.workerName, "plurnk", "an operator may name a worker plurnk");
         assert.notEqual(plurnk.workerId, runtimeId, "and holds a worker of their own, not the runtime actor");
-        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "_plurnk" }), /DNS-label/, "the runtime actor cannot be resumed by name");
-        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" }), /DNS-label/, "uppercase lies outside the mintable alphabet");
+        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "_plurnk" }), WorkerNameError, "the runtime actor cannot be resumed by name");
+        const upper = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" });
+        assert.equal(upper.workerName, "PLURNK");
+        assert.notEqual(upper.workerId, plurnk.workerId, "worker identity is case-sensitive");
+        for (const worker of [plurnk, upper]) {
+            const resumed = await Envelope.attachToWorkspace(db, workspaceId, { workerName: worker.workerName });
+            assert.equal(resumed.workerId, worker.workerId, "attachment resolves the exact literal identity");
+        }
     } finally { await db.close(); }
 });
 

@@ -265,7 +265,7 @@ try {
     const cli = await runClient(clientBin, [
         "--json",
         "--workspace", "installed-cli",
-        "--worker", "cli-worker",
+        "--worker", "Cli_Worker",
         "--project-root", "",
         "--model", "journey",
         "--max-turns", "2",
@@ -289,7 +289,7 @@ try {
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-tui",
-        "--worker", "tui-worker",
+        "--worker", "Tui_Worker",
         "--project-root", "",
         "--model", "journey",
         "--max-turns", "2",
@@ -311,7 +311,7 @@ try {
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
     await tui.waitFor(/⏹️  · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜 0/);   // two spaces after the glyph (plurnk#67)
     // {plurnk#58} — the prompt prefix names the place: [workspace/~worker(loop/turn)].
-    await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~tui-worker(?:\(\d+\/\d+\))?\]/);
+    await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Worker(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");

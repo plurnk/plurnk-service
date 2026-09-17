@@ -60,7 +60,7 @@ flowchart LR
 ```
 
 The SDK generates new Context and Task UUIDs before execution. Those UUIDs
-already satisfy Plurnk's worker-name contract, so their exact values name the
+already satisfy Plurnk's worker-name contract ({§worker-name}), so their exact values name the
 root Context Worker and its Task child. No adapter binding table, synthetic
 actor, or second scheduler exists. Later Tasks fork the Context root and
 therefore receive the parent-visible prior Task evidence under Core's ordinary

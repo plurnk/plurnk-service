@@ -219,26 +219,12 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
     assert.deepEqual(schemes, ["ws", "wss", "ws"]);
 });
 
-// {§worker-name} The mintable worker-name contract is a lowercase DNS label. The single
-// source core's auto-namer and schemes' registry derive from. The parser stays permissive
-// (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
-test("worker-name contract: WORKER_NAME is a lowercase DNS label", () => {
-    for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "self", "plurnk"]) {
-        assert.ok(WORKER_NAME.test(ok), `${ok} must be mintable`);
-    }
-    for (const bad of ["Alice", "-lead", "trail-", "under_score", "_plurnk", "dot.name", "~", "", "sp ace"]) {
-        assert.ok(!WORKER_NAME.test(bad), `${bad} must NOT be mintable`);
-    }
-});
-
-test("worker-name contract: the case footgun is real — parser preserves authority case", () => {
-    // WHY lowercase-only: non-special schemes do not lowercase the authority, so `Alice` and
-    // `alice` would be distinct principals. The charset closes the whole class at minting.
-    const upper = AstBuilder.parsePath("worker://Alice/x");
-    const lower = AstBuilder.parsePath("worker://alice/x");
+test("{§worker-name}: parser preserves worker authority case and underscores", () => {
+    const upper = AstBuilder.parsePath("worker://Approach_A/x");
+    const lower = AstBuilder.parsePath("worker://approach_a/x");
     if (upper?.kind !== "url" || lower?.kind !== "url") { assert.fail("both must decompose"); return; }
-    assert.equal(upper.hostname, "Alice");
-    assert.equal(lower.hostname, "alice");
+    assert.equal(upper.hostname, "Approach_A");
+    assert.equal(lower.hostname, "approach_a");
     assert.notEqual(upper.hostname, lower.hostname);
 });
 

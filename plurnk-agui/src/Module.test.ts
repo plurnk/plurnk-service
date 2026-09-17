@@ -2846,7 +2846,7 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.listWorkers = async () => [workerRow(10, "c", "client"), workerRow(5, "_plurnk", "_plurnk"), workerRow(20, "model-1")];
     const refusals: Record<string, ReturnType<typeof Problems.create>> = {
-        _plurnk: Problems.create("daemon:worker", "name-invalid", 400, "Worker name '_plurnk' must match the lowercase DNS-label contract.", { context: "worker.create", field: "name", name: "_plurnk", retryable: false }),
+        _plurnk: Problems.create("daemon:worker", "name-invalid", 400, "Worker name '_plurnk' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}.", { context: "worker.create", field: "name", name: "_plurnk", retryable: false }),
         c: Problems.create("daemon:worker", "name-conflict", 409, "Worker name 'c' is already in use in workspace 3 by a client worker.", { workspaceId: 3, name: "c", actualOrigin: "client", retryable: false }),
     };
     seam.createConversationWorker = async (a) => {

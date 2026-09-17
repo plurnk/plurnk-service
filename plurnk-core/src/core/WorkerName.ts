@@ -29,10 +29,10 @@ export class WorkerNameConflictError extends Error {
 export class WorkerNameError extends Error {
     readonly workerName: string;
     readonly code = "name-invalid";
-    readonly recovery = "Choose a lowercase DNS-label worker name.";
+    readonly recovery = "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit.";
 
     constructor(workerName: string) {
-        super(`Worker name '${workerName}' must match the lowercase DNS-label contract.`);
+        super(`Worker name '${workerName}' must match ${WORKER_NAME.source.slice(1, -1)}.`);
         this.name = "WorkerNameError";
         this.workerName = workerName;
     }
@@ -79,7 +79,7 @@ export default class WorkerName {
         while (true) {
             const claimed = await db.worker_name_claim.get<WorkerNameClaim>({
                 workspace_id: workspaceId,
-                name: WorkerName.short(),
+                name: WorkerName.assert(WorkerName.short()),
                 parent_worker_id: parentWorkerId ?? null,
                 origin,
                 default_conversation: defaultConversation ? 1 : 0,
