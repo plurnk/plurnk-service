@@ -28,6 +28,20 @@ test("the explicit client checkout is shared by candidate and release lifecycles
     );
 });
 
+test("conformance's sibling default applies only when no client checkout is supplied", () => {
+    const sibling = resolve(serviceRoot, "../plurnk");
+    for (const value of [undefined, "", "   "]) {
+        assert.equal(resolveClientCheckout({ PLURNK_CLIENT_CHECKOUT: value }, cwd, sibling), sibling);
+    }
+    for (const value of ["../other client", "/independent/client", "/missing/client"]) {
+        assert.equal(
+            resolveClientCheckout({ PLURNK_CLIENT_CHECKOUT: ` ${value} ` }, cwd, sibling),
+            resolve(cwd, value),
+            "an explicit path overrides the default without guessing from filesystem availability",
+        );
+    }
+});
+
 test("release topology requires an explicit external repository forest", () => {
     assert.throws(
         () => resolveExternalReposRoot({}, cwd),

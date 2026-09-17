@@ -44,8 +44,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
 # The drill runs the COMMIT being pushed, never the working tree (#642): a throwaway
 # worktree at the pushed sha is immutable for the whole run, so editing here while the
 # gate runs cannot change what it tests, and uncommitted work never rides a push green
-# or red. It sits beside this checkout because the conformance phase reads the sibling
-# terminal client as `../plurnk`. Installed dependencies are copied whole:
+# or red. It sits beside this checkout to preserve conformance's default `../plurnk`
+# layout; PLURNK_CLIENT_CHECKOUT may select another installed client. Dependencies are copied whole:
 # the workspace links are relative (`node_modules/@plurnk/x -> ../../x`), so inside the
 # worktree they resolve to the worktree's own packages.
 repo=$(git rev-parse --show-toplevel) || exit 1

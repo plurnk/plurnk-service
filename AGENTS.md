@@ -155,7 +155,8 @@ boots the built service and compares the terminal client's
 `conformance/agui-client.json` (`../plurnk`) against live
 `discover`, so an action rename, scope, or module-surface change fails this
 repository's push instead of silently breaking the client. The installed CLI
-and TUI journeys require that sibling checkout and its dependencies.
+and TUI journeys require that checkout and its dependencies; `PLURNK_CLIENT_CHECKOUT`
+selects another installed client location instead of the `../plurnk` default.
 
 Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
 Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with

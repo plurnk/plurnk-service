@@ -107,10 +107,15 @@ historical surface.
 
 ```sh
 git clone https://github.com/plurnk/plurnk-service.git
+git clone https://github.com/plurnk/plurnk.git
+npm ci --prefix plurnk
 cd plurnk-service
 npm ci
 npm test
 ```
+
+The complete test gate requires the installed terminal client checkout. For a
+different layout, set `PLURNK_CLIENT_CHECKOUT=/path/to/plurnk` when running it.
 
 Long-running drills remain explicit as `npm run test:live` and `npm run test:demo`;
 use `npm run config:list` for a value-free configuration inventory.

@@ -12,20 +12,22 @@ import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
+import { resolveClientCheckout } from "./project-topology.mjs";
 
 const run = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");
-const terminalRoot = resolve(root, "../plurnk");
+const terminalRoot = resolveClientCheckout(process.env, process.cwd(), resolve(root, "../plurnk"));
 const terminalRequire = createRequire(join(terminalRoot, "package.json"));
 let spawnPty;
 try {
     ({ spawn: spawnPty } = terminalRequire("node-pty"));
 } catch (cause) {
     throw new Error(
-        `client conformance needs the installed terminal client checkout beside this repository: ${terminalRoot} (clone plurnk there and run npm ci)`,
+        `client conformance needs an installed terminal client checkout: ${terminalRoot}. Run npm ci there, or set PLURNK_CLIENT_CHECKOUT to another installed checkout.`,
         { cause },
     );
 }
+process.stdout.write(`client conformance: ${terminalRoot}\n`);
 // A failed run preserves its tree for the diagnosis that follows (see the finally block); the
 // next run reaps every preserved tree older than an hour, long past any live run's start, so
 // evidence never outlives its usefulness: fifteen preserved failures (~0.5 GB each) filled a

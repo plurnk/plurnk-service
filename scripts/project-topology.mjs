@@ -5,8 +5,8 @@ const optionalPath = (value) => {
     return trimmed === "" ? undefined : trimmed;
 };
 
-export const resolveClientCheckout = (env, cwd = process.cwd()) => {
-    const clientCheckout = optionalPath(env.PLURNK_CLIENT_CHECKOUT);
+export const resolveClientCheckout = (env, cwd = process.cwd(), defaultCheckout) => {
+    const clientCheckout = optionalPath(env.PLURNK_CLIENT_CHECKOUT) ?? defaultCheckout;
     if (clientCheckout === undefined) {
         throw new Error("PLURNK_CLIENT_CHECKOUT must name the outside open-client checkout");
     }

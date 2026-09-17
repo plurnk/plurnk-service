@@ -233,6 +233,11 @@ one provider request, and failed status after subsequent management reads.
 Independent terminal-client connections verify shared workspace state and its
 persistence across daemon restart.
 
+The installed-client gate resolves `PLURNK_CLIENT_CHECKOUT` relative to the
+invocation directory, defaulting to `../plurnk` beside the service checkout.
+The selected checkout and its installed dependencies are required; an invalid
+explicit path fails rather than falling back or skipping conformance.
+
 ## §agui-proposal-resolve Client-owned stop-the-world interactions
 
 Every client-owned daemon proposal—file edits and `[300]` operator questions—and
