@@ -173,7 +173,7 @@ The containing `package.json` `name` must be a valid current npm package name.
 
 | Field        | Type     | Required | Contract                                                                                                        |
 |--------------|----------|----------|-----------------------------------------------------------------------------------------------------------------|
-| `name`       | string   | yes      | RFC 6838 restricted type/subtype name registered by this entry (`text/markdown`, `application/json`, …).        |
+| `name`       | string   | yes      | RFC 6838 restricted type/subtype syntax; registers a local handler, not an IANA registration ({§mimetype-naming}). |
 | `revision`   | string   | yes      | Non-empty handler-owned projection revision ({§mimetype-projection-identity}).                                  |
 | §mimetype-client-display `glyph` | string | no | Opaque client presentation glyph; discovery retains the handler-facing empty-string default, while Core projects that sentinel as absence through {§client-display-capabilities}. |
 | `extensions` | string[] | no       | Dotted entries are case-insensitive extensions; bare entries are case-sensitive filenames such as `Dockerfile`. |
@@ -237,34 +237,35 @@ resolved URL.
 The framework does not change daemon flags, install process-global module
 hooks, or implement a second package-exports resolver.
 
-### 2.1 Mimetype naming convention
+### §mimetype-naming 2.1 Mimetype naming convention
 
-The family follows a single resolution order. Authors of new handlers MUST consult these sources in order:
+Discovery validates type/subtype syntax, not membership in an external registry.
+Handler registration, IANA registration, and presence in `mime-db` are distinct
+facts. An absent database name merits review; it does not prove a typo.
 
-1. **IANA Media Types Registry** ([iana.org/assignments/media-types](https://www.iana.org/assignments/media-types/media-types.xhtml)) — if a mimetype is IANA-registered for the format, use it. This always wins. Pre-registration `application/x-foo` and `application/vnd.*` variants are abandoned in favor of the registered name (e.g. `application/protobuf`, not `application/x-protobuf`; `application/vnd.datalog`, not `text/x-datalog`).
-2. **GitHub Linguist** (`codemirror_mime_type` and aliases in `languages.yml`) — the de facto convention used by tooling-side ecosystems (Linguist, mime-db, VS Code, freedesktop). Adopt when IANA is silent. Examples: `text/x-pgsql` for PostgreSQL, `text/x-mysql` for MySQL/MariaDB, `text/x-csrc` for C source.
-3. **House style: `text/x-{lang}`** — the IETF experimental tree, used uniformly for source code in non-registered languages (Rust, Go, Kotlin, Swift, Elixir, Zig, etc.).
+| Name source | Use |
+|---|---|
+| [IANA registry](https://www.iana.org/assignments/media-types/media-types.xhtml) | Prefer the registered name when it identifies the format accurately. |
+| Established tooling | Retain explicit ecosystem names where needed for routing. Linguist, Deno and format owners are evidence; none is an exhaustive registry. |
+| Existing `text/x-{language}` names | Retained source-language conventions, not an IETF experimental-tree guarantee. [RFC 6838 §3.4](https://www.rfc-editor.org/rfc/rfc6838.html#section-3.4) distinguishes `x.` from legacy `x-`. |
+| Internal resource label | Document its local meaning without claiming Internet-standard registration. |
 
-**Multiple legitimate conventions:** when two or more equally-supported names exist (e.g. `text/x-cpp` is house-style coherent, `text/x-c++src` is the Linguist convention), register all of them. Each becomes its own handler entry pointing to the same class. Consumers using any of them get correct routing. Example:
+The following non-`x-` names are deliberate, not spelling corrections or a
+runtime allowlist:
 
-```json
-{
-    "plurnk": {
-        "kind": "mimetype",
-        "handlers": [
-            { "name": "text/x-cpp",    "revision": "1", "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] },
-            { "name": "text/x-c++src", "revision": "1", "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] },
-            { "name": "text/x-c++",    "revision": "1", "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] }
-        ]
-    }
-}
-```
+| Name | Purpose |
+|---|---|
+| `application/jsonc` | JSON with comments; distinct from strict JSON. |
+| `application/jsonl` | [JSON Lines](https://jsonlines.org/); distinct from a single JSON document. |
+| `audio/aiff` | The audio handler's retained AIFF input label. |
+| `text/typescript` | TypeScript source, following Deno's media-type convention. |
+| `text/tsx` | Deno's TSX label; an explicit-hint alternative to extension-detected `text/x-tsx`. |
+| `text/stream` | Internal tail-oriented text projection; not a network streaming protocol. |
 
-**Do not:**
-
-- Use `text/{lang}` without the `x-` prefix unless the format is IANA-registered (`text/markdown`, `text/csv`, `text/javascript` are fine — they're registered; `text/python` is not registered, so use `text/x-python`).
-- Append `-sql`, `-cli`, `-script`, etc. to differentiate dialects. The bare dialect name is the convention: `text/x-sqlite`, `text/x-pgsql`, `text/x-redis` — not `text/x-sqlite-sql`, `text/x-redis-cli`.
-- Retain a superseded pre-registration alias past the next semver-major boundary.
+Multiple supported names are peer handler entries, possibly sharing one class;
+discovery does not silently rewrite them to a canonical MIME name. New dialect
+names should follow existing tooling rather than invent `-sql`, `-cli`, or
+`-script` suffixes (`text/x-pgsql`, not `text/x-pgsql-sql`).
 
 **SQL dialect summary:** `text/x-sqlite`, `text/x-pgsql`, `text/x-mysql` (covers MariaDB-compat too), `text/x-tsql`, `text/x-plsql`. Generic / dialect-agnostic SQL is IANA's `application/sql` (RFC 6922) — reserved for cases where the dialect truly isn't known.
 
