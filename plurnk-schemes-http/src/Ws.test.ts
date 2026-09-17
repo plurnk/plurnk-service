@@ -453,7 +453,7 @@ test("READ preserves an exact seed-write failure without connecting", async () =
     assert.equal(inspect().opened, null);
 });
 
-test("DONE: connecting is 409, open is sendable, and closing cannot silently discard", async () => {
+test("SEND: connecting is 409, open is sendable, and closing cannot silently discard", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, inspect, awaitClosed } = makeCtx();
@@ -494,7 +494,7 @@ test("DONE: connecting is 409, open is sendable, and closing cannot silently dis
     await awaitClosed();
 });
 
-test("DONE: a claimed owner is distinct from an absent connection", async () => {
+test("SEND: a claimed owner is distinct from an absent connection", async () => {
     const writeGate = Promise.withResolvers<void>();
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
@@ -731,7 +731,7 @@ test("WebSocket userinfo is rejected before connection", async () => {
     assert.equal(connected, false);
 });
 
-test("EDIT and DONE: no claimed socket → 409", async () => {
+test("EDIT and SEND: no claimed socket → 409", async () => {
     const { ctx } = makeCtx();
     const ws = new Ws(() => fakeSocket());
     const target = wss(PUB, "/feed");
@@ -744,7 +744,7 @@ test("EDIT and DONE: no claimed socket → 409", async () => {
     }
 });
 
-test("EDIT and DONE: both send one whole text frame through the open owner", async () => {
+test("EDIT and SEND: both send one whole text frame through the open owner", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, awaitClosed } = makeCtx();
@@ -781,7 +781,7 @@ test("EDIT: ranges and multi-edit pseudo-atomicity are rejected", async () => {
     assert.equal(multiple.problem?.type, "https://problems.plurnk.xyz/scheme/wss/non-atomic-edit-batch");
 });
 
-test("DONE: a socket send throw becomes a structured transport failure", async () => {
+test("SEND: a socket send throw becomes a structured transport failure", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => ({
         ...sock,

@@ -1641,8 +1641,8 @@ test("{§message-projection}: exterior arrival rows share one explicit projectio
     const content = Array.from({ length: 80 }, (_, i) => `prompt ${i + 1} ${"x".repeat(32)}`).join("\n");
     const budget = 80;
     const rendered = PacketWire.renderLog([
-        { coordinate: "1/1/1", op: "SEND", origin: "_plurnk", source: "agui://anonymous/threads/t/runs/r/messages/m1", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } },
-        { coordinate: "1/1/2", op: "SEND", origin: "_plurnk", source: "agui://anonymous/threads/t/runs/r/messages/m2", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } },
+        { coordinate: "1/1/1", op: "SEND", origin: "_plurnk", source: "agui://anonymous/threads/t/messages/m1", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } },
+        { coordinate: "1/1/2", op: "SEND", origin: "_plurnk", source: "agui://anonymous/threads/t/messages/m2", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } },
     ], tok, { promptProjectionWeight: budget });
 
     const weights = parseLogRecords(rendered).map((row) => tok(String(row.body ?? "").replace(/\n$/u, "")));

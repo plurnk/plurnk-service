@@ -699,7 +699,7 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
 
-test("DONE: also materializes the entry before subscribing (shares #fetchStream)", async () => {
+test("SEND: also materializes the entry before subscribing (shares #fetchStream)", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["ok"], { "content-type": "text/plain" }), async () => {
         await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
@@ -1507,7 +1507,7 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
-test("DONE: an HTML response streams body text as text/html", async () => {
+test("SEND: an HTML response streams body text as text/html", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
         await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
@@ -1611,7 +1611,7 @@ test("READ: network failure bounds caught diagnostics in the exact Problem", asy
 });
 
 // ── SEND verbs ────────────────────────────────────────────────────────────
-test("DONE: POSTs the body and streams the response", async () => {
+test("SEND: POSTs the body and streams the response", async () => {
     const { ctx, inspect } = makeCtx();
     let seenMethod = "", seenBody: unknown = null, seenType = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1633,7 +1633,7 @@ test("DONE: POSTs the body and streams the response", async () => {
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "ok");
 });
 
-test("{§http-replay} DONE: an uncertain POST failure never recommends automatic replay", async () => {
+test("{§http-replay} SEND: an uncertain POST failure never recommends automatic replay", async () => {
     const { ctx } = makeCtx();
     await withFetch(async () => { throw new Error("connection reset after dispatch"); }, async () => {
         const result = await new Http().send(
