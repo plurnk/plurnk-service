@@ -29,7 +29,6 @@ import { MessageAttachments } from "@plurnk/plurnk-schemes";
 export default class Worker extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "worker",
-        metadataModifier: true,
         authority: "resource",
         // {§readable-channel} — `readable` is the source's derived projection, never written.
         channels: { body: "text/markdown", readable: "text/markdown" },

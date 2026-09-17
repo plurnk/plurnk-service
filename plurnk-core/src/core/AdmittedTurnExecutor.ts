@@ -24,8 +24,8 @@ import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution,
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
-// Operations that own their [metadata] slot; every other op takes only what its scheme declares.
-const OWNS_METADATA: ReadonlySet<string> = new Set(["WORK", "FORK"]);
+// SEND recipients and delegation own their input; resource operations use the manifest.
+const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "WORK", "FORK"]);
 
 export default class AdmittedTurnExecutor {
     readonly #db: Db;
@@ -191,8 +191,8 @@ export default class AdmittedTurnExecutor {
 
         for (const [index, scheduledStatement] of scheduled.entries()) {
             // {§metadata-ignored} — a scheme that takes no [metadata] gets the operation without it,
-            // and the model gets one notice, never a refusal (operator, 2026-09-12). Executions, WORK and
-            // FORK own their slot ({§env-option}) and receive it whole.
+            // and the model gets one notice, never a refusal. SEND recipients and invocation owners
+            // receive their own input whole ({§send-resource-attachments}, {§env-option}).
             let statement = scheduledStatement;
             if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;

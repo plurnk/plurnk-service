@@ -35,9 +35,7 @@ The pinned TCK vendors specification revision
 `173695755607e884aa9acf8ce4feed90e32727a1`, from March 2026. Its content-type and
 error-status assertions differ from the later [official SDK 1.1.0](https://github.com/a2aproject/a2a-js/blob/v1.1.0/CHANGELOG.md): it expects
 `application/json`, 415 for unsupported content, and 409 for uncancellable
-Tasks, where the SDK uses `application/a2a+json` and 400. Its `CORE-SEND-003`
-scenario requests an error but omits `expected_error`, so the generic test
-requires success. Compare each assertion with the
+Tasks, where the SDK uses `application/a2a+json` and 400. Compare each assertion with the
 [upstream protocol](https://github.com/a2aproject/A2A/blob/main/docs/specification.md)
 before changing the adapter. Do not patch
 the checker or count these assertions as passing.

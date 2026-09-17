@@ -134,7 +134,7 @@ export default class DataStatementRunner {
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        if (statement.metadata !== null && manifest.metadataModifier !== true) {
+        if (statement.op !== "SEND" && statement.metadata !== null && manifest.metadataModifier !== true) {
             return this.#failure(
                 "scheme-metadata-unsupported",
                 400,

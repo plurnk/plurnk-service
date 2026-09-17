@@ -2541,8 +2541,9 @@ accounting and model-visible failure evidence remain separately owned by
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (operator,
   2026-09-12: a gentle warning, never a refusal). The `pattern` option never reaches this
-  path; it is lifted into the matcher at parse time ({§matcher-option}). Executions, WORK and FORK
-  own their slot and receive it whole ({§env-option}); a key they do not take is their own 400.
+  path; it is lifted into the matcher at parse time ({§matcher-option}). SEND recipients,
+  executions, WORK and FORK own their input and receive it whole ({§send-resource-attachments},
+  {§env-option}); a key they do not take is their own 400.
 - §send-looks-like-operation **A reply never begins with an operation heading.** When a model's
   untargeted SEND has, as its first non-blank line, a line that parses alone as one clean
   heading naming an operation this worker could perform — a Plurnk operation, or a registered

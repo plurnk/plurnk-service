@@ -55,7 +55,6 @@ export default class A2a implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         folderScopes: true,
-        metadataModifier: true,
         glyph: "🤝",
         traits: ["web"],
         documentation,

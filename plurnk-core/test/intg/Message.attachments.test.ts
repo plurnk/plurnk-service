@@ -70,13 +70,15 @@ test("{§send-resource-attachments}: worker SEND carries a snapshot as a normal 
         const { workspaceId } = await daemon.createWorkspace({ name: "worker-attachments", projectRoot: null });
         const sender = await daemon.createConversationWorker({ workspaceId, name: "sender" });
         const receiver = await daemon.createConversationWorker({ workspaceId, name: "receiver" });
-        const program = PlurnkParser.parseStatements('```EDIT (worker:///report.md)\noriginal peer report\n```\n```SEND (worker://receiver) [{"attachments":["worker:///report.md"]}]\nInspect this.\n```\n```EDIT (worker:///report.md) <1,-1>\nchanged\n```');
+        const program = PlurnkParser.parseStatements('```EDIT (worker:///report.md)\noriginal peer report\n```\n```SEND (worker://receiver) [{"attachments":42}]\nDo not deliver invalid input.\n```\n```SEND (worker://receiver) [{"attachments":["worker:///report.md"]}]\nInspect this.\n```\n```EDIT (worker:///report.md) <1,-1>\nchanged\n```');
         assert.ok(program.items.every((item) => item.kind === "statement"));
         const results = await daemon.dispatchClientAction({ workspaceId, workerId: sender.workerId,
             statements: program.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []) });
-        assert.ok(results.every((result) => result.status < 400), JSON.stringify(results));
+        assert.deepEqual(results.map(({ status }) => status), [201, 400, 200, 200], JSON.stringify(results));
+        assert.match(JSON.stringify(results[1]), /attachments-invalid/u, "SEND metadata reaches its recipient for validation");
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), (loops) => loops.some((loop) => loop.status === 200));
         const received = await daemon.readMessages({ workspaceId, workerId: receiver.workerId });
+        assert.equal(received.length, 1, "invalid SEND metadata is not discarded to deliver a different message");
         assert.equal(received[0]!.attachments.length, 1);
         assert.equal(Buffer.from(received[0]!.attachments[0]!.bytes).toString(), "original peer report");
         assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /original peer report/u);
