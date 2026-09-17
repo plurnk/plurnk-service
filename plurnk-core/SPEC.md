@@ -197,10 +197,13 @@ The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contr
 Server posture: this package is the one long-running runtime process. `plurnk-agui` exposes its external protocol; user-facing clients run separately and do not call core's in-process seam directly.
 
 §service-worker-composition The service launcher and the live/demo workspace
-helper share one registration of default worker-facing modules: MCP and outbound
-A2A. Their management families and readable reference documents are present even
-with no enabled attachments. Workspace capability policy controls every actor's
-surface; registering a family does not enable a remote attachment. Client and
+helper share one registration of default worker-facing modules: MCP, outbound
+A2A, and Schedule. Their management families and readable reference documents are
+present even with no enabled definitions. Workspace capability policy controls every actor's
+surface; registering a family does not enable its definitions. The real-model
+profile ({§operator-config-real-model-profile}) leaves ambient MCP attachments and
+service schedules disabled by default; specimens may add their own through the
+ordinary management surface. Client and
 inbound-A2A listeners and host hooks remain launcher-owned.
 
 ### §service-package-exports Package export surface
@@ -3414,7 +3417,7 @@ template both ways: every `PLURNK_SERVICE_*` the service reads has a
 declared `PLURNK_SERVICE_*` is read. A half-landed rename therefore fails a test
 instead of a user's boot, and a dead knob cannot ship.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: a local model, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: a local model, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, ambient MCP selections and schedules disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|

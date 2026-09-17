@@ -37,7 +37,8 @@ effect: it proposes and runs only on acceptance.
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A
   workspace rule ends: give it `COUNT` or `UNTIL`. Without a `DTSTART` the
-  rule starts now; `BYHOUR`, `BYMINUTE`, `BYSECOND` and `BYDAY` place it.
+  rule starts at the next whole second when added; `BYHOUR`, `BYMINUTE`,
+  `BYSECOND` and `BYDAY` place it.
 - `target`: the worker that receives the message, `worker://<name>`; any
   worker in this workspace, yourself included.
 - `prompt`: the message delivered at each occurrence.

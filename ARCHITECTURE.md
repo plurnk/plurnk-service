@@ -38,6 +38,7 @@ flowchart LR
     capabilities["Scheme / executor / mimetype families"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
     a2a["A2A exterior adapter<br/>client + agent"] --> core
+    schedule["Schedule family<br/>recurring worker messages"] --> core
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> agui["plurnk-agui<br/>client interface"]
@@ -66,6 +67,7 @@ document does not restate their teaching.
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
 | A2A exterior client/agent                                  | `@plurnk/plurnk-a2a`                                         | [`plurnk-a2a/SPEC.md`](./plurnk-a2a/SPEC.md)                                                                   |
+| Scheduled worker messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
 
 Family packages define extension contracts. Installed adapters implement those

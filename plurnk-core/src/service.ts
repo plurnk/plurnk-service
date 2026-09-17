@@ -24,7 +24,6 @@ import {
     hostedAgentConfiguration,
 } from "@plurnk/plurnk-a2a";
 import { Module as HooksModule } from "@plurnk/plurnk-hooks";
-import { Module as ScheduleModule } from "@plurnk/plurnk-schedule";
 import ServiceModules from "./server/ServiceModules.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
@@ -250,7 +249,6 @@ export default class Service {
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), skills: { hostPaths: Service.#hostPaths } });
             ServiceModules.registerWorkspaceCapabilities(daemon);
             daemon.registerModule(hooksModule);
-            daemon.registerModule(ScheduleModule.init());
             const a2a = hostedAgentConfiguration();
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
             // {§rpc}: AG-UI owns the already-bound client listener. Daemon

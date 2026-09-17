@@ -18,6 +18,7 @@ const expectedProfile = {
     PLURNK_SERVICE_PACKET_INJECT: "",
     PLURNK_MCP_ENABLED: "[]",
     PLURNK_MCP_EXPANDED: "[]",
+    PLURNK_SCHEDULE_ENABLED: "[]",
     PLURNK_EXECS_QUESTION: "0",
 };
 
@@ -33,6 +34,27 @@ const parseProfile = (source) => Object.fromEntries(source
 
 test("the committed real-model profile contains only universal gate invariants", () => {
     assert.deepEqual(parseProfile(readFileSync(profilePath, "utf8")), expectedProfile);
+});
+
+test("the gate leaves operator schedules disabled unless explicitly selected in the shell", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "plurnk-schedule-profile-"));
+    try {
+        const operatorFile = resolve(directory, ".env");
+        writeFileSync(operatorFile, 'PLURNK_SCHEDULE_ENABLED=["operator"]\n');
+        for (const selected of [undefined, '["fixture"]']) {
+            const env = { ...process.env };
+            if (selected === undefined) delete env.PLURNK_SCHEDULE_ENABLED;
+            else env.PLURNK_SCHEDULE_ENABLED = selected;
+            const result = spawnSync(process.execPath, [
+                `--env-file=${operatorFile}`, `--env-file=${profilePath}`,
+                "--eval", "process.stdout.write(process.env.PLURNK_SCHEDULE_ENABLED)",
+            ], { encoding: "utf8", env });
+            assert.equal(result.status, 0, result.stderr);
+            assert.equal(result.stdout, selected ?? "[]");
+        }
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
 });
 
 test("the pre-push gate scrubs git's hook environment before the drill (#402)", () => {
