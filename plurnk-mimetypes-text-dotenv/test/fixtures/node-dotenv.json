@@ -1,0 +1,50 @@
+{
+  "source": "https://github.com/nodejs/node/tree/v26.6.0/test/fixtures/dotenv",
+  "license": "MIT; see NODE-LICENSE",
+  "fixtures": [
+    {
+      "name": ".env",
+      "text": "BASIC=basic\n"
+    },
+    {
+      "name": "basic-valid.env",
+      "text": "BASIC=overriden\n"
+    },
+    {
+      "name": "eof-without-value.env",
+      "text": "BASIC=value\nEMPTY="
+    },
+    {
+      "name": "lines-with-only-spaces.env",
+      "text": "\nEMPTY_LINE='value after an empty line'\n      \nSPACES_LINE='value after a line with just some spaces'\n\t\t\t\t\nTABS_LINE='value after a line with just some tabs'\n\t    \t\t\t\nSPACES_TABS_LINE='value after a line with just some spaces and tabs'\n"
+    },
+    {
+      "name": "multiline.env",
+      "text": "JWT_PUBLIC_KEY=\"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnNl1tL3QjKp3DZWM0T3u\nLgGJQwu9WqyzHKZ6WIA5T+7zPjO1L8l3S8k8YzBrfH4mqWOD1GBI8Yjq2L1ac3Y/\nbTdfHN8CmQr2iDJC0C6zY8YV93oZB3x0zC/LPbRYpF8f6OqX1lZj5vo2zJZy4fI/\nkKcI5jHYc8VJq+KCuRZrvn+3V+KuL9tF9v8ZgjF2PZbU+LsCy5Yqg1M8f5Jp5f6V\nu4QuUoobAgMBAAE=\n-----END PUBLIC KEY-----\"\n"
+    },
+    {
+      "name": "no-final-newline-single-quotes.env",
+      "text": "BASIC='basic'"
+    },
+    {
+      "name": "no-final-newline.env",
+      "text": "BASIC=\"basic\""
+    },
+    {
+      "name": "node-options-no-tranform.env",
+      "text": "NODE_OPTIONS=\"--no-experimental-strip-types\"\n"
+    },
+    {
+      "name": "node-options.env",
+      "text": "CUSTOM_VARIABLE=hello-world\nNODE_NO_WARNINGS=1\nNODE_OPTIONS=\"--permission --allow-fs-read=*\"\nTZ=Pacific/Honolulu\nUV_THREADPOOL_SIZE=5\nBASIC=overridden\n"
+    },
+    {
+      "name": "uv-threadpool.env",
+      "text": "UV_THREADPOOL_SIZE=4\n"
+    },
+    {
+      "name": "valid.env",
+      "text": "BASIC=basic\n\n# COMMENTS=work\n#BASIC=basic2\n#BASIC=basic3\n\n# previous line intentionally left blank\nAFTER_LINE=after_line\nA=\"B=C\"\nB=C=D\nEMPTY=\nEMPTY_SINGLE_QUOTES=''\nEMPTY_DOUBLE_QUOTES=\"\"\nEMPTY_BACKTICKS=``\nSINGLE_QUOTES='single_quotes'\nSINGLE_QUOTES_SPACED='    single quotes    '\nDOUBLE_QUOTES=\"double_quotes\"\nDOUBLE_QUOTES_SPACED=\"    double quotes    \"\nDOUBLE_QUOTES_INSIDE_SINGLE='double \"quotes\" work inside single quotes'\nDOUBLE_QUOTES_WITH_NO_SPACE_BRACKET=\"{ port: $MONGOLAB_PORT}\"\nSINGLE_QUOTES_INSIDE_DOUBLE=\"single 'quotes' work inside double quotes\"\nBACKTICKS_INSIDE_SINGLE='`backticks` work inside single quotes'\nBACKTICKS_INSIDE_DOUBLE=\"`backticks` work inside double quotes\"\nBACKTICKS=`backticks`\nBACKTICKS_SPACED=`    backticks    `\nDOUBLE_QUOTES_INSIDE_BACKTICKS=`double \"quotes\" work inside backticks`\nSINGLE_QUOTES_INSIDE_BACKTICKS=`single 'quotes' work inside backticks`\nDOUBLE_AND_SINGLE_QUOTES_INSIDE_BACKTICKS=`double \"quotes\" and single 'quotes' work inside backticks`\nEXPAND_NEWLINES=\"expand\\nnew\\nlines\"\nDONT_EXPAND_UNQUOTED=dontexpand\\nnewlines\nDONT_EXPAND_SQUOTED='dontexpand\\nnewlines'\n# COMMENTS=work\nINLINE_COMMENTS=inline comments # work #very #well\nINLINE_COMMENTS_SINGLE_QUOTES='inline comments outside of #singlequotes' # work\nINLINE_COMMENTS_DOUBLE_QUOTES=\"inline comments outside of #doublequotes\" # work\nINLINE_COMMENTS_BACKTICKS=`inline comments outside of #backticks` # work\nINLINE_COMMENTS_SPACE=inline comments start with a#number sign. no space required.\nEQUAL_SIGNS=equals==\nRETAIN_INNER_QUOTES={\"foo\": \"bar\"}\nRETAIN_INNER_QUOTES_AS_STRING='{\"foo\": \"bar\"}'\nRETAIN_INNER_QUOTES_AS_BACKTICKS=`{\"foo\": \"bar's\"}`\nTRIM_SPACE_FROM_UNQUOTED=    some spaced out string\nSPACE_BEFORE_DOUBLE_QUOTES=   \"space before double quotes\"\nEMAIL=therealnerdybeast@example.tld\n    SPACED_KEY = parsed\nEDGE_CASE_INLINE_COMMENTS=\"VALUE1\" # or \"VALUE2\" or \"VALUE3\"\n\nMULTI_DOUBLE_QUOTED=\"THIS\nIS\nA\nMULTILINE\nSTRING\"\n\nMULTI_SINGLE_QUOTED='THIS\nIS\nA\nMULTILINE\nSTRING'\n\nMULTI_BACKTICKED=`THIS\nIS\nA\n\"MULTILINE'S\"\nSTRING`\nexport EXPORT_EXAMPLE = ignore export\n\nMULTI_NOT_VALID_QUOTE=\"\nMULTI_NOT_VALID=THIS\nIS NOT MULTILINE\n"
+    }
+  ]
+}

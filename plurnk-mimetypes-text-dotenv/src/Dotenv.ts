@@ -1,32 +1,22 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject, regionsForLineSpans } from "@plurnk/plurnk-mimetypes";
+import { parseEnv } from "node:util";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject, regionsForLineSpans, TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
-// text/x-dotenv (.env) handler — Tier 4, no parser dep.
-//
-// `KEY=value` lines, `#` comments, optional `export ` prefix, optional matching
-// surrounding quotes. Each variable is a `constant` symbol; values are exposed
-// like any other config (no redaction — plenty of .env workflows carry no
-// secrets). deepJson is the `{ KEY: value }` map, a jsonpath target. The raw
-// body is directly readable, so there is no content projection.
+// {§dotenv-values}: Node owns value semantics; only source coordinates are projected here.
 export default class Dotenv extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         return parseDotenv(toText(content)).map((v) => ({
             name: v.key,
             kind: "constant",
             line: v.line,
-            endLine: v.line,
+            endLine: v.endLine,
         }));
     }
 
     override deepJson(content: HandlerContent): unknown {
-        const out: Record<string, string> = {};
-        for (const v of parseDotenv(toText(content))) out[v.key] = v.value;
-        return out;
+        return { ...parseEnv(toText(content)) };
     }
 
-    // jsonpath against the flat {KEY:value} object, with source-line spans ({§mimetype-query})
-    // from parseDotenv positions — deepJson is line-less raw values. A key on
-    // line N → line N. Absent for unrecognized pointers; never faked.
     override async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -34,30 +24,22 @@ export default class Dotenv extends BaseHandler {
         flags?: string,
     ): Promise<QueryMatch[]> {
         if (dialect === "jsonpath") {
-            const byPointer = new Map<string, number>();
-            for (const v of parseDotenv(toText(content))) byPointer.set(`/${ptr(v.key)}`, v.line);
+            const text = toText(content);
+            const byPointer = sourceSpans(text);
             const regionFor = (pointer: string) => {
-                const ln = byPointer.get(pointer);
-                return ln === undefined
+                const span = byPointer.get(pointer);
+                return span === undefined
                     ? undefined
-                    : regionsForLineSpans(toText(content), [{ line: ln, endLine: ln }]);
+                    : regionsForLineSpans(text, [span]);
             };
             return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): stamp pk:line
-    // from the same parseDotenv positions during projection.
     override deepXml(content: HandlerContent): Promise<string> {
-        const byPointer = new Map<string, number>();
-        for (const v of parseDotenv(toText(content))) byPointer.set(`/${ptr(v.key)}`, v.line);
-        const span = (pointer: string): { line: number; endLine: number } | undefined => {
-            if (pointer === "") return { line: 1, endLine: 1 };
-            const ln = byPointer.get(pointer);
-            return ln === undefined ? undefined : { line: ln, endLine: ln };
-        };
-        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
+        const byPointer = sourceSpans(toText(content));
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", (pointer) => byPointer.get(pointer)));
     }
 }
 
@@ -65,6 +47,7 @@ export interface DotenvVar {
     key: string;
     value: string;
     line: number;
+    endLine: number;
 }
 
 // JSON Pointer token escape (RFC 6901): ~ → ~0, / → ~1.
@@ -74,31 +57,39 @@ function ptr(s: string): string {
 
 export function parseDotenv(text: string): DotenvVar[] {
     const out: DotenvVar[] = [];
-    const lines = text.split("\n");
+    const lines = TextCoordinates.logicalLines(text);
     for (let i = 0; i < lines.length; i += 1) {
-        const trimmed = lines[i].trim();
-        if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-        const body = trimmed.startsWith("export ") ? trimmed.slice(7).trimStart() : trimmed;
+        const body = text.slice(lines[i].start, lines[i].contentEnd);
+        if (body.trimStart().startsWith("#")) continue;
         const eq = body.indexOf("=");
         if (eq <= 0) continue;
-        const key = body.slice(0, eq).trim();
-        if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(key)) continue;
-        out.push({ key, value: stripQuotes(body.slice(eq + 1).trim()), line: i + 1 });
+        let end = i;
+        let start = lines[i].start + eq + 1;
+        if (start < lines[i].contentEnd) {
+            while (start < text.length && /[ \t\r\n]/u.test(text[start])) start++;
+            // Node's quoted value ends at the first matching quote, even across lines.
+            const quote = text[start];
+            const closing = quote === '"' || quote === "'" || quote === "`" ? text.indexOf(quote, start + 1) : start;
+            while (end + 1 < lines.length && lines[end].contentEnd < closing) end++;
+        }
+        const values = parseEnv(text.slice(lines[i].start, lines[end].contentEnd));
+        for (const [key, value] of Object.entries(values)) out.push({ key, value: value!, line: i + 1, endLine: end + 1 });
+        i = end;
     }
     return out;
 }
 
-// Strip one layer of matching surrounding quotes (`"x"` / `'x'`). Unquoted
-// values are taken verbatim — inline `#` is left in place (it is value content
-// unless quoted away, and dotenv tools disagree on it; precision over a guess).
-function stripQuotes(value: string): string {
-    if (value.length >= 2) {
-        const first = value[0];
-        if ((first === '"' || first === "'") && value[value.length - 1] === first) {
-            return value.slice(1, -1);
-        }
+function sourceSpans(text: string): Map<string, { line: number; endLine: number }> {
+    const spans = new Map<string, { line: number; endLine: number }>();
+    const endLine = TextCoordinates.logicalLines(text).length;
+    if (endLine > 0) spans.set("", { line: 1, endLine });
+    const values = parseEnv(text);
+    for (const variable of parseDotenv(text)) {
+        const pointer = `/${ptr(variable.key)}`;
+        spans.delete(pointer);
+        if (values[variable.key] === variable.value) spans.set(pointer, { line: variable.line, endLine: variable.endLine });
     }
-    return value;
+    return spans;
 }
 
 function toText(content: HandlerContent): string {

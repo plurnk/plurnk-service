@@ -7,6 +7,17 @@ const h = new Handler({"mimetype":"text/x-dotenv","glyph":"🔑","extensions":["
 const src = "A=1\nB=2\nC=3\n";
 
 describe("query-evidence conformance (both dialects)", () => {
+    for (const eol of ["\n", "\r\n"]) for (const dialect of ["jsonpath", "xpath"] as const) {
+        it(`${dialect} locates the complete multiline assignment and the last duplicate, ${JSON.stringify(eol)}`, async () => {
+            await assertQueryEvidenceConformance(h, [{
+                source: ["MULTI=old", 'MULTI="first', "DECOY=inside the value", 'last" # outside', "AFTER=ok"].join(eol),
+                dialect,
+                pattern: dialect === "jsonpath" ? "$.MULTI" : "//MULTI",
+                verdict: "enclosing",
+                expectRegions: [[{ startLine: 2, startColumn: 1, endLine: 4, endColumn: 16 }]],
+            }]);
+        });
+    }
     it("jsonpath reports the enclosing assignment line", async () => {
         await assertQueryEvidenceConformance(h, [{
             source: src,
