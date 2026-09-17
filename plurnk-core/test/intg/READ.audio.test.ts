@@ -42,7 +42,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
                     const observation = rows.find((row) => row.op === "READ" && row.pathname === "/1/2/2/READ");
                     assert.ok(observation, "the fork inherits the explicit log READ");
                     assert.equal(typeof JSON.parse(observation.rx).nativeContentHash, "string", observation.rx);
-                    assert.deepEqual(Buffer.from(await NativeContent.read(db, JSON.parse(observation.rx).nativeContentHash)), bytes);
+                    assert.ok(Buffer.from(await NativeContent.read(db, JSON.parse(observation.rx).nativeContentHash)).equals(bytes), "the fork retains the exact audio bytes");
                 } finally { client.close(); }
             });
             const files = provider.received.map((messages) => messages.flatMap((message) =>
@@ -50,7 +50,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
             assert.deepEqual(files.map((parts) => parts.length), modalities.length ? [0, 1, 1, 2, 1] : [0, 0, 0, 0, 0]);
             for (const part of files.flat()) {
                 assert.equal(part.mediaType, "audio/wav");
-                assert.deepEqual(Buffer.from(part.data), bytes, "native input retains the complete bytes beside a scoped READ");
+                assert.ok(Buffer.from(part.data).equals(bytes), "native input retains the complete bytes beside a scoped READ");
             }
             const packet = provider.received[1]!.map(chatMessageText).join("\n");
             assert.match(packet, /1:52\n2:49\n3:46\n4:46/u);

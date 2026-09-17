@@ -92,7 +92,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             assert.equal(parts[index]!.length, Number(supported));
             if (supported) {
                 assert.equal(parts[index]![0]!.mediaType, media.mimetype);
-                assert.deepEqual(Buffer.from(parts[index]![0]!.data), media.bytes, "READ transmits the exact complete original bytes");
+                assert.ok(Buffer.from(parts[index]![0]!.data).equals(media.bytes), "READ transmits the exact complete original bytes");
             }
         }
         assert.equal(parts[5]!.length, 0, "curating the READ removes the attachment from context");

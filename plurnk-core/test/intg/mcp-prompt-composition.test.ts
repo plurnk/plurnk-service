@@ -82,7 +82,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             assert.equal(parts[3]!.length, modalities.length, "native data follows the ordinary READ retention lifecycle");
             if (modalities.length) {
                 assert.equal(parts[2]![0]!.mediaType, media.mimeType);
-                assert.deepEqual(Buffer.from(parts[2]![0]!.data), media.bytes);
+                assert.ok(Buffer.from(parts[2]![0]!.data).equals(media.bytes), "MCP prompt media retains the exact original bytes");
             }
             assert.match(texts[2]!, media.hex);
             const raw = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts/inspect", scheme: "fixture", name: "json" });

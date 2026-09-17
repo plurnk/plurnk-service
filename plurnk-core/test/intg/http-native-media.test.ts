@@ -58,7 +58,7 @@ for (const enabled of [true, false]) {
             provider.received.at(-1)!.map(chatMessageText).join("\n").split("\n").filter((line) => line.includes('"overflow"') || line.startsWith('{"target":"http://')).join("\n"));
         for (const part of parts.flat()) {
             assert.equal(part.mediaType, sample.mimetype);
-            assert.deepEqual(Buffer.from(part.data), sample.bytes);
+            assert.ok(Buffer.from(part.data).equals(sample.bytes), "HTTP native input preserves the exact source bytes");
         }
         const text = provider.received.map((messages) => messages.map(chatMessageText).join("\n"));
         assert.match(text[1]!, new RegExp(`1:${sample.bytes[0]!.toString(16).padStart(2, "0")}\\n2:`));
@@ -99,6 +99,10 @@ test("{§http-binary-source} 304 revalidation preserves bytes and later replacem
     await run(provider);
     assert.deepEqual(validators, [undefined, '"v1"', '"v1"']);
     const files = provider.received.at(-1)!.flatMap((message) => Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []);
-    assert.deepEqual(files.map((part) => Buffer.from(part.data)), [original, original, updated]);
+    const expected = [original, original, updated];
+    assert.equal(files.length, expected.length);
+    for (const [index, part] of files.entries()) {
+        assert.ok(Buffer.from(part.data).equals(expected[index]!), `observation ${index + 1} retains its exact source version`);
+    }
     assert.ok(files.every((part) => part.mediaType === "audio/wav"));
 });

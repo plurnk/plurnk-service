@@ -114,11 +114,11 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             assert.equal(parts[delivered]!.length, modalities.length, "only READ creates supported native delivery");
             if (modalities.length) {
                 assert.equal(parts[delivered]![0]!.mediaType, media.mimeType);
-                assert.deepEqual(Buffer.from(parts[delivered]![0]!.data), media.bytes, "a scoped READ delivers the complete original media");
+                assert.ok(Buffer.from(parts[delivered]![0]!.data).equals(media.bytes), "a scoped READ delivers the complete original media");
             }
             assert.doesNotMatch(texts[delivered]!, /has been ejected from context/u);
             assert.equal(parts[delivered + 1]!.length, modalities.length, "later turns retain the READ's native content");
-            if (modalities.length) assert.deepEqual(Buffer.from(parts[delivered + 1]![0]!.data), media.bytes);
+            if (modalities.length) assert.ok(Buffer.from(parts[delivered + 1]![0]!.data).equals(media.bytes), "later turns retain the exact original media");
             if (form === "inline" || form === "link") assert.match(texts[delivered]!, media.hex, "byte scope still returns exactly the selected octets");
             assert.equal(resourceReads, form === "inline" || form === "embedded" ? 0 : 1, "embedded content needs no refetch; resource reads use the standard MCP cache");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; status_rx: number }>({ loop_id: run.loopId });
