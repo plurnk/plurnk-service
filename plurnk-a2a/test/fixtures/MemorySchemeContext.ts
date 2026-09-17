@@ -69,6 +69,11 @@ export default class MemorySchemeContext {
             writer: "model",
             signal: undefined,
             entries,
+            awaitedEvents: {
+                async join() { throw new Error("Awaited events are outside the A2A specimen."); },
+                async read() { throw new Error("Awaited events are outside the A2A specimen."); },
+                async cancel() { throw new Error("Awaited events are outside the A2A specimen."); },
+            },
             messages: {
                 async prepare() { throw new Error("Hosted messages are outside the outbound memory scheme specimen."); },
                 async reply() { throw new Error("Hosted replies are outside the outbound memory scheme specimen."); },

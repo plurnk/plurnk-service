@@ -182,6 +182,11 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     const ctx: SchemeCtx = {
         workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
+        awaitedEvents: {
+            async join() { throw new Error("WebSocket does not attach awaited events."); },
+            async read() { throw new Error("WebSocket does not read awaited events."); },
+            async cancel() { throw new Error("WebSocket does not cancel awaited events."); },
+        },
         resources: { capture: async () => { throw new Error("WebSocket metadata must not acquire message attachments."); } },
         messages: {
             prepare: async () => { throw new Error("WebSocket does not prepare accepted messages."); },
