@@ -7,7 +7,7 @@ export default class ReasoningView {
     // {§reasoning-notes} — initialization uses the same extraction as a provider-produced turn.
     static initialSource(): string {
         return "This harness-generated turn surveys the workspace and available capabilities.\n\n"
-            + PlurnkParser.frame("NOTE", "Only NOTE also works in reasoning. Notes retain conclusions, decisions, and working memory.");
+            + PlurnkParser.frame("NOTE", "Within reasoning, NOTE (and only NOTE) is persisted for the next turn.");
     }
 
     static lines(provider: Provider): number {

@@ -188,7 +188,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
+                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
                     "initialization reads its authored reasoning and its exact program; the prompt arrives as its row",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -204,7 +204,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 assert.match(program.content, /\n````READ \(ops:\/\/\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^````([A-Z]+)/.exec(block)?.[1]),
-                    initializationRows.filter(({ op }) => op !== null && op !== "NOTE").map(({ op }) => op),
+                    initializationRows.slice(1).map(({ op }) => op),
                     "{§statement-rendering}: every initialization operation is separated by a blank line",
                 );
                 const packet = provider.received[0].filter(({ role }) => role === "user").map(chatMessageText).join("\n");
@@ -307,15 +307,15 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
-                    "initialization contains a reasoning NOTE, eight surveys, and the reasoning and program READs",
+                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
+                    "initialization contains reasoning and program NOTEs, eight surveys, and the reasoning and program READs",
                 );
                 const turnOps = initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops");
                 assert.equal(turnOps?.origin, "_plurnk");
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^````FIND[^\n]*\n[\s\S]*\n````READ \(ops:\/\/\/1\/1\)[^\n]*\n````$/,
+                    /^````NOTE\n[^\n]+\n````\n\n````FIND[^\n]*\n[\s\S]*\n````READ \(ops:\/\/\/1\/1\)[^\n]*\n````$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

@@ -88,11 +88,11 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         const ops = dispatches.map((s) => s.attributes.op);
         assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
         assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 1, "the inference dispatches its lifecycle declaration");
-        assert.equal(ops.filter((op) => op === "NOTE").length, 1, "initialization extracts its reasoning NOTE through ordinary dispatch");
+        assert.equal(ops.filter((op) => op === "NOTE").length, 2, "initialization executes its reasoning and program NOTEs through ordinary dispatch");
         assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's message has its own dispatch span");
         assert.ok(
             ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ"),
-            `initialization dispatches its reasoning NOTE, catalog FINDs and source READs; got ${ops.join(", ")}`,
+            `initialization dispatches its reasoning and program NOTEs, catalog FINDs and source READs; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {
             assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");

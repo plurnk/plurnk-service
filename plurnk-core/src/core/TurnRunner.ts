@@ -709,12 +709,16 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
-        // example itself: the actual orienting operations and an extracted NOTE.
+        // example itself: the actual orienting operations and ordinary NOTEs.
         // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
         // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
         // loop, so local repo guidance is visible turn-0 content. Global policy
         // stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
+            initializationStatements.push({
+                op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
+                body: "This turn exposes tooling and environment.", position: UNKNOWN_POSITION,
+            });
             const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
                 scheme: "worker",
@@ -798,7 +802,7 @@ export default class TurnRunner {
     }
 
     // {§worker-initialization-entry} — the worker's first turn is the worked example
-    // itself: the actual orienting operations and an extracted NOTE, executed as a
+    // itself: the actual orienting operations and ordinary NOTEs, executed as a
     // complete turn before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow): Promise<void> {
         const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;

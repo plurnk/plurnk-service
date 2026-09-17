@@ -362,7 +362,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. A reasoning NOTE, the orienting READ/FIND surveys, and the reasoning and program READs in {§reasoning-initial-read} execute under {§op-execution-order}. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. NOTEs from its reasoning and program, the orienting READ/FIND surveys, and the reasoning and program READs in {§reasoning-initial-read} execute under {§op-execution-order}. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
 ({§message-arrival}); initialization neither READs nor archives them. The turn
@@ -2027,8 +2027,8 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 The initialization turn records a short `_plurnk`-authored rationale containing
 a fenced NOTE. The shared reasoning extractor ({§reasoning-notes}) executes that
 NOTE through ordinary dispatch, creating its log item and immutable source.
-The program READs its own reasoning and persisted ops, demonstrating both the
-authored NOTE and its result. The initial message arrives separately as an
+The program begins with its own NOTE and READs its reasoning and persisted ops,
+demonstrating both NOTE placements and their ordinary results. The initial message arrives separately as an
 inbound SEND ({§message-arrival}). Neither initialization nor later turns
 manufacture a task inventory.
 `PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's

@@ -34,18 +34,14 @@
 
 ## Workflow Management
 
-    ````NOTE
-    The first probe ruled out the network; inspect the local parser next.
-    ````
-
 > [!IMPORTANT]
 > The final turn contains only DONE with the final response, or FAIL with an explanation.
 
 > [!TIP]
-> If open message is from a client, format final response DONE operation with GFM markdown (simple mermaid, tables, lists, and/or prose).
+> For client messages, format the DONE body as GFM (tables, lists, or prose).
 
 > [!IMPORTANT]
-> YOU MAY NOT finish the loop while work, a worker, or a stream is unfinished.
+> YOU MAY NOT use DONE while work, a worker, or a stream is unfinished.
 
 ## Workspace Navigation
 
