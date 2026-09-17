@@ -1499,14 +1499,14 @@ effects follow {§edit-result-copy-move-effects}.
 
 ### §send-dispatch SEND dispatch (a message to a recipient)
 
-A recipient SEND (non-null path — {§turn-disposition}) routes to the scheme's
-`send`: the body is the message — a WebSocket frame, exec stdin, an HTTP POST, an A2A
-message, a worker's next prompt. A lifecycle declaration never reaches a scheme: it controls the
-turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream}, {§move}).
+Targetless and exact-message SENDs follow the reply accounting at
+{§send-response-receipt}. Other directed SENDs route to the recipient scheme's
+`send`: the body is the message — a WebSocket frame, exec stdin, an HTTP POST,
+an A2A message, or new work for a worker.
 
-§send-dispatch-entry-schemes-501 An entry-bearing scheme carries no messages: a recipient SEND aimed at one returns 501.
-
-Null-path SEND is broadcast ({§send}), engine-handled.
+§send-dispatch-entry-schemes-501 A SEND aimed at a resource entry, rather than a
+message or actor endpoint, returns 501. Its recovery distinguishes replying to
+Open Messages from sending new work to a worker, without assuming either intent.
 
 #### §send-resource-attachments Explicit message attachments
 

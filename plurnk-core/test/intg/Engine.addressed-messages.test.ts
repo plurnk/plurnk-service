@@ -84,6 +84,56 @@ test("{§send-response-receipt} failed exact delivery does not acknowledge the l
     assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The real answer."]);
 });
 
+for (const delegated of [false, true]) for (const addressed of [false, true]) {
+    test(`{§send-dispatch-entry-schemes-501} ${delegated ? "child" : "root"} recovers with ${addressed ? "an exact" : "a targetless"} reply`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, "entry-send-recovery");
+        const parentId = delegated ? await insertWorker(db, workspaceId, null, "parent") : null;
+        const parentLoop = parentId === null ? null : await insertLoop(db, parentId, 1, "Collect the answer.");
+        const workerId = await insertWorker(db, workspaceId, parentId, "responder");
+        const loopId = await insertLoop(db, workerId, 1);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        await engine.injectIntoLoop(loopId, "The original request.", [], delegated ? "worker://parent" : undefined);
+        const requests = await db.message_source_resources.all<{ path: string; body: string }>({ workspace_id: workspaceId, scheme: "worker", target: null });
+        const request = requests.find(({ body }) => body === "The original request.");
+        assert.ok(request);
+        const address = request.path;
+        const provider = new Mock({ contextWindow: 100000, responses: [
+            makeRawMockResponse(frame("SEND (worker:///_plurnk)", "Answer.")),
+            makeRawMockResponse(frame(addressed ? `SEND (${address})` : "SEND", "Recovered answer.")),
+        ] });
+        const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
+        const failed = await run();
+        assert.equal(failed.status, 102);
+        assert.equal(failed.outcomes[0]!.status, 501);
+        const failedRows = await db.test_log_entries_by_turn.all<{ origin: string; rx: string }>({ turn_id: failed.turnId });
+        const problem = JSON.parse(failedRows.find(({ origin }) => origin === "model")!.rx).problem;
+        assert.match(problem.type, /message-not-implemented$/);
+        assert.equal(problem.detail, "SEND does not deliver messages to worker entries.");
+        assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. SEND (worker://<name>) sends a new message.");
+        assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
+
+        assert.equal((await run()).status, 200);
+        assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 0);
+        const history = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
+        assert.deepEqual(history.map(({ direction, body }) => ({ direction, body })), [
+            { direction: "inbound", body: "The original request." },
+            { direction: "outbound", body: "Recovered answer." },
+        ]);
+        if (parentId !== null && parentLoop !== null) {
+            const observed = await engine.runTurn({
+                messages: [], workspaceId, workerId: parentId, loopId: parentLoop,
+                provider: new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("NOTE", "Observed."))] }),
+            });
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
+            const replies = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
+            assert.equal(replies.length, 1, "the reply reaches the parent exactly once");
+            assert.deepEqual(replies[0]!.answers, [address]);
+        }
+    });
+}
+
 test("{§message-source-scheme} one source address identifies one immutable message per workspace", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());

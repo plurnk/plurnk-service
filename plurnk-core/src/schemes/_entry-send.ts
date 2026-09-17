@@ -33,11 +33,11 @@ export default class EntrySend {
         return failure(
             "message-not-implemented",
             501,
-            `The '${scheme}' entry scheme carries no messages.`,
+            `SEND does not deliver messages to ${scheme} entries.`,
             {},
             {
                 // {§send-target-recipient}
-                recovery: "SEND targets a recipient, such as worker://<name>. Omit its target to message the user. KILL removes a resource.",
+                recovery: "To reply, SEND to an Open Message address or omit the target. SEND (worker://<name>) sends a new message.",
                 retryable: false,
             },
         ); // {§send-dispatch-entry-schemes-501}
