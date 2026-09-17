@@ -19,6 +19,17 @@ test("{§schedule-environment} PLURNK_SCHEDULE_<ALIAS> definitions fold to the f
     assert.deepEqual([...serviceEnabled({ PLURNK_SCHEDULE_ENABLED: " " })], []);
 });
 
+test("{§schedule-environment} empty definitions mask inherited schedules and their default enabledness", () => {
+    const env = {
+        PLURNK_SCHEDULE_HEARTBEAT: "",
+        PLURNK_SCHEDULE_OTHER: HEARTBEAT,
+        PLURNK_SCHEDULE_ENABLED: '["heartbeat","other"]',
+    };
+    assert.deepEqual([...serviceDefinitions(env).keys()], ["other"]);
+    assert.deepEqual([...serviceEnabled(env)], ["other"]);
+    assert.throws(() => serviceDefinitions({ ...env, PLURNK_SCHEDULE_heartbeat: HEARTBEAT }), /both derive the schedule alias 'heartbeat'/u);
+});
+
 test("{§schedule-environment} malformed service configuration fails at once, naming the variable", () => {
     assert.throws(() => serviceDefinitions({ PLURNK_SCHEDULE_HEARTBEAT: HEARTBEAT, PLURNK_SCHEDULE_heartbeat: HEARTBEAT }), /both derive the schedule alias 'heartbeat'/u);
     assert.throws(() => serviceDefinitions({ PLURNK_SCHEDULE_BAD_ALIAS: HEARTBEAT }), /PLURNK_SCHEDULE_BAD_ALIAS derives the alias 'bad_alias'/u);

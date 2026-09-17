@@ -5,7 +5,9 @@ import {
     connectTimeoutMs,
     requestTimeoutMs,
     serverDefinition,
+    serviceDefinitions,
     serviceEnabledNames,
+    expandedServerNames,
     serverNames,
     summaryOverrides,
 } from "./config.ts";
@@ -132,14 +134,49 @@ test("bearer authentication accepts only a symbolic reference and defers resolut
     );
 });
 
-test("configuration rejects empty targets, orphan companions, and transport-specific companions", () => {
-    assert.throws(
-        () => serverDefinition("atlas", {
-            ...floor,
-            PLURNK_MCP_ATLAS: "",
-        }),
-        /must not be empty/,
-    );
+test("{§mcp-configuration-cascade} empty targets mask definitions, companions, summaries and inherited selections", () => {
+    const env = {
+        ...floor,
+        PLURNK_MCP_ATLAS: "",
+        PLURNK_MCP_ATLAS_ARGS: "not JSON",
+        PLURNK_MCP_ATLAS_HEADERS: "not JSON",
+        PLURNK_MCP_ATLAS_ENV: "not JSON",
+        PLURNK_MCP_ATLAS_TOOLS: "not JSON",
+        PLURNK_MCP_ATLAS_SUMMARY: "${MISSING}",
+        PLURNK_MCP_ATLAS_echo_SUMMARY: "${MISSING}",
+        PLURNK_MCP_OTHER: "node",
+        PLURNK_MCP_ENABLED: '["atlas","other"]',
+        PLURNK_MCP_EXPANDED: '["atlas","other"]',
+    };
+    assert.equal(serverDefinition("ATLAS", env), null);
+    assert.deepEqual(serverNames(env), ["other"]);
+    assert.deepEqual(serviceDefinitions(env), [{ name: "other", transport: "stdio", command: "node", args: [], read: [] }]);
+    assert.deepEqual(serviceEnabledNames(env), ["other"]);
+    assert.deepEqual(expandedServerNames(env), ["other"]);
+    assert.deepEqual(summaryOverrides(env), { servers: new Map(), tools: new Map() });
+    for (const field of ["PLURNK_MCP_ENABLED", "PLURNK_MCP_EXPANDED"]) {
+        const names = field.endsWith("ENABLED") ? serviceEnabledNames : expandedServerNames;
+        assert.throws(() => names({ ...env, [field]: '["missing"]' }), /unknown MCP server 'missing'/);
+        assert.throws(() => names({ ...env, [field]: '["other","other"]' }), /duplicate MCP server 'other'/);
+    }
+    assert.throws(() => serverNames({ ...env, PLURNK_MCP_atlas: "node" }), /both derive MCP server name 'atlas'/);
+});
+
+test("{§mcp-configuration-cascade} empty overlay targets mask lower definitions before companions are parsed", () => {
+    const base = serverDefinition("atlas", { PLURNK_MCP_ATLAS: "node" });
+    assert.ok(base);
+    assert.deepEqual([...overlayServerDefinitions({
+        PLURNK_MCP_ATLAS: "",
+        PLURNK_MCP_ATLAS_ARGS: "not JSON",
+        PLURNK_MCP_ATLAS_echo_SUMMARY: "${MISSING}",
+        PLURNK_MCP_OTHER: "node",
+    }, new Map([["atlas", base]])).keys()], ["other"]);
+    assert.deepEqual([...overlayServerDefinitions({
+        PLURNK_MCP_ATLAS_echo_SUMMARY: "Echo input.",
+    }, new Map([["atlas", base]])).values()], [base], "a tool summary belongs to its server, not a second definition");
+});
+
+test("configuration rejects orphan companions and transport-specific companions", () => {
     assert.throws(
         () => serverNames({
             ...floor,

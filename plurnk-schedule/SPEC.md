@@ -84,4 +84,6 @@ stays disarmed.
 suffix case-folded to the family grammar, and two variables folding to one
 alias fail at boot. `PLURNK_SCHEDULE_ENABLED` is the JSON array of aliases a
 workspace starts with. A service definition is disable-only in a workspace,
-as for every family.
+as for every family. An explicitly empty definition masks that service rule and
+its inherited `ENABLED` selection; it does not remove a workspace-owned rule or
+prohibit adding one. Case-fold collisions still fail validation.

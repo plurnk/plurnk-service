@@ -30,6 +30,11 @@ environment references until connection admission. A remote Agent Card remains
 the authority for that remote agent; its discovered contents are never copied
 into this environment vocabulary.
 
+An explicitly empty outbound target omits that definition, ignores its companion
+values and drops its inherited `ENABLED` selection. It does not remove a
+workspace-owned definition or prohibit adding one. Genuinely undeclared aliases
+and case-fold collisions still fail validation.
+
 ## §a2a-protocol-witness Protocol witness
 
 The integration witness places a discovery-first client and an independent

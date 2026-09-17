@@ -5,6 +5,7 @@ import {
     hostedAgentConfiguration,
     outboundAgentDefinition,
     outboundAgentNames,
+    outboundDefinitions,
     requestTimeoutMs,
     serviceEnabledNames,
 } from "./config.ts";
@@ -33,6 +34,24 @@ test("outbound configuration preserves standard discovery targets and environmen
         headers: { "X-Tenant": "${RESEARCH_TENANT}" },
         authorization: { type: "bearer", token: "${RESEARCH_TOKEN}" },
     });
+});
+
+test("{§a2a-environment-projection} empty targets mask definitions and ignore their companions and inherited enabledness", () => {
+    const env = {
+        ...floor,
+        PLURNK_A2A_RESEARCH: "",
+        PLURNK_A2A_RESEARCH_CARD_PATH: "not a path",
+        PLURNK_A2A_RESEARCH_HEADERS: "not JSON",
+        PLURNK_A2A_RESEARCH_BEARER: "not a reference",
+        PLURNK_A2A_OTHER: "https://agent.example",
+        PLURNK_A2A_ENABLED: '["research","other"]',
+    };
+    assert.equal(outboundAgentDefinition("RESEARCH", env), null);
+    assert.deepEqual(outboundAgentNames(env), ["other"]);
+    assert.deepEqual(outboundDefinitions(env), [{ name: "other", url: "https://agent.example" }]);
+    assert.deepEqual(serviceEnabledNames(env), ["other"]);
+    assert.throws(() => serviceEnabledNames({ ...env, PLURNK_A2A_ENABLED: '["missing"]' }), /unknown A2A agent 'missing'/);
+    assert.throws(() => outboundAgentNames({ ...env, PLURNK_A2A_research: "https://agent.example" }), /both derive A2A agent name 'research'/);
 });
 
 test("outbound configuration rejects ambiguous aliases, companions, enabledness, and credentials", () => {

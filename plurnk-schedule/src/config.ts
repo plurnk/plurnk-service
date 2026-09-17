@@ -7,6 +7,19 @@ const PREFIX = "PLURNK_SCHEDULE_";
 export const ENABLED = `${PREFIX}ENABLED`;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 
+const parseEnvironment = (env: NodeJS.ProcessEnv): Map<string, { key: string; value: string }> => {
+    const definitions = new Map<string, { key: string; value: string }>();
+    for (const [key, value] of Object.entries(env)) {
+        if (value === undefined || !key.startsWith(PREFIX) || key === ENABLED) continue;
+        const alias = key.slice(PREFIX.length).toLowerCase();
+        if (!ALIAS.test(alias)) throw new Error(`${key} derives the alias '${alias}', which must match [a-z][a-z0-9-]*.`);
+        const existing = definitions.get(alias);
+        if (existing !== undefined) throw new Error(`${existing.key} and ${key} both derive the schedule alias '${alias}'.`);
+        definitions.set(alias, { key, value });
+    }
+    return definitions;
+};
+
 const parseJson = (key: string, value: string): unknown => {
     try {
         return JSON.parse(value);
@@ -22,17 +35,14 @@ export const serviceEnabled = (env: NodeJS.ProcessEnv): ReadonlySet<string> => {
     if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
         throw new Error(`${ENABLED} must be a JSON array of aliases.`);
     }
-    return new Set(parsed);
+    const definitions = parseEnvironment(env);
+    return new Set(parsed.filter((alias) => definitions.get(alias)?.value !== ""));
 };
 
 export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, ScheduleDefinition> => {
-    const definitions = new Map<string, { key: string; definition: ScheduleDefinition }>();
-    for (const [key, value] of Object.entries(env)) {
-        if (value === undefined || !key.startsWith(PREFIX) || key === ENABLED) continue;
-        const alias = key.slice(PREFIX.length).toLowerCase();
-        if (!ALIAS.test(alias)) throw new Error(`${key} derives the alias '${alias}', which must match [a-z][a-z0-9-]*.`);
-        const existing = definitions.get(alias);
-        if (existing !== undefined) throw new Error(`${existing.key} and ${key} both derive the schedule alias '${alias}'.`);
+    const definitions = new Map<string, ScheduleDefinition>();
+    for (const [alias, { key, value }] of parseEnvironment(env)) {
+        if (value === "") continue;
         let definition: ScheduleDefinition;
         try {
             definition = readDefinition(parseJson(key, value));
@@ -40,9 +50,8 @@ export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, 
             if (!(cause instanceof DefinitionError)) throw cause;
             throw new Error(`${key} must be a schedule definition: {"rule", "target", "prompt", "policy"?}.`, { cause });
         }
-        definitions.set(alias, { key, definition });
+        definitions.set(alias, definition);
     }
     return new Map([...definitions]
-        .toSorted(([left], [right]) => left.localeCompare(right))
-        .map(([alias, { definition }]) => [alias, definition]));
+        .toSorted(([left], [right]) => left.localeCompare(right)));
 };

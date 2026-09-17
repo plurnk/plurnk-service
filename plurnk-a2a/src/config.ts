@@ -258,7 +258,10 @@ const skills = (raw: string | undefined): AgentSkill[] => {
 };
 
 export const outboundAgentNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
-    [...parseEnvironment(environ).targets.keys()].toSorted();
+    [...parseEnvironment(environ).targets]
+        .filter(([, { value }]) => value !== "")
+        .map(([name]) => name)
+        .toSorted();
 
 export const outboundAgentDefinition = (
     name: string,
@@ -267,8 +270,7 @@ export const outboundAgentDefinition = (
     const folded = name.toLowerCase();
     const { targets, companions } = parseEnvironment(environ);
     const target = targets.get(folded);
-    if (target === undefined) return null;
-    if (target.value.length === 0) throw new Error(`${target.key} must not be empty.`);
+    if (target === undefined || target.value === "") return null;
     const fields = companions.get(folded);
     const cardPathField = fields?.get("_card_path");
     const cardPath = cardPathField?.value;
@@ -307,11 +309,13 @@ export const outboundDefinitions = (
 export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
     const field = `${PREFIX}ENABLED`;
     const configured = jsonStrings(environ[field], field);
-    const available = new Set(outboundAgentNames(environ));
+    const { targets } = parseEnvironment(environ);
     const enabled = new Set<string>();
     for (const name of configured) {
         assertAgentName(name, field);
-        if (!available.has(name)) throw new Error(`${field} contains unknown A2A agent '${name}'.`);
+        const target = targets.get(name);
+        if (target === undefined) throw new Error(`${field} contains unknown A2A agent '${name}'.`);
+        if (target.value === "") continue;
         if (enabled.has(name)) throw new Error(`${field} contains duplicate A2A agent '${name}'.`);
         enabled.add(name);
     }

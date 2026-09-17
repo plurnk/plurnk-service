@@ -218,7 +218,7 @@ unavailable candidate without changing durable state.
 
 | Variable | Contract |
 |---|---|
-| `PLURNK_MCP_<server>` | HTTP(S) URL or exact stdio executable |
+| `PLURNK_MCP_<server>` | HTTP(S) URL or exact stdio executable; empty masks the definition ({§mcp-configuration-cascade}) |
 | `PLURNK_MCP_<server>_ARGS` | JSON string array for stdio |
 | `PLURNK_MCP_<server>_CWD` | Working directory for stdio |
 | `PLURNK_MCP_<server>_ENV` | JSON string map for stdio |
@@ -296,6 +296,11 @@ transport-inapplicable options before any connection work.
 §mcp-configuration-cascade MCP server configuration has one field-wise
 precedence order: service environment, then the workspace's durable definition.
 Arrays and maps replace their lower value instead of appending or merging.
+An explicitly empty environment target omits that service definition, its
+companions (including summaries), and its inherited `ENABLED`/`EXPANDED`
+selections. Companion values are neither parsed nor expanded. It does not
+remove a workspace-owned definition or prohibit adding one. Genuinely undeclared
+aliases and case-fold collisions still fail validation.
 Client configuration is not a live layer: the contracts-owned
 `{§mcp-configuration-overlay}` enters only as the `configuration` of a
 `discover` query, is parsed by the same owner and path as service environment

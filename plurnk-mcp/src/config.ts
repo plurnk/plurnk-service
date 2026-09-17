@@ -190,7 +190,10 @@ const jsonRecord = (
 };
 
 export const serverNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
-    [...parseEnvironment(environ).targets.keys()].toSorted();
+    [...parseEnvironment(environ).targets]
+        .filter(([, { value }]) => value !== "")
+        .map(([name]) => name)
+        .toSorted();
 
 const definitionFromEnvironment = (
     name: string,
@@ -210,7 +213,7 @@ const definitionFromEnvironment = (
     if (base !== undefined && base.name !== folded) {
         throw new Error(`MCP base definition '${base.name}' cannot configure alias '${folded}'.`);
     }
-    if (target?.value.length === 0) throw new Error(`${target.key} must not be empty.`);
+    if (target?.value === "") return null;
     const lower = target === undefined ? base : undefined;
     const fields = parsed.companions.get(folded);
     const fieldName = (suffix: CompanionSuffix): string =>
@@ -313,14 +316,19 @@ export const overlayServerDefinitions = (
 ): Map<string, McpServerDefinition> => {
     const validated = Validator.assertMcpConfigurationOverlay(structuredClone(overlay));
     const parsed = parseEnvironment(validated, true);
-    const names = new Set([...parsed.targets.keys(), ...parsed.companions.keys()]);
+    const declared = new Set([...parsed.targets.keys(), ...bases.keys()]);
+    const names = new Set([
+        ...parsed.targets.keys(),
+        ...[...parsed.companions.keys()].map((name) => declared.has(name)
+            ? name
+            : [...declared].find((server) => name.startsWith(`${server}_`)) ?? name),
+    ]);
     return new Map(
         [...names]
             .toSorted()
-            .map((name) => {
+            .flatMap((name): [string, McpServerDefinition][] => {
                 const definition = definitionFromEnvironment(name, parsed, bases.get(name));
-                if (definition === null) throw new Error(`MCP overlay server '${name}' disappeared.`);
-                return [name, definition];
+                return definition === null ? [] : [[name, definition]];
             }),
     );
 };
@@ -340,25 +348,30 @@ export const serviceDefinitions = (
 // {§tools-resource-materialization} — the turn-0 tools survey lists server
 // families; servers named here also expand their complete tool tree into the
 // turn-0 survey.
-export const expandedServerNames = (
-    environ: NodeJS.ProcessEnv = process.env,
+const selectedServerNames = (
+    environ: NodeJS.ProcessEnv,
+    field: string,
 ): string[] => {
-    const field = `${PREFIX}EXPANDED`;
     const configured = jsonStrings(environ[field], field);
-    const available = new Set(serverNames(environ));
-    const expanded = new Set<string>();
+    const { targets } = parseEnvironment(environ);
+    const selected = new Set<string>();
     for (const name of configured) {
         assertServerName(name, field);
-        if (!available.has(name)) {
+        const target = targets.get(name);
+        if (target === undefined) {
             throw new Error(`${field} contains unknown MCP server '${name}'.`);
         }
-        if (expanded.has(name)) {
+        if (target.value === "") continue;
+        if (selected.has(name)) {
             throw new Error(`${field} contains duplicate MCP server '${name}'.`);
         }
-        expanded.add(name);
+        selected.add(name);
     }
-    return [...expanded].toSorted();
+    return [...selected].toSorted();
 };
+
+export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
+    selectedServerNames(environ, `${PREFIX}EXPANDED`);
 
 export const summaryOverrides = (
     environ: NodeJS.ProcessEnv = process.env,
@@ -369,40 +382,25 @@ export const summaryOverrides = (
     for (const [name, fields] of companions) {
         const summary = fields.get("_summary");
         if (summary === undefined) continue;
-        const value = expandReferences(summary.value, environ, summary.key);
         if (targets.has(name)) {
-            servers.set(name, value);
+            if (targets.get(name)?.value !== "") {
+                servers.set(name, expandReferences(summary.value, environ, summary.key));
+            }
             continue;
         }
         const server = [...targets.keys()].find((target) => name.startsWith(`${target}_`));
         if (server === undefined) {
             throw new Error(`${summary.key} has no MCP server target ${PREFIX}${name.toUpperCase()}.`);
         }
+        if (targets.get(server)?.value === "") continue;
         const tool = name.slice(server.length + 1);
-        tools.set(`${server}/${tool}`, value);
+        tools.set(`${server}/${tool}`, expandReferences(summary.value, environ, summary.key));
     }
     return { servers, tools };
 };
 
-export const serviceEnabledNames = (
-    environ: NodeJS.ProcessEnv = process.env,
-): string[] => {
-    const field = `${PREFIX}ENABLED`;
-    const configured = jsonStrings(environ[field], field);
-    const available = new Set(serverNames(environ));
-    const enabled = new Set<string>();
-    for (const name of configured) {
-        assertServerName(name, field);
-        if (!available.has(name)) {
-            throw new Error(`${field} contains unknown MCP server '${name}'.`);
-        }
-        if (enabled.has(name)) {
-            throw new Error(`${field} contains duplicate MCP server '${name}'.`);
-        }
-        enabled.add(name);
-    }
-    return [...enabled].toSorted();
-};
+export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
+    selectedServerNames(environ, `${PREFIX}ENABLED`);
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_CONNECT_TIMEOUT;
