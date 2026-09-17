@@ -244,10 +244,16 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
         assert.deepEqual(queryJsonpathObject(outline, "$.Nonexistent"), []);
     });
 
+    it("returns no values when a forward slice begins at or beyond the array end", () => {
+        for (const values of [[], ["only"], ["first", "last"]]) {
+            for (const offset of [0, 1]) {
+                assert.deepEqual(queryJsonpathObject(values, `$[${values.length + offset}:]`), []);
+            }
+        }
+        assert.deepEqual(queryJsonpathObject(["first", "last"], "$[1:]").map((match) => match.matched), ["last"]);
+    });
+
     it("throws InvalidExpressionError on malformed filter syntax", () => {
-        // jsonpath-plus is lenient about structural typos in paths (returns []
-        // for nonsense path syntax), but throws on broken filter expressions —
-        // which is the kind of error model-authored matchers usually make.
         assert.throws(() => queryJsonpathObject(outline, "$[?(@.x == "), (err: unknown) => {
             return err instanceof InvalidExpressionError && err.dialect === "jsonpath";
         });

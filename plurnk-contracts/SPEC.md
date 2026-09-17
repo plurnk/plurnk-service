@@ -1447,7 +1447,10 @@ diagnostics are:
   ({§matcher-body-redirect}).
 
 §error-shape The diagnostic class determines how much guidance the parser may
-provide:
+provide. Advisories belong to one successfully built statement. A rejected
+statement emits its hard diagnostic, not normalization advisories; neither a
+rejection nor an internal exception carries advisories into another statement
+or parser invocation.
 
 | Class                  | Surface               | Message contract                                                                          |
 |------------------------|-----------------------|-------------------------------------------------------------------------------------------|

@@ -346,9 +346,10 @@ export default class PlurnkParser {
                     }
                 } else {
                     try {
-                        items.push({ kind: "statement", statement: buildFn(c) });
+                        const { value: statement, advisories } = AstBuilder.collectAdvisories(() => buildFn(c));
+                        items.push({ kind: "statement", statement });
                         // {§misplaced-aside-advisory} — the builder's advisories follow their statement.
-                        for (const advisory of AstBuilder.takeAdvisories()) items.push({ kind: "error", error: advisory });
+                        for (const advisory of advisories) items.push({ kind: "error", error: advisory });
                     } catch (e) {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a
                         // PlurnkParseError - surface it as an error item. Anything else is an

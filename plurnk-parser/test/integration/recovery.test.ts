@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
+import AstBuilder from "../../src/AstBuilder.ts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
 const statements = (r: ReturnType<typeof PlurnkParser.parse>) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
@@ -9,6 +10,53 @@ const errors = (r: ReturnType<typeof PlurnkParser.parse>) => r.items.flatMap((i)
 const frame = PlurnkParser.frame;
 const task = (op = "WAIT") => frame(op, "Observe the results.");
 const turn = (...blocks: string[]) => [...blocks, task()].join("\n");
+
+// {§error-shape}: a failed statement cannot lend its normalization warnings to another.
+for (const [name, header, body] of [
+    ["scope", "READ (data.json) <@12> $[", null],
+    ["aside", "READ (data.json) $[", "<!-- misplaced aside -->"],
+    ["body", "READ (data.json) $[", "ignored content"],
+] as const) {
+    for (const separate of [false, true]) {
+        test(`failed ${name} normalization does not leak advisories into ${separate ? "another parse" : "the next statement"}`, () => {
+            const malformed = frame(header, body);
+            const valid = frame("READ (data.json) $.ok", null);
+            const results = separate
+                ? [PlurnkParser.parseStatements(malformed), PlurnkParser.parseStatements(valid)]
+                : [PlurnkParser.parseStatements([malformed, valid].join("\n"))];
+            const diagnostics = results.flatMap(errors);
+            assert.equal(diagnostics.length, 1);
+            assert.equal(diagnostics[0].severity, "error");
+            assert.equal(diagnostics[0].source, "visitor");
+            assert.equal(diagnostics[0].line, 1);
+            assert.match(diagnostics[0].message, /pattern leads with `\$` but is not a valid jsonpath/u);
+            const ops = results.flatMap(statements);
+            assert.equal(ops.length, 1);
+            assert.equal(ops[0].op, "READ");
+            assert.deepEqual("matcher" in ops[0] && ops[0].matcher, { dialect: "jsonpath", raw: "$.ok" });
+
+            const normalized = PlurnkParser.parseStatements(frame("READ (data.json) <@34> $.ok", null));
+            assert.deepEqual(normalized.items.map((item) => item.kind), ["statement", "error"]);
+            assert.deepEqual(errors(normalized).map((error) => [error.severity, error.message]), [
+                ["warning", "`@34` was read as line 34; an anchor is five characters (`@abcde`)."],
+            ]);
+        });
+    }
+}
+
+test("an internal builder failure propagates without leaking its advisories", (t) => {
+    const build = AstBuilder.build;
+    const failure = new Error("internal builder failure");
+    const mocked = t.mock.method(AstBuilder, "build", (...args: Parameters<typeof build>) => {
+        build(...args);
+        throw failure;
+    });
+    assert.throws(() => PlurnkParser.parseStatements(frame("READ (data.json) <@12> $.ok", null)), (error) => error === failure);
+    mocked.mock.restore();
+    const parsed = PlurnkParser.parseStatements(frame("READ (data.json) $.ok", null));
+    assert.deepEqual(errors(parsed), []);
+    assert.deepEqual(statements(parsed).map(writtenOp), ["READ"]);
+});
 
 test("a scope inside a target is applied with one factual warning per selection", () => {
     const r = PlurnkParser.parse(turn(frame("COPY (worker:///src.md<2,3>) (worker:///slice.md<1,-1>)", null), frame("READ (a.ts<4,5>)", null)));

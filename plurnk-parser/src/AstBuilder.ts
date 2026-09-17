@@ -1,8 +1,6 @@
-/// <reference path="./json-p3-esm.d.ts" />
-
 import { ParserRuleContext, TerminalNode } from "antlr4ng";
 import * as xpath from "xpath";
-import { JSONPathEnvironment } from "json-p3/dist/json-p3.esm.js";
+import { JSONPathEnvironment } from "json-p3";
 import type {
     BareStatement,
     ClientStatement,
@@ -74,14 +72,18 @@ type Slots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: 
 type TextSlots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
 
 export default class AstBuilder {
-    // {§misplaced-aside-advisory} — advisories raised while building one statement; the
-    // parser drains them right after the statement so the model sees WHAT it did on the first try.
+    // {§error-shape}: advisories belong only to the statement that was built successfully.
     static #advisories: PlurnkParseError[] = [];
 
-    static takeAdvisories(): PlurnkParseError[] {
-        const taken = AstBuilder.#advisories;
+    static collectAdvisories<T>(build: () => T): { value: T; advisories: PlurnkParseError[] } {
+        const previous = AstBuilder.#advisories;
         AstBuilder.#advisories = [];
-        return taken;
+        try {
+            const value = build();
+            return { value, advisories: AstBuilder.#advisories };
+        } finally {
+            AstBuilder.#advisories = previous;
+        }
     }
 
     // A body that is solely an HTML comment can never be a matcher. Preserve it
