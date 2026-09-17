@@ -16,6 +16,12 @@ for (const cancel of [false, true]) {
                 const result = await daemon.runLoop({ workspaceId, workerId, prompt: "go", policy: { proposals: "accept" } });
                 const lifecycle = new LoopLifecycle(db);
                 await waitForDb(() => lifecycle.status(result.loopId), (status) => status === (cancel ? 499 : 200));
+                // {§turn-record}: cancellation status precedes the self-KILL receipt and turn completion.
+                await waitForDb(
+                    async () => (await db.test_list_turns_in_loop.all<{ producer: string; completed_at: string | null }>({ loop_id: result.loopId }))
+                        .filter(({ producer }) => producer === "model"),
+                    (turns) => turns.length === 2 && turns.every(({ completed_at }) => completed_at !== null),
+                );
                 assert.equal((await lifecycle.result(result.loopId))?.content, "The requested entry does not exist.");
                 assert.equal(mock.received.length, 2);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
