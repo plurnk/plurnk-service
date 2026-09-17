@@ -340,9 +340,9 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Enabled tools | `worker:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
 | Enabled agents | `worker:///_plurnk/agents/*.md` | `<1,-1>`; {§a2a-agents-catalog} |
 | Enabled members | `worker:///_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
-| Project filesystem | `*` | File cap below; `project filesystem` |
-| Workspace entries | `worker:///*` | Markerless; `workspace entries` |
-| Named scratch entries | `worker://<worker>/*` | Markerless; `worker scratch` |
+| Project filesystem | `*` | File cap below; `project root member files` |
+| Workspace entries | `worker:///*` | Markerless; `workspace knowledgebase entries` |
+| Named scratch entries | `worker://<worker>/*` | Markerless; `worker knowledgebase entries` |
 
 Only the three namespace surveys carry asides; the other targets name
 their surface. The word `skills` names Agent Skills and nothing else.
