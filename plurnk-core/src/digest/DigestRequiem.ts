@@ -10,9 +10,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import SqlRiteSync from "@possumtech/sqlrite/sync";
 import PacketWire from "../core/packet-wire.ts";
 import StoredPacket from "../core/StoredPacket.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
@@ -29,6 +27,7 @@ import {
 
 import DigestRender from "./DigestRender.ts";
 import { digestPaths } from "./digest-paths.ts";
+import { readDigestDb } from "./digest-db.ts";
 import type {
     SyncPrep,
     WorkerRow,
@@ -105,11 +104,13 @@ export default class DigestRequiem {
             throw new Error("PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS must be at least PLURNK_SERVICE_REQUIEM_MAX_TOKENS");
         }
 
-        const moduleDir = dirname(fileURLToPath(import.meta.url));
-        const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        const workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
-        const loopById = new Map((db.digest_loops as SyncPrep<LoopRow>).all().map((l) => [l.id, l]));
-        const turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
+        const { workers, loops, turnAttempts, turns } = readDigestDb(dbPath, (db) => ({
+            workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
+            loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
+            turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
+            turns: (db.digest_turns as SyncPrep<StoredTurnRow>).all(),
+        }));
+        const loopById = new Map(loops.map((l) => [l.id, l]));
         const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
         for (const attempt of turnAttempts) {
             const attempts = attemptsByTurn.get(attempt.turn_id) ?? [];
@@ -135,7 +136,7 @@ export default class DigestRequiem {
                 attributions: unknown;
             }>;
         }>>();
-        for (const t of (db.digest_turns as SyncPrep<StoredTurnRow>).all()) {
+        for (const t of turns) {
             const loop = loopById.get(t.loop_id);
             if (loop === undefined) continue;
             const packet = StoredPacket.parse(t.packet, `requiem turn ${t.id}`);

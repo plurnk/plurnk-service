@@ -57,7 +57,7 @@ for (const kind of ["parent", "ancestor", "database", "input-alias", "output-ali
         catch (cause) { failure = cause; }
         assert.equal(existsSync(original), true, "digest must preserve the database pathname");
         assert.equal(existsSync(dbPath), true, "digest must preserve the caller's input pathname");
-        assert.deepEqual(await readFile(original), before);
+        assert.ok((await readFile(original)).equals(before), "digest must preserve its input database bytes");
         assert.equal(await readFile(join(directory, "witness.txt"), "utf8"), "preserve source evidence");
         assert.ok(failure instanceof Error);
         assert.equal(failure.message, `digest: output directory ${resolve(digestDir)} overlaps input database ${resolve(dbPath)}`);
@@ -129,7 +129,7 @@ for (const name of ["requiem.json", "requiem.md"]) {
         let failure: unknown;
         try { await Digest.requiem({ dbPath, digestDir: root, provider: new Mock({ contextWindow: 8192, responses: [] }) }); }
         catch (cause) { failure = cause; }
-        assert.deepEqual(await readFile(dbPath), before, "requiem must preserve its input database bytes");
+        assert.ok((await readFile(dbPath)).equals(before), "requiem must preserve its input database bytes");
         assert.ok(failure instanceof Error);
         assert.equal(failure.message, `digest: output directory ${root} overlaps input database ${dbPath}`);
     });

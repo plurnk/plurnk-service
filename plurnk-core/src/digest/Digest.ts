@@ -33,15 +33,14 @@
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import SqlRiteSync from "@possumtech/sqlrite/sync";
+import { join, resolve } from "node:path";
 import { observedSync } from "../observe/spans.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import HostPaths from "../core/HostPaths.ts";
 import DigestRender from "./DigestRender.ts";
 import DigestRequiem from "./DigestRequiem.ts";
 import { digestPaths } from "./digest-paths.ts";
+import { readDigestDb } from "./digest-db.ts";
 import type {
     SyncPrep,
     WorkspaceRow,
@@ -126,35 +125,40 @@ export default class Digest {
     static #runSettled(opts: DigestOptions): void {
         // {§digest-programmatic-surface}: digest.sql is packaged beside this module
         // (src/digest → dist/digest via copy-sql), including in an installed package.
-        const moduleDir = dirname(fileURLToPath(import.meta.url));
         const { dbPath, digestDir } = digestPaths(opts);
 
         // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
-        const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        let workspaces = (db.digest_workspaces as SyncPrep<WorkspaceRow>).all();
-        let workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
-        let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
-        let turns = (db.digest_turns as SyncPrep<StoredTurnRow>).all()
+        const rows = readDigestDb(dbPath, (db) => ({
+            workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow>).all(),
+            workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
+            loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
+            turns: (db.digest_turns as SyncPrep<StoredTurnRow>).all(),
+            inferenceCalls: (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all(),
+            modelCalls: (db.digest_model_calls as SyncPrep<ModelCallRow>).all(),
+            turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
+            providerRequests: (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all(),
+            logEntries: (db.digest_log_entries as SyncPrep<LogRow>).all(),
+            curationEffects: (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all(),
+            workerRollupRows: (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all(),
+            opMixRows: (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all(),
+            environmentRows: (db.digest_execution_environments as SyncPrep<ExecutionEnvironmentRow>).all(),
+            searchState: (db.digest_channel_search_state as SyncPrep<SearchStateRow>).get(),
+            derivationState: (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get(),
+            dispositionCounts: (db.digest_channel_disposition_counts as SyncPrep<DispositionCountRow>).all(),
+            dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
+        }));
+        let { workspaces, workers, loops, inferenceCalls, modelCalls, turnAttempts, providerRequests,
+            logEntries, curationEffects, workerRollupRows, opMixRows } = rows;
+        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions } = rows;
+        let turns = rows.turns
             .map((turn): TurnRow => {
                 const { packet_bag, ...stored } = turn;
                 const packetEvidence = readStoredPacket(stored.packet, packet_bag, `digest turn ${turn.id}`);
                 return { ...stored, ...packetEvidence };
             });
-        let inferenceCalls = (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all();
-        let modelCalls = (db.digest_model_calls as SyncPrep<ModelCallRow>).all();
-        let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
-        let providerRequests = (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all();
-        let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
-        let curationEffects = (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all();
-        let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
-        let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
-        const environmentRows = (db.digest_execution_environments as SyncPrep<ExecutionEnvironmentRow>).all();
-        const searchState = (db.digest_channel_search_state as SyncPrep<SearchStateRow>).get();
-        const derivationState = (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get();
         if (searchState === undefined || derivationState === undefined) throw new Error("digest: search aggregate returned no row");
-        const dispositionCounts = (db.digest_channel_disposition_counts as SyncPrep<DispositionCountRow>).all();
         const dispositionCount = (value: string): number => dispositionCounts.find(({ disposition }) => disposition === value)?.n ?? 0;
         const search = {
             ...searchState,
@@ -162,11 +166,10 @@ export default class Digest {
             excluded: dispositionCount("excluded"),
             unsearchable: dispositionCount("unsearchable"),
             failed: dispositionCount("failed"),
-            dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
+            dispositions,
             derivation_artifacts_complete: derivationState.complete,
             derivation_artifacts_building: derivationState.building,
         };
-        db.close();
 
         // {§digest-programmatic-surface} — optional worker/workspace selectors narrow the
         // kept worker graph and its dependent evidence rather than emitting the whole DB.

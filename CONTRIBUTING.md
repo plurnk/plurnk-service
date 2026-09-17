@@ -58,6 +58,20 @@ at most 80 characters; reference the issue when useful.
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; [`plurnk-meta/DOGFOOD.md`](./plurnk-meta/DOGFOOD.md) defines digest/reasoning/requiem evidence. |
 
+An in-process test timeout does not contain synchronous allocation or native
+work. Run suspected resource-exhaustion cases under OS memory and swap limits;
+retain their output outside `/tmp`. On Linux with a systemd user manager, for
+example:
+
+```sh
+systemd-run --user --scope -p MemoryMax=1G -p MemorySwapMax=0 \
+  node --test path/to/focused.test.mjs > focused-test.log 2>&1
+```
+
+Choose a limit for the focused workload, not the entire machine. For binary
+equality, assert `actual.equals(expected)` rather than deep-diffing large
+Buffers; the byte comparison remains exact and failure diagnostics stay bounded.
+
 ## Release
 
 ```sh
