@@ -1,5 +1,6 @@
 import test from "node:test";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, NoteStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import { sendStmt  } from "./_dsl.ts";
@@ -231,6 +232,24 @@ const setup = async () => {
     const engine = new Engine({ db, schemes });
     return { db, engine, env };
 };
+
+for (const op of ["READ", "FIND"] as const) {
+    test(`{§problem-details}: ${op} without a path identifies the missing target, not a missing scheme`, async () => {
+        const { db, engine, env } = await setup();
+        try {
+            const parsed = PlurnkParser.parse(`\`\`\`\`${op}\n*\n\`\`\`\``);
+            const item = parsed.items.find((candidate) => candidate.kind === "statement");
+            assert.ok(item?.kind === "statement");
+            const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
+            assert.equal(result.status, 400);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/target-required");
+            assert.equal(result.problem?.detail, `${op} requires a target path.`);
+            const local = await engine.dispatch({ statement: { ...item.statement, target: { kind: "local", raw: "example.txt" } }, ...env, sequence: 2, origin: "model" });
+            assert.equal(local.status, 404, "the bare path reaches file resolution rather than missing-target refusal");
+            assert.equal(local.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
+        } finally { await db.close(); }
+    });
+}
 
 test("{§completion-defers-to-results}: retiring a failed receipt does not make it observed", async () => {
     const { db, engine, env } = await setup();

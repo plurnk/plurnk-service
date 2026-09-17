@@ -109,9 +109,9 @@ export default class DataStatementRunner {
     ): Promise<DispatchResult> {
         if (schemeName === null) {
             return this.#failure(
-                "target-scheme-required",
+                "target-required",
                 400,
-                `${writtenOp(statement)} requires a target scheme.`,
+                `${writtenOp(statement)} requires a target path.`,
                 DataStatementRunner.#emptyFields(writtenOp(statement)),
                 { operation: writtenOp(statement), retryable: false },
             );
