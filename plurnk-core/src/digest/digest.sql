@@ -72,7 +72,6 @@ JOIN inference_calls ic ON ic.id = pr.inference_call_id
 LEFT JOIN turn_attempts a ON a.model_call_id = ic.id
 LEFT JOIN turns t ON t.id = ic.turn_id
 LEFT JOIN loops l ON l.id = t.loop_id
-LEFT JOIN workers w ON w.id = l.worker_id
 ORDER BY ic.workspace_id, ic.timestamp, ic.id, pr.sequence;
 
 -- PREP: digest_log_entries
