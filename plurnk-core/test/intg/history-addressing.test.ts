@@ -1,19 +1,87 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import Fork from "../../src/core/fork.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace, testExecutors } from "./_helpers.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
 
 const frame = PlurnkParser.frame;
 const program = (name: string) => `${frame("NOTE", `${name} source`)}\n\n${frame(`READ (note://${name}/1/1/1)`, null)}`;
+
+test("{§env-delta-child-activity}: file deletion, worker cancellation and stream cancellation remain observable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-ambient-kill-"));
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    const exec = schemes.get("exec") as Exec;
+    try {
+        const workspaceId = await insertWorkspace(db, "kill-observation");
+        await rootWorkspace(db, workspaceId, root);
+        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const child = await insertWorker(db, workspaceId, parent, "child");
+        const descendant = await insertWorker(db, workspaceId, child, "descendant");
+        const parentLoop = await insertLoop(db, parent, 1);
+        const childLoop = await insertLoop(db, child, 1);
+        const descendantLoop = await insertLoop(db, descendant, 1);
+        const lifecycle = new LoopLifecycle(db);
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES,
+            cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); },
+        });
+        const executors = await testExecutors();
+        engine.setExecutors(executors);
+        schemes.registerRuntimeSchemes(executors);
+        const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
+        let sequence = 0;
+        const dispatch = async (source: string, review = false) => {
+            const announced = Promise.withResolvers<number>();
+            const pending = engine.dispatch({ workspaceId, workerId: child, loopId: childLoop, turnId: turn.id,
+                sequence: ++sequence, origin: "model", statement: statement(source), onDispatch: announced.resolve,
+            });
+            if (review) engine.resolveProposal(await announced.promise, { decision: "accept" });
+            return pending;
+        };
+        assert.equal((await dispatch(frame("EDIT (obsolete.txt)", "Temporary content."), true)).status, 200);
+        assert.equal(await readFile(join(root, "obsolete.txt"), "utf8"), "Temporary content.");
+        assert.equal((await dispatch(frame("KILL (obsolete.txt)", null), true)).status, 200);
+        await assert.rejects(readFile(join(root, "obsolete.txt")), { code: "ENOENT" });
+        assert.equal((await dispatch(frame("KILL (worker://descendant)", null))).status, 200);
+        assert.equal(await lifecycle.status(descendantLoop), 499, "the descendant really stopped");
+        assert.equal((await dispatch(frame("sh", "sleep 10"), true)).status, 200);
+        const childRows = await db.test_log_entries_by_loop.all<{ op: string; attrs: string }>({ loop_id: childLoop });
+        const invocation = childRows.find(({ op }) => op === "sh");
+        assert.ok(invocation);
+        const { pathname } = JSON.parse(invocation.attrs);
+        const target = `sh://${pathname}`;
+        assert.equal((await dispatch(frame(`KILL (${target})`, null))).status, 200);
+        await exec.idle();
+        const stream = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+        assert.ok(stream);
+        const subscription = await db.test_get_subscription_by_entry.get<{ close_status: number }>({ worker_id: child, entry_id: stream.id });
+        assert.equal(subscription?.close_status, 499, "the stream really stopped");
+        await Turn.complete(db, turn.id, 102);
+        await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),
+        });
+        const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; tx: string; status_rx: number }>({ loop_id: parentLoop }))
+            .filter(({ op, source }) => op === "KILL" && source === "worker://child");
+        assert.deepEqual(observations.map(({ tx, status_rx }) => [JSON.parse(tx).target.raw, status_rx]),
+            [["obsolete.txt", 200], ["worker://descendant", 200], [target, 200]]);
+    } finally {
+        await exec.idle();
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});
 
 test("{§turn-source-resources}: shared addresses retain identity across workers, curation, copying and forks", async () => {
     const db = await openMigrated();
