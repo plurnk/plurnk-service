@@ -1,16 +1,5 @@
-// Integration coverage for previously-untagged SPEC.md contract anchors that
-// concentrate around the mimetype seam: matcher soft-fallback ({§matcher-dispatch}),
-// matcher navigation ({§slice-semantics-compose-pattern}), 410 channel-delete
-// ({§send-dispatch}), the Mimetypes.process entry point ({§mimetype-methods}), and
-// the write-time vs explicit-projection handler boundary ({§mimetype} - schemes
-// do not invoke handlers).
-//
-// Vehicles are the real production paths:
-//   - {§matcher-dispatch} / {§slice-semantics-compose-pattern} - Worker.read matcher dispatch
-//                     (Matcher.matchAgainstContent -> 203) plus coordinate-guided READ.
-//   - {§send-dispatch} - _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
-//   - {§mimetype-methods} / {§mimetype} - Mimetypes.process shape + a spy handler
-//                 proving write (detect) never fires a content projection.
+// Composed coverage for {§matcher-dispatch}, {§slice-semantics-compose-pattern},
+// {§kill-scope-entry}, {§mimetype-methods}, and {§mimetype}.
 
 import test from "node:test";
 import assert from "node:assert/strict";
