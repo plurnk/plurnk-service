@@ -4652,7 +4652,7 @@ retain distinct contracts and lifetimes.
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Import `@plurnk/plurnk-service/digest` | Ships `Digest` and its package-owned SqlRite statements; importing performs no I/O or process action. The CLI wrapper alone invokes it.             |
 | `run({ dbPath })`                      | Reads the required database and writes a complete digest to `./test/digest` relative to the caller's working directory.                             |
-| `digestDir`                            | Selects the output directory. `run` removes and recreates it so stale packet artifacts cannot survive; concurrent callers use distinct directories. |
+| `digestDir`                            | Selects a nonempty output directory. Both `run` and `requiem` refuse an output containing the input pathname or its resolved database before database/provider I/O or output writes; normalized and real paths participate in that check. `run` removes and recreates output so stale artifacts cannot survive; concurrent callers use distinct directories. |
 | `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. |
 | `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. |
 

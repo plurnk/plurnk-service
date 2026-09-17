@@ -32,7 +32,7 @@
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
@@ -41,6 +41,7 @@ import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import HostPaths from "../core/HostPaths.ts";
 import DigestRender from "./DigestRender.ts";
 import DigestRequiem from "./DigestRequiem.ts";
+import { digestPaths } from "./digest-paths.ts";
 import type {
     SyncPrep,
     WorkspaceRow,
@@ -126,10 +127,7 @@ export default class Digest {
         // {§digest-programmatic-surface}: digest.sql is packaged beside this module
         // (src/digest → dist/digest via copy-sql), including in an installed package.
         const moduleDir = dirname(fileURLToPath(import.meta.url));
-        const dbPath = resolve(opts.dbPath);
-        if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
-        // A caller may select an isolated output directory; the CLI default is cwd/test/digest.
-        const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
+        const { dbPath, digestDir } = digestPaths(opts);
 
         // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at

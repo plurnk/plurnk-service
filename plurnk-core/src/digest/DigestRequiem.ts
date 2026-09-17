@@ -1,7 +1,6 @@
 // The requiem ({§digest-requiem}): an out-of-band forensic interview of a completed worker history.
 import {
     closeSync,
-    existsSync,
     fsyncSync,
     mkdirSync,
     openSync,
@@ -9,7 +8,7 @@ import {
     unlinkSync,
     writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -29,6 +28,7 @@ import {
 } from "@plurnk/plurnk-providers";
 
 import DigestRender from "./DigestRender.ts";
+import { digestPaths } from "./digest-paths.ts";
 import type {
     SyncPrep,
     WorkerRow,
@@ -94,9 +94,7 @@ export default class DigestRequiem {
     // {§digest-requiem}: one out-of-band audit per model-bearing worker, with exact
     // historical evidence and a required witness provider.
     static async interview(opts: DigestOptions & { signal?: AbortSignal; provider?: Provider }): Promise<{ path: string; reportPath: string; workers: number }> {
-        const dbPath = resolve(opts.dbPath);
-        if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
-        const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
+        const { dbPath, digestDir } = digestPaths(opts);
         mkdirSync(digestDir, { recursive: true });
 
         const provider = opts.provider ?? await ProviderInstantiate.loadActiveProvider();

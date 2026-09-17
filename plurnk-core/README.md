@@ -53,6 +53,8 @@ configuration guide.** A legacy mixed `~/.plurnk` is moved only by the explicit
 The 1.x package retains its frozen root library barrel for SemVer compatibility;
 it is not the client boundary and gains no new APIs. Programmatic forensic use
 imports `@plurnk/plurnk-service/digest`.
+The digest replaces its selected output directory; keep that directory separate
+from its input database. Overlapping input/output paths are refused.
 
 ## Contract & siblings
 
