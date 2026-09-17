@@ -143,6 +143,56 @@ for (const status of [201, 202, 206]) {
     });
 }
 
+for (const { policy, reuse, conditional } of [
+    { policy: "private, max-age=60", reuse: false, conditional: false },
+    { policy: 'private="set-cookie", s-maxage=60', reuse: false, conditional: false },
+    { policy: "s-maxage=60, max-age=0", reuse: true, conditional: false },
+    { policy: "s-maxage=0, max-age=60", reuse: false, conditional: true },
+    { policy: "s-maxage=invalid, max-age=60", reuse: false, conditional: true },
+]) {
+    test(`{§revalidation} shared-cache ${policy} governs cross-worker READ without removing evidence`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const priorTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
+        t.after(() => {
+            if (priorTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+            else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = priorTtl;
+        });
+        const requests: (string | undefined)[] = [];
+        const server = createServer((request, response) => {
+            if (request.url !== "/resource") { response.writeHead(404).end(); return; }
+            requests.push(request.headers["if-none-match"]);
+            response.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": policy, ETag: '"v1"' });
+            response.end(`revision ${requests.length}`);
+        });
+        server.listen(0, "127.0.0.1");
+        await once(server, "listening");
+        t.after(() => {
+            server.closeAllConnections();
+            return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+        });
+        const address = server.address();
+        assert.ok(address !== null && typeof address !== "string");
+        const authority = `127.0.0.1:${address.port}`;
+        const workspaceId = await insertWorkspace(db, `http-shared-${crypto.randomUUID()}`);
+        const firstWorker = await insertWorker(db, workspaceId, null, "first");
+        const secondWorker = await insertWorker(db, workspaceId, null, "second");
+        const firstCtx = makeSchemeCtx({ db, workspaceId, workerId: firstWorker });
+        const secondCtx = makeSchemeCtx({ db, workspaceId, workerId: secondWorker });
+        const stored = await makeHandlerCtx(secondCtx, { ...Http.manifest, name: "http" }, authority);
+        const read = parsedRead(`http://${authority}/resource`);
+        const http = new Http();
+        assert.equal((await readHttp(http, read, firstCtx)).content, "revision 1");
+        assert.equal((await stored.entries.read("/resource")).entry?.channels.body.content, "revision 1", "evidence remains accessible to another worker");
+        const next = await readHttp(http, read, secondCtx);
+        assert.equal(next.status, 200, JSON.stringify(next));
+        assert.equal(next.content, `revision ${reuse ? 1 : 2}`);
+        assert.deepEqual(requests, reuse ? [undefined] : [undefined, conditional ? '"v1"' : undefined]);
+        assert.equal((await stored.entries.read("/resource")).entry?.channels.body.content, next.content);
+    });
+}
+
 // Minimal valid one-page PDF whose content stream contains "Hello, world!".
 const readablePdf = () => new Uint8Array(Buffer.from(
     "JVBERi0xLjQKJaWx6woxIDAgb2JqCjw8IC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUiA+PgplbmRvYmoKMiAwIG9iago8PCAvVHlwZSAvUGFnZXMgL0tpZHMgWzMgMCBSXSAvQ291bnQgMSA+PgplbmRvYmoKMyAwIG9iago8PCAvVHlwZSAvUGFnZSAvUGFyZW50IDIgMCBSIC9NZWRpYUJveCBbMCAwIDMwMCAxNDRdIC9SZXNvdXJjZXMgPDwgL0ZvbnQgPDwgL0YxIDUgMCBSID4+ID4+IC9Db250ZW50cyA0IDAgUiA+PgplbmRvYmoKNCAwIG9iago8PCAvTGVuZ3RoIDQ1ID4+CnN0cmVhbQpCVCAvRjEgMTggVGYgMzYgMTAwIFRkIChIZWxsbywgd29ybGQhKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTQgMDAwMDAgbiAKMDAwMDAwMDA2MyAwMDAwMCBuIAowMDAwMDAwMTIwIDAwMDAwIG4gCjAwMDAwMDAyNDYgMDAwMDAgbiAKMDAwMDAwMDM0MCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQxMAolJUVPRgo=",

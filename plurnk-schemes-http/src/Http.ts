@@ -586,7 +586,9 @@ export default class Http implements SchemeHandler {
             .flatMap((value) => splitHttpList(value))
             .map((member) => cacheDirective(member))
             .filter((directive): directive is NonNullable<typeof directive> => directive !== null);
-        const maxAges = directives.filter(({ name }) => name === "max-age");
+        const sharedMaxAges = directives.filter(({ name }) => name === "s-maxage");
+        const maxAges = sharedMaxAges.length > 0 ? sharedMaxAges
+            : directives.filter(({ name }) => name === "max-age");
         let freshnessLifetimeMs: number | undefined;
         if (maxAges.length > 0) {
             freshnessLifetimeMs = maxAges.length === 1
@@ -613,10 +615,10 @@ export default class Http implements SchemeHandler {
         }
         const status = Number(/^HTTP ([0-9]{3})(?:\s|$)/.exec(header)?.[1]);
         const explicitPermission = freshnessLifetimeMs !== undefined
-            || directives.some(({ name, argument }) => name === "private" || (name === "public" && argument === undefined));
+            || directives.some(({ name, argument }) => name === "public" && argument === undefined);
         return {
             cacheable: status >= 200 && status <= 599 && status !== 206
-                && !directives.some(({ name }) => name === "no-store")
+                && !directives.some(({ name }) => name === "no-store" || name === "private")
                 && (HEURISTIC_CACHE_STATUSES.has(status) || explicitPermission),
             noCache: directives.some(({ name }) => name === "no-cache"),
             ...(freshnessLifetimeMs === undefined ? {} : { freshnessLifetimeMs }),

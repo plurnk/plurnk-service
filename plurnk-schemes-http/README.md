@@ -97,9 +97,9 @@ issue, not added to the test gate. It is a diagnostic, not a conformance score.
 
 | Boundary | Current behavior |
 | --- | --- |
-| Origin lifetime | `max-age`, `Expires`, and origin age constrain reuse alongside the operator TTL. |
+| Origin lifetime | `s-maxage` overrides `max-age`, then `Expires`; origin age and operator TTL also constrain reuse. |
 | Heuristic reuse | Requires an eligible status or explicit permission; errors and partial `206` responses are reacquired. |
 | Request headers / `Vary` | Bypass reuse; there is no variant cache. |
 | Stale data | Never substituted for failed acquisition; no stale-while-revalidate behavior. |
 | Response evidence | Stored headers are not a forwarded HTTP response; no generated `Age` or removed hop-by-hop evidence. |
-| Shared-cache directives | `s-maxage` is not interpreted; `private` does not prohibit workspace-local reuse. The survey tracks the unresolved private/shared-cache classification. |
+| Shared-cache directives | `private` and `no-store` prohibit reuse, not retention of acquisition evidence or workspace access. |

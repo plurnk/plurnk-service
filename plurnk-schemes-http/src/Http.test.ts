@@ -2557,7 +2557,12 @@ for (const { status, policy, reusable } of [
     { status: 201, policy: "max-age=60", reusable: true },
     { status: 202, policy: "max-age=60", reusable: true },
     { status: 202, policy: "public", reusable: true },
-    { status: 202, policy: "private", reusable: true },
+    { status: 202, policy: "private", reusable: false },
+    { status: 200, policy: "private, public, s-maxage=60", reusable: false },
+    { status: 200, policy: 'private="set-cookie", max-age=60', reusable: false },
+    { status: 201, policy: "s-maxage=60", reusable: true },
+    { status: 202, policy: "s-maxage=60", reusable: true },
+    { status: 200, policy: "s-maxage=60, no-store", reusable: false },
     { status: 202, policy: "public, no-store", reusable: false },
     { status: 206, policy: "max-age=60, public", reusable: false },
     { status: 299, policy: "max-age=60", reusable: true },
@@ -2657,6 +2662,42 @@ for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
         cacheHeaders: "cache-control: max-age=60, max-age=120",
         expectedFetch: true,
     },
+    {
+        name: "s-maxage replaces shorter max-age and expired Expires",
+        ageMs: 1000, ttl: "60000",
+        cacheHeaders: "cache-control: max-age=0, s-maxage=60\nexpires: Thu, 01 Jan 1970 00:00:00 GMT",
+        expectedFetch: false,
+    },
+    {
+        name: "s-maxage replaces longer max-age and future Expires",
+        ageMs: 1000, ttl: "60000",
+        cacheHeaders: "cache-control: max-age=60, s-maxage=0\nexpires: Thu, 01 Jan 2099 00:00:00 GMT",
+        expectedFetch: true,
+    },
+    {
+        name: "s-maxage still respects the operator ceiling",
+        ageMs: 2000, ttl: "1000",
+        cacheHeaders: "cache-control: s-maxage=60",
+        expectedFetch: true,
+    },
+    {
+        name: "s-maxage accounts for upstream Age",
+        ageMs: 1000, ttl: "60000",
+        cacheHeaders: "cache-control: s-maxage=60\nage: 120",
+        expectedFetch: true,
+    },
+    {
+        name: "quoted case-insensitive s-maxage accepted from a recipient",
+        ageMs: 1000, ttl: "60000",
+        cacheHeaders: 'cache-control: S-MAXAGE="60", max-age=0',
+        expectedFetch: false,
+    },
+    ...["s-maxage", "s-maxage=tomorrow", "s-maxage=-1", "s-maxage=1.5", "s-maxage=60, s-maxage=120", "s-maxage=60\ncache-control: s-maxage=60"].map((directive) => ({
+        name: `invalid or ambiguous ${directive} does not fall back to max-age`,
+        ageMs: 1000, ttl: "60000",
+        cacheHeaders: `cache-control: max-age=60, ${directive}`,
+        expectedFetch: true,
+    })),
 ] as const) {
     test(`cache policy: ${name}`, async () => {
         const header = stampedHeader(ageMs, `\n${cacheHeaders}\netag: "policy"`);
@@ -2715,6 +2756,11 @@ for (const { name, cacheHeaders, expectedFetch } of [
     { name: "no-cache", cacheHeaders: "cache-control: no-cache", expectedFetch: true },
     { name: "no-store", cacheHeaders: "cache-control: no-store", expectedFetch: true },
     { name: "expired max-age", cacheHeaders: "cache-control: max-age=0", expectedFetch: true },
+    { name: "private", cacheHeaders: "cache-control: private, max-age=60", expectedFetch: true },
+    { name: "fresh s-maxage overrides max-age", cacheHeaders: "cache-control: s-maxage=60, max-age=0", expectedFetch: false },
+    { name: "expired s-maxage overrides max-age", cacheHeaders: "cache-control: s-maxage=0, max-age=60", expectedFetch: true },
+    { name: "invalid s-maxage", cacheHeaders: "cache-control: s-maxage=no, max-age=60", expectedFetch: true },
+    { name: "no-cache overrides s-maxage", cacheHeaders: "cache-control: s-maxage=60, no-cache", expectedFetch: true },
 ] as const) {
     test(`exact FIND preparation cache policy: ${name}`, async () => {
         const { ctx } = makeCtx(priorEntry(
@@ -2842,39 +2888,43 @@ test("304 merges freshness metadata without relabeling a processed representatio
     assert.equal(fetchedAgain, false, "the 304-provided max-age governs the refreshed representation");
 });
 
-test("304 no-store retires the restored body and its validators from the next request", async () => {
-    const stored = stampedHeader(1000, '\ncache-control: no-cache\netag: "v1"');
-    const { ctx, inspect } = makeCtx(priorEntry("cached", "text/plain", stored));
-    await withTtl("60000", async () => {
-        await withFetch(async () => new Response(null, {
-            status: 304,
-            headers: { "cache-control": "no-store", etag: '"v1"' },
-        }), async () => {
-            await prepareRepresentation(new Http(),
-                readStmt(urlTarget("https://example.com/retired", "/retired")),
-                ctx,
-            );
+for (const policy of ["no-store", "private", 'private="set-cookie"']) {
+    test(`304 ${policy} retires the restored body and its validators from the next request`, async () => {
+        const stored = stampedHeader(1000, '\ncache-control: no-cache\netag: "v1"');
+        const { ctx, inspect } = makeCtx(priorEntry("cached", "text/plain", stored));
+        await withTtl("60000", async () => {
+            await withFetch(async () => new Response(null, {
+                status: 304,
+                headers: { "cache-control": policy, etag: '"v1"' },
+            }), async () => {
+                await prepareRepresentation(new Http(),
+                    readStmt(urlTarget("https://example.com/retired", "/retired")),
+                    ctx,
+                );
+            });
         });
-    });
-    const refreshedHeader = inspect().storedEntry?.channels.header?.content ?? "";
-    assert.match(refreshedHeader, /^cache-control: no-store$/m);
+        const refreshedHeader = inspect().storedEntry?.channels.header?.content ?? "";
+        assert.ok(refreshedHeader.split("\n").includes(`cache-control: ${policy}`));
+        assert.equal(inspect().storedEntry?.channels.body?.content, "cached");
 
-    const { ctx: nextCtx } = makeCtx(priorEntry("cached", "text/plain", refreshedHeader));
-    let conditional = false;
-    await withTtl("60000", async () => {
-        await withFetch(async (_url, init) => {
-            const headers = new Headers(init?.headers);
-            conditional = headers.has("if-none-match") || headers.has("if-modified-since");
-            return new Response("new body", { headers: { "content-type": "text/plain" } });
-        }, async () => {
-            await prepareRepresentation(new Http(),
-                readStmt(urlTarget("https://example.com/retired", "/retired")),
-                nextCtx,
-            );
+        const { ctx: nextCtx, inspect: nextInspect } = makeCtx(priorEntry("cached", "text/plain", refreshedHeader));
+        let conditional = false;
+        await withTtl("60000", async () => {
+            await withFetch(async (_url, init) => {
+                const headers = new Headers(init?.headers);
+                conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+                return new Response("new body", { headers: { "content-type": "text/plain" } });
+            }, async () => {
+                await prepareRepresentation(new Http(),
+                    readStmt(urlTarget("https://example.com/retired", "/retired")),
+                    nextCtx,
+                );
+            });
         });
+        assert.equal(conditional, false);
+        assert.equal(nextInspect().storedEntry?.channels.body?.content, "new body");
     });
-    assert.equal(conditional, false);
-});
+}
 
 test("TTL: a changed projection identity invalidates derived content and its origin validators", async () => {
     const header = `${stampedHeader(

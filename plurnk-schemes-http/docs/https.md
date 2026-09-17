@@ -83,10 +83,11 @@ representation per URL, so any request metadata or `Vary` response bypasses both
 the freshness shortcut and old validators instead of creating a variant store.
 Reuse also requires a cacheable status or explicit origin permission; partial
 `206` responses are retained but never reused as a complete GET.
-Eligible content is served directly only while both the operator TTL and any
-origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
-validation; `no-store` evidence remains in the log but supplies neither content
-nor validators to a later request. Only singular, syntactically valid stored
+Workspace reuse follows shared-cache rules. Eligible content is served directly
+only while both the operator TTL and origin lifetime remain live: `s-maxage`
+overrides `max-age`, which overrides `Expires`. `no-cache` requires origin
+validation; `private` and `no-store` evidence remains available but supplies
+neither content nor validators to a later request. Only singular, syntactically valid stored
 validators are sent. A 304 restores a non-page representation only when its
 ETag or Last-Modified value identifies the nominated representation. A strong
 response ETag requires the same stored strong tag; a weak response ETag may

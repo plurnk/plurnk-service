@@ -379,18 +379,21 @@ channel lifecycle, not body length: `body` and `header` must be successful
 may be `errored`; `active` or unknown state is ineligible. Durable operation
 evidence and HTTP reuse eligibility remain distinct: an acquired response stays
 in the entry even when its origin policy prevents later cache use.
-Reuse also requires a heuristically cacheable origin status (RFC 9110 §15.1)
-or explicit cache permission (`public`, `private`, `max-age`, or `Expires`).
+Workspace reuse follows shared-cache rules (RFC 9111); it does not change
+retained evidence or workspace access. Reuse also requires a heuristically
+cacheable origin status (RFC 9110 §15.1) or explicit cache permission (`public`,
+`s-maxage`, `max-age`, or `Expires`).
 Partial `206` responses remain evidence only: this cache does not combine or
 select byte ranges. Ineligible responses supply neither cached content nor
 validators to a later READ or exact FIND.
 
 | Stored origin policy                  | Direct READ after acquisition                          | Exact FIND after acquisition             |
 | ------------------------------------- | ------------------------------------------------------ | ---------------------------------------- |
-| `no-store`                            | Full acquisition without stored validators             | Full acquisition                         |
+| `no-store` or `private` (qualified or unqualified) | Full acquisition without stored validators    | Full acquisition                         |
 | `no-cache` (qualified or unqualified) | Validate when a stored validator exists; else acquire  | Full acquisition                         |
-| Valid `max-age`                       | Serve only inside origin lifetime and operator ceiling | Reuse only while fresh under both limits |
-| Valid `Expires`, without `max-age`    | Same, using the origin expiration lifetime             | Same                                     |
+| Valid `s-maxage`                      | Serve only inside origin lifetime and operator ceiling | Reuse only while fresh under both limits |
+| Valid `max-age`, without `s-maxage`    | Same, using `max-age`                                  | Same                                     |
+| Valid `Expires`, without either age directive | Same, using the origin expiration lifetime     | Same                                     |
 | Invalid or ambiguous explicit expiry  | Treat as stale; validate or acquire                    | Full acquisition                         |
 | Eligible response without explicit lifetime | Use the operator TTL as Plurnk's heuristic          | Reuse inside the operator TTL            |
 
@@ -398,8 +401,11 @@ The operator ceiling is `PLURNK_SCHEMES_HTTP_TTL_MS`; `0` disables every
 validation-free reuse. Origin age is the greater of the response's `Age` value
 and apparent age from `Date`, plus residence since the authoritative package
 stamp. A representation is fresh only while both origin lifetime and operator
-ceiling permit it. Unknown cache extensions are inert. Stale content is never
-served, so `must-revalidate` requires no separate path.
+ceiling permit it. `s-maxage` takes precedence even when invalid or duplicated:
+such a value is stale, not a reason to fall back to `max-age` or `Expires`.
+`private` and `no-store` prohibit reuse regardless of other permission directives.
+Unknown cache extensions are inert. Stale content is never served, so
+`must-revalidate` and `proxy-revalidate` require no separate path.
 
 Outside the fresh window, a representation without a materializer identity may
 send a stored ETag or Last-Modified only when that field is singular and
@@ -433,7 +439,7 @@ replaces the channels:
 | Package method, acquisition stamp, and variant                        | Rebuild authoritatively; refresh stamp and variant      |
 | Projection evidence                                                   | Preserve                                                |
 
-A 304-provided `Vary`, `no-store`, `no-cache`, expiry, or validator
+A 304-provided `Vary`, `private`, `no-store`, `no-cache`, expiry, or validator
 therefore governs the next operation without relabeling derived Unicode as a
 different source representation.
 
