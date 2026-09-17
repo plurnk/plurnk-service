@@ -3,6 +3,21 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 
+test("{§observability-genai-conventions} provider identity is independent of its configuration alias", () => {
+    for (const alias of [undefined, "potato"]) {
+        const provider = new Mock({ contextWindow: 16_384, responses: [] });
+        ProviderInstantiate.registerInstance(provider, { provider: "openai", model: "local", alias });
+        assert.equal(ProviderInstantiate.providerIdOf(provider), "openai");
+        assert.equal(ProviderInstantiate.aliasOf(provider), alias);
+        ProviderInstantiate.registerConfigurationScope(provider, "different-tuning");
+        assert.equal(ProviderInstantiate.providerIdOf(provider), "openai");
+        assert.equal(ProviderInstantiate.aliasOf(provider), "different-tuning");
+    }
+    const foreign = new Mock({ contextWindow: 16_384, responses: [] });
+    ProviderInstantiate.registerConfigurationScope(foreign, "potato");
+    assert.equal(ProviderInstantiate.providerIdOf(foreign), undefined, "an alias alone does not identify a provider");
+});
+
 // Regression: a per-alias baseUrl (PLURNK_BASEURL_<alias>) MUST reach the standard
 // provider's endpoint resolution. When it was dropped, every openai-compat alias
 // silently collapsed to an ambient OPENAI_BASE_URL, so a multi-endpoint setup ran
@@ -38,6 +53,8 @@ test("an alias-scoped provider knob binds at construction — the per-alias CONT
         { ...process.env, OPENAI_API_KEY: "k", PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500", PLURNK_PROVIDERS_CONTEXT_WINDOW_PINBOX: "8000", PLURNK_PROVIDERS_PROBE_NCTX: "0" },
     );
     assert.equal(provider.contextWindow, 8000, "the alias-scoped pin binds — min(cap, served) has a cap to bind with");
+    assert.equal(ProviderInstantiate.providerIdOf(provider), "openai");
+    assert.equal(ProviderInstantiate.aliasOf(provider), "pinbox");
 });
 
 test("a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {

@@ -1,7 +1,7 @@
 // Retried child failures must not falsely fail the parent
 // ({§observability-boundary}): the engine retries an invalid emission under
 // the same turn; the failed first attempt and the successful second both
-// appear as gen_ai.client.request spans, and the turn and loop end OK.
+// appear as separate inference spans, and the turn and loop end OK.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -48,10 +48,11 @@ test("observe: an invalid first emission retries under the turn without failing 
         await settleExports();
 
         const spans = memory.spans();
-        const generates = spans.filter((s) => s.name === "gen_ai.client.request");
+        const generates = spans.filter((s) => s.attributes["gen_ai.operation.name"] === "chat");
         assert.equal(generates.length, 2, "the invalid attempt and the retry are separate provider spans");
         const attempts = generates.map((s) => s.attributes.attempt).sort();
         assert.deepEqual(attempts, [1, 2]);
+        assert.ok(generates.every((span) => span.name === `chat ${span.attributes["gen_ai.request.model"]}`));
 
         const turn = spans.find((s) => s.name === "loop.turn");
         assert.ok(turn !== undefined);
@@ -63,7 +64,7 @@ test("observe: an invalid first emission retries under the turn without failing 
 
         const childOf = (parent: ReadableSpan, name: string): ReadableSpan[] =>
             spans.filter((s) => s.parentSpanContext?.spanId === parent.spanContext().spanId && s.name === name);
-        assert.equal(childOf(turn, "gen_ai.client.request").length, 2, "both attempts nest under the turn");
+        assert.equal(childOf(turn, generates[0].name).length, 2, "both attempts nest under the turn");
         assert.ok(
             generates.every((g) => g.parentSpanContext !== undefined),
             "provider spans are never roots",

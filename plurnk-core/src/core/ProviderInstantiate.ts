@@ -25,19 +25,23 @@ export default class ProviderInstantiate {
     // route and therefore uses global tuning. An absent entry is a foreign or
     // hand-built handle for which the boot route remains the compatibility
     // source of configuration scope.
-    static #configurationAliasByProvider = new WeakMap<Provider, string | null>();
+    static #configurationByProvider = new WeakMap<Provider, { alias: string | null; provider?: string }>();
 
     // The alias name a provider was built under, or undefined for an exact
     // route, a test Mock, or another hand-built handle.
     static aliasOf(provider: Provider): string | undefined {
-        return ProviderInstantiate.#configurationAliasByProvider.get(provider) ?? undefined;
+        return ProviderInstantiate.#configurationByProvider.get(provider)?.alias ?? undefined;
+    }
+
+    static providerIdOf(provider: Provider): string | undefined {
+        return ProviderInstantiate.#configurationByProvider.get(provider)?.provider;
     }
 
     static configurationAliasOf(
         provider: Provider,
         env: NodeJS.ProcessEnv = process.env,
     ): string | undefined {
-        const registered = ProviderInstantiate.#configurationAliasByProvider.get(provider);
+        const registered = ProviderInstantiate.#configurationByProvider.get(provider)?.alias;
         if (registered !== undefined) return registered ?? undefined;
         return resolveActiveRoute(env)?.alias;
     }
@@ -46,7 +50,7 @@ export default class ProviderInstantiate {
         provider: Provider,
         env: NodeJS.ProcessEnv = process.env,
     ): boolean {
-        return ProviderInstantiate.#configurationAliasByProvider.has(provider)
+        return ProviderInstantiate.#configurationByProvider.has(provider)
             || resolveActiveRoute(env) !== null;
     }
 
@@ -66,7 +70,9 @@ export default class ProviderInstantiate {
     // resolution as daemon-constructed handles. null is an exact route using
     // global tuning; a string is an alias-scoped route.
     static registerConfigurationScope(provider: Provider, alias: string | null): void {
-        ProviderInstantiate.#configurationAliasByProvider.set(provider, alias);
+        ProviderInstantiate.#configurationByProvider.set(provider, {
+            ...ProviderInstantiate.#configurationByProvider.get(provider), alias,
+        });
     }
 
     // Register a preconstructed handle under the same route+tuning identity as
@@ -78,7 +84,7 @@ export default class ProviderInstantiate {
         env: NodeJS.ProcessEnv = process.env,
         reasoningPolicy?: ReasoningPolicy,
     ): void {
-        ProviderInstantiate.#configurationAliasByProvider.set(provider, spec.alias ?? null);
+        ProviderInstantiate.#configurationByProvider.set(provider, { alias: spec.alias ?? null, provider: spec.provider });
         ProviderInstantiate.#registeredInstances.set(
             ProviderInstantiate.#cacheKey(spec, env, reasoningPolicy),
             provider,
@@ -155,7 +161,7 @@ export default class ProviderInstantiate {
         reasoningPolicy?: ReasoningPolicy,
     ): Promise<Provider> {
         const provider = await ProviderInstantiate.#construct(route, env, reasoningPolicy);
-        ProviderInstantiate.#configurationAliasByProvider.set(provider, route.alias ?? null);
+        ProviderInstantiate.#configurationByProvider.set(provider, { alias: route.alias ?? null, provider: route.provider });
         return provider;
     }
 

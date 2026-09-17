@@ -63,7 +63,7 @@ import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import { observed, observedSync } from "../observe/spans.ts";
-import { GEN_AI_REQUEST_SPAN, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
+import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
 import WorkerName from "./WorkerName.ts";
@@ -1316,7 +1316,7 @@ export default class TurnRunner {
         modelCall: ModelCall, reasoning: ReasoningObserver, strikeStreak: number,
     ): Promise<ProviderResponse> {
         return await observed( // {§observability-boundary}
-            GEN_AI_REQUEST_SPAN,
+            genAiRequestName(provider.model),
             { model: provider.model, attempt: attempts.modelCallSequence },
             async (span) => {
                 try {
@@ -1350,7 +1350,7 @@ export default class TurnRunner {
                 }
             },
             genAiRequestOptions(
-                ProviderInstantiate.aliasOf(provider) ?? "plurnk",
+                ProviderInstantiate.providerIdOf(provider) ?? "other",
                 provider.model,
             ),
         );

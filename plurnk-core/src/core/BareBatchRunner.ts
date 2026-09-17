@@ -4,7 +4,7 @@ import type { Db } from "./Db.ts";
 import { randomUUID } from "node:crypto";
 import Results, { type SchemeResult } from "./results.ts";
 import { observed } from "../observe/spans.ts";
-import { GEN_AI_REQUEST_SPAN, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
+import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -91,7 +91,7 @@ export default class BareBatchRunner {
             try {
                 signal?.throwIfAborted();
                 const response = await observed(
-                    GEN_AI_REQUEST_SPAN,
+                    genAiRequestName(provider.model),
                     { model: provider.model, attempt: 1, kind: "bare" },
                     async (span) => {
                         try {
@@ -120,7 +120,7 @@ export default class BareBatchRunner {
                         }
                     },
                     genAiRequestOptions(
-                        ProviderInstantiate.aliasOf(provider) ?? "plurnk",
+                        ProviderInstantiate.providerIdOf(provider) ?? "other",
                         provider.model,
                     ),
                 );

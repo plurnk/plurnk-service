@@ -65,13 +65,15 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         assert.ok(Number.isInteger(turn.attributes["turn.id"]));
 
         const turnChildren = childrenByParent.get(turn.spanContext().spanId) ?? [];
-        const generate = turnChildren.find((s) => s.name === "gen_ai.client.request");
+        const generate = turnChildren.find((s) => s.attributes["gen_ai.operation.name"] === "chat");
         assert.ok(generate !== undefined, "the turn nests the provider call");
         assert.equal(generate.kind, SpanKind.CLIENT, "the GenAI convention span is CLIENT-kind");
         assert.equal(generate.attributes["gen_ai.operation.name"], "chat");
-        assert.equal(generate.attributes["gen_ai.system"], "mocktest", "the registered Mock alias projects as the GenAI system");
+        assert.equal(generate.attributes["gen_ai.provider.name"], "openai", "provider identity comes from the registered route, not its mocktest alias");
+        assert.equal(generate.attributes["gen_ai.system"], undefined);
         assert.ok(typeof generate.attributes.model === "string" && generate.attributes.model.length > 0);
         assert.equal(generate.attributes["gen_ai.request.model"], generate.attributes.model);
+        assert.equal(generate.name, `chat ${generate.attributes.model}`);
         assert.ok(Number.isInteger(generate.attributes.attempt), "the provider span carries the emission attempt");
         assert.deepEqual(
             generate.attributes["gen_ai.response.finish_reasons"],
