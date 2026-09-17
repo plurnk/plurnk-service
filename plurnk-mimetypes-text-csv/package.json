@@ -22,7 +22,7 @@
         "handlers": [
             {
                 "name": "text/csv",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📊",
                 "extensions": [
                     ".csv"
@@ -40,7 +40,8 @@
     },
     "files": [
         "dist/**/*",
-        "README.md"
+        "README.md",
+        "SPEC.md"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",

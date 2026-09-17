@@ -1,0 +1,67 @@
+{
+  "source": "https://github.com/max-mapper/csv-spectrum/tree/d30e80f8b99d2eecb3778f1d7b9ed1cb425502ec",
+  "license": "BSD-2-Clause",
+  "crlf": "csvs/*_crlf.csv eol=crlf (upstream .gitattributes)",
+  "fixtures": [
+    {
+      "name": "comma_in_quotes",
+      "csvBase64": "Zmlyc3QsbGFzdCxhZGRyZXNzLGNpdHksemlwCkpvaG4sRG9lLDEyMCBhbnkgc3QuLCJBbnl0b3duLCBXVyIsMDgxMjM=",
+      "expectedJson": "[\n  {\n    \"first\": \"John\",\n    \"last\": \"Doe\",\n    \"address\": \"120 any st.\",\n    \"city\": \"Anytown, WW\",\n    \"zip\": \"08123\"\n  }\n]"
+    },
+    {
+      "name": "empty",
+      "csvBase64": "YSxiLGMKMSwiIiwiIgoyLDMsNA==",
+      "expectedJson": "[\n  { \"a\": \"1\", \"b\": \"\", \"c\": \"\" },\n  { \"a\": \"2\", \"b\": \"3\", \"c\": \"4\" }\n]"
+    },
+    {
+      "name": "empty_crlf",
+      "csvBase64": "YSxiLGMKMSwiIiwiIgoyLDMsNA==",
+      "expectedJson": "[\n  { \"a\": \"1\", \"b\": \"\", \"c\": \"\" },\n  { \"a\": \"2\", \"b\": \"3\", \"c\": \"4\" }\n]"
+    },
+    {
+      "name": "escaped_quotes",
+      "csvBase64": "YSxiCjEsImhhICIiaGEiIiBoYSIKMyw0Cg==",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"ha \\\"ha\\\" ha\"\n  },\n  {\n    \"a\": \"3\",\n    \"b\": \"4\"\n  }\n]"
+    },
+    {
+      "name": "json",
+      "csvBase64": "a2V5LHZhbAoxLCJ7IiJ0eXBlIiI6ICIiUG9pbnQiIiwgIiJjb29yZGluYXRlcyIiOiBbMTAyLjAsIDAuNV19Igo=",
+      "expectedJson": "[\n  {\n    \"key\": \"1\",\n    \"val\": \"{\\\"type\\\": \\\"Point\\\", \\\"coordinates\\\": [102.0, 0.5]}\"\n  }\n]"
+    },
+    {
+      "name": "location_coordinates",
+      "csvBase64": "Q29udGFjdCBQaG9uZSBOdW1iZXIsTG9jYXRpb24gQ29vcmRpbmF0ZXMsQ2l0aWVzLENvdW50aWVzCjIwOTUyNTc1NjQsMzfvv70zNiczNy44Ik4gMTIx77+9MicxNy45IlcsTW9kZXN0byxTdGFuaXNsYXVz",
+      "expectedJson": "{\n  \"Contact Phone Number\": \"1234567890\",\n  \"Location Coordinates\": \"37�36'37.8\\\"N 121�2'17.9\\\"W\",\n  \"Cities\": \"Modesto\",\n  \"Counties\": \"Stanislaus\"\n}\n"
+    },
+    {
+      "name": "newlines",
+      "csvBase64": "YSxiLGMKMSwyLDMKIk9uY2UgdXBvbiAKYSB0aW1lIiw1LDYKNyw4LDkK",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"2\",\n    \"c\": \"3\"\n  },\n  {\n    \"a\": \"Once upon \\na time\",\n    \"b\": \"5\",\n    \"c\": \"6\"\n  },\n  {\n    \"a\": \"7\",\n    \"b\": \"8\",\n    \"c\": \"9\"\n  }\n]\n"
+    },
+    {
+      "name": "newlines_crlf",
+      "csvBase64": "YSxiLGMKMSwyLDMKIk9uY2UgdXBvbiAKYSB0aW1lIiw1LDYKNyw4LDkK",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"2\",\n    \"c\": \"3\"\n  },\n  {\n    \"a\": \"Once upon \\r\\na time\",\n    \"b\": \"5\",\n    \"c\": \"6\"\n  },\n  {\n    \"a\": \"7\",\n    \"b\": \"8\",\n    \"c\": \"9\"\n  }\n]\n"
+    },
+    {
+      "name": "quotes_and_newlines",
+      "csvBase64": "YSxiCjEsImhhIAoiImhhIiIgCmhhIgozLDQK",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"ha \\n\\\"ha\\\" \\nha\"\n  },\n  {\n    \"a\": \"3\",\n    \"b\": \"4\"\n  }\n]"
+    },
+    {
+      "name": "simple",
+      "csvBase64": "YSxiLGMKMSwyLDMK",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"2\",\n    \"c\": \"3\"\n  }\n]\n"
+    },
+    {
+      "name": "simple_crlf",
+      "csvBase64": "YSxiLGMKMSwyLDMK",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"2\",\n    \"c\": \"3\"\n  }\n]"
+    },
+    {
+      "name": "utf8",
+      "csvBase64": "YSxiLGMKMSwyLDMKNCw1LMqk",
+      "expectedJson": "[\n  {\n    \"a\": \"1\",\n    \"b\": \"2\",\n    \"c\": \"3\"\n  },\n  {\n    \"a\": \"4\",\n    \"b\": \"5\",\n    \"c\": \"ʤ\"\n  }\n]"
+    }
+  ]
+}

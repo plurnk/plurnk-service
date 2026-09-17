@@ -28,6 +28,13 @@ describe("TextCsv — extract", () => {
         assert.deepEqual(result.map((s) => s.name), ["name, formal", "desc"]);
     });
 
+    it("a multiline header has the full header record's span", () => {
+        assert.deepEqual(h.extractRaw('"first\nname",other\na,1'), [
+            { name: "first\nname", kind: "field", line: 1, endLine: 2 },
+            { name: "other", kind: "field", line: 1, endLine: 2 },
+        ]);
+    });
+
     it("unescapes double-quote-inside-quoted-field", () => {
         const result = h.extractRaw('"she said ""hi""",x\nfoo,bar\n');
         assert.deepEqual(result.map((s) => s.name), ['she said "hi"', "x"]);
@@ -76,6 +83,16 @@ describe("TextCsv — validate", () => {
 });
 
 describe("parseAll (RFC 4180 tokenizer)", () => {
+    it("retains an empty quoted field at EOF as a record", () => {
+        assert.deepEqual(parseAll('""'), [[""]]);
+        assert.deepEqual(parseAll('name\n""'), [["name"], [""]]);
+    });
+
+    it("keeps __proto__ as a data column", () => {
+        const rows = h.deepJson("__proto__,value\nhello,world");
+        assert.deepEqual(rows, [JSON.parse('{"__proto__":"hello","value":"world"}')]);
+    });
+
     it("parses a multi-row CSV", () => {
         const rows = parseAll("a,b\n1,2\n3,4\n");
         assert.deepEqual(rows, [
