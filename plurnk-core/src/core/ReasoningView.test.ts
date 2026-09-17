@@ -65,5 +65,5 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
 test("{§reasoning-notes}: the authored rationale demonstrates an executable NOTE", () => {
     const notes = PlurnkParser.parseReasoningNotes(ReasoningView.initialSource());
     assert.equal(notes.length, 1);
-    assert.equal(notes[0]!.body, "Within reasoning, NOTE (and only NOTE) is persisted for the next turn.");
+    assert.equal(notes[0]!.body, "NOTE is the only operation that is also parsed and persisted from within reasoning.");
 });
